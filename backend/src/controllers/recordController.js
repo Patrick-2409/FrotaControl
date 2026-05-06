@@ -222,10 +222,20 @@ const deleteRecord = async (req, res) => {
     })
     .parse(req.params);
 
+  const companyAndSourceWhere = `empresa_id = $1 AND source_id = $2`;
+  const roleWhere =
+    req.user.role === "MOTORISTA"
+      ? `${companyAndSourceWhere} AND usuario_id = $3`
+      : companyAndSourceWhere;
+  const values =
+    req.user.role === "MOTORISTA"
+      ? [req.user.empresa_id, params.source_id, req.user.sub]
+      : [req.user.empresa_id, params.source_id];
+
   await pool.query(
     `DELETE FROM ${params.modulo}
-     WHERE empresa_id = $1 AND source_id = $2`,
-    [req.user.empresa_id, params.source_id]
+     WHERE ${roleWhere}`,
+    values
   );
   await logAudit({
     usuario_id: req.user.sub,

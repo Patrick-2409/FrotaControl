@@ -6,8 +6,19 @@ const {
   deleteManagerRecord,
 } = require("../models/recordModel");
 
+const resolveEmpresaScope = (req) => {
+  if (req.user?.role !== "SUPER_ADMIN") {
+    return req.user?.empresa_id;
+  }
+  const fromQuery = req.query?.empresa_id;
+  if (fromQuery == null || String(fromQuery).trim() === "") return null;
+  const parsed = Number(fromQuery);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+
 const dashboard = async (req, res) => {
-  const stats = await dashboardStats(req.user.empresa_id);
+  const empresa_id = resolveEmpresaScope(req);
+  const stats = await dashboardStats({ empresa_id });
   return res.json(stats);
 };
 
@@ -95,8 +106,9 @@ const list = async (req, res) => {
 
   const page = filter.page || 1;
   const limit = filter.limit || 20;
+  const empresa_id = resolveEmpresaScope(req);
   const result = await listManagerRecords({
-    empresa_id: req.user.empresa_id,
+    empresa_id,
     ...filter,
     page,
     limit,
@@ -127,7 +139,7 @@ const updateRecord = async (req, res) => {
   }).parse(req.body);
 
   const updated = await updateManagerRecord({
-    empresa_id: req.user.empresa_id,
+    empresa_id: resolveEmpresaScope(req),
     tipo: params.tipo,
     id: params.id,
     payload,
@@ -149,7 +161,7 @@ const deleteRecord = async (req, res) => {
   }).parse(req.params);
 
   const deleted = await deleteManagerRecord({
-    empresa_id: req.user.empresa_id,
+    empresa_id: resolveEmpresaScope(req),
     tipo: params.tipo,
     id: params.id,
   });

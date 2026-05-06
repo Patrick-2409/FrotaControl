@@ -141,8 +141,13 @@ const listManagerRecords = async ({
   page = 1,
   limit = 20,
 }) => {
-  const values = [empresa_id];
-  const where = ["r.empresa_id = $1"];
+  const values = [];
+  const where = [];
+  if (empresa_id != null) {
+    values.push(empresa_id);
+    where.push(`r.empresa_id = $${values.length}`);
+  }
+  if (!where.length) where.push("1=1");
   const dateExpr = "DATE(timezone('America/Sao_Paulo', r.data AT TIME ZONE 'UTC'))";
   const accentSource = "ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇçÑñ";
   const accentTarget = "AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCcNn";
@@ -344,7 +349,12 @@ const listManagerRecords = async ({
   return { items: rows, total: countResult.rows[0].total };
 };
 
-const dashboardStats = async (empresa_id) => {
+const dashboardStats = async ({ empresa_id = null } = {}) => {
+  const values = [];
+  const companyWhere = empresa_id != null ? `WHERE empresa_id = $1` : "";
+  if (empresa_id != null) {
+    values.push(empresa_id);
+  }
   const { rows } = await pool.query(
     `WITH ref AS (
       SELECT (timezone('America/Sao_Paulo', now()))::date AS hoje
@@ -352,15 +362,15 @@ const dashboardStats = async (empresa_id) => {
     base AS (
       SELECT DATE(COALESCE(recorded_at_client, data)) AS dia, usuario_id, 'romaneio' AS tipo
       FROM romaneios
-      WHERE empresa_id = $1
+      ${companyWhere}
       UNION ALL
       SELECT DATE(COALESCE(recorded_at_client, data)) AS dia, usuario_id, 'combustivel' AS tipo
       FROM combustiveis
-      WHERE empresa_id = $1
+      ${companyWhere}
       UNION ALL
       SELECT DATE(COALESCE(recorded_at_client, data)) AS dia, usuario_id, 'parte_diaria' AS tipo
       FROM parte_diaria
-      WHERE empresa_id = $1
+      ${companyWhere}
     )
     SELECT
       (SELECT COUNT(*) FROM base, ref WHERE dia = ref.hoje) AS total_hoje,
@@ -373,7 +383,7 @@ const dashboardStats = async (empresa_id) => {
       (
         SELECT COUNT(*)::int
         FROM veiculos
-        WHERE empresa_id = $1
+        ${companyWhere}
       ) AS veiculos_ativos,
       (SELECT json_agg(x) FROM (SELECT tipo, COUNT(*)::int AS total FROM base GROUP BY tipo) x) AS por_tipo,
       (SELECT json_agg(y) FROM (
@@ -391,22 +401,27 @@ const dashboardStats = async (empresa_id) => {
         GROUP BY d
         ORDER BY d
       ) z) AS ultimos_7_dias`,
-    [empresa_id]
+    values
   );
   return rows[0];
 };
 
 const updateManagerRecord = async ({ empresa_id, tipo, id, payload }) => {
+  const empresaFilter = empresa_id == null ? "id = $1" : "empresa_id = $1 AND id = $2";
+  const baseValues = empresa_id == null ? [id] : [empresa_id, id];
+  const dataIdx = empresa_id == null ? 2 : 3;
+  const next = (offset) => `$${dataIdx + offset}`;
+
   if (tipo === "romaneio") {
     const { rows } = await pool.query(
       `UPDATE romaneios
-       SET data = COALESCE($3, data),
-           destino = COALESCE($4, destino),
-           observacao = COALESCE($5, observacao),
+       SET data = COALESCE(${next(0)}, data),
+           destino = COALESCE(${next(1)}, destino),
+           observacao = COALESCE(${next(2)}, observacao),
            updated_at = NOW()
-       WHERE empresa_id = $1 AND id = $2
+       WHERE ${empresaFilter}
        RETURNING id`,
-      [empresa_id, id, payload.data || null, payload.destino || null, payload.observacao || null]
+      [...baseValues, payload.data || null, payload.destino || null, payload.observacao || null]
     );
     return rows[0];
   }
@@ -414,26 +429,26 @@ const updateManagerRecord = async ({ empresa_id, tipo, id, payload }) => {
   if (tipo === "combustivel") {
     const { rows } = await pool.query(
       `UPDATE combustiveis
-       SET data = COALESCE($3, data),
-           litros = COALESCE($4, litros),
-           tipo_combustivel = COALESCE($5, tipo_combustivel),
+       SET data = COALESCE(${next(0)}, data),
+           litros = COALESCE(${next(1)}, litros),
+           tipo_combustivel = COALESCE(${next(2)}, tipo_combustivel),
            updated_at = NOW()
-       WHERE empresa_id = $1 AND id = $2
+       WHERE ${empresaFilter}
        RETURNING id`,
-      [empresa_id, id, payload.data || null, payload.litros || null, payload.tipo_combustivel || null]
+      [...baseValues, payload.data || null, payload.litros || null, payload.tipo_combustivel || null]
     );
     return rows[0];
   }
 
   const { rows } = await pool.query(
     `UPDATE parte_diaria
-     SET data = COALESCE($3, data),
-         total_horas = COALESCE($4, total_horas),
-         observacoes = COALESCE($5, observacoes),
+     SET data = COALESCE(${next(0)}, data),
+         total_horas = COALESCE(${next(1)}, total_horas),
+         observacoes = COALESCE(${next(2)}, observacoes),
          updated_at = NOW()
-     WHERE empresa_id = $1 AND id = $2
+     WHERE ${empresaFilter}
      RETURNING id`,
-    [empresa_id, id, payload.data || null, payload.total_horas || null, payload.observacoes || null]
+    [...baseValues, payload.data || null, payload.total_horas || null, payload.observacoes || null]
   );
   return rows[0];
 };
@@ -445,7 +460,12 @@ const deleteManagerRecord = async ({ empresa_id, tipo, id }) => {
       : tipo === "combustivel"
       ? "combustiveis"
       : "parte_diaria";
-  const result = await pool.query(`DELETE FROM ${table} WHERE empresa_id = $1 AND id = $2`, [empresa_id, id]);
+  const sql =
+    empresa_id == null
+      ? `DELETE FROM ${table} WHERE id = $1`
+      : `DELETE FROM ${table} WHERE empresa_id = $1 AND id = $2`;
+  const values = empresa_id == null ? [id] : [empresa_id, id];
+  const result = await pool.query(sql, values);
   return result.rowCount > 0;
 };
 

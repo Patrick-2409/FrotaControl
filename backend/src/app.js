@@ -168,13 +168,13 @@ app.use(
 app.use(
   "/api/dashboard",
   authMiddleware,
-  requireRole("ADMIN_EMPRESA"),
+  requireRole("ADMIN_EMPRESA", "SUPER_ADMIN"),
   dashboardRoutes
 );
 app.use(
   "/api/dashboard/export",
   authMiddleware,
-  requireRole("ADMIN_EMPRESA"),
+  requireRole("ADMIN_EMPRESA", "SUPER_ADMIN"),
   exportRoutes
 );
 app.use(
