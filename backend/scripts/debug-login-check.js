@@ -1,4 +1,6 @@
-require("dotenv").config();
+const { loadEnvOptional } = require("../src/loadEnvOptional");
+loadEnvOptional();
+
 const bcrypt = require("bcryptjs");
 const {
   getMotoristaByLogin,

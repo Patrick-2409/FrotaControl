@@ -1,4 +1,9 @@
-require("dotenv").config();
+const { loadEnvOptional } = require("./loadEnvOptional");
+loadEnvOptional();
+
+console.log("DATABASE_URL existe?", !!process.env.DATABASE_URL);
+console.log("JWT_SECRET existe?", !!process.env.JWT_SECRET);
+
 const { app } = require("./app");
 const { initDb } = require("./db");
 const { seedIfEmpty } = require("./seed");

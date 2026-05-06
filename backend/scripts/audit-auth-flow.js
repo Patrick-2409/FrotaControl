@@ -1,49 +1,6 @@
-require("dotenv").config();
-const { Pool } = require("pg");
+const { loadEnvOptional } = require("../src/loadEnvOptional");
+loadEnvOptional();
 
-async function main() {
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-  try {
-    const companies = await pool.query(
-      `SELECT
-         e.id,
-         e.nome,
-         e.created_at,
-         COUNT(u.id) FILTER (WHERE u.role = 'ADMIN_EMPRESA')::int AS admins,
-         COUNT(u.id) FILTER (WHERE u.role = 'MOTORISTA')::int AS motoristas
-       FROM empresas e
-       LEFT JOIN usuarios u ON u.empresa_id = e.id
-       GROUP BY e.id, e.nome, e.created_at
-       ORDER BY e.id DESC
-       LIMIT 100`
-    );
-
-    const users = await pool.query(
-      `SELECT id, nome, email, cpf_id, role, empresa_id, created_at
-       FROM usuarios
-       ORDER BY id DESC
-       LIMIT 200`
-    );
-
-    console.log("=== EMPRESAS ===");
-    for (const row of companies.rows) {
-      console.log(row);
-    }
-
-    console.log("=== USUARIOS ===");
-    for (const row of users.rows) {
-      console.log(row);
-    }
-  } finally {
-    await pool.end();
-  }
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
-require("dotenv").config();
 const { pool } = require("../src/db");
 
 async function run() {
