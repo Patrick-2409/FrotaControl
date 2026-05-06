@@ -8,6 +8,20 @@ Dois serviços: **Web Service** (API Node) + **Static Site** (frontend Vite). Op
 2. Copie a **Internal Database URL** ou **External** (com `sslmode=require` se necessário).
 3. Use como `DATABASE_URL` no backend.
 
+### Schema PostgreSQL (estrutura das tabelas)
+
+- **ORM:** o projeto **não usa Prisma** (nem Knex/Sequelize). Tudo é **SQL manual** via `pg`.
+- **Onde está o “schema”:** único lugar canônico — `backend/src/db.js`, função **`initDb()`** (enum `user_role`, `CREATE TABLE IF NOT EXISTS`, `ALTER ... ADD COLUMN IF NOT EXISTS`, índices e constraints). **Não existe** pasta `migrations/` nem arquivos Prisma.
+- **Produção = mesmo schema que local:** `initDb()` é **idempotente** (pode rodar várias vezes sem duplicar objetos).
+- **Automático no Render:** ao subir o Web Service, `npm start` → `server.js` chama **`await initDb()`** antes de abrir a porta. Com `DATABASE_URL` do Postgres da Render (e SSL conforme `db.js`), as tabelas são criadas/atualizadas sozinhas.
+- **Comando único manual (opcional):** na pasta `backend`, com a mesma `DATABASE_URL` que você usa em produção:
+
+```bash
+npm run db:init
+```
+
+  Equivale a rodar só `initDb()` e sair (útil para testar a string de conexão antes do deploy ou para rodar de uma máquina local contra o banco remoto). De um PC local para Postgres da Render, use a URL **externa** e, em geral, `NODE_ENV=production` ou `?sslmode=require` na URL para o pool habilitar TLS (`backend/src/db.js`).
+
 ## 2. Backend (Web Service)
 
 | Campo | Valor |
