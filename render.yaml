@@ -31,17 +31,14 @@ services:
       - key: CLOUDINARY_API_SECRET
         sync: false
 
-  - type: static_site
+  - type: web
     name: frotacontrol-frontend
+    runtime: node
     region: oregon
     plan: free
     rootDir: frontend
     buildCommand: npm install && npm run build
-    publishDir: dist
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
+    startCommand: npm start
     envVars:
       - key: VITE_API_URL
         sync: false
