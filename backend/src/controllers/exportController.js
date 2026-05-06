@@ -16,6 +16,11 @@ const getData = (empresa_id, filters = {}) =>
   });
 const browserCandidates = [
   process.env.PUPPETEER_EXECUTABLE_PATH,
+  typeof puppeteer.executablePath === "function" ? puppeteer.executablePath() : "",
+  "/usr/bin/google-chrome-stable",
+  "/usr/bin/google-chrome",
+  "/usr/bin/chromium-browser",
+  "/usr/bin/chromium",
   "C:/Program Files/Google/Chrome/Application/chrome.exe",
   "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
   "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
@@ -33,18 +38,24 @@ const launchBrowser = async () => {
   const executablePath = resolveBrowserExecutable();
   const launchOptions = {
     headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
   };
   if (executablePath) {
     launchOptions.executablePath = executablePath;
   }
   const timeoutMs = Number(process.env.PUPPETEER_LAUNCH_TIMEOUT_MS || 20000);
-  return Promise.race([
-    puppeteer.launch(launchOptions),
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Timeout ao iniciar navegador para geração de PDF.")), timeoutMs)
-    ),
-  ]);
+  try {
+    return await Promise.race([
+      puppeteer.launch(launchOptions),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout ao iniciar navegador para geração de PDF.")), timeoutMs)
+      ),
+    ]);
+  } catch (error) {
+    throw new Error(
+      `Falha ao iniciar navegador para gerar PDF. Verifique PUPPETEER_EXECUTABLE_PATH no ambiente de produção. Detalhe: ${error?.message || "erro desconhecido"}`
+    );
+  }
 };
 const normalizeDateFilter = (rawValue) => {
   if (!rawValue) return undefined;
