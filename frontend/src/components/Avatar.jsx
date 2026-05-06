@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+
 const sizes = {
   list: "h-8 w-8 text-xs",
   header: "h-10 w-10 text-sm",
@@ -15,13 +17,20 @@ const initials = (name = "") =>
 
 export default function Avatar({ imageUrl, name, size = "header", className = "" }) {
   const sizeClass = sizes[size] || sizes.header;
+  const [failedToLoad, setFailedToLoad] = useState(false);
 
-  if (imageUrl) {
+  useEffect(() => {
+    // Se a URL mudar (ex.: upload novo), tenta renderizar novamente.
+    setFailedToLoad(false);
+  }, [imageUrl]);
+
+  if (imageUrl && !failedToLoad) {
     return (
       <img
         src={imageUrl}
         alt={`Avatar de ${name || "usuário"}`}
         className={`${sizeClass} rounded-full border border-slate-600 object-cover ${className}`.trim()}
+        onError={() => setFailedToLoad(true)}
       />
     );
   }
