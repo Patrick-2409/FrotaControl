@@ -1,25 +1,14 @@
 import { createContext, createElement, useContext, useEffect, useMemo, useState } from "react";
-import api, { getBaseURL } from "./api";
+import api, { resolveBackendAssetUrl } from "./api";
 
 const AuthContext = createContext(null);
-const normalizeAssetUrl = (value, base) => {
-  if (!value) return null;
-  const raw = String(value).trim();
-  if (!raw) return null;
-  if (/^https?:\/\//i.test(raw)) return raw;
-
-  const normalized = raw.replace(/\\/g, "/");
-  const relative = normalized.startsWith("/") ? normalized : `/${normalized}`;
-  return `${base}${relative}`;
-};
 
 const normalizeUser = (user) => {
   if (!user) return user;
-  const base = getBaseURL();
   return {
     ...user,
-    logo_url: normalizeAssetUrl(user.logo_url, base),
-    profile_image_url: normalizeAssetUrl(user.profile_image_url, base),
+    logo_url: resolveBackendAssetUrl(user.logo_url),
+    profile_image_url: resolveBackendAssetUrl(user.profile_image_url),
   };
 };
 

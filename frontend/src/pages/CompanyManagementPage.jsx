@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import api, { getBaseURL } from "../services/api";
+import api, { resolveBackendAssetUrl } from "../services/api";
 import { inputClass } from "../components/FormField";
 import PaginationControls from "../components/PaginationControls";
 import SkeletonRows from "../components/SkeletonRows";
@@ -9,7 +9,6 @@ import { CenteredSpinner } from "../components/LoadingState";
 import useDebouncedValue from "../hooks/useDebouncedValue";
 import Avatar from "../components/Avatar";
 
-const API_BASE = getBaseURL();
 const roleLabel = (role) => (role === "ADMIN_EMPRESA" ? "Administrador" : "Motorista");
 const roleBadgeClass = (role) =>
   role === "ADMIN_EMPRESA"
@@ -261,17 +260,7 @@ export default function CompanyManagementPage() {
                 <article key={`u-${u.id}`} className="rounded-xl border border-slate-700/90 bg-slate-950/65 p-4 shadow-md shadow-slate-950/30">
                   <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
                     <div className="flex items-center gap-3 text-left">
-                    <Avatar
-                      imageUrl={
-                        u.profile_image_url
-                          ? u.profile_image_url.startsWith("http")
-                            ? u.profile_image_url
-                            : `${API_BASE}${u.profile_image_url}`
-                          : null
-                      }
-                      name={u.nome}
-                      size="list"
-                    />
+                    <Avatar imageUrl={resolveBackendAssetUrl(u.profile_image_url)} name={u.nome} size="list" />
                     <div>
                       <p className="font-medium text-slate-100">{u.nome}</p>
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">

@@ -1,5 +1,7 @@
 import axios from "axios";
 
+const PROD_API_FALLBACK = "https://frotacontrol.onrender.com";
+
 export const getBaseURL = () => {
   const rawEnvUrl = (import.meta.env.VITE_API_URL || "").trim();
   if (rawEnvUrl) {
@@ -9,7 +11,17 @@ export const getBaseURL = () => {
     const { protocol, hostname } = window.location;
     return `${protocol}//${hostname}:4000`;
   }
-  return "";
+  return PROD_API_FALLBACK;
+};
+
+export const resolveBackendAssetUrl = (value) => {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  if (/^https?:\/\//i.test(raw)) return raw;
+  const normalized = raw.replace(/\\/g, "/");
+  const relative = normalized.startsWith("/") ? normalized : `/${normalized}`;
+  return `${getBaseURL()}${relative}`;
 };
 
 const resolvedBaseURL = getBaseURL();

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import api, { getBaseURL } from "../services/api";
+import api, { resolveBackendAssetUrl } from "../services/api";
 import FormField, { inputClass } from "../components/FormField";
 import useDebouncedValue from "../hooks/useDebouncedValue";
 import PaginationControls from "../components/PaginationControls";
@@ -10,10 +10,8 @@ import EmptyState from "../components/EmptyState";
 import Avatar from "../components/Avatar";
 import CompanyLogo from "../components/CompanyLogo";
 
-const API_BASE = getBaseURL();
 const resolveAsset = (value) => {
-  if (!value) return null;
-  return value.startsWith("http") ? value : `${API_BASE}${value.startsWith("/") ? value : `/${value}`}`;
+  return resolveBackendAssetUrl(value);
 };
 const formatRole = (role) => {
   if (role === "SUPER_ADMIN") return "Super Admin";
