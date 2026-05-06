@@ -15,19 +15,38 @@ const initials = (name = "") =>
     .map((p) => p[0]?.toUpperCase() || "")
     .join("") || "U";
 
+const backendBase = String(import.meta.env.VITE_API_URL || "")
+  .trim()
+  .replace(/\/+$/, "")
+  .replace(/\/api$/i, "");
+
+const resolveAvatarUrl = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+
+  const normalized = raw.replace(/\\/g, "/");
+  const relative = normalized.startsWith("/") ? normalized : `/${normalized}`;
+  if (backendBase && relative.startsWith("/uploads/")) {
+    return `${backendBase}${relative}`;
+  }
+  return relative;
+};
+
 export default function Avatar({ imageUrl, name, size = "header", className = "" }) {
   const sizeClass = sizes[size] || sizes.header;
   const [failedToLoad, setFailedToLoad] = useState(false);
+  const resolvedImageUrl = resolveAvatarUrl(imageUrl);
 
   useEffect(() => {
     // Se a URL mudar (ex.: upload novo), tenta renderizar novamente.
     setFailedToLoad(false);
-  }, [imageUrl]);
+  }, [resolvedImageUrl]);
 
-  if (imageUrl && !failedToLoad) {
+  if (resolvedImageUrl && !failedToLoad) {
     return (
       <img
-        src={imageUrl}
+        src={resolvedImageUrl}
         alt={`Avatar de ${name || "usuário"}`}
         className={`${sizeClass} rounded-full border border-slate-600 object-cover ${className}`.trim()}
         onError={() => setFailedToLoad(true)}
