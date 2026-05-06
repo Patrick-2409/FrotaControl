@@ -1,5 +1,5 @@
-const CACHE = "frotacontrol-v2";
-const SHELL = ["/", "/manifest.json", "/icons/icon.svg", "/favicon.svg"];
+const CACHE = "frotacontrol-v5";
+const SHELL = ["/", "/manifest.json", "/frotacontrol-logo.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));
