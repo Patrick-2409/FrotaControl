@@ -6,7 +6,7 @@ console.log("JWT_SECRET existe?", !!process.env.JWT_SECRET);
 
 const { app } = require("./app");
 const { initDb } = require("./db");
-const { seedIfEmpty } = require("./seed");
+const { seedIfEmpty, ensureSuperAdminSeed } = require("./seed");
 const { logError, logInfo } = require("./services/loggerService");
 const { runAuthStartupDiagnostic } = require("./services/authDiagnosticService");
 const { runUserNameStartupDiagnostic } = require("./services/userNameDiagnosticService");
@@ -20,6 +20,7 @@ const start = async () => {
     throw new Error(`Variáveis obrigatórias ausentes: ${missing.join(", ")}`);
   }
   await initDb();
+  await ensureSuperAdminSeed();
   if (process.env.NODE_ENV !== "production") {
     await seedIfEmpty();
   }
