@@ -1,8 +1,7 @@
 const express = require("express");
 const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
 const { asyncHandler } = require("../utils/asyncHandler");
+const { savePersistentImage } = require("../services/uploadStorageService");
 const {
   createCompanyCtrl,
   listCompaniesCtrl,
@@ -23,20 +22,8 @@ const {
 } = require("../controllers/adminController");
 
 const router = express.Router();
-const uploadDir = path.resolve(__dirname, "../../uploads");
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: uploadDir,
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname || ".png");
-    cb(null, `logo-${Date.now()}${ext}`);
-  },
-});
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: {
     fileSize: 2 * 1024 * 1024,
   },
@@ -52,11 +39,25 @@ const upload = multer({
 router.get("/companies", asyncHandler(listCompaniesCtrl));
 router.get("/companies/:id/details", asyncHandler(companyDetailsCtrl));
 router.post("/companies", upload.single("logo"), asyncHandler(async (req, res) => {
-  if (req.file) req.body.logo_url = `/uploads/${req.file.filename}`;
+  if (req.file) {
+    req.body.logo_url = await savePersistentImage({
+      buffer: req.file.buffer,
+      mimeType: req.file.mimetype,
+      category: "companies",
+      ownerId: req.user?.sub,
+    });
+  }
   return createCompanyCtrl(req, res);
 }));
 router.put("/companies/:id", upload.single("logo"), asyncHandler(async (req, res) => {
-  if (req.file) req.body.logo_url = `/uploads/${req.file.filename}`;
+  if (req.file) {
+    req.body.logo_url = await savePersistentImage({
+      buffer: req.file.buffer,
+      mimeType: req.file.mimetype,
+      category: "companies",
+      ownerId: req.params?.id || req.user?.sub,
+    });
+  }
   return updateCompanyCtrl(req, res);
 }));
 router.delete("/companies/:id", asyncHandler(deleteCompanyCtrl));

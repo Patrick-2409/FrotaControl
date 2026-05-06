@@ -1,5 +1,3 @@
-const fs = require("fs");
-const path = require("path");
 const bcrypt = require("bcryptjs");
 const multer = require("multer");
 const { z } = require("zod");
@@ -11,20 +9,10 @@ const {
   getUserById,
 } = require("../models/userModel");
 const { logInfo } = require("../services/loggerService");
-
-const uploadDir = path.resolve(__dirname, "../../uploads/profile");
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
+const { savePersistentImage } = require("../services/uploadStorageService");
 
 const profileImageUpload = multer({
-  storage: multer.diskStorage({
-    destination: uploadDir,
-    filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname || ".png").toLowerCase();
-      cb(null, `profile-${req.user?.sub || "user"}-${Date.now()}${ext}`);
-    },
-  }),
+  storage: multer.memoryStorage(),
   limits: {
     fileSize: 2 * 1024 * 1024,
   },
@@ -125,7 +113,12 @@ const uploadProfileImage = async (req, res) => {
       message: "Envie uma imagem para upload",
     });
   }
-  const profile_image_url = `/uploads/profile/${req.file.filename}`;
+  const profile_image_url = await savePersistentImage({
+    buffer: req.file.buffer,
+    mimeType: req.file.mimetype,
+    category: "profile",
+    ownerId: req.user?.sub,
+  });
   await updateOwnProfileImage(req.user.sub, profile_image_url);
   return res.status(201).json({ success: true, profile_image_url });
 };

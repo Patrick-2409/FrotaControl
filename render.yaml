@@ -24,9 +24,15 @@ services:
         value: 30d
       - key: PUBLIC_BASE_URL
         sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
 
   - type: static_site
-    name: frotacontrol-web
+    name: frotacontrol-frontend
     region: oregon
     plan: free
     rootDir: frontend
