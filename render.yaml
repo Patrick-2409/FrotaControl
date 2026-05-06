@@ -1,0 +1,38 @@
+# Render Blueprint — ajuste nomes/região e configure secrets no painel (DATABASE_URL, JWT_SECRET, VITE_API_URL).
+# Documentação: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: frotacontrol-api
+    runtime: node
+    region: oregon
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CORS_STRICT
+        value: "false"
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 30d
+      - key: PUBLIC_BASE_URL
+        sync: false
+
+  - type: web
+    name: frotacontrol-web
+    runtime: static
+    region: oregon
+    plan: free
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false

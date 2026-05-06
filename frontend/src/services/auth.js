@@ -1,0 +1,143 @@
+import { createContext, createElement, useContext, useEffect, useMemo, useState } from "react";
+import api, { getBaseURL } from "./api";
+
+const AuthContext = createContext(null);
+const normalizeAssetUrl = (value, base) => {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  if (/^https?:\/\//i.test(raw)) return raw;
+
+  const normalized = raw.replace(/\\/g, "/");
+  const relative = normalized.startsWith("/") ? normalized : `/${normalized}`;
+  return `${base}${relative}`;
+};
+
+const normalizeUser = (user) => {
+  if (!user) return user;
+  const base = getBaseURL();
+  return {
+    ...user,
+    logo_url: normalizeAssetUrl(user.logo_url, base),
+    profile_image_url: normalizeAssetUrl(user.profile_image_url, base),
+  };
+};
+
+const buildMotoristaLoginPayload = (payload = {}) => {
+  const rawLogin = String(payload.login ?? payload.cpf_id ?? "").trim().replace(/\D/g, "");
+  const senha = String(payload.senha ?? payload.password ?? "");
+  return {
+    login: rawLogin,
+    senha,
+  };
+};
+
+const buildEmailLoginPayload = (payload = {}) => {
+  const email = String(payload.email ?? "").trim().toLowerCase();
+  const senha = String(payload.senha ?? payload.password ?? "");
+  return {
+    email,
+    senha,
+  };
+};
+
+export const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(() => {
+    const raw = localStorage.getItem("fc_user");
+    return raw ? JSON.parse(raw) : null;
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const token = localStorage.getItem("fc_token");
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+    refreshUser()
+      .catch((err) => {
+        const status = err?.response?.status;
+        // Em modo offline, mantemos a sessão local para navegação do app.
+        if (status === 401 || status === 403) {
+          localStorage.removeItem("fc_token");
+          localStorage.removeItem("fc_user");
+          setUser(null);
+        }
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    const onAuthExpired = () => {
+      localStorage.removeItem("fc_token");
+      localStorage.removeItem("fc_user");
+      setUser(null);
+    };
+    window.addEventListener("fc:auth-expired", onAuthExpired);
+    return () => window.removeEventListener("fc:auth-expired", onAuthExpired);
+  }, []);
+
+  const refreshUser = async () => {
+    const { data } = await api.get("/auth/me");
+    const normalized = normalizeUser(data);
+    setUser(normalized);
+    localStorage.setItem("fc_user", JSON.stringify(normalized));
+    return normalized;
+  };
+
+  const login = async (payload) => {
+    const { data } = await api.post("/auth/motorista-login", buildMotoristaLoginPayload(payload));
+    const normalized = normalizeUser(data.user);
+    localStorage.setItem("fc_token", data.token);
+    localStorage.setItem("fc_user", JSON.stringify(normalized));
+    setUser(normalized);
+    const fresh = await refreshUser();
+    return fresh;
+  };
+
+  const adminEmpresaLogin = async (payload) => {
+    const { data } = await api.post("/auth/admin-empresa-login", buildEmailLoginPayload(payload));
+    const normalized = normalizeUser(data.user);
+    localStorage.setItem("fc_token", data.token);
+    localStorage.setItem("fc_user", JSON.stringify(normalized));
+    setUser(normalized);
+    const fresh = await refreshUser();
+    return fresh;
+  };
+
+  const superAdminLogin = async (payload) => {
+    const { data } = await api.post("/auth/super-admin-login", buildEmailLoginPayload(payload));
+    const normalized = normalizeUser(data.user);
+    localStorage.setItem("fc_token", data.token);
+    localStorage.setItem("fc_user", JSON.stringify(normalized));
+    setUser(normalized);
+    const fresh = await refreshUser();
+    return fresh;
+  };
+
+  const logout = () => {
+    localStorage.removeItem("fc_token");
+    localStorage.removeItem("fc_user");
+    setUser(null);
+  };
+
+  const value = useMemo(
+    () => ({
+      user,
+      loading,
+      login,
+      adminEmpresaLogin,
+      superAdminLogin,
+      logout,
+      refreshUser,
+      isAdminEmpresa: user?.role === "ADMIN_EMPRESA",
+      isSuperAdmin: user?.role === "SUPER_ADMIN",
+      isMotorista: user?.role === "MOTORISTA",
+    }),
+    [user, loading]
+  );
+
+  return createElement(AuthContext.Provider, { value }, children);
+};
+
+export const useAuth = () => useContext(AuthContext);

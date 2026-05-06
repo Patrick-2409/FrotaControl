@@ -1,0 +1,225 @@
+const { Pool } = require("pg");
+
+const connectionString = process.env.DATABASE_URL;
+const databaseSslExplicit = String(process.env.DATABASE_SSL || "").toLowerCase();
+const useSsl =
+  databaseSslExplicit === "true" ||
+  (process.env.NODE_ENV === "production" && databaseSslExplicit !== "false") ||
+  /[?&]sslmode=require/i.test(String(connectionString || ""));
+
+const pool = new Pool({
+  connectionString,
+  ...(useSsl ? { ssl: { rejectUnauthorized: false } } : {}),
+});
+
+const initDb = async () => {
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN
+        CREATE TYPE user_role AS ENUM ('SUPER_ADMIN', 'ADMIN_EMPRESA', 'MOTORISTA');
+      END IF;
+    END
+    $$;
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS empresas (
+      id SERIAL PRIMARY KEY,
+      nome VARCHAR(150) NOT NULL,
+      logo_url TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS veiculos (
+      id SERIAL PRIMARY KEY,
+      empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+      nome VARCHAR(120) NOT NULL,
+      placa VARCHAR(20) NOT NULL,
+      marca VARCHAR(120),
+      modelo VARCHAR(120),
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      UNIQUE (empresa_id, placa)
+    );
+
+    CREATE TABLE IF NOT EXISTS usuarios (
+      id SERIAL PRIMARY KEY,
+      empresa_id INTEGER REFERENCES empresas(id) ON DELETE CASCADE,
+      veiculo_id INTEGER REFERENCES veiculos(id) ON DELETE SET NULL,
+      nome VARCHAR(150) NOT NULL,
+      email VARCHAR(150),
+      cpf_id VARCHAR(40) NOT NULL,
+      senha_hash TEXT NOT NULL,
+      role user_role NOT NULL DEFAULT 'MOTORISTA',
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      UNIQUE (empresa_id, cpf_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS romaneios (
+      id SERIAL PRIMARY KEY,
+      empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+      usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+      veiculo_id INTEGER REFERENCES veiculos(id) ON DELETE SET NULL,
+      source_id VARCHAR(80) NOT NULL,
+      version_of VARCHAR(80),
+      data TIMESTAMP NOT NULL,
+      recorded_at_client TIMESTAMP,
+      tipo_transporte VARCHAR(60) NOT NULL,
+      destino VARCHAR(200) NOT NULL,
+      observacao TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      UNIQUE (empresa_id, source_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS combustiveis (
+      id SERIAL PRIMARY KEY,
+      empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+      usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+      veiculo_id INTEGER REFERENCES veiculos(id) ON DELETE SET NULL,
+      source_id VARCHAR(80) NOT NULL,
+      version_of VARCHAR(80),
+      data TIMESTAMP NOT NULL,
+      recorded_at_client TIMESTAMP,
+      litros NUMERIC(10,2) NOT NULL,
+      tipo_combustivel VARCHAR(50) NOT NULL,
+      horimetro NUMERIC(10,2),
+      hodometro NUMERIC(10,2),
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      UNIQUE (empresa_id, source_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS parte_diaria (
+      id SERIAL PRIMARY KEY,
+      empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+      usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+      veiculo_id INTEGER REFERENCES veiculos(id) ON DELETE SET NULL,
+      source_id VARCHAR(80) NOT NULL,
+      version_of VARCHAR(80),
+      data TIMESTAMP NOT NULL,
+      recorded_at_client TIMESTAMP,
+      contratado VARCHAR(120) NOT NULL,
+      operador VARCHAR(120) NOT NULL,
+      equipamento VARCHAR(120) NOT NULL,
+      marca_modelo VARCHAR(120) NOT NULL,
+      local VARCHAR(200) NOT NULL,
+      expediente VARCHAR(120),
+      periodo VARCHAR(20) NOT NULL,
+      clima VARCHAR(20) NOT NULL,
+      horimetro_inicio NUMERIC(10,2) NOT NULL,
+      horimetro_fim NUMERIC(10,2) NOT NULL,
+      total_horas NUMERIC(10,2) NOT NULL,
+      hodometro_inicio NUMERIC(10,2),
+      hodometro_fim NUMERIC(10,2),
+      total_km NUMERIC(10,2),
+      checklist JSONB NOT NULL,
+      outros_descricao TEXT,
+      tempo_parado VARCHAR(120),
+      observacoes TEXT,
+      producao TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      UNIQUE (empresa_id, source_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id SERIAL PRIMARY KEY,
+      usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+      acao VARCHAR(20) NOT NULL,
+      tabela VARCHAR(50) NOT NULL,
+      registro_id VARCHAR(120) NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query(`
+    ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS email VARCHAR(150);
+    ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS profile_image_url TEXT;
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS marca VARCHAR(120);
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS modelo VARCHAR(120);
+    ALTER TABLE romaneios ADD COLUMN IF NOT EXISTS version_of VARCHAR(80);
+    ALTER TABLE romaneios ADD COLUMN IF NOT EXISTS recorded_at_client TIMESTAMP;
+    ALTER TABLE combustiveis ADD COLUMN IF NOT EXISTS version_of VARCHAR(80);
+    ALTER TABLE combustiveis ADD COLUMN IF NOT EXISTS recorded_at_client TIMESTAMP;
+    ALTER TABLE parte_diaria ADD COLUMN IF NOT EXISTS version_of VARCHAR(80);
+    ALTER TABLE parte_diaria ADD COLUMN IF NOT EXISTS recorded_at_client TIMESTAMP;
+    ALTER TABLE parte_diaria ADD COLUMN IF NOT EXISTS expediente VARCHAR(120);
+    ALTER TABLE parte_diaria ADD COLUMN IF NOT EXISTS hodometro_inicio NUMERIC(10,2);
+    ALTER TABLE parte_diaria ADD COLUMN IF NOT EXISTS hodometro_fim NUMERIC(10,2);
+    ALTER TABLE parte_diaria ADD COLUMN IF NOT EXISTS total_km NUMERIC(10,2);
+    ALTER TABLE parte_diaria ADD COLUMN IF NOT EXISTS outros_descricao TEXT;
+    ALTER TABLE audit_logs DROP CONSTRAINT IF EXISTS audit_logs_usuario_id_fkey;
+  `);
+
+  await pool.query(`
+    UPDATE empresas
+    SET logo_url = REPLACE(logo_url, '\\', '/')
+    WHERE logo_url LIKE '%\\%';
+
+    UPDATE empresas
+    SET logo_url = REGEXP_REPLACE(logo_url, '^.*(/uploads/.*)$', '\\1')
+    WHERE logo_url ~* '/uploads/';
+
+    UPDATE empresas
+    SET logo_url = '/' || logo_url
+    WHERE logo_url IS NOT NULL
+      AND logo_url <> ''
+      AND logo_url !~* '^https?://'
+      AND logo_url NOT LIKE '/%';
+  `);
+
+  await pool.query(`
+    ALTER TABLE usuarios ALTER COLUMN empresa_id DROP NOT NULL;
+    ALTER TABLE usuarios DROP CONSTRAINT IF EXISTS usuarios_role_check;
+    ALTER TABLE usuarios ALTER COLUMN role DROP DEFAULT;
+  `);
+
+  await pool.query(`
+    ALTER TABLE usuarios
+      ALTER COLUMN role TYPE user_role
+      USING (
+        CASE
+          WHEN role::text IN ('admin', 'gestor', 'ADMIN_EMPRESA') THEN 'ADMIN_EMPRESA'::user_role
+          WHEN role::text = 'SUPER_ADMIN' THEN 'SUPER_ADMIN'::user_role
+          WHEN role::text = 'MOTORISTA' THEN 'MOTORISTA'::user_role
+          ELSE 'MOTORISTA'::user_role
+        END
+      );
+    ALTER TABLE usuarios ALTER COLUMN role SET DEFAULT 'MOTORISTA';
+  `);
+
+  await pool.query(`
+    UPDATE usuarios
+    SET empresa_id = NULL, veiculo_id = NULL
+    WHERE role = 'SUPER_ADMIN';
+
+    ALTER TABLE usuarios DROP CONSTRAINT IF EXISTS usuarios_role_scope_check;
+    ALTER TABLE usuarios
+      ADD CONSTRAINT usuarios_role_scope_check CHECK (
+        (role = 'SUPER_ADMIN' AND empresa_id IS NULL)
+        OR (role IN ('ADMIN_EMPRESA', 'MOTORISTA') AND empresa_id IS NOT NULL)
+      );
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_usuarios_cpf_id ON usuarios (cpf_id);
+    CREATE INDEX IF NOT EXISTS idx_usuarios_empresa_cpf ON usuarios (empresa_id, cpf_id);
+    CREATE INDEX IF NOT EXISTS idx_usuarios_email_lower ON usuarios (LOWER(COALESCE(email, '')));
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_usuarios_login_admin_email
+      ON usuarios (LOWER(email))
+      WHERE role IN ('ADMIN_EMPRESA', 'SUPER_ADMIN') AND email IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_usuarios_login_motorista_cpf
+      ON usuarios (cpf_id)
+      WHERE role = 'MOTORISTA';
+    CREATE INDEX IF NOT EXISTS idx_veiculos_empresa_id ON veiculos (empresa_id);
+    CREATE INDEX IF NOT EXISTS idx_romaneios_empresa_data ON romaneios (empresa_id, data DESC);
+    CREATE INDEX IF NOT EXISTS idx_combustiveis_empresa_data ON combustiveis (empresa_id, data DESC);
+    CREATE INDEX IF NOT EXISTS idx_parte_diaria_empresa_data ON parte_diaria (empresa_id, data DESC);
+  `);
+};
+
+module.exports = {
+  pool,
+  initDb,
+};
