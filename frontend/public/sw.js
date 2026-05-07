@@ -1,8 +1,9 @@
-const CACHE = "frotacontrol-v6";
+const CACHE = "frotacontrol-v7";
 const SHELL = ["/", "/manifest.json", "/icon.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));
+  self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
@@ -11,6 +12,7 @@ self.addEventListener("activate", (event) => {
       Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
     )
   );
+  self.clients.claim();
 });
 
 self.addEventListener("fetch", (event) => {
@@ -21,6 +23,22 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.pathname.startsWith("/api/")) {
     event.respondWith(fetch(event.request).catch(() => caches.match("/")));
+    return;
+  }
+
+  const isHtmlNavigation =
+    event.request.mode === "navigate" ||
+    (event.request.headers.get("accept") || "").includes("text/html");
+  if (isHtmlNavigation) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(CACHE).then((cache) => cache.put("/", copy));
+          return response;
+        })
+        .catch(() => caches.match("/") || caches.match(event.request))
+    );
     return;
   }
 
