@@ -150,6 +150,7 @@ const initDb = async () => {
     ALTER TABLE parte_diaria ADD COLUMN IF NOT EXISTS total_km NUMERIC(10,2);
     ALTER TABLE parte_diaria ADD COLUMN IF NOT EXISTS outros_descricao TEXT;
     ALTER TABLE audit_logs DROP CONSTRAINT IF EXISTS audit_logs_usuario_id_fkey;
+    ALTER TABLE usuarios DROP CONSTRAINT IF EXISTS usuarios_empresa_id_cpf_id_key;
   `);
 
   await pool.query(`
@@ -204,6 +205,7 @@ const initDb = async () => {
 
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_usuarios_cpf_id ON usuarios (cpf_id);
+    CREATE INDEX IF NOT EXISTS idx_usuarios_admin_cpf ON usuarios (cpf_id) WHERE role IN ('ADMIN_EMPRESA', 'SUPER_ADMIN');
     CREATE INDEX IF NOT EXISTS idx_usuarios_empresa_cpf ON usuarios (empresa_id, cpf_id);
     CREATE INDEX IF NOT EXISTS idx_usuarios_email_lower ON usuarios (LOWER(COALESCE(email, '')));
     CREATE UNIQUE INDEX IF NOT EXISTS ux_usuarios_login_admin_email

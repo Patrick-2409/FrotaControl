@@ -69,34 +69,7 @@ function App() {
   const refreshPending = async () => setPendingCount(await countPending());
 
   useEffect(() => {
-    refreshPending();
-    if (navigator.onLine && user?.role === "MOTORISTA") {
-      syncPending()
-        .then((result) => {
-          setSyncStatus(result.state);
-          if (result?.state === "synced") {
-            setLastSyncAt(new Date().toISOString());
-          }
-          setReloadKey((x) => x + 1);
-        })
-        .finally(() => refreshPending());
-    }
-    const onOnline = async () => {
-      setOnline(true);
-      if (user?.role !== "MOTORISTA") return;
-      const result = await syncPending();
-      setSyncStatus(result.state);
-      if (result?.state === "synced") {
-        setLastSyncAt(new Date().toISOString());
-      }
-      await refreshPending();
-      setReloadKey((x) => x + 1);
-    };
-    const onOffline = () => {
-      setOnline(false);
-      setSyncStatus("sem_internet");
-    };
-    const interval = setInterval(async () => {
+    const runSync = async () => {
       if (!navigator.onLine || user?.role !== "MOTORISTA") return;
       const result = await syncPending();
       setSyncStatus(result.state);
@@ -105,7 +78,32 @@ function App() {
       }
       await refreshPending();
       setReloadKey((x) => x + 1);
+    };
+    Promise.resolve().then(async () => {
+      await refreshPending();
+      if (navigator.onLine && user?.role === "MOTORISTA") {
+        await runSync();
+      }
+    });
+    const onOnline = async () => {
+      setOnline(true);
+      await runSync();
+    };
+    const onOffline = () => {
+      setOnline(false);
+      setSyncStatus("sem_internet");
+    };
+    const interval = setInterval(async () => {
+      await runSync();
     }, 20000);
+    const onFocus = async () => {
+      await runSync();
+    };
+    const onVisibilityChange = async () => {
+      if (document.visibilityState === "visible") {
+        await runSync();
+      }
+    };
     const onSyncState = (ev) => {
       if (!ev?.detail) return;
       setSyncStatus(ev.detail);
@@ -147,6 +145,8 @@ function App() {
     window.addEventListener("fc:api-error", onApiError);
     window.addEventListener("fc:toast", onToast);
     window.addEventListener("fc:auth-expired", onAuthExpired);
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       clearInterval(interval);
       window.removeEventListener("online", onOnline);
@@ -155,6 +155,8 @@ function App() {
       window.removeEventListener("fc:api-error", onApiError);
       window.removeEventListener("fc:toast", onToast);
       window.removeEventListener("fc:auth-expired", onAuthExpired);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [user?.role]);
 

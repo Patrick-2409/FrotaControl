@@ -3,10 +3,50 @@ import { dbPromise } from "./db";
 const SYNCED_RETENTION_DAYS = 15;
 const SYNCED_MAX_ITEMS = 300;
 
+const MODULE_ALIAS = {
+  romaneio: "romaneios",
+  romaneios: "romaneios",
+  combustivel: "combustiveis",
+  combustiveis: "combustiveis",
+  parte_diaria: "parteDiaria",
+  parteDiaria: "parteDiaria",
+};
+
+const resolveOwnerScope = () => {
+  try {
+    const rawUser = localStorage.getItem("fc_user");
+    if (!rawUser) return "anon";
+    const user = JSON.parse(rawUser);
+    const role = user?.role || "anon";
+    const empresa = user?.empresa_id ?? "sem-empresa";
+    const id = user?.id ?? "sem-id";
+    return `${role}:${empresa}:${id}`;
+  } catch {
+    return "anon";
+  }
+};
+
+const adoptOwnerScopeIfMissing = async (db, storeName, rows, ownerScope) => {
+  const legacyRows = rows.filter((row) => !row?.owner_scope);
+  if (!legacyRows.length) return rows;
+  await Promise.all(
+    legacyRows.map((row) =>
+      db.put(storeName, {
+        ...row,
+        owner_scope: ownerScope,
+      })
+    )
+  );
+  return rows.map((row) => (row?.owner_scope ? row : { ...row, owner_scope: ownerScope }));
+};
+
 const normalizeClientId = (record = {}) =>
   record.client_id || record.source_id || record?.data?.client_id || record?.data?.source_id;
 
-const normalizeType = (record = {}) => record.type || record.module || record.tipo;
+const normalizeType = (record = {}) => {
+  const rawType = record.type || record.module || record.tipo;
+  return MODULE_ALIAS[rawType] || rawType;
+};
 
 const normalizePayload = (record = {}) => record.data || record.payload || record.dados;
 
@@ -16,6 +56,7 @@ export const saveLocal = async (record) => {
   const type = normalizeType(record);
   const payload = normalizePayload(record);
   const status = record.status || "pending";
+  const ownerScope = resolveOwnerScope();
   if (!clientId || !type || !payload) {
     throw new Error("saveLocal requer client_id, type e data");
   }
@@ -25,6 +66,7 @@ export const saveLocal = async (record) => {
     module: type,
     payload,
     status,
+    owner_scope: ownerScope,
     updatedAt: new Date().toISOString(),
   });
 
@@ -35,8 +77,9 @@ export const saveLocal = async (record) => {
 
   const existing = (await db.getAll("pending")).find(
     (item) =>
+      item?.owner_scope === ownerScope &&
       (item?.client_id || item?.payload?.client_id || item?.payload?.source_id || item?.dados?.source_id) ===
-        clientId && (item?.module || item?.tipo) === type
+        clientId && normalizeType(item) === type
   );
   const nextItem = {
     client_id: clientId,
@@ -49,6 +92,7 @@ export const saveLocal = async (record) => {
     payload,
     attempts: 0,
     next_try_at: Date.now(),
+    owner_scope: ownerScope,
     createdAt: new Date().toISOString(),
   };
   if (existing?.id) {
@@ -60,8 +104,12 @@ export const saveLocal = async (record) => {
 
 export const getPending = async () => {
   const db = await dbPromise;
-  const rows = await db.getAll("pending");
-  return rows.sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+  const ownerScope = resolveOwnerScope();
+  const allRows = await db.getAll("pending");
+  const rows = await adoptOwnerScopeIfMissing(db, "pending", allRows, ownerScope);
+  return rows
+    .filter((row) => row?.owner_scope === ownerScope)
+    .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
 };
 
 export const removePending = async (id) => {
@@ -71,13 +119,15 @@ export const removePending = async (id) => {
 
 export const markAsSynced = async (id) => {
   const db = await dbPromise;
+  const ownerScope = resolveOwnerScope();
   const row = await db.get("pending", id);
-  if (row) {
+  if (row && row?.owner_scope === ownerScope) {
     await db.put("history", {
       source_id: row.client_id || row?.payload?.client_id || row?.payload?.source_id || row?.dados?.source_id,
-      module: row.module || row.tipo || row.type,
+      module: normalizeType(row),
       payload: row.payload || row.dados || row.data,
       status: "synced",
+      owner_scope: ownerScope,
       updatedAt: new Date().toISOString(),
     });
     await db.delete("pending", id);
@@ -108,6 +158,7 @@ export const updatePendingRetry = async (item, errorMessage) => {
   const waitMs = Math.min(30000, 2000 * attempts);
   await db.put("pending", {
     ...item,
+    owner_scope: item?.owner_scope || resolveOwnerScope(),
     attempts,
     next_try_at: Date.now() + waitMs,
     last_error: errorMessage || "Falha ao sincronizar",
@@ -127,9 +178,12 @@ export const saveHistory = async (module, payload, status = "pendente") => {
 
 export const listHistory = async () => {
   const db = await dbPromise;
-  const rows = await db.getAll("history");
+  const ownerScope = resolveOwnerScope();
+  const allRows = await db.getAll("history");
+  const rows = await adoptOwnerScopeIfMissing(db, "history", allRows, ownerScope);
   const normalized = rows.map((row) => ({
     ...row,
+    module: normalizeType(row),
     status:
       row.status === "sincronizado"
         ? "synced"
@@ -137,12 +191,18 @@ export const listHistory = async () => {
         ? "pending"
         : row.status,
   }));
-  return normalized.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+  return normalized
+    .filter((row) => row?.owner_scope === ownerScope)
+    .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
 };
 
 export const removeHistory = async (sourceId) => {
   const db = await dbPromise;
-  await db.delete("history", sourceId);
+  const ownerScope = resolveOwnerScope();
+  const row = await db.get("history", sourceId);
+  if (row?.owner_scope === ownerScope) {
+    await db.delete("history", sourceId);
+  }
 };
 
 export const purgeSyncedHistory = async ({
@@ -150,11 +210,16 @@ export const purgeSyncedHistory = async ({
   maxItems = SYNCED_MAX_ITEMS,
 } = {}) => {
   const db = await dbPromise;
+  const ownerScope = resolveOwnerScope();
   const rows = await db.getAll("history");
   const cutoffTime = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
 
   const syncedRows = rows
-    .filter((row) => row?.status === "synced" || row?.status === "sincronizado")
+    .filter(
+      (row) =>
+        row?.owner_scope === ownerScope &&
+        (row?.status === "synced" || row?.status === "sincronizado")
+    )
     .map((row) => ({
       ...row,
       updatedAtMs: new Date(row.updatedAt || 0).getTime() || 0,
@@ -186,6 +251,7 @@ export const logOfflineError = async (context, message) => {
   await db.add("error_logs", {
     context,
     message,
+    owner_scope: resolveOwnerScope(),
     createdAt: new Date().toISOString(),
   });
 };
@@ -193,26 +259,30 @@ export const logOfflineError = async (context, message) => {
 export const addSyncMetric = async ({ module, durationMs, ok }) => {
   const db = await dbPromise;
   await db.add("sync_metrics", {
-    module: module || "unknown",
+    module: MODULE_ALIAS[module] || module || "unknown",
     durationMs: Number(durationMs) || 0,
     ok: Boolean(ok),
+    owner_scope: resolveOwnerScope(),
     createdAt: new Date().toISOString(),
   });
 };
 
 export const listRecentErrors = async (limit = 5) => {
   const db = await dbPromise;
+  const ownerScope = resolveOwnerScope();
   const rows = await db.getAll("error_logs");
   return rows
+    .filter((row) => row?.owner_scope === ownerScope)
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
     .slice(0, limit);
 };
 
 export const getSyncDiagnostics = async ({ errorsLimit = 5, metricsWindow = 100 } = {}) => {
   const db = await dbPromise;
-  const pending = await db.getAll("pending");
+  const ownerScope = resolveOwnerScope();
+  const pending = (await db.getAll("pending")).filter((row) => row?.owner_scope === ownerScope);
   const errors = await listRecentErrors(errorsLimit);
-  const allMetrics = await db.getAll("sync_metrics");
+  const allMetrics = (await db.getAll("sync_metrics")).filter((row) => row?.owner_scope === ownerScope);
   const recentMetrics = allMetrics
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
     .slice(0, metricsWindow);

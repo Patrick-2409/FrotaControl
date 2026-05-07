@@ -1,7 +1,7 @@
 import { openDB } from "idb";
 
-export const dbPromise = openDB("frotacontrol_db", 3, {
-  upgrade(db) {
+export const dbPromise = openDB("frotacontrol_db", 4, {
+  upgrade(db, _oldVersion, _newVersion, transaction) {
     if (!db.objectStoreNames.contains("pending")) {
       db.createObjectStore("pending", { keyPath: "id", autoIncrement: true });
     }
@@ -13,6 +13,31 @@ export const dbPromise = openDB("frotacontrol_db", 3, {
     }
     if (!db.objectStoreNames.contains("sync_metrics")) {
       db.createObjectStore("sync_metrics", { keyPath: "id", autoIncrement: true });
+    }
+
+    if (db.objectStoreNames.contains("pending")) {
+      const store = transaction.objectStore("pending");
+      if (!store.indexNames.contains("by_owner_scope")) {
+        store.createIndex("by_owner_scope", "owner_scope", { unique: false });
+      }
+    }
+    if (db.objectStoreNames.contains("history")) {
+      const store = transaction.objectStore("history");
+      if (!store.indexNames.contains("by_owner_scope")) {
+        store.createIndex("by_owner_scope", "owner_scope", { unique: false });
+      }
+    }
+    if (db.objectStoreNames.contains("error_logs")) {
+      const store = transaction.objectStore("error_logs");
+      if (!store.indexNames.contains("by_owner_scope")) {
+        store.createIndex("by_owner_scope", "owner_scope", { unique: false });
+      }
+    }
+    if (db.objectStoreNames.contains("sync_metrics")) {
+      const store = transaction.objectStore("sync_metrics");
+      if (!store.indexNames.contains("by_owner_scope")) {
+        store.createIndex("by_owner_scope", "owner_scope", { unique: false });
+      }
     }
   },
 });

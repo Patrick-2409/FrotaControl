@@ -33,6 +33,16 @@ const endpointByModule = {
   combustiveis: "/app/combustivel",
   parteDiaria: "/app/parte-diaria",
 };
+const MODULE_ALIAS = {
+  romaneio: "romaneios",
+  romaneios: "romaneios",
+  combustivel: "combustiveis",
+  combustiveis: "combustiveis",
+  parte_diaria: "parteDiaria",
+  parteDiaria: "parteDiaria",
+};
+let runningSync = null;
+const normalizeModule = (value) => MODULE_ALIAS[value] || value;
 const checklistAllowed = new Set(["ok", "ajuste", "não_funcional"]);
 const sanitizePayloadForModule = (module, payload = {}) => {
   if (module !== "parteDiaria") return payload;
@@ -57,8 +67,9 @@ const ensureRecordedAt = (payload = {}) => ({
 });
 
 export const saveWithOffline = async (module, payload) => {
+  const normalizedModule = normalizeModule(module);
   const payloadWithRecordedAt = ensureRecordedAt(payload);
-  const sanitizedPayload = sanitizePayloadForModule(module, payloadWithRecordedAt);
+  const sanitizedPayload = sanitizePayloadForModule(normalizedModule, payloadWithRecordedAt);
   const normalizedPayload = {
     ...sanitizedPayload,
     client_id: sanitizedPayload?.client_id || sanitizedPayload?.source_id,
@@ -68,7 +79,7 @@ export const saveWithOffline = async (module, payload) => {
   if (!navigator.onLine) {
     await saveLocal({
       client_id: normalizedPayload.client_id,
-      type: module,
+      type: normalizedModule,
       data: normalizedPayload,
       status: "pending",
     });
@@ -79,7 +90,7 @@ export const saveWithOffline = async (module, payload) => {
   if (!hasAuthSession() || !hasMotoristaSession()) {
     await saveLocal({
       client_id: normalizedPayload.client_id,
-      type: module,
+      type: normalizedModule,
       data: normalizedPayload,
       status: "pending",
     });
@@ -89,22 +100,22 @@ export const saveWithOffline = async (module, payload) => {
   }
 
   try {
-    if (!endpointByModule[module]) {
-      throw new Error(`Módulo inválido para sincronização: ${module}`);
+    if (!endpointByModule[normalizedModule]) {
+      throw new Error(`Módulo inválido para sincronização: ${normalizedModule}`);
     }
     emitSyncState("syncing");
     await saveLocal({
       client_id: normalizedPayload.client_id,
-      type: module,
+      type: normalizedModule,
       data: normalizedPayload,
       status: "syncing",
     });
     console.log("SYNC PAYLOAD:", normalizedPayload);
     console.log("Sync API URL:", SYNC_API_URL);
     const startedAt = performance.now();
-    const response = await api.post(endpointByModule[module], normalizedPayload);
+    const response = await api.post(endpointByModule[normalizedModule], normalizedPayload);
     const durationMs = Math.max(0, performance.now() - startedAt);
-    await addSyncMetric({ module, durationMs, ok: true });
+    await addSyncMetric({ module: normalizedModule, durationMs, ok: true });
     console.log("SYNC RESPONSE:", response?.data);
     const pendingRows = await getPending();
     for (const row of pendingRows) {
@@ -115,7 +126,7 @@ export const saveWithOffline = async (module, payload) => {
     }
     await saveLocal({
       client_id: normalizedPayload.client_id,
-      type: module,
+      type: normalizedModule,
       data: normalizedPayload,
       status: "synced",
     });
@@ -125,10 +136,10 @@ export const saveWithOffline = async (module, payload) => {
     return { status: "synced" };
   } catch (err) {
     console.error("Erro ao sincronizar:", err);
-    await addSyncMetric({ module, durationMs: 0, ok: false });
+    await addSyncMetric({ module: normalizedModule, durationMs: 0, ok: false });
     await saveLocal({
       client_id: normalizedPayload.client_id,
-      type: module,
+      type: normalizedModule,
       data: normalizedPayload,
       status: "pending",
     });
@@ -141,6 +152,10 @@ export const saveWithOffline = async (module, payload) => {
 };
 
 export const syncNow = async () => {
+  if (runningSync) {
+    return runningSync;
+  }
+  runningSync = (async () => {
   console.log("SYNC START");
   const pendingBefore = (await getPending()).length;
   console.log("PENDENTES:", pendingBefore);
@@ -167,8 +182,8 @@ export const syncNow = async () => {
 
   for (const item of pendings) {
     if (item.next_try_at && item.next_try_at > now) continue;
+    let moduleName = normalizeModule(item.module || item.tipo || item.type);
     try {
-      const moduleName = item.module || item.tipo;
       const rawPayload = {
         ...(item.payload || item.dados || item.data),
         client_id:
@@ -206,7 +221,7 @@ export const syncNow = async () => {
       synced += 1;
     } catch (err) {
       console.error("Erro ao sincronizar:", err);
-      await addSyncMetric({ module: item.module || item.tipo, durationMs: 0, ok: false });
+      await addSyncMetric({ module: moduleName, durationMs: 0, ok: false });
       console.error("SYNC FAIL:", item.id);
       failed += 1;
       await updatePendingRetry(item, err.message);
@@ -216,12 +231,12 @@ export const syncNow = async () => {
           item?.payload?.client_id ||
           item?.payload?.source_id ||
           item?.dados?.source_id,
-        type: item.module || item.tipo,
+        type: moduleName,
         data: item.payload || item.dados || item.data,
         status: "pending",
       });
       await logOfflineError("syncNow", err.message);
-      break;
+      continue;
     }
   }
 
@@ -234,6 +249,11 @@ export const syncNow = async () => {
     pending: pendingAfter,
     state,
   };
+  })()
+    .finally(() => {
+      runningSync = null;
+    });
+  return runningSync;
 };
 
 export const syncPending = syncNow;

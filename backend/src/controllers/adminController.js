@@ -103,8 +103,81 @@ const getPagination = (req) => ({
   search: String(req.query.search || ""),
 });
 
+const normalizeCpfId = (value) => {
+  const raw = String(value || "").trim();
+  const digits = raw.replace(/\D/g, "");
+  return digits.length >= 11 ? digits : raw;
+};
+
+const normalizeUserPayload = (payload) => ({
+  ...payload,
+  nome: String(payload?.nome || "").trim().replace(/\s+/g, " "),
+  email: payload?.email ? String(payload.email).trim().toLowerCase() : null,
+  cpf_id: normalizeCpfId(payload?.cpf_id),
+});
+
+const checkRoleScopedUniqueness = async ({ role, email, cpf_id, excludeUserId = null }) => {
+  if (role === "MOTORISTA") {
+    const params = [cpf_id];
+    const andExclude = excludeUserId ? "AND id <> $2" : "";
+    if (excludeUserId) params.push(excludeUserId);
+    const motoristaExists = await pool.query(
+      `SELECT id
+       FROM usuarios
+       WHERE role = 'MOTORISTA'
+         AND cpf_id = $1
+         ${andExclude}
+       LIMIT 1`,
+      params
+    );
+    if (motoristaExists.rowCount > 0) {
+      return "Já existe outro motorista com este CPF.";
+    }
+    return null;
+  }
+
+  if (!email) {
+    return "Administrador deve informar e-mail válido.";
+  }
+
+  const adminEmailParams = [email];
+  const adminEmailExclude = excludeUserId ? "AND id <> $2" : "";
+  if (excludeUserId) adminEmailParams.push(excludeUserId);
+  const adminEmailExists = await pool.query(
+    `SELECT id
+     FROM usuarios
+     WHERE role IN ('ADMIN_EMPRESA', 'SUPER_ADMIN')
+       AND LOWER(COALESCE(email, '')) = LOWER($1)
+       ${adminEmailExclude}
+     LIMIT 1`,
+    adminEmailParams
+  );
+  if (adminEmailExists.rowCount > 0) {
+    return "Já existe outro administrador com este e-mail.";
+  }
+
+  const adminCpfParams = [cpf_id];
+  const adminCpfExclude = excludeUserId ? "AND id <> $2" : "";
+  if (excludeUserId) adminCpfParams.push(excludeUserId);
+  const adminCpfExists = await pool.query(
+    `SELECT id
+     FROM usuarios
+     WHERE role IN ('ADMIN_EMPRESA', 'SUPER_ADMIN')
+       AND cpf_id = $1
+       ${adminCpfExclude}
+     LIMIT 1`,
+    adminCpfParams
+  );
+  if (adminCpfExists.rowCount > 0) {
+    return "Já existe outro administrador com este CPF.";
+  }
+
+  return null;
+};
+
 const createCompanyCtrl = async (req, res) => {
   const payload = companyCreateSchema.parse(req.body);
+  const adminEmailNormalized = String(payload.admin_email || "").trim().toLowerCase();
   if (!payload.admin_nome || !hasFullName(payload.admin_nome)) {
     return res.status(400).json({
       success: false,
@@ -127,8 +200,12 @@ const createCompanyCtrl = async (req, res) => {
     await client.query("BEGIN");
 
     const existing = await client.query(
-      `SELECT id FROM usuarios WHERE LOWER(COALESCE(email, '')) = LOWER($1) LIMIT 1`,
-      [payload.admin_email]
+      `SELECT id
+       FROM usuarios
+       WHERE role IN ('ADMIN_EMPRESA', 'SUPER_ADMIN')
+         AND LOWER(COALESCE(email, '')) = LOWER($1)
+       LIMIT 1`,
+      [adminEmailNormalized]
     );
     if (existing.rowCount > 0) {
       await client.query("ROLLBACK");
@@ -144,8 +221,8 @@ const createCompanyCtrl = async (req, res) => {
     adminUser = await createUser({
       empresa_id: row.id,
       nome: payload.admin_nome.trim().replace(/\s+/g, " "),
-      email: payload.admin_email,
-      cpf_id: payload.admin_email,
+      email: adminEmailNormalized,
+      cpf_id: adminEmailNormalized,
       senha_hash,
       role: "ADMIN_EMPRESA",
       veiculo_id: null,
@@ -247,7 +324,7 @@ const deleteCompanyCtrl = async (req, res) => {
 };
 
 const createUserCtrl = async (req, res) => {
-  const payload = userSchema.parse(req.body);
+  const payload = normalizeUserPayload(userSchema.parse(req.body));
   const empresa_id = payload.role === "SUPER_ADMIN" ? null : getCompanyId(req);
   if (req.user.role === "ADMIN_EMPRESA" && payload.role === "SUPER_ADMIN") {
     return res.status(403).json({
@@ -275,6 +352,18 @@ const createUserCtrl = async (req, res) => {
       success: false,
       error: "Senha é obrigatória para criar usuário.",
       message: "Senha é obrigatória para criar usuário.",
+    });
+  }
+  const identityError = await checkRoleScopedUniqueness({
+    role: payload.role,
+    email: payload.email,
+    cpf_id: payload.cpf_id,
+  });
+  if (identityError) {
+    return res.status(409).json({
+      success: false,
+      error: identityError,
+      message: identityError,
     });
   }
   const senha_hash = await bcrypt.hash(payload.senha, 10);
@@ -377,7 +466,7 @@ const listUsersCtrl = async (req, res) => {
 };
 
 const updateUserCtrl = async (req, res) => {
-  const payload = userSchema.parse(req.body);
+  const payload = normalizeUserPayload(userSchema.parse(req.body));
   const rawEmpresaId =
     req.user.role === "SUPER_ADMIN" ? req.body.empresa_id ?? req.query.empresa_id : getCompanyId(req);
   const empresa_id =
@@ -403,6 +492,19 @@ const updateUserCtrl = async (req, res) => {
       success: false,
       error: "Motorista deve ter veículo vinculado",
       message: "Motorista deve ter veículo vinculado",
+    });
+  }
+  const identityError = await checkRoleScopedUniqueness({
+    role: payload.role,
+    email: payload.email,
+    cpf_id: payload.cpf_id,
+    excludeUserId: Number(req.params.id),
+  });
+  if (identityError) {
+    return res.status(409).json({
+      success: false,
+      error: identityError,
+      message: identityError,
     });
   }
   let row;
