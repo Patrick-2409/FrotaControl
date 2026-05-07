@@ -522,7 +522,7 @@ const buildFallbackPdfBuffer = async ({ companyName, records, logoImage }) =>
   new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: "A4",
-      margin: 40,
+      margin: 26,
       info: {
         Title: "Relatorio de Registros",
         Author: "FrotaControl",
@@ -533,67 +533,293 @@ const buildFallbackPdfBuffer = async ({ companyName, records, logoImage }) =>
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    const generatedAt = asDateTime(new Date());
-    if (logoImage?.buffer) {
-      try {
-        doc.image(logoImage.buffer, 40, 30, { fit: [120, 60], align: "left", valign: "top" });
-      } catch {
-        // ignora falha de renderizacao da logo no fallback
-      }
-    }
-    doc.font("Helvetica-Bold").fontSize(16).text("Relatorio de Registros", 170, 40);
-    doc.moveDown(0.3);
-    doc
-      .font("Helvetica")
-      .fontSize(10)
-      .text(" ", 170, 60)
-      .text(`Empresa: ${asDisplayValue(companyName)}`)
-      .text(`Gerado em: ${generatedAt}`);
-    doc.moveDown(1);
+    const margin = 26;
+    const pageWidth = doc.page.width - margin * 2;
+    const small = 9;
+    const normal = 10;
+    const rowGap = 0;
+
+    const drawCells = (y, height, cells, { fontSize = small, bold = false, padding = 4 } = {}) => {
+      let x = margin;
+      cells.forEach((cell) => {
+        const width = cell.width;
+        doc.rect(x, y, width, height).lineWidth(0.8).stroke("#000");
+        if (cell.imageBuffer) {
+          try {
+            doc.image(cell.imageBuffer, x + 6, y + 4, { fit: [Math.max(20, width - 12), Math.max(18, height - 8)] });
+          } catch {
+            // ignora erros de renderizacao de imagem no fallback
+          }
+        }
+        if (cell.text !== undefined && cell.text !== null) {
+          doc
+            .font(cell.bold || bold ? "Helvetica-Bold" : "Helvetica")
+            .fontSize(cell.fontSize || fontSize)
+            .text(String(cell.text), x + padding, y + padding, {
+              width: width - padding * 2,
+              height: height - padding * 2,
+              align: cell.align || "left",
+              valign: "center",
+              lineBreak: true,
+            });
+        }
+        x += width;
+      });
+      return y + height + rowGap;
+    };
+
+    const drawSectionTitle = (y, title) =>
+      drawCells(y, 22, [{ width: pageWidth, text: title, bold: true, fontSize: normal }], { fontSize: normal, bold: true });
+
+    const drawRecordHeader = (y, row, title) => {
+      const logoWidth = Math.round(pageWidth * 0.23);
+      const infoWidth = pageWidth - logoWidth;
+      const subtitle = `Atividade principal: ${getActivityName(row.tipo)} | Data executada: ${asDate(getEffectiveDateValue(row))}`;
+      return drawCells(
+        y,
+        58,
+        [
+          { width: logoWidth, imageBuffer: logoImage?.buffer },
+          { width: infoWidth, text: `${title}\n${subtitle}`, fontSize: 11, bold: true },
+        ],
+        { fontSize: 11, bold: true, padding: 6 }
+      );
+    };
+
+    const drawParteDiaria = (row, startY) => {
+      const col = pageWidth / 4;
+      let y = drawRecordHeader(startY, row, "PARTE DIARIA DE EQUIPAMENTO");
+      y = drawCells(y, 28, [
+        { width: col, text: "CONTRATADO:", bold: true },
+        { width: col, text: asDisplayValue(row.contratado || companyName) },
+        { width: col, text: "DATA:", bold: true },
+        { width: col, text: asDate(getEffectiveDateValue(row)) },
+      ]);
+      y = drawCells(y, 28, [
+        { width: col, text: "OPERADOR:", bold: true },
+        { width: col, text: asDisplayValue(row.operador || row.motorista) },
+        { width: col, text: "EQUIPAMENTO:", bold: true },
+        { width: col, text: asDisplayValue(row.equipamento || row.veiculo) },
+      ]);
+      y = drawCells(y, 28, [
+        { width: col, text: "MARCA/MODELO:", bold: true },
+        { width: col, text: asDisplayValue(row.marca_modelo) },
+        { width: col, text: "LOCAL:", bold: true },
+        { width: col, text: asDisplayValue(row.local) },
+      ]);
+      y = drawCells(y, 28, [
+        { width: col, text: "REGISTRO DE TEMPO:", bold: true },
+        { width: col, text: "Preenchimento por turno" },
+        { width: col, text: "EXPEDIENTE:", bold: true },
+        { width: col, text: asDisplayValue(row.expediente || row.periodo) },
+      ]);
+
+      y = drawSectionTitle(y, "REGISTRO DE TEMPO");
+      const c4 = pageWidth / 4;
+      y = drawCells(y, 24, [
+        { width: c4, text: "PERIODO", bold: true, align: "center" },
+        { width: c4, text: "MANHA", bold: true, align: "center" },
+        { width: c4, text: "TARDE", bold: true, align: "center" },
+        { width: c4, text: "NOITE", bold: true, align: "center" },
+      ]);
+      const clima = String(row.clima || "").toLowerCase();
+      const periodo = String(row.periodo || "").toLowerCase();
+      const pManha = periodo.includes("manh");
+      const pTarde = periodo.includes("tarde");
+      const pNoite = periodo.includes("noite");
+      y = drawCells(y, 24, [
+        { width: c4, text: "BOM" },
+        { width: c4, text: clima === "bom" && pManha ? "X" : "", align: "center", bold: true },
+        { width: c4, text: clima === "bom" && pTarde ? "X" : "", align: "center", bold: true },
+        { width: c4, text: clima === "bom" && pNoite ? "X" : "", align: "center", bold: true },
+      ]);
+      y = drawCells(y, 24, [
+        { width: c4, text: "CHUVA" },
+        { width: c4, text: clima.includes("chuva") && pManha ? "X" : "", align: "center", bold: true },
+        { width: c4, text: clima.includes("chuva") && pTarde ? "X" : "", align: "center", bold: true },
+        { width: c4, text: clima.includes("chuva") && pNoite ? "X" : "", align: "center", bold: true },
+      ]);
+
+      y = drawSectionTitle(y, "REGISTRO DE HORAS");
+      y = drawCells(y, 28, [
+        { width: col, text: "Horimetro inicio:" },
+        { width: col, text: `${asDisplayValue(row.horimetro_inicio)} hrs` },
+        { width: col, text: "Horimetro fim:" },
+        { width: col, text: `${asDisplayValue(row.horimetro_fim)} hrs` },
+      ]);
+      y = drawCells(y, 28, [
+        { width: col, text: "Total de horas:" },
+        { width: col, text: `${asDisplayValue(row.total_horas)} hrs` },
+        { width: col, text: "Hodometro inicio:" },
+        { width: col, text: `${asDisplayValue(row.hodometro_inicio)} km` },
+      ]);
+      y = drawCells(y, 28, [
+        { width: col, text: "Hodometro fim:" },
+        { width: col, text: `${asDisplayValue(row.hodometro_fim)} km` },
+        { width: col, text: "Total KM:" },
+        { width: col, text: `${asDisplayValue(row.total_km)} km` },
+      ]);
+
+      y = drawSectionTitle(y, "CHECKLIST");
+      const itemCol = pageWidth * 0.63;
+      const statusCol = (pageWidth - itemCol) / 3;
+      y = drawCells(y, 24, [
+        { width: itemCol, text: "Item", bold: true, align: "center" },
+        { width: statusCol, text: "OK", bold: true, align: "center" },
+        { width: statusCol, text: "Ajuste", bold: true, align: "center" },
+        { width: statusCol, text: "Nao funcional", bold: true, align: "center" },
+      ]);
+      const checklist = parseChecklist(row.checklist);
+      const pickChecklist = (...aliases) => {
+        for (const alias of aliases) {
+          if (checklist[alias] !== undefined) return checklist[alias];
+        }
+        return "";
+      };
+      const checklistRows = [
+        ["Motor", pickChecklist("motor")],
+        ["Sistema Hidraulico", pickChecklist("hidráulico", "hidraulico")],
+        ["Freios", pickChecklist("freios")],
+        ["Pneus/Esteiras", pickChecklist("pneus", "pneus/esteiras")],
+        ["Iluminacao", pickChecklist("iluminação", "iluminacao")],
+        ["Oleo/Fluidos", pickChecklist("óleo", "oleo", "fluídos", "fluidos")],
+        ["Combustivel", pickChecklist("combustível", "combustivel")],
+        ["Outros (especificar)", pickChecklist("outros")],
+      ];
+      checklistRows.forEach(([label, status]) => {
+        y = drawCells(y, 24, [
+          { width: itemCol, text: label },
+          { width: statusCol, text: status === "ok" ? "X" : "", align: "center", bold: true },
+          { width: statusCol, text: status === "ajuste" ? "X" : "", align: "center", bold: true },
+          { width: statusCol, text: status === "não_funcional" ? "X" : "", align: "center", bold: true },
+        ]);
+      });
+      y = drawCells(y, 24, [
+        { width: col, text: "Outros (detalhes):", bold: true },
+        { width: pageWidth - col, text: asDisplayValue(row.outros_descricao) },
+      ]);
+
+      y = drawSectionTitle(y, "OCORRENCIAS");
+      y = drawCells(y, 24, [
+        { width: col, text: "Tempo parado:", bold: true },
+        { width: pageWidth - col, text: asDisplayValue(row.tempo_parado) },
+      ]);
+      y = drawCells(y, 40, [
+        { width: col, text: "Observacoes:", bold: true },
+        { width: pageWidth - col, text: asDisplayValue(row.observacoes) },
+      ]);
+      y = drawSectionTitle(y, "PRODUCAO");
+      y = drawCells(y, 32, [{ width: pageWidth, text: asDisplayValue(row.producao) }]);
+      y = drawCells(y, 26, [
+        { width: pageWidth / 2, text: "Operador: ________________________________" },
+        { width: pageWidth / 2, text: "Responsavel: ________________________________" },
+      ]);
+      return y;
+    };
+
+    const drawCombustivel = (row, startY) => {
+      let y = drawRecordHeader(startY, row, "CONTROLE DE COMBUSTIVEL SEMANAL");
+      y = drawCells(y, 28, [
+        { width: pageWidth * 0.3, text: "MOTORISTA / OPERADOR:", bold: true },
+        { width: pageWidth * 0.7, text: asDisplayValue(row.motorista) },
+      ]);
+      y = drawCells(y, 28, [
+        { width: pageWidth * 0.3, text: "EQUIPAMENTO:", bold: true },
+        { width: pageWidth * 0.7, text: asDisplayValue(row.veiculo || companyName) },
+      ]);
+      const dayW = pageWidth * 0.2;
+      const colW = (pageWidth - dayW) / 5;
+      y = drawCells(y, 24, [
+        { width: dayW, text: "Dia", bold: true, align: "center" },
+        { width: colW, text: "Data", bold: true, align: "center" },
+        { width: colW, text: "Quantidade (L)", bold: true, align: "center" },
+        { width: colW, text: "Combustivel", bold: true, align: "center" },
+        { width: colW, text: "Horimetro", bold: true, align: "center" },
+        { width: colW, text: "Hodometro", bold: true, align: "center" },
+      ]);
+      const weekIdx = getWeekdayIndex(getEffectiveDateValue(row));
+      weekdayRows.forEach((day) => {
+        const selected = day.key === weekIdx;
+        y = drawCells(y, 24, [
+          { width: dayW, text: day.label },
+          { width: colW, text: selected ? asDate(getEffectiveDateValue(row)) : "" },
+          { width: colW, text: selected ? asDisplayValue(row.litros) : "" },
+          { width: colW, text: selected ? asDisplayValue(row.tipo_combustivel) : "" },
+          { width: colW, text: selected ? asDisplayValue(row.horimetro) : "" },
+          { width: colW, text: selected ? asDisplayValue(row.hodometro) : "" },
+        ]);
+      });
+      y = drawCells(y, 26, [
+        { width: pageWidth / 2, text: "Operador: ________________________________" },
+        { width: pageWidth / 2, text: "Responsavel: ________________________________" },
+      ]);
+      return y;
+    };
+
+    const drawRomaneio = (row, startY) => {
+      let y = drawRecordHeader(startY, row, "CONTROLE DIARIO DE TRANSPORTE");
+      y = drawCells(y, 28, [
+        { width: pageWidth * 0.2, text: "DATA:", bold: true },
+        { width: pageWidth * 0.8, text: asDate(getEffectiveDateValue(row)) },
+      ]);
+      const c4 = pageWidth / 4;
+      y = drawCells(y, 24, [
+        { width: c4, text: "Equipamento", bold: true, align: "center" },
+        { width: c4, text: "Placa", bold: true, align: "center" },
+        { width: c4, text: "Motorista", bold: true, align: "center" },
+        { width: c4, text: "Transporte", bold: true, align: "center" },
+      ]);
+      y = drawCells(y, 24, [
+        { width: c4, text: asDisplayValue(row.veiculo) },
+        { width: c4, text: asDisplayValue(row.placa) },
+        { width: c4, text: asDisplayValue(row.motorista) },
+        { width: c4, text: asDisplayValue(row.tipo_transporte) },
+      ]);
+      y = drawCells(y, 24, [
+        { width: pageWidth * 0.75, text: "Esteril" },
+        { width: pageWidth * 0.25, text: String(row.tipo_transporte || "").toLowerCase().includes("estéril") ? "X" : "", align: "center", bold: true },
+      ]);
+      y = drawCells(y, 24, [
+        { width: pageWidth * 0.75, text: "Rocha (amarracao)" },
+        { width: pageWidth * 0.25, text: String(row.tipo_transporte || "").toLowerCase().includes("amarração") ? "X" : "", align: "center", bold: true },
+      ]);
+      y = drawCells(y, 24, [
+        { width: pageWidth * 0.75, text: "Rocha (pulmao)" },
+        { width: pageWidth * 0.25, text: String(row.tipo_transporte || "").toLowerCase().includes("pulmão") ? "X" : "", align: "center", bold: true },
+      ]);
+      y = drawCells(y, 24, [
+        { width: pageWidth * 0.75, text: "Destinacao", bold: true },
+        { width: pageWidth * 0.25, text: asDisplayValue(row.destino) },
+      ]);
+      y = drawCells(y, 36, [
+        { width: pageWidth * 0.2, text: "Observacao", bold: true },
+        { width: pageWidth * 0.8, text: asDisplayValue(row.observacao) },
+      ]);
+      y = drawCells(y, 24, [{ width: pageWidth, text: "Legenda: Site (ST) / Deposito de Rochas (DP) / Vias de Acesso (VA)" }], { fontSize: 8 });
+      y = drawCells(y, 26, [
+        { width: pageWidth / 2, text: "Apontador: ________________________________" },
+        { width: pageWidth / 2, text: "Responsavel: ________________________________" },
+      ]);
+      return y;
+    };
 
     if (!records.length) {
-      doc.font("Helvetica").fontSize(12).text("Sem registros para exportacao.");
+      drawCells(margin, 28, [{ width: pageWidth, text: `Empresa: ${asDisplayValue(companyName)} | Sem registros para exportacao.` }], {
+        fontSize: normal,
+      });
       doc.end();
       return;
     }
 
     records.forEach((row, index) => {
       if (index > 0) doc.addPage();
-      doc
-        .font("Helvetica-Bold")
-        .fontSize(12)
-        .text(`${index + 1}. ${getActivityName(row.tipo)} | ${asDate(getEffectiveDateValue(row))}`);
-      doc.moveDown(0.4);
-      doc
-        .font("Helvetica")
-        .fontSize(10)
-        .text(`Motorista: ${asDisplayValue(row.motorista)}`)
-        .text(`Veiculo/Equipamento: ${asDisplayValue(row.veiculo || row.equipamento)}`)
-        .text(`Data operacional: ${asDisplayValue(row.data)}`)
-        .text(`Registrado em: ${asDateTime(row.recorded_at_client || row.updated_at || row.created_at)}`);
-
-      if (row.tipo === "combustivel") {
-        doc
-          .moveDown(0.3)
-          .text(`Litros: ${asDisplayValue(row.litros)}`)
-          .text(`Tipo combustivel: ${asDisplayValue(row.tipo_combustivel)}`)
-          .text(`Horimetro: ${asDisplayValue(row.horimetro)}`)
-          .text(`Hodometro: ${asDisplayValue(row.hodometro)}`);
-      } else if (row.tipo === "parte_diaria") {
-        doc
-          .moveDown(0.3)
-          .text(`Periodo: ${asDisplayValue(row.periodo)}`)
-          .text(`Clima: ${asDisplayValue(row.clima)}`)
-          .text(`Horimetro inicio/fim: ${asDisplayValue(row.horimetro_inicio)} / ${asDisplayValue(row.horimetro_fim)}`)
-          .text(`Total horas: ${asDisplayValue(row.total_horas)}`)
-          .text(`Producao: ${asDisplayValue(row.producao)}`)
-          .text(`Observacoes: ${asDisplayValue(row.observacoes)}`);
+      const startY = margin;
+      if (row.tipo === "parte_diaria") {
+        drawParteDiaria(row, startY);
+      } else if (row.tipo === "combustivel") {
+        drawCombustivel(row, startY);
       } else {
-        doc
-          .moveDown(0.3)
-          .text(`Tipo transporte: ${asDisplayValue(row.tipo_transporte)}`)
-          .text(`Destino: ${asDisplayValue(row.destino)}`)
-          .text(`Observacao: ${asDisplayValue(row.observacao)}`);
+        drawRomaneio(row, startY);
       }
     });
 
