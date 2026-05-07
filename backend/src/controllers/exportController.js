@@ -1,4 +1,5 @@
 const ExcelJS = require("exceljs");
+const PDFDocument = require("pdfkit");
 const puppeteer = require("puppeteer");
 const fsSync = require("fs");
 const fs = require("fs/promises");
@@ -508,6 +509,80 @@ const buildOfficialHtml = ({ companyName, logoUrl, records }) => {
   `;
 };
 
+const buildFallbackPdfBuffer = async ({ companyName, records }) =>
+  new Promise((resolve, reject) => {
+    const doc = new PDFDocument({
+      size: "A4",
+      margin: 40,
+      info: {
+        Title: "Relatorio de Registros",
+        Author: "FrotaControl",
+      },
+    });
+    const chunks = [];
+    doc.on("data", (chunk) => chunks.push(chunk));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    const generatedAt = asDateTime(new Date());
+    doc.font("Helvetica-Bold").fontSize(16).text("Relatorio de Registros");
+    doc.moveDown(0.3);
+    doc
+      .font("Helvetica")
+      .fontSize(10)
+      .text(`Empresa: ${asDisplayValue(companyName)}`)
+      .text(`Gerado em: ${generatedAt}`);
+    doc.moveDown(1);
+
+    if (!records.length) {
+      doc.font("Helvetica").fontSize(12).text("Sem registros para exportacao.");
+      doc.end();
+      return;
+    }
+
+    records.forEach((row, index) => {
+      if (index > 0) doc.addPage();
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(12)
+        .text(`${index + 1}. ${getActivityName(row.tipo)} | ${asDate(getEffectiveDateValue(row))}`);
+      doc.moveDown(0.4);
+      doc
+        .font("Helvetica")
+        .fontSize(10)
+        .text(`Motorista: ${asDisplayValue(row.motorista)}`)
+        .text(`Veiculo/Equipamento: ${asDisplayValue(row.veiculo || row.equipamento)}`)
+        .text(`Data operacional: ${asDisplayValue(row.data)}`)
+        .text(`Registrado em: ${asDateTime(row.recorded_at_client || row.updated_at || row.created_at)}`);
+
+      if (row.tipo === "combustivel") {
+        doc
+          .moveDown(0.3)
+          .text(`Litros: ${asDisplayValue(row.litros)}`)
+          .text(`Tipo combustivel: ${asDisplayValue(row.tipo_combustivel)}`)
+          .text(`Horimetro: ${asDisplayValue(row.horimetro)}`)
+          .text(`Hodometro: ${asDisplayValue(row.hodometro)}`);
+      } else if (row.tipo === "parte_diaria") {
+        doc
+          .moveDown(0.3)
+          .text(`Periodo: ${asDisplayValue(row.periodo)}`)
+          .text(`Clima: ${asDisplayValue(row.clima)}`)
+          .text(`Horimetro inicio/fim: ${asDisplayValue(row.horimetro_inicio)} / ${asDisplayValue(row.horimetro_fim)}`)
+          .text(`Total horas: ${asDisplayValue(row.total_horas)}`)
+          .text(`Producao: ${asDisplayValue(row.producao)}`)
+          .text(`Observacoes: ${asDisplayValue(row.observacoes)}`);
+      } else {
+        doc
+          .moveDown(0.3)
+          .text(`Tipo transporte: ${asDisplayValue(row.tipo_transporte)}`)
+          .text(`Destino: ${asDisplayValue(row.destino)}`)
+          .text(`Observacao: ${asDisplayValue(row.observacao)}`);
+      }
+    });
+
+    doc.end();
+  });
+
 const asDisplayValue = (value) => (value === undefined || value === null || value === "" ? "-" : String(value));
 
 const loadLogoImage = async (workbook, excelImage) => {
@@ -989,6 +1064,15 @@ const exportPdf = async (req, res) => {
         left: "10mm",
       },
     });
+  } catch (error) {
+    const fallbackBuffer = await buildFallbackPdfBuffer({
+      companyName: company?.nome || "Empresa",
+      records: data,
+    });
+    res.setHeader("X-PDF-Fallback", "1");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", "attachment; filename=registros.pdf");
+    return res.send(fallbackBuffer);
   } finally {
     if (browser) await browser.close();
   }
