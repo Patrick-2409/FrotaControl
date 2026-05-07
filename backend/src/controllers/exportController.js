@@ -37,26 +37,35 @@ const resolveBrowserExecutable = () =>
   });
 const launchBrowser = async () => {
   const executablePath = resolveBrowserExecutable();
-  const launchOptions = {
+  const timeoutMs = Number(process.env.PUPPETEER_LAUNCH_TIMEOUT_MS || 90000);
+  const baseOptions = {
     headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--no-zygote",
+      "--single-process",
+    ],
+    timeout: timeoutMs,
+    protocolTimeout: timeoutMs,
   };
-  if (executablePath) {
-    launchOptions.executablePath = executablePath;
+  const attempts = executablePath
+    ? [{ ...baseOptions, executablePath }, baseOptions]
+    : [baseOptions];
+  let lastError;
+  for (const options of attempts) {
+    try {
+      return await puppeteer.launch(options);
+    } catch (error) {
+      lastError = error;
+    }
   }
-  const timeoutMs = Number(process.env.PUPPETEER_LAUNCH_TIMEOUT_MS || 20000);
-  try {
-    return await Promise.race([
-      puppeteer.launch(launchOptions),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Timeout ao iniciar navegador para geração de PDF.")), timeoutMs)
-      ),
-    ]);
-  } catch (error) {
-    throw new Error(
-      `Falha ao iniciar navegador para gerar PDF. Verifique PUPPETEER_EXECUTABLE_PATH no ambiente de produção. Detalhe: ${error?.message || "erro desconhecido"}`
-    );
-  }
+  throw new Error(
+    `Falha ao iniciar navegador para gerar PDF. Verifique PUPPETEER_EXECUTABLE_PATH no ambiente de produção. Detalhe: ${
+      lastError?.message || "erro desconhecido"
+    }`
+  );
 };
 const normalizeDateFilter = (rawValue) => {
   if (!rawValue) return undefined;
@@ -509,7 +518,7 @@ const buildOfficialHtml = ({ companyName, logoUrl, records }) => {
   `;
 };
 
-const buildFallbackPdfBuffer = async ({ companyName, records }) =>
+const buildFallbackPdfBuffer = async ({ companyName, records, logoImage }) =>
   new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: "A4",
@@ -525,11 +534,19 @@ const buildFallbackPdfBuffer = async ({ companyName, records }) =>
     doc.on("error", reject);
 
     const generatedAt = asDateTime(new Date());
-    doc.font("Helvetica-Bold").fontSize(16).text("Relatorio de Registros");
+    if (logoImage?.buffer) {
+      try {
+        doc.image(logoImage.buffer, 40, 30, { fit: [120, 60], align: "left", valign: "top" });
+      } catch {
+        // ignora falha de renderizacao da logo no fallback
+      }
+    }
+    doc.font("Helvetica-Bold").fontSize(16).text("Relatorio de Registros", 170, 40);
     doc.moveDown(0.3);
     doc
       .font("Helvetica")
       .fontSize(10)
+      .text(" ", 170, 60)
       .text(`Empresa: ${asDisplayValue(companyName)}`)
       .text(`Gerado em: ${generatedAt}`);
     doc.moveDown(1);
@@ -1052,6 +1069,7 @@ const exportPdf = async (req, res) => {
     const page = await browser.newPage();
     await page.setViewport({ width: 1240, height: 1754, deviceScaleFactor: 2 });
     await page.setContent(html, { waitUntil: "domcontentloaded" });
+    await page.waitForNetworkIdle({ idleTime: 500, timeout: 30000 }).catch(() => {});
     pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
@@ -1068,6 +1086,7 @@ const exportPdf = async (req, res) => {
     const fallbackBuffer = await buildFallbackPdfBuffer({
       companyName: company?.nome || "Empresa",
       records: data,
+      logoImage: logoAssets.excelImage,
     });
     res.setHeader("X-PDF-Fallback", "1");
     res.setHeader("Content-Type", "application/pdf");
