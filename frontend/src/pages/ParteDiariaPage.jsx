@@ -307,8 +307,14 @@ export default function ParteDiariaPage({ onSaved }) {
       const editRaw = localStorage.getItem("fc_edit_record");
       const editRecord = editRaw ? JSON.parse(editRaw) : null;
       const executionDate = editRecord ? toIsoWithCurrentTimeIfDateOnly(form.data) : nowLocalDateTimeString();
+      const createPayloadIdentity = editRecord
+        ? {}
+        : {
+            source_id: generateId(),
+          };
       const payload = {
         ...form,
+        ...createPayloadIdentity,
         ...(isSyncedStatus(editRecord?.status)
           ? { source_id: generateId(), version_of: editRecord.source_id }
           : {}),
