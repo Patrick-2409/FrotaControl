@@ -15,6 +15,13 @@ const toDatetimeLocal = (value) => {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 16);
 };
+const currentLocalDatetime = () => toDatetimeLocal(new Date().toISOString());
+const normalizeDraftDatetime = (value) => {
+  const normalized = toDatetimeLocal(value);
+  const current = currentLocalDatetime();
+  if (!normalized) return current;
+  return normalized.slice(0, 10) === current.slice(0, 10) ? normalized : current;
+};
 const isSyncedStatus = (status) => status === "synced" || status === "sincronizado";
 
 export default function CombustivelPage({ onSaved }) {
@@ -79,7 +86,7 @@ export default function CombustivelPage({ onSaved }) {
       const draft = localStorage.getItem("fc_draft_combustivel");
       if (draft) {
         const parsed = JSON.parse(draft);
-        setForm({ ...parsed, data: toDatetimeLocal(parsed?.data) });
+        setForm({ ...parsed, data: normalizeDraftDatetime(parsed?.data) });
       }
     } catch (err) {
       console.error(err);
@@ -176,7 +183,14 @@ export default function CombustivelPage({ onSaved }) {
       );
       localStorage.removeItem("fc_edit_record");
       localStorage.removeItem("fc_draft_combustivel");
-      setForm((prev) => ({ ...prev, source_id: generateId(), litros: "", horimetro: "", hodometro: "" }));
+      setForm((prev) => ({
+        ...prev,
+        source_id: generateId(),
+        data: currentLocalDatetime(),
+        litros: "",
+        horimetro: "",
+        hodometro: "",
+      }));
     } catch (err) {
       console.error(err);
       setError("Erro ao carregar dados");

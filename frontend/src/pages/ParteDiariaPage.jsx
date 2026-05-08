@@ -68,6 +68,13 @@ const toDatetimeLocal = (value) => {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 16);
 };
+const currentLocalDatetime = () => toDatetimeLocal(new Date().toISOString());
+const normalizeDraftDatetime = (value) => {
+  const normalized = toDatetimeLocal(value);
+  const current = currentLocalDatetime();
+  if (!normalized) return current;
+  return normalized.slice(0, 10) === current.slice(0, 10) ? normalized : current;
+};
 
 export default function ParteDiariaPage({ onSaved }) {
   const { user } = useAuth();
@@ -164,6 +171,7 @@ export default function ParteDiariaPage({ onSaved }) {
         const draft = JSON.parse(userDraftRaw);
         setForm({
           ...draft,
+          data: normalizeDraftDatetime(draft?.data),
           contratado: user?.empresa_nome || draft.contratado || "",
           operador: user?.nome || draft.operador || "",
           checklist: {
@@ -326,7 +334,11 @@ export default function ParteDiariaPage({ onSaved }) {
       );
       localStorage.removeItem("fc_edit_record");
       localStorage.removeItem(draftKey);
-      setForm((prev) => ({ ...prev, source_id: generateId() }));
+      setForm((prev) => ({
+        ...prev,
+        source_id: generateId(),
+        data: currentLocalDatetime(),
+      }));
     } catch (err) {
       console.error(err);
       setError("Erro ao carregar dados");

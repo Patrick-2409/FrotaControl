@@ -16,6 +16,13 @@ const toDatetimeLocal = (value) => {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 16);
 };
+const currentLocalDatetime = () => toDatetimeLocal(new Date().toISOString());
+const normalizeDraftDatetime = (value) => {
+  const normalized = toDatetimeLocal(value);
+  const current = currentLocalDatetime();
+  if (!normalized) return current;
+  return normalized.slice(0, 10) === current.slice(0, 10) ? normalized : current;
+};
 
 export default function RomaneioPage({ onSaved }) {
   const { user } = useAuth();
@@ -45,7 +52,7 @@ export default function RomaneioPage({ onSaved }) {
       const draft = localStorage.getItem("fc_draft_romaneio");
       if (draft) {
         const parsed = JSON.parse(draft);
-        setForm({ ...parsed, data: toDatetimeLocal(parsed?.data) });
+        setForm({ ...parsed, data: normalizeDraftDatetime(parsed?.data) });
       }
     } catch (err) {
       console.error(err);
@@ -101,7 +108,13 @@ export default function RomaneioPage({ onSaved }) {
       );
       localStorage.removeItem("fc_edit_record");
       localStorage.removeItem("fc_draft_romaneio");
-      setForm((prev) => ({ ...prev, source_id: generateId(), destino: "", observacao: "" }));
+      setForm((prev) => ({
+        ...prev,
+        source_id: generateId(),
+        data: currentLocalDatetime(),
+        destino: "",
+        observacao: "",
+      }));
     } catch (err) {
       console.error(err);
       setError("Erro ao carregar dados");
