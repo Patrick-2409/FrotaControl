@@ -58,6 +58,8 @@ const getFolderAnchorRaw = (row) =>
 export default function HistoricoPage({ reloadKey }) {
   const [rows, setRows] = useState([]);
   const [openDays, setOpenDays] = useState({});
+  const [selectedRow, setSelectedRow] = useState(null);
+  const [exporting, setExporting] = useState("");
   const navigate = useNavigate();
   const typeMeta = {
     romaneios: { label: "Romaneio", badge: "bg-blue-500/20 text-blue-200 border-blue-400/40", icon: "🚛" },
@@ -161,6 +163,75 @@ export default function HistoricoPage({ reloadKey }) {
     await deleteHistoryItem(row);
     setRows(await fetchRows());
   };
+  const exportTypeByModule = {
+    romaneios: "romaneio",
+    combustiveis: "combustivel",
+    parteDiaria: "parte_diaria",
+  };
+  const normalizeTypeTag = (value) => String(value || "atividade").replaceAll("_", "-");
+  const formatDateForFilename = (isoDate) => {
+    const raw = String(isoDate || "").trim();
+    if (!raw) return "sem-data";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      const [yyyy, mm, dd] = raw.split("-");
+      return `${dd}-${mm}-${yyyy}`;
+    }
+    return raw.replace(/[/:]/g, "-");
+  };
+  const exportSingle = async (format, row) => {
+    const exportingKey = `${format}:${row?.source_id || "item"}`;
+    setExporting(exportingKey);
+    try {
+      const tipo = exportTypeByModule[row?.module];
+      if (!tipo || !row?.source_id) {
+        throw new Error("Não foi possível identificar o registro para exportação.");
+      }
+      const { data } = await api.get(`/app/export/${format}`, {
+        responseType: "blob",
+        params: {
+          tipo,
+          source_id: row.source_id,
+        },
+      });
+      const url = URL.createObjectURL(data);
+      const a = document.createElement("a");
+      a.href = url;
+      const dateSource = row?.payload?.data || row?.payload?.recorded_at_client || row?.updatedAt || "";
+      const day = String(dateSource).slice(0, 10);
+      const suffix = formatDateForFilename(day);
+      const activityTag = normalizeTypeTag(tipo);
+      a.download = format === "excel" ? `relatorio_${activityTag}_${suffix}.xlsx` : `relatorio_${activityTag}_${suffix}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      const message = err?.response?.data?.message || err?.message || `Falha ao gerar ${format.toUpperCase()}.`;
+      window.dispatchEvent(new CustomEvent("fc:toast", { detail: { message, type: "error" } }));
+    } finally {
+      setExporting("");
+    }
+  };
+  const renderPayloadDetails = (row) => {
+    const payload = row?.payload || {};
+    const entries = Object.entries(payload)
+      .filter(([key]) => !["source_id", "client_id"].includes(key))
+      .map(([key, value]) => ({
+        key,
+        value:
+          value && typeof value === "object"
+            ? JSON.stringify(value, null, 2)
+            : String(value ?? "-"),
+      }));
+    return (
+      <div className="mt-3 grid gap-2 text-sm text-slate-300">
+        {entries.map((item) => (
+          <div key={item.key} className="rounded-lg border border-slate-800/80 bg-slate-950/60 p-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{item.key.replaceAll("_", " ")}</p>
+            <pre className="mt-1 whitespace-pre-wrap break-words font-sans text-sm text-slate-200">{item.value}</pre>
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-3">
@@ -220,6 +291,12 @@ export default function HistoricoPage({ reloadKey }) {
                     </div>
                     <div className="mt-3 flex gap-2">
                       <button
+                        onClick={() => setSelectedRow(row)}
+                        className="fc-btn rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-200"
+                      >
+                        Visualizar
+                      </button>
+                      <button
                         onClick={() => onDelete(row)}
                         className="fc-btn rounded-lg border border-red-600 px-4 py-2 text-sm text-red-300"
                       >
@@ -239,6 +316,18 @@ export default function HistoricoPage({ reloadKey }) {
                       >
                         Editar
                       </button>
+                      <button
+                        onClick={() => exportSingle("pdf", row)}
+                        className="fc-btn rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-200"
+                      >
+                        {exporting === `pdf:${row?.source_id || "item"}` ? "PDF..." : "PDF"}
+                      </button>
+                      <button
+                        onClick={() => exportSingle("excel", row)}
+                        className="fc-btn rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-200"
+                      >
+                        {exporting === `excel:${row?.source_id || "item"}` ? "Excel..." : "Excel"}
+                      </button>
                     </div>
                   </article>
                 );
@@ -252,6 +341,46 @@ export default function HistoricoPage({ reloadKey }) {
           title="Sem registros locais"
           description="Quando voce salvar operacoes no app, elas aparecem aqui para acompanhamento."
         />
+      )}
+      {selectedRow && (
+        <div className="fixed inset-0 z-50 grid place-content-center bg-slate-950/70 p-4">
+          <div className="fc-card w-full max-w-2xl rounded-2xl border border-slate-800 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-base font-semibold text-white">
+                {typeMeta[selectedRow.module]?.icon || "📄"} {typeMeta[selectedRow.module]?.label || "Registro"}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setSelectedRow(null)}
+                className="fc-btn rounded-lg border border-slate-600 px-3 py-1.5 text-xs text-slate-200"
+              >
+                Fechar
+              </button>
+            </div>
+            <div className="mt-3 grid gap-1 text-sm text-slate-300">
+              <p><strong>Data:</strong> {formatRowDate(selectedRow)}</p>
+              <p><strong>Registrado em:</strong> {formatRegisteredAt(selectedRow)}</p>
+              <p><strong>Status:</strong> {getStatusMeta(selectedRow.status).label}</p>
+            </div>
+            {renderPayloadDetails(selectedRow)}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => exportSingle("pdf", selectedRow)}
+                className="fc-btn rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-200"
+              >
+                {exporting === `pdf:${selectedRow?.source_id || "item"}` ? "Gerando PDF..." : "Exportar PDF"}
+              </button>
+              <button
+                type="button"
+                onClick={() => exportSingle("excel", selectedRow)}
+                className="fc-btn rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-200"
+              >
+                {exporting === `excel:${selectedRow?.source_id || "item"}` ? "Gerando Excel..." : "Exportar Excel"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

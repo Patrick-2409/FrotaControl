@@ -131,6 +131,7 @@ const upsertParteDiaria = async (empresa_id, usuario_id, payload) => {
 
 const listManagerRecords = async ({
   empresa_id,
+  usuario_id,
   data,
   data_inicio,
   data_fim,
@@ -148,7 +149,7 @@ const listManagerRecords = async ({
     where.push(`r.empresa_id = $${values.length}`);
   }
   if (!where.length) where.push("1=1");
-  const dateExpr = "DATE(timezone('America/Sao_Paulo', r.data AT TIME ZONE 'UTC'))";
+  const dateExpr = "DATE(COALESCE(r.recorded_at_client, r.data))";
   const accentSource = "ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇçÑñ";
   const accentTarget = "AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCcNn";
 
@@ -185,14 +186,21 @@ const listManagerRecords = async ({
       )`
     );
   }
+  if (usuario_id != null) {
+    values.push(usuario_id);
+    where.push(`r.usuario_id = $${values.length}`);
+  }
 
   const unions = [
     `SELECT
        r.id,
        r.source_id,
-       r.data,
-       r.recorded_at_client,
-       r.updated_at AS updated_at,
+       to_char(r.data, 'YYYY-MM-DD"T"HH24:MI:SS') AS data,
+       CASE
+         WHEN r.recorded_at_client IS NULL THEN NULL
+         ELSE to_char(r.recorded_at_client, 'YYYY-MM-DD"T"HH24:MI:SS')
+       END AS recorded_at_client,
+       to_char(r.updated_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS updated_at,
        u.nome AS motorista,
        'romaneio' AS tipo,
        'Romaneio' AS tipo_label,
@@ -232,9 +240,12 @@ const listManagerRecords = async ({
     `SELECT
        c.id,
        c.source_id,
-       c.data,
-       c.recorded_at_client,
-       c.updated_at AS updated_at,
+       to_char(c.data, 'YYYY-MM-DD"T"HH24:MI:SS') AS data,
+       CASE
+         WHEN c.recorded_at_client IS NULL THEN NULL
+         ELSE to_char(c.recorded_at_client, 'YYYY-MM-DD"T"HH24:MI:SS')
+       END AS recorded_at_client,
+       to_char(c.updated_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS updated_at,
        u.nome AS motorista,
        'combustivel' AS tipo,
        'Combustível' AS tipo_label,
@@ -274,9 +285,12 @@ const listManagerRecords = async ({
     `SELECT
        p.id,
        p.source_id,
-       p.data,
-       p.recorded_at_client,
-       p.updated_at AS updated_at,
+       to_char(p.data, 'YYYY-MM-DD"T"HH24:MI:SS') AS data,
+       CASE
+         WHEN p.recorded_at_client IS NULL THEN NULL
+         ELSE to_char(p.recorded_at_client, 'YYYY-MM-DD"T"HH24:MI:SS')
+       END AS recorded_at_client,
+       to_char(p.updated_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS updated_at,
        u.nome AS motorista,
        'parte_diaria' AS tipo,
        'Parte Diária' AS tipo_label,
@@ -478,12 +492,15 @@ const listMotoristaRecords = async ({ empresa_id, usuario_id }) => {
          'romaneios' AS module,
          'synced' AS status,
          COALESCE(r.recorded_at_client, r.data) AS sort_at,
-         r.updated_at AS "updatedAt",
+        to_char(r.updated_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS "updatedAt",
          jsonb_build_object(
            'source_id', r.source_id,
            'client_id', r.source_id,
-           'data', r.data,
-           'recorded_at_client', r.recorded_at_client,
+          'data', to_char(r.data, 'YYYY-MM-DD"T"HH24:MI:SS'),
+          'recorded_at_client', CASE
+            WHEN r.recorded_at_client IS NULL THEN NULL
+            ELSE to_char(r.recorded_at_client, 'YYYY-MM-DD"T"HH24:MI:SS')
+          END,
            'veiculo_id', r.veiculo_id,
            'veiculo_nome', v.nome,
            'placa', v.placa,
@@ -502,12 +519,15 @@ const listMotoristaRecords = async ({ empresa_id, usuario_id }) => {
          'combustiveis' AS module,
          'synced' AS status,
          COALESCE(c.recorded_at_client, c.data) AS sort_at,
-         c.updated_at AS "updatedAt",
+        to_char(c.updated_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS "updatedAt",
          jsonb_build_object(
            'source_id', c.source_id,
            'client_id', c.source_id,
-           'data', c.data,
-           'recorded_at_client', c.recorded_at_client,
+          'data', to_char(c.data, 'YYYY-MM-DD"T"HH24:MI:SS'),
+          'recorded_at_client', CASE
+            WHEN c.recorded_at_client IS NULL THEN NULL
+            ELSE to_char(c.recorded_at_client, 'YYYY-MM-DD"T"HH24:MI:SS')
+          END,
            'veiculo_id', c.veiculo_id,
            'veiculo_nome', v.nome,
            'placa', v.placa,
@@ -527,12 +547,15 @@ const listMotoristaRecords = async ({ empresa_id, usuario_id }) => {
          'parteDiaria' AS module,
          'synced' AS status,
          COALESCE(p.recorded_at_client, p.data) AS sort_at,
-         p.updated_at AS "updatedAt",
+        to_char(p.updated_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS "updatedAt",
          jsonb_build_object(
            'source_id', p.source_id,
            'client_id', p.source_id,
-           'data', p.data,
-           'recorded_at_client', p.recorded_at_client,
+          'data', to_char(p.data, 'YYYY-MM-DD"T"HH24:MI:SS'),
+          'recorded_at_client', CASE
+            WHEN p.recorded_at_client IS NULL THEN NULL
+            ELSE to_char(p.recorded_at_client, 'YYYY-MM-DD"T"HH24:MI:SS')
+          END,
            'veiculo_id', p.veiculo_id,
            'veiculo_nome', v.nome,
            'placa', v.placa,

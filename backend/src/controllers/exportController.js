@@ -8,13 +8,37 @@ const { listManagerRecords } = require("../models/recordModel");
 const { getCompanyById } = require("../models/companyModel");
 const { z } = require("zod");
 
-const getData = (empresa_id, filters = {}) =>
+const getData = ({ empresa_id, usuario_id = null }, filters = {}) =>
   listManagerRecords({
     empresa_id,
+    usuario_id,
     page: 1,
     limit: 100000,
     ...filters,
   });
+const parseOperationalDate = (value) => {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
+  const hasTimezone = /([zZ]|[+-]\d{2}:\d{2})$/.test(normalized);
+  const candidate = hasTimezone ? normalized : `${normalized}-03:00`;
+  const parsed = new Date(candidate);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+const resolveExportScope = (req) => {
+  const role = req.user?.role;
+  if (role === "MOTORISTA") {
+    return {
+      empresa_id: req.user?.empresa_id,
+      usuario_id: req.user?.sub,
+    };
+  }
+  return {
+    empresa_id: req.user?.empresa_id,
+    usuario_id: null,
+  };
+};
 const browserCandidates = [
   process.env.PUPPETEER_EXECUTABLE_PATH,
   typeof puppeteer.executablePath === "function" ? puppeteer.executablePath() : "",
@@ -140,12 +164,9 @@ const weekdayRows = [
   { key: 6, label: "Sábado" },
   { key: 0, label: "Domingo" },
 ];
-const getEffectiveDateValue = (row) => row?.recorded_at_client || row?.data;
+const getEffectiveDateValue = (row) => row?.data || row?.recorded_at_client;
 const getDateFromValue = (value) => {
-  if (!value) return null;
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return parsed;
+  return parseOperationalDate(value);
 };
 
 const escapeHtml = (value) =>
@@ -1238,8 +1259,9 @@ const exportExcel = async (req, res) => {
       message: err.message || "Filtros inválidos para exportação.",
     });
   }
-  const company = await getCompanyById(req.user.empresa_id);
-  const data = (await getData(req.user.empresa_id, filters)).items;
+  const scope = resolveExportScope(req);
+  const company = await getCompanyById(scope.empresa_id);
+  const data = (await getData(scope, filters)).items;
   const workbook = new ExcelJS.Workbook();
   const logoAssets = await getLogoAssets(req, company?.logo_url);
   const excelImage = await toExcelCompatibleImage(logoAssets.htmlSrc, logoAssets.excelImage);
@@ -1279,8 +1301,9 @@ const exportPdf = async (req, res) => {
       message: err.message || "Filtros inválidos para exportação.",
     });
   }
-  const company = await getCompanyById(req.user.empresa_id);
-  const data = (await getData(req.user.empresa_id, filters)).items;
+  const scope = resolveExportScope(req);
+  const company = await getCompanyById(scope.empresa_id);
+  const data = (await getData(scope, filters)).items;
   const logoAssets = await getLogoAssets(req, company?.logo_url);
   const html = buildOfficialHtml({
     companyName: company?.nome || "Empresa",

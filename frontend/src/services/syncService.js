@@ -61,9 +61,13 @@ const sanitizePayloadForModule = (module, payload = {}) => {
 const emitSyncState = (state) => {
   window.dispatchEvent(new CustomEvent("fc:sync-state", { detail: state }));
 };
+const hasTimeComponent = (value) => /T\d{2}:\d{2}/.test(String(value || ""));
 const ensureRecordedAt = (payload = {}) => ({
   ...payload,
-  recorded_at_client: payload?.recorded_at_client || nowLocalDateTimeString(),
+  recorded_at_client:
+    payload?.recorded_at_client ||
+    (hasTimeComponent(payload?.data) ? payload?.data : null) ||
+    nowLocalDateTimeString(),
 });
 
 export const saveWithOffline = async (module, payload) => {

@@ -166,6 +166,12 @@ app.use(
   recordRoutes
 );
 app.use(
+  "/api/app/export",
+  authMiddleware,
+  requireRole("MOTORISTA"),
+  exportRoutes
+);
+app.use(
   "/api/dashboard",
   authMiddleware,
   requireRole("ADMIN_EMPRESA", "SUPER_ADMIN"),
