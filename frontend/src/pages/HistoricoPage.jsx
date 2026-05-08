@@ -331,8 +331,8 @@ export default function HistoricoPage({ reloadKey }) {
         />
       )}
       {selectedRow && (
-        <div className="fixed inset-0 z-50 grid place-content-center bg-slate-950/70 p-4">
-          <div className="fc-card w-full max-w-2xl rounded-2xl border border-slate-800 p-4">
+        <div className="fixed inset-0 z-50 grid overflow-y-auto bg-slate-950/70 p-4 sm:place-content-center">
+          <div className="fc-card w-full max-w-2xl rounded-2xl border border-slate-800 p-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
             <div className="flex items-center justify-between gap-3">
               <h3 className="text-base font-semibold text-white">
                 {typeMeta[selectedRow.module]?.icon || "📄"} {typeMeta[selectedRow.module]?.label || "Registro"}
