@@ -316,18 +316,6 @@ export default function HistoricoPage({ reloadKey }) {
                       >
                         Editar
                       </button>
-                      <button
-                        onClick={() => exportSingle("pdf", row)}
-                        className="fc-btn rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-200"
-                      >
-                        {exporting === `pdf:${row?.source_id || "item"}` ? "PDF..." : "PDF"}
-                      </button>
-                      <button
-                        onClick={() => exportSingle("excel", row)}
-                        className="fc-btn rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-200"
-                      >
-                        {exporting === `excel:${row?.source_id || "item"}` ? "Excel..." : "Excel"}
-                      </button>
                     </div>
                   </article>
                 );
