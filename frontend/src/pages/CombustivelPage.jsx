@@ -6,7 +6,7 @@ import SaveBar from "../components/SaveBar";
 import { emitToast } from "../services/uiEvents";
 import { generateId } from "../utils/id";
 import api from "../services/api";
-import { toIsoWithCurrentTimeIfDateOnly } from "../utils/datetime";
+import { nowLocalDateTimeString, toIsoWithCurrentTimeIfDateOnly } from "../utils/datetime";
 
 const toDatetimeLocal = (value) => {
   if (!value) return "";
@@ -155,12 +155,14 @@ export default function CombustivelPage({ onSaved }) {
     try {
       const editRaw = localStorage.getItem("fc_edit_record");
       const editRecord = editRaw ? JSON.parse(editRaw) : null;
+      const executionDate = editRecord ? toIsoWithCurrentTimeIfDateOnly(form.data) : nowLocalDateTimeString();
       const payload = {
         ...form,
         ...(isSyncedStatus(editRecord?.status)
           ? { source_id: generateId(), version_of: editRecord.source_id }
           : {}),
-        data: toIsoWithCurrentTimeIfDateOnly(form.data),
+        data: executionDate,
+        recorded_at_client: executionDate,
         veiculo_id: Number(form.veiculo_id),
         veiculo_nome: selectedVehicle?.nome || user?.veiculo_nome || "",
         placa: selectedVehicle?.placa || user?.placa || "",
@@ -243,8 +245,11 @@ export default function CombustivelPage({ onSaved }) {
             type="datetime-local"
             className={`${inputClass} ${requiredChecks.data ? "fc-required-ok" : "fc-required-pending"}`}
             value={form.data}
-            onChange={(e) => setForm({ ...form, data: e.target.value })}
+            readOnly
           />
+          <p className="mt-1 text-xs text-slate-400">
+            Horário automático do celular no momento de salvar.
+          </p>
         </FormField>
         <FormField label="Tipo combustível">
           <select

@@ -5,7 +5,7 @@ import { saveWithOffline } from "../services/syncService";
 import SaveBar from "../components/SaveBar";
 import { emitToast } from "../services/uiEvents";
 import { generateId } from "../utils/id";
-import { toIsoWithCurrentTimeIfDateOnly } from "../utils/datetime";
+import { nowLocalDateTimeString, toIsoWithCurrentTimeIfDateOnly } from "../utils/datetime";
 
 const transportOptions = ["Estéril", "Rocha (amarração)", "Rocha (pulmão)"];
 const isSyncedStatus = (status) => status === "synced" || status === "sincronizado";
@@ -84,12 +84,14 @@ export default function RomaneioPage({ onSaved }) {
     try {
       const editRaw = localStorage.getItem("fc_edit_record");
       const editRecord = editRaw ? JSON.parse(editRaw) : null;
+      const executionDate = editRecord ? toIsoWithCurrentTimeIfDateOnly(form.data) : nowLocalDateTimeString();
       const payload = {
         ...form,
         ...(isSyncedStatus(editRecord?.status)
           ? { source_id: generateId(), version_of: editRecord.source_id }
           : {}),
-        data: toIsoWithCurrentTimeIfDateOnly(form.data),
+        data: executionDate,
+        recorded_at_client: executionDate,
         veiculo_nome: user?.veiculo_nome || "",
         placa: user?.placa || "",
       };
@@ -166,8 +168,11 @@ export default function RomaneioPage({ onSaved }) {
             type="datetime-local"
             className={`${inputClass} ${requiredChecks.data ? "fc-required-ok" : "fc-required-pending"}`}
             value={form.data}
-            onChange={(e) => setForm({ ...form, data: e.target.value })}
+            readOnly
           />
+          <p className="mt-1 text-xs text-slate-400">
+            Horário automático do celular no momento de salvar.
+          </p>
         </FormField>
       </div>
       <div className="fc-op-section fc-stagger">
