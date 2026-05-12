@@ -1,12 +1,20 @@
 const ExcelJS = require("exceljs");
 const PDFDocument = require("pdfkit");
-const puppeteer = require("puppeteer");
 const fsSync = require("fs");
 const fs = require("fs/promises");
 const path = require("path");
 const { listManagerRecords } = require("../models/recordModel");
 const { getCompanyById } = require("../models/companyModel");
 const { z } = require("zod");
+
+/** Puppeteer só aqui: evitar require no arranque (Render/OOM e cold start). */
+let puppeteerModule = null;
+const getPuppeteer = () => {
+  if (!puppeteerModule) {
+    puppeteerModule = require("puppeteer");
+  }
+  return puppeteerModule;
+};
 
 const getData = ({ empresa_id, usuario_id = null }, filters = {}) =>
   listManagerRecords({
@@ -39,20 +47,23 @@ const resolveExportScope = (req) => {
     usuario_id: null,
   };
 };
-const browserCandidates = [
-  process.env.PUPPETEER_EXECUTABLE_PATH,
-  typeof puppeteer.executablePath === "function" ? puppeteer.executablePath() : "",
-  "/usr/bin/google-chrome-stable",
-  "/usr/bin/google-chrome",
-  "/usr/bin/chromium-browser",
-  "/usr/bin/chromium",
-  "C:/Program Files/Google/Chrome/Application/chrome.exe",
-  "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
-  "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
-  "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
-].filter(Boolean);
+const getBrowserCandidates = () => {
+  const puppeteer = getPuppeteer();
+  return [
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    typeof puppeteer.executablePath === "function" ? puppeteer.executablePath() : "",
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/google-chrome",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/chromium",
+    "C:/Program Files/Google/Chrome/Application/chrome.exe",
+    "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
+    "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
+    "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
+  ].filter(Boolean);
+};
 const resolveBrowserExecutable = () =>
-  browserCandidates.find((candidate) => {
+  getBrowserCandidates().find((candidate) => {
     try {
       return fsSync.existsSync(candidate);
     } catch {
@@ -78,6 +89,7 @@ const launchBrowser = async () => {
     ? [{ ...baseOptions, executablePath }, baseOptions]
     : [baseOptions];
   let lastError;
+  const puppeteer = getPuppeteer();
   for (const options of attempts) {
     try {
       return await puppeteer.launch(options);
