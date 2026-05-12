@@ -1,4 +1,4 @@
-import api, { getBaseURL } from "./api";
+import api from "./api";
 import {
   getPending,
   markAsSynced,
@@ -12,7 +12,6 @@ import {
 import { emitToast } from "./uiEvents";
 import { nowLocalDateTimeString } from "../utils/datetime";
 
-const SYNC_API_URL = getBaseURL();
 const hasAuthSession = () => {
   const token = localStorage.getItem("fc_token");
   return Boolean(token && token !== "undefined" && token !== "null");
@@ -42,6 +41,16 @@ const MODULE_ALIAS = {
   parteDiaria: "parteDiaria",
 };
 let runningSync = null;
+/** Evita corrida entre saveWithOffline (online) e syncNow: mesma fila para IDB + POST. */
+let idbPostChain = Promise.resolve();
+const runSerialized = (fn) => {
+  const run = idbPostChain.then(() => fn());
+  idbPostChain = run.catch(() => {});
+  return run;
+};
+
+const sameClientId = (a, b) => String(a ?? "") === String(b ?? "");
+
 const normalizeModule = (value) => MODULE_ALIAS[value] || value;
 const checklistAllowed = new Set(["ok", "ajuste", "não_funcional"]);
 const sanitizePayloadForModule = (module, payload = {}) => {
@@ -79,80 +88,108 @@ export const saveWithOffline = async (module, payload) => {
     client_id: sanitizedPayload?.client_id || sanitizedPayload?.source_id,
     source_id: sanitizedPayload?.source_id || sanitizedPayload?.client_id,
   };
-  console.log("SYNC START");
+  const clientKey =
+    normalizedPayload?.client_id ?? normalizedPayload?.source_id ?? "";
+
   if (!navigator.onLine) {
-    await saveLocal({
-      client_id: normalizedPayload.client_id,
-      type: normalizedModule,
-      data: normalizedPayload,
-      status: "pending",
+    return runSerialized(async () => {
+      await saveLocal({
+        client_id: normalizedPayload.client_id,
+        type: normalizedModule,
+        data: normalizedPayload,
+        status: "pending",
+      });
+      emitSyncState("pending");
+      emitToast("Sem internet. Registro salvo localmente.", "warning");
+      return { status: "pending" };
     });
-    emitSyncState("pending");
-    emitToast("Sem internet. Registro salvo localmente.", "warning");
-    return { status: "pending" };
   }
   if (!hasAuthSession() || !hasMotoristaSession()) {
-    await saveLocal({
-      client_id: normalizedPayload.client_id,
-      type: normalizedModule,
-      data: normalizedPayload,
-      status: "pending",
+    return runSerialized(async () => {
+      await saveLocal({
+        client_id: normalizedPayload.client_id,
+        type: normalizedModule,
+        data: normalizedPayload,
+        status: "pending",
+      });
+      emitSyncState("pending");
+      emitToast("Sessão não autenticada. Registro salvo pendente para sincronizar após novo login.", "warning");
+      return { status: "pending" };
     });
-    emitSyncState("pending");
-    emitToast("Sessão não autenticada. Registro salvo pendente para sincronizar após novo login.", "warning");
-    return { status: "pending" };
   }
 
-  try {
-    if (!endpointByModule[normalizedModule]) {
-      throw new Error(`Módulo inválido para sincronização: ${normalizedModule}`);
-    }
-    emitSyncState("syncing");
-    await saveLocal({
-      client_id: normalizedPayload.client_id,
-      type: normalizedModule,
-      data: normalizedPayload,
-      status: "syncing",
-    });
-    console.log("SYNC PAYLOAD:", normalizedPayload);
-    console.log("Sync API URL:", SYNC_API_URL);
-    const startedAt = performance.now();
-    const response = await api.post(endpointByModule[normalizedModule], normalizedPayload);
-    const durationMs = Math.max(0, performance.now() - startedAt);
-    await addSyncMetric({ module: normalizedModule, durationMs, ok: true });
-    console.log("SYNC RESPONSE:", response?.data);
-    const pendingRows = await getPending();
-    for (const row of pendingRows) {
-      const rowSourceId = row?.client_id || row?.payload?.client_id || row?.payload?.source_id || row?.dados?.source_id;
-      if (rowSourceId === normalizedPayload?.client_id) {
-        await markAsSynced(row.id);
+  return runSerialized(async () => {
+    try {
+      if (!endpointByModule[normalizedModule]) {
+        throw new Error(`Módulo inválido para sincronização: ${normalizedModule}`);
       }
+      emitSyncState("syncing");
+      await saveLocal({
+        client_id: normalizedPayload.client_id,
+        type: normalizedModule,
+        data: normalizedPayload,
+        status: "syncing",
+      });
+      const startedAt = performance.now();
+      await api.post(endpointByModule[normalizedModule], normalizedPayload);
+      const durationMs = Math.max(0, performance.now() - startedAt);
+
+      try {
+        await addSyncMetric({ module: normalizedModule, durationMs, ok: true });
+      } catch (metricErr) {
+        console.warn("addSyncMetric (saveWithOffline):", metricErr);
+      }
+      try {
+        const pendingRows = await getPending();
+        for (const row of pendingRows) {
+          const rowSourceId =
+            row?.client_id ||
+            row?.payload?.client_id ||
+            row?.payload?.source_id ||
+            row?.dados?.source_id;
+          if (sameClientId(rowSourceId, clientKey)) {
+            await markAsSynced(row.id);
+          }
+        }
+      } catch (pendingErr) {
+        console.warn("markAsSynced pendentes (saveWithOffline):", pendingErr);
+      }
+      try {
+        await saveLocal({
+          client_id: normalizedPayload.client_id,
+          type: normalizedModule,
+          data: normalizedPayload,
+          status: "synced",
+        });
+      } catch (historyErr) {
+        console.warn("saveLocal synced (saveWithOffline):", historyErr);
+      }
+      emitSyncState("synced");
+      emitToast("Registro sincronizado com sucesso.");
+      return { status: "synced" };
+    } catch (err) {
+      console.error("Erro ao sincronizar:", err);
+      try {
+        await addSyncMetric({ module: normalizedModule, durationMs: 0, ok: false });
+      } catch (metricErr) {
+        console.warn("addSyncMetric falha (saveWithOffline):", metricErr);
+      }
+      try {
+        await saveLocal({
+          client_id: normalizedPayload.client_id,
+          type: normalizedModule,
+          data: normalizedPayload,
+          status: "pending",
+        });
+      } catch (localErr) {
+        console.warn("saveLocal pending após erro (saveWithOffline):", localErr);
+      }
+      await logOfflineError("saveWithOffline", err.message);
+      emitSyncState("pending");
+      emitToast("Falha no envio. Registro mantido pendente para nova tentativa.", "warning");
+      return { status: "pending", error: err };
     }
-    await saveLocal({
-      client_id: normalizedPayload.client_id,
-      type: normalizedModule,
-      data: normalizedPayload,
-      status: "synced",
-    });
-    emitSyncState("synced");
-    emitToast("Registro sincronizado com sucesso.");
-    console.log("SYNC OK");
-    return { status: "synced" };
-  } catch (err) {
-    console.error("Erro ao sincronizar:", err);
-    await addSyncMetric({ module: normalizedModule, durationMs: 0, ok: false });
-    await saveLocal({
-      client_id: normalizedPayload.client_id,
-      type: normalizedModule,
-      data: normalizedPayload,
-      status: "pending",
-    });
-    await logOfflineError("saveWithOffline", err.message);
-    emitSyncState("pending");
-    emitToast("Falha no envio. Registro mantido pendente para nova tentativa.", "warning");
-    console.log("SYNC FAIL");
-    return { status: "pending", error: err };
-  }
+  });
 };
 
 export const syncNow = async () => {
@@ -160,99 +197,114 @@ export const syncNow = async () => {
     return runningSync;
   }
   runningSync = (async () => {
-  console.log("SYNC START");
-  const pendingBefore = (await getPending()).length;
-  console.log("PENDENTES:", pendingBefore);
-  if (!navigator.onLine) {
-    emitSyncState("sem_internet");
-    return { synced: 0, pending: pendingBefore, state: "sem_internet" };
-  }
-  if (!hasAuthSession()) {
-    const state = pendingBefore > 0 ? "pending" : "synced";
-    emitSyncState(state);
-    return { synced: 0, failed: 0, pending: pendingBefore, state };
-  }
-  if (!hasMotoristaSession()) {
-    const state = pendingBefore > 0 ? "pending" : "synced";
-    emitSyncState(state);
-    return { synced: 0, failed: 0, pending: pendingBefore, state };
-  }
-  emitSyncState("syncing");
-  const pendings = await getPending();
-  console.log("PENDENTES:", pendings);
-  let synced = 0;
-  let failed = 0;
-  const now = Date.now();
-
-  for (const item of pendings) {
-    if (item.next_try_at && item.next_try_at > now) continue;
-    let moduleName = normalizeModule(item.module || item.tipo || item.type);
-    try {
-      const rawPayload = {
-        ...(item.payload || item.dados || item.data),
-        client_id:
-          item.client_id ||
-          item?.payload?.client_id ||
-          item?.payload?.source_id ||
-          item?.dados?.source_id,
-      };
-      const payload = sanitizePayloadForModule(moduleName, rawPayload);
-      payload.source_id = payload.source_id || payload.client_id;
-      if (!endpointByModule[moduleName]) {
-        throw new Error(`Módulo pendente inválido: ${moduleName}`);
-      }
-      await saveLocal({
-        client_id: payload.client_id,
-        type: moduleName,
-        data: payload,
-        status: "syncing",
-      });
-      console.log("SYNC PAYLOAD:", payload);
-      console.log("Sync API URL:", SYNC_API_URL);
-      const startedAt = performance.now();
-      const response = await api.post(endpointByModule[moduleName], payload);
-      const durationMs = Math.max(0, performance.now() - startedAt);
-      await addSyncMetric({ module: moduleName, durationMs, ok: true });
-      console.log("SYNC RESPONSE:", response?.data);
-      await markAsSynced(item.id);
-      await saveLocal({
-        client_id: payload.client_id,
-        type: moduleName,
-        data: payload,
-        status: "synced",
-      });
-      console.log("SYNC OK:", item.id);
-      synced += 1;
-    } catch (err) {
-      console.error("Erro ao sincronizar:", err);
-      await addSyncMetric({ module: moduleName, durationMs: 0, ok: false });
-      console.error("SYNC FAIL:", item.id);
-      failed += 1;
-      await updatePendingRetry(item, err.message);
-      await saveLocal({
-        client_id:
-          item.client_id ||
-          item?.payload?.client_id ||
-          item?.payload?.source_id ||
-          item?.dados?.source_id,
-        type: moduleName,
-        data: item.payload || item.dados || item.data,
-        status: "pending",
-      });
-      await logOfflineError("syncNow", err.message);
-      continue;
+    const pendingBefore = (await getPending()).length;
+    if (!navigator.onLine) {
+      emitSyncState("sem_internet");
+      return { synced: 0, pending: pendingBefore, state: "sem_internet" };
     }
-  }
+    if (!hasAuthSession()) {
+      const state = pendingBefore > 0 ? "pending" : "synced";
+      emitSyncState(state);
+      return { synced: 0, failed: 0, pending: pendingBefore, state };
+    }
+    if (!hasMotoristaSession()) {
+      const state = pendingBefore > 0 ? "pending" : "synced";
+      emitSyncState(state);
+      return { synced: 0, failed: 0, pending: pendingBefore, state };
+    }
 
-  const pendingAfter = (await getPending()).length;
-  const state = pendingAfter > 0 ? "pending" : "synced";
-  emitSyncState(state);
-  return {
-    synced,
-    failed,
-    pending: pendingAfter,
-    state,
-  };
+    return runSerialized(async () => {
+      emitSyncState("syncing");
+      const pendings = await getPending();
+      let synced = 0;
+      let failed = 0;
+      const now = Date.now();
+
+      for (const item of pendings) {
+        if (item.next_try_at && item.next_try_at > now) continue;
+        const moduleName = normalizeModule(item.module || item.tipo || item.type);
+        let durationMs = 0;
+        try {
+          const rawPayload = {
+            ...(item.payload || item.dados || item.data),
+            client_id:
+              item.client_id ||
+              item?.payload?.client_id ||
+              item?.payload?.source_id ||
+              item?.dados?.source_id,
+          };
+          const payload = sanitizePayloadForModule(moduleName, rawPayload);
+          payload.source_id = payload.source_id || payload.client_id;
+          if (!endpointByModule[moduleName]) {
+            throw new Error(`Módulo pendente inválido: ${moduleName}`);
+          }
+          await saveLocal({
+            client_id: payload.client_id,
+            type: moduleName,
+            data: payload,
+            status: "syncing",
+          });
+          const startedAt = performance.now();
+          await api.post(endpointByModule[moduleName], payload);
+          durationMs = Math.max(0, performance.now() - startedAt);
+          try {
+            await addSyncMetric({ module: moduleName, durationMs, ok: true });
+          } catch (metricErr) {
+            console.warn("addSyncMetric (syncNow):", metricErr);
+          }
+          try {
+            await markAsSynced(item.id);
+          } catch (markErr) {
+            console.warn("markAsSynced (syncNow):", markErr);
+          }
+          try {
+            await saveLocal({
+              client_id: payload.client_id,
+              type: moduleName,
+              data: payload,
+              status: "synced",
+            });
+          } catch (saveErr) {
+            console.warn("saveLocal synced (syncNow):", saveErr);
+          }
+          synced += 1;
+        } catch (err) {
+          console.error("Erro ao sincronizar:", err);
+          try {
+            await addSyncMetric({ module: moduleName, durationMs: 0, ok: false });
+          } catch (metricErr) {
+            console.warn("addSyncMetric falha (syncNow):", metricErr);
+          }
+          failed += 1;
+          await updatePendingRetry(item, err.message);
+          try {
+            await saveLocal({
+              client_id:
+                item.client_id ||
+                item?.payload?.client_id ||
+                item?.payload?.source_id ||
+                item?.dados?.source_id,
+              type: moduleName,
+              data: item.payload || item.dados || item.data,
+              status: "pending",
+            });
+          } catch (localErr) {
+            console.warn("saveLocal pending após erro (syncNow):", localErr);
+          }
+          await logOfflineError("syncNow", err.message);
+        }
+      }
+
+      const pendingAfter = (await getPending()).length;
+      const state = pendingAfter > 0 ? "pending" : "synced";
+      emitSyncState(state);
+      return {
+        synced,
+        failed,
+        pending: pendingAfter,
+        state,
+      };
+    });
   })()
     .finally(() => {
       runningSync = null;
