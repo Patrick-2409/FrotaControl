@@ -114,6 +114,13 @@ const formatRecordedAt = (row) => {
   }).format(parsed);
 };
 
+const RELATORIOS_PORTO = [
+  { id: "romaneio", title: "Romaneio", subtitle: "Transporte — ficha Porto" },
+  { id: "producao", title: "Produção", subtitle: "Parte diária — ficha Porto" },
+  { id: "combustivel", title: "Combustível", subtitle: "Abastecimento — ficha Porto" },
+  { id: "completo", title: "Completo", subtitle: "Romaneio, combustível e parte diária" },
+];
+
 export default function ManagerRecordsPage() {
   const [rows, setRows] = useState([]);
   const [filtro, setFiltro] = useState({
@@ -202,19 +209,26 @@ export default function ManagerRecordsPage() {
     load();
   }, [load]);
 
+  const buildExportQueryParams = useCallback(() => {
+    const params = {
+      motorista: debouncedMotorista?.trim() || undefined,
+    };
+    if (filtro.periodo === "dia") params.data = filtro.data?.trim() || undefined;
+    if (filtro.periodo === "mes") params.mes = filtro.mes?.trim() || undefined;
+    if (filtro.periodo === "intervalo") {
+      params.data_inicio = filtro.data_inicio?.trim() || undefined;
+      params.data_fim = filtro.data_fim?.trim() || undefined;
+    }
+    return params;
+  }, [debouncedMotorista, filtro.data, filtro.data_fim, filtro.data_inicio, filtro.mes, filtro.periodo]);
+
   const download = async (tipo) => {
     setExporting(tipo);
     try {
       const params = {
-        motorista: debouncedMotorista?.trim() || undefined,
+        ...buildExportQueryParams(),
         tipo: filtro.tipo?.trim() || undefined,
       };
-      if (filtro.periodo === "dia") params.data = filtro.data?.trim() || undefined;
-      if (filtro.periodo === "mes") params.mes = filtro.mes?.trim() || undefined;
-      if (filtro.periodo === "intervalo") {
-        params.data_inicio = filtro.data_inicio?.trim() || undefined;
-        params.data_fim = filtro.data_fim?.trim() || undefined;
-      }
       const { data } = await api.get(`/dashboard/export/${tipo}`, {
         responseType: "blob",
         params,
@@ -252,6 +266,49 @@ export default function ManagerRecordsPage() {
       setExporting("");
     }
   };
+
+  const downloadRelatorioPorto = async (preset, format) => {
+    const key = `rel-${preset}-${format}`;
+    setExporting(key);
+    try {
+      const params = { ...buildExportQueryParams(), format };
+      const { data } = await api.get(`/dashboard/relatorios/${preset}`, {
+        responseType: "blob",
+        params,
+      });
+      const url = URL.createObjectURL(data);
+      const a = document.createElement("a");
+      a.href = url;
+      const suffix =
+        filtro.periodo === "dia"
+          ? formatDateForFilename(filtro.data || "")
+          : filtro.periodo === "mes"
+          ? formatDateForFilename(`${filtro.mes || ""}-01`)
+          : `${formatDateForFilename(filtro.data_inicio || "")}_${formatDateForFilename(filtro.data_fim || "")}`;
+      a.download =
+        format === "excel"
+          ? `relatorio-porto_${preset}_${suffix}.xlsx`
+          : `relatorio-porto_${preset}_${suffix}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      emitToast(`${preset === "completo" ? "Relatório completo" : "Relatório"} exportado (${format.toUpperCase()}).`);
+    } catch (err) {
+      let errorMessage = err.response?.data?.message || `Falha ao gerar relatório ${preset}.`;
+      if (err?.response?.data instanceof Blob) {
+        try {
+          const raw = await err.response.data.text();
+          const parsed = JSON.parse(raw);
+          errorMessage = parsed?.message || parsed?.error || errorMessage;
+        } catch {
+          // fallback
+        }
+      }
+      emitToast(errorMessage, "error");
+    } finally {
+      setExporting("");
+    }
+  };
+
   const downloadSingle = async (format, row) => {
     const exportingKey = `${format}:${row?.source_id || row?.id}`;
     setExporting(exportingKey);
@@ -807,11 +864,60 @@ export default function ManagerRecordsPage() {
         </div>
       </div>
 
+      <div className="mb-4 rounded-xl border border-slate-600/50 bg-slate-900/40 p-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Relatórios — modelo Porto</p>
+        <p className="mt-1 text-sm text-slate-300">
+          Excel e PDF com o mesmo layout das fichas e planilhas manuais (cabeçalho com período e logo da empresa).
+          Usa os filtros de período e motorista acima.
+        </p>
+        <ul className="mt-4 space-y-3">
+          {RELATORIOS_PORTO.map((rel) => (
+            <li
+              key={rel.id}
+              className="flex flex-col gap-2 rounded-lg border border-slate-700/80 bg-slate-950/50 p-3 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div>
+                <p className="font-semibold text-white">{rel.title}</p>
+                <p className="text-xs text-slate-400">{rel.subtitle}</p>
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={Boolean(exporting)}
+                  onClick={() => downloadRelatorioPorto(rel.id, "excel")}
+                  className="fc-btn rounded-lg border border-emerald-500/50 bg-emerald-950/40 px-3 py-2 text-xs font-semibold text-emerald-200 hover:bg-emerald-900/50 disabled:opacity-50"
+                >
+                  {exporting === `rel-${rel.id}-excel` ? "Gerando…" : "Exportar Excel"}
+                </button>
+                <button
+                  type="button"
+                  disabled={Boolean(exporting)}
+                  onClick={() => downloadRelatorioPorto(rel.id, "pdf")}
+                  className="fc-btn rounded-lg border border-rose-500/50 bg-rose-950/40 px-3 py-2 text-xs font-semibold text-rose-100 hover:bg-rose-900/50 disabled:opacity-50"
+                >
+                  {exporting === `rel-${rel.id}-pdf` ? "Gerando…" : "Exportar PDF"}
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+
       <div className="mb-4 flex gap-2">
-        <button onClick={() => download("excel")} className="fc-btn rounded-lg border border-blue-500 px-3 py-2 text-sm text-blue-300">
+        <button
+          type="button"
+          disabled={Boolean(exporting)}
+          onClick={() => download("excel")}
+          className="fc-btn rounded-lg border border-blue-500 px-3 py-2 text-sm text-blue-300 disabled:opacity-50"
+        >
           {exporting === "excel" ? "Gerando..." : "Exportar Excel"}
         </button>
-        <button onClick={() => download("pdf")} className="fc-btn rounded-lg border border-blue-500 px-3 py-2 text-sm text-blue-300">
+        <button
+          type="button"
+          disabled={Boolean(exporting)}
+          onClick={() => download("pdf")}
+          className="fc-btn rounded-lg border border-blue-500 px-3 py-2 text-sm text-blue-300 disabled:opacity-50"
+        >
           {exporting === "pdf" ? "Gerando..." : "Exportar PDF"}
         </button>
         {exporting && <InlineSpinner label="Preparando arquivo..." />}

@@ -4,6 +4,7 @@ const {
   getUserById,
   getMotoristaByLogin,
   getAdminsEmpresaByEmail,
+  getApontadorByEmail,
   getSuperAdminsByEmail,
   updateOwnUserPassword,
 } = require("../models/userModel");
@@ -55,6 +56,9 @@ const superAdminLoginSchema = z
     email: v.email.toLowerCase(),
     senha: v.senha,
   }));
+
+/** Mesmo payload que admin empresa (e-mail + senha). */
+const apontadorLoginSchema = adminEmpresaLoginSchema;
 
 const alterarSenhaSchema = z
   .object({
@@ -194,6 +198,45 @@ const adminEmpresaLogin = async (req, res) => {
   });
 };
 
+const apontadorLogin = async (req, res) => {
+  const data = apontadorLoginSchema.parse(req.body);
+  logAuthDebug("APONTADOR", { email: data.email });
+  const rows = await getApontadorByEmail(data.email);
+  logAuthDebug("APONTADOR_RESULTADO", {
+    encontrados: rows.length,
+    usuarios: rows.map((u) => ({ id: u.id, role: u.role, email: u.email })),
+  });
+  if (!rows.length) {
+    return res.status(401).json({ success: false, error: "Credenciais inválidas", message: "Credenciais inválidas" });
+  }
+  if (rows.length > 1) {
+    logInfo("auth:apontador-duplicado", { email: data.email, ids: rows.map((u) => u.id) });
+    return res.status(409).json({
+      success: false,
+      error: "Conflito de credenciais",
+      message: "Conta de apontador duplicada detectada. Contate o suporte.",
+    });
+  }
+  const user = rows[0];
+  const { ok: senhaValida, erroHashInvalido } = await compararSenhaComHash(data.senha, user.senha_hash);
+  if (erroHashInvalido) {
+    return res.status(401).json({
+      success: false,
+      error: "Credenciais inválidas",
+      message: "Credenciais inválidas",
+    });
+  }
+  if (!senhaValida) {
+    return res.status(401).json({ success: false, error: "Credenciais inválidas", message: "Credenciais inválidas" });
+  }
+
+  const token = buildToken(user);
+  return res.json({
+    token,
+    user: buildUserResponse(user),
+  });
+};
+
 const superAdminLogin = async (req, res) => {
   const data = superAdminLoginSchema.parse(req.body);
   logAuthDebug("SUPER_ADMIN", { email: data.email });
@@ -271,6 +314,7 @@ const alterarSenha = async (req, res) => {
 module.exports = {
   motoristaLogin,
   adminEmpresaLogin,
+  apontadorLogin,
   superAdminLogin,
   me,
   alterarSenha,

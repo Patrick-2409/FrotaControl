@@ -23,6 +23,8 @@ const CompanyManagementPage = lazy(() => import("./pages/CompanyManagementPage")
 const AdminPage = lazy(() => import("./pages/AdminPage"));
 const AdminLoginPage = lazy(() => import("./pages/AdminLoginPage"));
 const SuperAdminLoginPage = lazy(() => import("./pages/SuperAdminLoginPage"));
+const ApontadorLoginPage = lazy(() => import("./pages/ApontadorLoginPage"));
+const ApontadorHomePage = lazy(() => import("./pages/ApontadorHomePage"));
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -46,6 +48,12 @@ function ProtectedDashboard({ children }) {
 function ProtectedSuperAdmin({ children }) {
   const { isSuperAdmin } = useAuth();
   if (!isSuperAdmin) return <Navigate to="/" replace />;
+  return children;
+}
+
+function ProtectedApontador({ children }) {
+  const { isApontador } = useAuth();
+  if (!isApontador) return <Navigate to="/" replace />;
   return children;
 }
 
@@ -219,6 +227,14 @@ function App() {
           }
         />
         <Route
+          path="/apontador-login"
+          element={
+            <PublicOnly>
+              <ApontadorLoginPage />
+            </PublicOnly>
+          }
+        />
+        <Route
           path="/app/*"
           element={
             <Protected>
@@ -285,6 +301,19 @@ function App() {
         />
 
         <Route
+          path="/apontador"
+          element={
+            <Protected>
+              <ProtectedApontador>
+                <div className="min-h-screen bg-slate-950" id="conteudo-principal">
+                  <ApontadorHomePage />
+                </div>
+              </ProtectedApontador>
+            </Protected>
+          }
+        />
+
+        <Route
           path="/portal"
           element={
             <Protected>
@@ -294,6 +323,8 @@ function App() {
                     ? "/super-admin"
                     : user?.role === "ADMIN_EMPRESA"
                     ? "/dashboard"
+                    : user?.role === "APONTADOR"
+                    ? "/apontador"
                     : "/app/home"
                 }
                 replace

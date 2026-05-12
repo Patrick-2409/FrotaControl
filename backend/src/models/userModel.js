@@ -45,6 +45,21 @@ const getAdminsEmpresaByEmail = async (email) => {
   return rows;
 };
 
+/** Mesma forma que getAdminsEmpresaByEmail, filtrando papel APONTADOR (várias linhas se duplicidade). */
+const getApontadorByEmail = async (email) => {
+  const { rows } = await pool.query(
+    `SELECT u.*, e.nome AS empresa_nome, e.logo_url, v.nome AS veiculo_nome, v.placa, v.marca AS veiculo_marca, v.modelo AS veiculo_modelo
+     FROM usuarios u
+     JOIN empresas e ON e.id = u.empresa_id
+     LEFT JOIN veiculos v ON v.id = u.veiculo_id
+     WHERE LOWER(COALESCE(u.email, '')) = LOWER($1)
+       AND u.role = 'APONTADOR'
+     ORDER BY u.created_at DESC, u.id DESC`,
+    [email]
+  );
+  return rows;
+};
+
 const getSuperAdminsByEmail = async (email) => {
   const { rows } = await pool.query(
     `SELECT u.*, NULL::text AS empresa_nome, NULL::text AS logo_url, NULL::text AS veiculo_nome, NULL::text AS placa
@@ -180,6 +195,7 @@ module.exports = {
   createUser,
   getMotoristaByLogin,
   getAdminsEmpresaByEmail,
+  getApontadorByEmail,
   getSuperAdminsByEmail,
   getAdminEmpresaByEmail,
   getSuperAdminByEmail,

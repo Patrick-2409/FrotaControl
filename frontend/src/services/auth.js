@@ -94,6 +94,16 @@ export const AuthProvider = ({ children }) => {
     return fresh;
   };
 
+  const apontadorLogin = async (payload) => {
+    const { data } = await api.post("/auth/apontador-login", buildEmailLoginPayload(payload));
+    const normalized = normalizeUser(data.user);
+    localStorage.setItem("fc_token", data.token);
+    localStorage.setItem("fc_user", JSON.stringify(normalized));
+    setUser(normalized);
+    const fresh = await refreshUser();
+    return fresh;
+  };
+
   const superAdminLogin = async (payload) => {
     const { data } = await api.post("/auth/super-admin-login", buildEmailLoginPayload(payload));
     const normalized = normalizeUser(data.user);
@@ -116,12 +126,14 @@ export const AuthProvider = ({ children }) => {
       loading,
       login,
       adminEmpresaLogin,
+      apontadorLogin,
       superAdminLogin,
       logout,
       refreshUser,
       isAdminEmpresa: user?.role === "ADMIN_EMPRESA",
       isSuperAdmin: user?.role === "SUPER_ADMIN",
       isMotorista: user?.role === "MOTORISTA",
+      isApontador: user?.role === "APONTADOR",
     }),
     [user, loading]
   );

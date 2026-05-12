@@ -24,6 +24,23 @@ const initDb = async () => {
   `);
 
   await pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1
+        FROM pg_catalog.pg_enum e
+        JOIN pg_catalog.pg_type t ON e.enumtypid = t.oid
+        WHERE t.typname = 'user_role' AND e.enumlabel = 'APONTADOR'
+      ) THEN
+        NULL;
+      ELSIF EXISTS (SELECT 1 FROM pg_catalog.pg_type WHERE typname = 'user_role') THEN
+        ALTER TYPE user_role ADD VALUE 'APONTADOR';
+      END IF;
+    END
+    $$;
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS empresas (
       id SERIAL PRIMARY KEY,
       nome VARCHAR(150) NOT NULL,
@@ -81,7 +98,9 @@ const initDb = async () => {
       version_of VARCHAR(80),
       data TIMESTAMP NOT NULL,
       recorded_at_client TIMESTAMP,
-      litros NUMERIC(10,2) NOT NULL,
+      litros NUMERIC(10, 2) NOT NULL,
+      valor_total NUMERIC(14, 2),
+      preco_por_litro NUMERIC(14, 6),
       tipo_combustivel VARCHAR(50) NOT NULL,
       horimetro NUMERIC(10,2),
       hodometro NUMERIC(10,2),
@@ -138,10 +157,13 @@ const initDb = async () => {
     ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS profile_image_url TEXT;
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS marca VARCHAR(120);
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS modelo VARCHAR(120);
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS capacidade_ton NUMERIC(10, 2);
     ALTER TABLE romaneios ADD COLUMN IF NOT EXISTS version_of VARCHAR(80);
     ALTER TABLE romaneios ADD COLUMN IF NOT EXISTS recorded_at_client TIMESTAMP;
     ALTER TABLE combustiveis ADD COLUMN IF NOT EXISTS version_of VARCHAR(80);
     ALTER TABLE combustiveis ADD COLUMN IF NOT EXISTS recorded_at_client TIMESTAMP;
+    ALTER TABLE combustiveis ADD COLUMN IF NOT EXISTS valor_total NUMERIC(14, 2);
+    ALTER TABLE combustiveis ADD COLUMN IF NOT EXISTS preco_por_litro NUMERIC(14, 6);
     ALTER TABLE parte_diaria ADD COLUMN IF NOT EXISTS version_of VARCHAR(80);
     ALTER TABLE parte_diaria ADD COLUMN IF NOT EXISTS recorded_at_client TIMESTAMP;
     ALTER TABLE parte_diaria ADD COLUMN IF NOT EXISTS expediente VARCHAR(120);
@@ -184,6 +206,7 @@ const initDb = async () => {
           WHEN role::text IN ('admin', 'gestor', 'ADMIN_EMPRESA') THEN 'ADMIN_EMPRESA'::user_role
           WHEN role::text = 'SUPER_ADMIN' THEN 'SUPER_ADMIN'::user_role
           WHEN role::text = 'MOTORISTA' THEN 'MOTORISTA'::user_role
+          WHEN role::text = 'APONTADOR' THEN 'APONTADOR'::user_role
           ELSE 'MOTORISTA'::user_role
         END
       );
@@ -199,18 +222,22 @@ const initDb = async () => {
     ALTER TABLE usuarios
       ADD CONSTRAINT usuarios_role_scope_check CHECK (
         (role = 'SUPER_ADMIN' AND empresa_id IS NULL)
-        OR (role IN ('ADMIN_EMPRESA', 'MOTORISTA') AND empresa_id IS NOT NULL)
+        OR (role IN ('ADMIN_EMPRESA', 'MOTORISTA', 'APONTADOR') AND empresa_id IS NOT NULL)
       );
   `);
 
   await pool.query(`
-    CREATE INDEX IF NOT EXISTS idx_usuarios_cpf_id ON usuarios (cpf_id);
-    CREATE INDEX IF NOT EXISTS idx_usuarios_admin_cpf ON usuarios (cpf_id) WHERE role IN ('ADMIN_EMPRESA', 'SUPER_ADMIN');
-    CREATE INDEX IF NOT EXISTS idx_usuarios_empresa_cpf ON usuarios (empresa_id, cpf_id);
-    CREATE INDEX IF NOT EXISTS idx_usuarios_email_lower ON usuarios (LOWER(COALESCE(email, '')));
+    DROP INDEX IF EXISTS ux_usuarios_login_admin_email;
     CREATE UNIQUE INDEX IF NOT EXISTS ux_usuarios_login_admin_email
       ON usuarios (LOWER(email))
-      WHERE role IN ('ADMIN_EMPRESA', 'SUPER_ADMIN') AND email IS NOT NULL;
+      WHERE role IN ('ADMIN_EMPRESA', 'SUPER_ADMIN', 'APONTADOR') AND email IS NOT NULL;
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_usuarios_cpf_id ON usuarios (cpf_id);
+    CREATE INDEX IF NOT EXISTS idx_usuarios_admin_cpf ON usuarios (cpf_id) WHERE role IN ('ADMIN_EMPRESA', 'SUPER_ADMIN', 'APONTADOR');
+    CREATE INDEX IF NOT EXISTS idx_usuarios_empresa_cpf ON usuarios (empresa_id, cpf_id);
+    CREATE INDEX IF NOT EXISTS idx_usuarios_email_lower ON usuarios (LOWER(COALESCE(email, '')));
     CREATE UNIQUE INDEX IF NOT EXISTS ux_usuarios_login_motorista_cpf
       ON usuarios (cpf_id)
       WHERE role = 'MOTORISTA';
@@ -218,6 +245,30 @@ const initDb = async () => {
     CREATE INDEX IF NOT EXISTS idx_romaneios_empresa_data ON romaneios (empresa_id, data DESC);
     CREATE INDEX IF NOT EXISTS idx_combustiveis_empresa_data ON combustiveis (empresa_id, data DESC);
     CREATE INDEX IF NOT EXISTS idx_parte_diaria_empresa_data ON parte_diaria (empresa_id, data DESC);
+
+    CREATE TABLE IF NOT EXISTS viagens (
+      id SERIAL PRIMARY KEY,
+      empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+      veiculo_id INTEGER NOT NULL REFERENCES veiculos(id) ON DELETE CASCADE,
+      motorista_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE RESTRICT,
+      tipo VARCHAR(20) NOT NULL CHECK (tipo IN ('esteril', 'rocha')),
+      marcacao TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_viagens_empresa_marcacao ON viagens (empresa_id, marcacao DESC);
+
+    CREATE TABLE IF NOT EXISTS planejamento_semanal (
+      id SERIAL PRIMARY KEY,
+      empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+      data_inicio DATE NOT NULL,
+      data_fim DATE NOT NULL,
+      meta_esteril_ton NUMERIC(12, 2) NOT NULL DEFAULT 0,
+      meta_rocha_ton NUMERIC(12, 2) NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (data_inicio <= data_fim),
+      CHECK (meta_esteril_ton >= 0 AND meta_rocha_ton >= 0)
+    );
+    CREATE INDEX IF NOT EXISTS idx_planejamento_empresa_datas ON planejamento_semanal (empresa_id, data_inicio, data_fim);
   `);
 };
 

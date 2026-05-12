@@ -12,6 +12,7 @@ const companyAdminRoutes = require("./routes/companyAdminRoutes");
 const exportRoutes = require("./routes/exportRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const userProfileRoutes = require("./routes/userProfileRoutes");
+const apontadorRoutes = require("./routes/apontadorRoutes");
 const devRoutes = require("./routes/devRoutes");
 const { authMiddleware, requireRole } = require("./middleware/authMiddleware");
 const { errorMiddleware } = require("./middleware/errorMiddleware");
@@ -194,6 +195,12 @@ app.use(
   authMiddleware,
   requireRole("ADMIN_EMPRESA"),
   companyAdminRoutes
+);
+app.use(
+  "/api/apontador",
+  authMiddleware,
+  requireRole("APONTADOR"),
+  apontadorRoutes
 );
 app.use(
   "/api/super-admin",

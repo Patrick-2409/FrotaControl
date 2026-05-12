@@ -70,7 +70,7 @@ const userSchema = z.object({
     ])
     .optional()
     .transform((v) => (v === "" ? undefined : v)),
-  role: z.enum(["MOTORISTA", "ADMIN_EMPRESA", "SUPER_ADMIN"]).default("MOTORISTA"),
+  role: z.enum(["MOTORISTA", "ADMIN_EMPRESA", "APONTADOR", "SUPER_ADMIN"]).default("MOTORISTA"),
   veiculo_id: z.coerce.number().int().positive().nullable().optional(),
 }).superRefine((val, ctx) => {
   if (!hasFullName(val.nome)) {
@@ -137,7 +137,7 @@ const checkRoleScopedUniqueness = async ({ role, email, cpf_id, excludeUserId = 
   }
 
   if (!email) {
-    return "Administrador deve informar e-mail válido.";
+    return "Este perfil deve informar e-mail válido.";
   }
 
   const adminEmailParams = [email];
@@ -146,14 +146,14 @@ const checkRoleScopedUniqueness = async ({ role, email, cpf_id, excludeUserId = 
   const adminEmailExists = await pool.query(
     `SELECT id
      FROM usuarios
-     WHERE role IN ('ADMIN_EMPRESA', 'SUPER_ADMIN')
+     WHERE role IN ('ADMIN_EMPRESA', 'SUPER_ADMIN', 'APONTADOR')
        AND LOWER(COALESCE(email, '')) = LOWER($1)
        ${adminEmailExclude}
      LIMIT 1`,
     adminEmailParams
   );
   if (adminEmailExists.rowCount > 0) {
-    return "Já existe outro administrador com este e-mail.";
+    return "Já existe outro utilizador com este e-mail.";
   }
 
   const adminCpfParams = [cpf_id];
@@ -162,14 +162,14 @@ const checkRoleScopedUniqueness = async ({ role, email, cpf_id, excludeUserId = 
   const adminCpfExists = await pool.query(
     `SELECT id
      FROM usuarios
-     WHERE role IN ('ADMIN_EMPRESA', 'SUPER_ADMIN')
+     WHERE role IN ('ADMIN_EMPRESA', 'SUPER_ADMIN', 'APONTADOR')
        AND cpf_id = $1
        ${adminCpfExclude}
      LIMIT 1`,
     adminCpfParams
   );
   if (adminCpfExists.rowCount > 0) {
-    return "Já existe outro administrador com este CPF.";
+    return "Já existe outro utilizador com este CPF.";
   }
 
   return null;
@@ -202,7 +202,7 @@ const createCompanyCtrl = async (req, res) => {
     const existing = await client.query(
       `SELECT id
        FROM usuarios
-       WHERE role IN ('ADMIN_EMPRESA', 'SUPER_ADMIN')
+       WHERE role IN ('ADMIN_EMPRESA', 'SUPER_ADMIN', 'APONTADOR')
          AND LOWER(COALESCE(email, '')) = LOWER($1)
        LIMIT 1`,
       [adminEmailNormalized]
@@ -275,7 +275,7 @@ const listCompaniesCtrl = async (req, res) => {
         COUNT(DISTINCT u.id)::int AS usuarios_count,
         COUNT(DISTINCT v.id)::int AS veiculos_count
       FROM empresas e
-      LEFT JOIN usuarios u ON u.empresa_id = e.id AND u.role IN ('ADMIN_EMPRESA','MOTORISTA')
+      LEFT JOIN usuarios u ON u.empresa_id = e.id AND u.role IN ('ADMIN_EMPRESA','MOTORISTA','APONTADOR')
       LEFT JOIN veiculos v ON v.empresa_id = e.id
       ${where}
       GROUP BY e.id
@@ -370,7 +370,7 @@ const createUserCtrl = async (req, res) => {
   const row = await createUser({
     ...payload,
     empresa_id,
-    veiculo_id: payload.role === "SUPER_ADMIN" ? null : payload.veiculo_id,
+    veiculo_id: payload.role === "SUPER_ADMIN" || payload.role === "APONTADOR" ? null : payload.veiculo_id,
     senha_hash,
   });
   await logAudit({
@@ -392,7 +392,7 @@ const listUsersCtrl = async (req, res) => {
 
     const values = [];
     let idx = 1;
-    const clauses = ["u.role IN ('MOTORISTA', 'ADMIN_EMPRESA', 'SUPER_ADMIN')"];
+    const clauses = ["u.role IN ('MOTORISTA', 'ADMIN_EMPRESA', 'APONTADOR', 'SUPER_ADMIN')"];
     if (search) {
       clauses.push(`(u.nome ILIKE $${idx} OR u.email ILIKE $${idx} OR u.cpf_id ILIKE $${idx} OR e.nome ILIKE $${idx} OR v.nome ILIKE $${idx})`);
       values.push(`%${search}%`);
@@ -517,14 +517,14 @@ const updateUserCtrl = async (req, res) => {
            veiculo_id = $5,
            role = $6,
            empresa_id = $7
-       WHERE id = $1 AND role IN ('MOTORISTA', 'ADMIN_EMPRESA', 'SUPER_ADMIN')
+       WHERE id = $1 AND role IN ('MOTORISTA', 'ADMIN_EMPRESA', 'APONTADOR', 'SUPER_ADMIN')
        RETURNING id, nome, email, cpf_id, role, empresa_id, veiculo_id, profile_image_url`,
       [
         Number(req.params.id),
         payload.nome,
         payload.email || null,
         payload.cpf_id,
-        payload.role === "SUPER_ADMIN" ? null : payload.veiculo_id || null,
+        payload.role === "SUPER_ADMIN" || payload.role === "APONTADOR" ? null : payload.veiculo_id || null,
         payload.role,
         empresa_id,
       ]
@@ -537,7 +537,7 @@ const updateUserCtrl = async (req, res) => {
     const senha_hash = await bcrypt.hash(payload.senha, 10);
     if (req.user.role === "SUPER_ADMIN") {
       await pool.query(
-        `UPDATE usuarios SET senha_hash = $2 WHERE id = $1 AND role IN ('MOTORISTA', 'ADMIN_EMPRESA', 'SUPER_ADMIN')`,
+        `UPDATE usuarios SET senha_hash = $2 WHERE id = $1 AND role IN ('MOTORISTA', 'ADMIN_EMPRESA', 'APONTADOR', 'SUPER_ADMIN')`,
         [Number(req.params.id), senha_hash]
       );
     } else {
@@ -563,7 +563,7 @@ const deleteUserCtrl = async (req, res) => {
         message: "Você não pode excluir seu próprio usuário.",
       });
     }
-    await pool.query("DELETE FROM usuarios WHERE id = $1 AND role IN ('MOTORISTA','ADMIN_EMPRESA','SUPER_ADMIN')", [id]);
+    await pool.query("DELETE FROM usuarios WHERE id = $1 AND role IN ('MOTORISTA','ADMIN_EMPRESA','APONTADOR','SUPER_ADMIN')", [id]);
     await logAudit({
       usuario_id: req.user?.sub,
       acao: "excluiu",
@@ -759,7 +759,7 @@ const getOverviewCtrl = async (req, res) => {
     pool.query("SELECT COUNT(*)::int AS total FROM empresas"),
     pool.query(
       `SELECT
-         COUNT(*) FILTER (WHERE role IN ('MOTORISTA','ADMIN_EMPRESA'))::int AS total_usuarios,
+         COUNT(*) FILTER (WHERE role IN ('MOTORISTA','ADMIN_EMPRESA','APONTADOR'))::int AS total_usuarios,
          COUNT(*) FILTER (WHERE role = 'MOTORISTA')::int AS total_motoristas,
          COUNT(*) FILTER (WHERE role = 'ADMIN_EMPRESA')::int AS total_admins
        FROM usuarios`
@@ -787,7 +787,7 @@ const companyDetailsCtrl = async (req, res) => {
   const company = await pool.query(
     `SELECT
       e.*,
-      COUNT(DISTINCT u.id) FILTER (WHERE u.role IN ('MOTORISTA','ADMIN_EMPRESA'))::int AS usuarios_count,
+      COUNT(DISTINCT u.id) FILTER (WHERE u.role IN ('MOTORISTA','ADMIN_EMPRESA','APONTADOR'))::int AS usuarios_count,
       COUNT(DISTINCT v.id)::int AS veiculos_count
      FROM empresas e
      LEFT JOIN usuarios u ON u.empresa_id = e.id
@@ -807,7 +807,7 @@ const companyDetailsCtrl = async (req, res) => {
     pool.query(
       `SELECT id, nome, email, cpf_id, role, profile_image_url, veiculo_id
        FROM usuarios
-       WHERE empresa_id = $1 AND role IN ('MOTORISTA','ADMIN_EMPRESA')
+       WHERE empresa_id = $1 AND role IN ('MOTORISTA','ADMIN_EMPRESA','APONTADOR')
        ORDER BY role, nome`,
       [companyId]
     ),
@@ -826,6 +826,7 @@ const companyDetailsCtrl = async (req, res) => {
     company: company.rows[0],
     users: users.rows,
     admins: users.rows.filter((u) => u.role === "ADMIN_EMPRESA"),
+    apontadores: users.rows.filter((u) => u.role === "APONTADOR"),
     motoristas: users.rows.filter((u) => u.role === "MOTORISTA"),
     vehicles: vehicles.rows,
   });
@@ -850,7 +851,7 @@ const globalSearchCtrl = async (req, res) => {
       `SELECT u.id, u.nome, u.email, u.cpf_id, u.role, e.nome AS empresa_nome
        FROM usuarios u
        LEFT JOIN empresas e ON e.id = u.empresa_id
-       WHERE u.role IN ('MOTORISTA','ADMIN_EMPRESA')
+       WHERE u.role IN ('MOTORISTA','ADMIN_EMPRESA','APONTADOR')
          AND (u.nome ILIKE $1 OR u.email ILIKE $1 OR u.cpf_id ILIKE $1 OR e.nome ILIKE $1)
        ORDER BY u.created_at DESC
        LIMIT 10`,
@@ -889,7 +890,7 @@ const resetUserPasswordCtrl = async (req, res) => {
   const result = await pool.query(
     `UPDATE usuarios
      SET senha_hash = $2
-     WHERE id = $1 AND role IN ('MOTORISTA', 'ADMIN_EMPRESA', 'SUPER_ADMIN')
+     WHERE id = $1 AND role IN ('MOTORISTA', 'ADMIN_EMPRESA', 'APONTADOR', 'SUPER_ADMIN')
      RETURNING id, nome, email`,
     [Number(req.params.id), hash]
   );

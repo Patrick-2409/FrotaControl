@@ -11,6 +11,7 @@ const schema = z.object({
   placa: z.string().trim().min(4),
   marca: z.string().trim().optional(),
   modelo: z.string().trim().optional(),
+  capacidade_ton: z.coerce.number().positive().optional().nullable(),
 });
 
 const create = async (req, res) => {
@@ -19,6 +20,7 @@ const create = async (req, res) => {
     ...parsed,
     marca: parsed.marca || null,
     modelo: parsed.modelo || null,
+    capacidade_ton: parsed.capacidade_ton ?? null,
   };
   const vehicle = await createVehicle({
     ...data,
@@ -54,10 +56,15 @@ const list = async (req, res) => {
 const update = async (req, res) => {
   const parsed = schema.parse(req.body);
   const data = {
-    ...parsed,
+    nome: parsed.nome,
+    placa: parsed.placa,
     marca: parsed.marca || null,
     modelo: parsed.modelo || null,
   };
+  if (Object.prototype.hasOwnProperty.call(req.body, "capacidade_ton")) {
+    data.capacidade_ton =
+      parsed.capacidade_ton === null || parsed.capacidade_ton === undefined ? null : parsed.capacidade_ton;
+  }
   const vehicle = await updateVehicle(Number(req.params.id), req.user.empresa_id, data);
   return res.json(vehicle);
 };

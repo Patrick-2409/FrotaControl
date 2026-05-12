@@ -70,6 +70,7 @@ api.interceptors.response.use(
       requestUrl.includes("/auth/login") ||
       requestUrl.includes("/auth/motorista-login") ||
       requestUrl.includes("/auth/admin-empresa-login") ||
+      requestUrl.includes("/auth/apontador-login") ||
       requestUrl.includes("/auth/super-admin-login");
     const isAuthSessionEndpoint = requestUrl.includes("/auth/me");
     const isExpectedAuth401 = status === 401 && (isAuthLoginEndpoint || isAuthSessionEndpoint);

@@ -1,11 +1,11 @@
 const { pool } = require("../db");
 
-const createVehicle = async ({ empresa_id, nome, placa, marca = null, modelo = null }) => {
+const createVehicle = async ({ empresa_id, nome, placa, marca = null, modelo = null, capacidade_ton = null }) => {
   const { rows } = await pool.query(
-    `INSERT INTO veiculos (empresa_id, nome, placa, marca, modelo)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO veiculos (empresa_id, nome, placa, marca, modelo, capacidade_ton)
+     VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING *`,
-    [empresa_id, nome, placa, marca, modelo]
+    [empresa_id, nome, placa, marca, modelo, capacidade_ton]
   );
   return rows[0];
 };
@@ -42,13 +42,15 @@ const listVehicles = async (empresa_id, { page = 1, limit = 10, search = "" } = 
 };
 
 const updateVehicle = async (id, empresa_id, data) => {
-  const { rows } = await pool.query(
-    `UPDATE veiculos
-     SET nome = $3, placa = $4, marca = $5, modelo = $6
-     WHERE id = $1 AND empresa_id = $2
-     RETURNING *`,
-    [id, empresa_id, data.nome, data.placa, data.marca || null, data.modelo || null]
-  );
+  const values = [id, empresa_id, data.nome, data.placa, data.marca || null, data.modelo || null];
+  let sql = `UPDATE veiculos
+     SET nome = $3, placa = $4, marca = $5, modelo = $6`;
+  if (Object.prototype.hasOwnProperty.call(data, "capacidade_ton")) {
+    values.push(data.capacidade_ton);
+    sql += `, capacidade_ton = $${values.length}`;
+  }
+  sql += ` WHERE id = $1 AND empresa_id = $2 RETURNING *`;
+  const { rows } = await pool.query(sql, values);
   return rows[0];
 };
 

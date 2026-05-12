@@ -34,6 +34,7 @@ export default function CombustivelPage({ onSaved }) {
     source_id: generateId(),
     data: toDatetimeLocal(new Date().toISOString()),
     litros: "",
+    valor_total: "",
     tipo_combustivel: "Diesel",
     horimetro: "",
     hodometro: "",
@@ -77,6 +78,7 @@ export default function CombustivelPage({ onSaved }) {
             ...record.payload,
             data: toDatetimeLocal(record.payload?.data),
             litros: String(record.payload?.litros || ""),
+            valor_total: String(record.payload?.valor_total ?? ""),
             horimetro: String(record.payload?.horimetro || ""),
             hodometro: String(record.payload?.hodometro || ""),
           });
@@ -105,9 +107,10 @@ export default function CombustivelPage({ onSaved }) {
       data: Boolean(form.data),
       veiculo_id: Boolean(form.veiculo_id),
       litros: Boolean(form.litros),
+      valor_total: Boolean(form.valor_total),
       tipo_combustivel: Boolean(form.tipo_combustivel),
     }),
-    [form.data, form.veiculo_id, form.litros, form.tipo_combustivel]
+    [form.data, form.veiculo_id, form.litros, form.valor_total, form.tipo_combustivel]
   );
   const progress = Math.round(
     (Object.values(requiredChecks).filter(Boolean).length / Object.keys(requiredChecks).length) * 100
@@ -173,6 +176,7 @@ export default function CombustivelPage({ onSaved }) {
         veiculo_nome: selectedVehicle?.nome || user?.veiculo_nome || "",
         placa: selectedVehicle?.placa || user?.placa || "",
         litros: Number(form.litros),
+        valor_total: Number(form.valor_total),
         horimetro: form.horimetro ? Number(form.horimetro) : undefined,
         hodometro: form.hodometro ? Number(form.hodometro) : undefined,
       };
@@ -196,6 +200,7 @@ export default function CombustivelPage({ onSaved }) {
         source_id: generateId(),
         data: currentLocalDatetime(),
         litros: "",
+        valor_total: "",
         horimetro: "",
         hodometro: "",
       }));
@@ -308,13 +313,41 @@ export default function CombustivelPage({ onSaved }) {
       </div>
       <div className="fc-op-section fc-stagger">
         <p className="fc-op-section-title">Registro de Medição</p>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <FormField label="Quantidade (L)">
           <input
+            type="number"
+            min="0"
+            step="0.01"
+            inputMode="decimal"
             className={`${inputClass} ${requiredChecks.litros ? "fc-required-ok" : "fc-required-pending"}`}
             value={form.litros}
             onChange={(e) => setForm({ ...form, litros: e.target.value })}
           />
+        </FormField>
+        <FormField label="Valor total (R$)">
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            inputMode="decimal"
+            className={`${inputClass} ${requiredChecks.valor_total ? "fc-required-ok" : "fc-required-pending"}`}
+            value={form.valor_total}
+            onChange={(e) => setForm({ ...form, valor_total: e.target.value })}
+          />
+          {Number(form.litros) > 0 && Number(form.valor_total) > 0 ? (
+            <p className="mt-1 text-xs text-slate-400">
+              Preço por litro (calculado):{" "}
+              <strong className="text-slate-200">
+                {(Number(form.valor_total) / Number(form.litros)).toLocaleString("pt-BR", {
+                  style: "currency",
+                  currency: "BRL",
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 3,
+                })}
+              </strong>
+            </p>
+          ) : null}
         </FormField>
         <FormField label="Horímetro">
           <input className={inputClass} value={form.horimetro} onChange={(e) => setForm({ ...form, horimetro: e.target.value })} />

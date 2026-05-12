@@ -34,13 +34,15 @@ const upsertRomaneio = async (empresa_id, usuario_id, payload) => {
 const upsertCombustivel = async (empresa_id, usuario_id, payload) => {
   const { rows } = await pool.query(
     `INSERT INTO combustiveis
-      (empresa_id, usuario_id, veiculo_id, source_id, version_of, data, recorded_at_client, litros, tipo_combustivel, horimetro, hodometro)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      (empresa_id, usuario_id, veiculo_id, source_id, version_of, data, recorded_at_client, litros, valor_total, preco_por_litro, tipo_combustivel, horimetro, hodometro)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,($9::numeric / NULLIF($8::numeric, 0)),$10,$11,$12)
      ON CONFLICT (empresa_id, source_id)
      DO UPDATE SET
        data = EXCLUDED.data,
        recorded_at_client = COALESCE(EXCLUDED.recorded_at_client, combustiveis.recorded_at_client),
        litros = EXCLUDED.litros,
+       valor_total = EXCLUDED.valor_total,
+       preco_por_litro = (EXCLUDED.valor_total::numeric / NULLIF(EXCLUDED.litros::numeric, 0)),
        tipo_combustivel = EXCLUDED.tipo_combustivel,
        horimetro = EXCLUDED.horimetro,
        hodometro = EXCLUDED.hodometro,
@@ -56,6 +58,7 @@ const upsertCombustivel = async (empresa_id, usuario_id, payload) => {
       payload.data,
       payload.recorded_at_client || null,
       payload.litros,
+      payload.valor_total,
       payload.tipo_combustivel,
       payload.horimetro || null,
       payload.hodometro || null,
@@ -232,7 +235,9 @@ const listManagerRecords = async ({
        NULL::text AS outros_descricao,
        NULL::text AS tempo_parado,
        NULL::text AS observacoes,
-       NULL::text AS producao
+       NULL::text AS producao,
+       NULL::numeric AS valor_total,
+       NULL::numeric AS preco_por_litro
      FROM romaneios r
      JOIN usuarios u ON u.id = r.usuario_id
      LEFT JOIN veiculos v ON v.id = r.veiculo_id
@@ -277,7 +282,9 @@ const listManagerRecords = async ({
        NULL::text AS outros_descricao,
        NULL::text AS tempo_parado,
        NULL::text AS observacoes,
-       NULL::text AS producao
+       NULL::text AS producao,
+       c.valor_total,
+       c.preco_por_litro
      FROM combustiveis c
      JOIN usuarios u ON u.id = c.usuario_id
      LEFT JOIN veiculos v ON v.id = c.veiculo_id
@@ -330,7 +337,9 @@ const listManagerRecords = async ({
        p.outros_descricao,
        p.tempo_parado,
        p.observacoes,
-       p.producao
+       p.producao,
+       NULL::numeric AS valor_total,
+       NULL::numeric AS preco_por_litro
      FROM parte_diaria p
      JOIN usuarios u ON u.id = p.usuario_id
      LEFT JOIN veiculos v ON v.id = p.veiculo_id
@@ -532,6 +541,8 @@ const listMotoristaRecords = async ({ empresa_id, usuario_id }) => {
            'veiculo_nome', v.nome,
            'placa', v.placa,
            'litros', c.litros,
+           'valor_total', c.valor_total,
+           'preco_por_litro', c.preco_por_litro,
            'tipo_combustivel', c.tipo_combustivel,
            'horimetro', c.horimetro,
            'hodometro', c.hodometro
@@ -589,6 +600,90 @@ const listMotoristaRecords = async ({ empresa_id, usuario_id }) => {
   return rows;
 };
 
+/**
+ * Agrega combustíveis no intervalo [start, end) em timestamptz (COALESCE(recorded_at_client, data)).
+ * @param {{ empresa_id: number, bounds: { start: string, end: string }, groupByVeiculo?: boolean }} params
+ */
+const getCombustiveisResumoMetrics = async ({ empresa_id, bounds, groupByVeiculo = false }, db = pool) => {
+  const { start, end } = bounds;
+  const params = [empresa_id, start, end];
+  const whereTime = `empresa_id = $1
+    AND COALESCE(recorded_at_client, data) >= $2::timestamptz
+    AND COALESCE(recorded_at_client, data) < $3::timestamptz`;
+
+  const { rows: aggRows } = await db.query(
+    `SELECT
+      COALESCE(SUM(litros), 0)::double precision AS total_litros,
+      COALESCE(SUM(valor_total), 0)::double precision AS total_valor,
+      (COALESCE(SUM(valor_total), 0) / NULLIF(COALESCE(SUM(litros), 0), 0))::double precision AS preco_medio_litro
+     FROM combustiveis
+     WHERE ${whereTime}`,
+    params
+  );
+  const row = aggRows[0] || {};
+  const base = {
+    total_litros: row.total_litros == null ? 0 : Number(row.total_litros),
+    total_valor: row.total_valor == null ? 0 : Number(row.total_valor),
+    preco_medio_litro:
+      row.preco_medio_litro == null || Number.isNaN(Number(row.preco_medio_litro))
+        ? null
+        : Number(row.preco_medio_litro),
+  };
+
+  if (!groupByVeiculo) return base;
+
+  const { rows: groups } = await db.query(
+    `SELECT
+        veiculo_id,
+        COALESCE(SUM(litros), 0)::double precision AS total_litros,
+        COALESCE(SUM(valor_total), 0)::double precision AS total_valor,
+        (COALESCE(SUM(valor_total), 0) / NULLIF(COALESCE(SUM(litros), 0), 0))::double precision AS preco_medio_litro
+       FROM combustiveis
+       WHERE ${whereTime}
+       GROUP BY veiculo_id
+       ORDER BY veiculo_id NULLS LAST`,
+    params
+  );
+
+  return {
+    ...base,
+    por_veiculo: groups.map((g) => ({
+      veiculo_id: g.veiculo_id == null ? null : Number(g.veiculo_id),
+      total_litros: g.total_litros == null ? 0 : Number(g.total_litros),
+      total_valor: g.total_valor == null ? 0 : Number(g.total_valor),
+      preco_medio_litro:
+        g.preco_medio_litro == null || Number.isNaN(Number(g.preco_medio_litro))
+          ? null
+          : Number(g.preco_medio_litro),
+    })),
+  };
+};
+
+/**
+ * Soma valor_total de combustíveis no intervalo [start, end) (mesma base temporal do resumo de combustível).
+ * Sem bounds, soma todo o histórico da empresa.
+ */
+const getCombustiveisValorTotalSoma = async ({ empresa_id, bounds = null }, db = pool) => {
+  if (bounds?.start != null && bounds?.end != null) {
+    const { rows } = await db.query(
+      `SELECT COALESCE(SUM(valor_total), 0)::double precision AS custo_total
+       FROM combustiveis
+       WHERE empresa_id = $1
+         AND COALESCE(recorded_at_client, data) >= $2::timestamptz
+         AND COALESCE(recorded_at_client, data) < $3::timestamptz`,
+      [empresa_id, bounds.start, bounds.end]
+    );
+    return rows[0]?.custo_total == null ? 0 : Number(rows[0].custo_total);
+  }
+  const { rows } = await db.query(
+    `SELECT COALESCE(SUM(valor_total), 0)::double precision AS custo_total
+     FROM combustiveis
+     WHERE empresa_id = $1`,
+    [empresa_id]
+  );
+  return rows[0]?.custo_total == null ? 0 : Number(rows[0].custo_total);
+};
+
 module.exports = {
   upsertRomaneio,
   upsertCombustivel,
@@ -598,4 +693,6 @@ module.exports = {
   dashboardStats,
   updateManagerRecord,
   deleteManagerRecord,
+  getCombustiveisResumoMetrics,
+  getCombustiveisValorTotalSoma,
 };
