@@ -1,6 +1,9 @@
 import { openDB } from "idb";
 
-export const dbPromise = openDB("frotacontrol_db", 4, {
+/** Versão do schema IndexedDB. Nunca diminuir: o browser recusa open com versão < à já existente ("requested version…"). */
+export const DB_VERSION = 10;
+
+export const dbPromise = openDB("frotacontrol_db", DB_VERSION, {
   upgrade(db, _oldVersion, _newVersion, transaction) {
     if (!db.objectStoreNames.contains("pending")) {
       db.createObjectStore("pending", { keyPath: "id", autoIncrement: true });
