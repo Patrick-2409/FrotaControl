@@ -1,4 +1,4 @@
-import api from "./api";
+import api, { extractApiErrorMessage } from "./api";
 import {
   getPending,
   markAsSynced,
@@ -21,9 +21,17 @@ const hasMotoristaSession = () => {
     const raw = localStorage.getItem("fc_user");
     if (!raw) return false;
     const user = JSON.parse(raw);
-    return user?.role === "MOTORISTA";
+    return String(user?.role || "").toUpperCase() === "MOTORISTA";
   } catch {
     return false;
+  }
+};
+
+const safeLogOfflineError = async (context, err) => {
+  try {
+    await logOfflineError(context, extractApiErrorMessage(err) || "erro_desconhecido");
+  } catch (e) {
+    console.warn("logOfflineError:", e);
   }
 };
 
@@ -93,12 +101,18 @@ export const saveWithOffline = async (module, payload) => {
 
   if (!navigator.onLine) {
     return runSerialized(async () => {
-      await saveLocal({
-        client_id: normalizedPayload.client_id,
-        type: normalizedModule,
-        data: normalizedPayload,
-        status: "pending",
-      });
+      try {
+        await saveLocal({
+          client_id: normalizedPayload.client_id,
+          type: normalizedModule,
+          data: normalizedPayload,
+          status: "pending",
+        });
+      } catch (e) {
+        console.warn("saveLocal offline (sem rede):", e);
+        emitToast("Não foi possível guardar localmente. Libere espaço ou verifique o armazenamento do navegador.", "error");
+        return { status: "error", error: e };
+      }
       emitSyncState("pending");
       emitToast("Sem internet. Registro salvo localmente.", "warning");
       return { status: "pending" };
@@ -106,12 +120,18 @@ export const saveWithOffline = async (module, payload) => {
   }
   if (!hasAuthSession() || !hasMotoristaSession()) {
     return runSerialized(async () => {
-      await saveLocal({
-        client_id: normalizedPayload.client_id,
-        type: normalizedModule,
-        data: normalizedPayload,
-        status: "pending",
-      });
+      try {
+        await saveLocal({
+          client_id: normalizedPayload.client_id,
+          type: normalizedModule,
+          data: normalizedPayload,
+          status: "pending",
+        });
+      } catch (e) {
+        console.warn("saveLocal offline (sessão):", e);
+        emitToast("Não foi possível guardar o registo localmente.", "error");
+        return { status: "error", error: e };
+      }
       emitSyncState("pending");
       emitToast("Sessão não autenticada. Registro salvo pendente para sincronizar após novo login.", "warning");
       return { status: "pending" };
@@ -165,7 +185,6 @@ export const saveWithOffline = async (module, payload) => {
         console.warn("saveLocal synced (saveWithOffline):", historyErr);
       }
       emitSyncState("synced");
-      emitToast("Registro sincronizado com sucesso.");
       return { status: "synced" };
     } catch (err) {
       console.error("Erro ao sincronizar:", err);
@@ -184,10 +203,14 @@ export const saveWithOffline = async (module, payload) => {
       } catch (localErr) {
         console.warn("saveLocal pending após erro (saveWithOffline):", localErr);
       }
-      await logOfflineError("saveWithOffline", err.message);
+      await safeLogOfflineError("saveWithOffline", err);
       emitSyncState("pending");
-      emitToast("Falha no envio. Registro mantido pendente para nova tentativa.", "warning");
-      return { status: "pending", error: err };
+      const apiMsg = extractApiErrorMessage(err);
+      emitToast(
+        apiMsg || "Falha no envio. Registro mantido pendente para nova tentativa.",
+        "warning"
+      );
+      return { status: "pending", error: err, apiMessage: apiMsg || null };
     }
   });
 };
@@ -276,7 +299,11 @@ export const syncNow = async () => {
             console.warn("addSyncMetric falha (syncNow):", metricErr);
           }
           failed += 1;
-          await updatePendingRetry(item, err.message);
+          try {
+            await updatePendingRetry(item, extractApiErrorMessage(err) || err?.message || "erro");
+          } catch (retryErr) {
+            console.warn("updatePendingRetry (syncNow):", retryErr);
+          }
           try {
             await saveLocal({
               client_id:
@@ -291,7 +318,7 @@ export const syncNow = async () => {
           } catch (localErr) {
             console.warn("saveLocal pending após erro (syncNow):", localErr);
           }
-          await logOfflineError("syncNow", err.message);
+          await safeLogOfflineError("syncNow", err);
         }
       }
 

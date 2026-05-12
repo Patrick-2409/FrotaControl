@@ -31,6 +31,14 @@ const preprocessDecimal = (val) => {
   return Number.isFinite(n) ? n : val;
 };
 
+/** Horímetro/hodômetro opcionais: vazio, null ou inválido → omitido (evita NaN no Zod). */
+const preprocessOptionalNumber = (val) => {
+  if (val === null || val === undefined || val === "") return undefined;
+  if (typeof val === "number") return Number.isFinite(val) ? val : undefined;
+  const n = Number(preprocessDecimal(val));
+  return Number.isFinite(n) ? n : undefined;
+};
+
 const romaneioSchema = z
   .object({
     source_id: z.string().min(8).optional(),
@@ -66,8 +74,8 @@ const combustivelSchema = z
       z.coerce.number().positive({ message: "valor_total deve ser maior que zero." })
     ),
     tipo_combustivel: z.string().min(2),
-    horimetro: z.coerce.number().optional(),
-    hodometro: z.coerce.number().optional(),
+    horimetro: z.preprocess(preprocessOptionalNumber, z.number().optional()),
+    hodometro: z.preprocess(preprocessOptionalNumber, z.number().optional()),
   })
   .refine((v) => Boolean(v.source_id || v.client_id), {
     message: "client_id é obrigatório",
@@ -136,6 +144,13 @@ const parteSchema = z
 
 const createRomaneio = async (req, res) => {
   logInfo("record:create-romaneio", { user_id: req.user?.sub, empresa_id: req.user?.empresa_id });
+  if (req.user.empresa_id == null) {
+    return res.status(400).json({
+      success: false,
+      error: "Usuário sem empresa vinculada. Contacte o administrador.",
+      message: "Usuário sem empresa vinculada. Contacte o administrador.",
+    });
+  }
   const payload = romaneioSchema.parse(req.body);
   const before = await pool.query(
     "SELECT id FROM romaneios WHERE empresa_id = $1 AND source_id = $2",
@@ -153,6 +168,13 @@ const createRomaneio = async (req, res) => {
 
 const createCombustivel = async (req, res) => {
   logInfo("record:create-combustivel", { user_id: req.user?.sub, empresa_id: req.user?.empresa_id });
+  if (req.user.empresa_id == null) {
+    return res.status(400).json({
+      success: false,
+      error: "Usuário sem empresa vinculada. Não é possível registar abastecimento.",
+      message: "Usuário sem empresa vinculada. Não é possível registar abastecimento.",
+    });
+  }
   const payload = combustivelSchema.parse(req.body);
   const before = await pool.query(
     "SELECT id FROM combustiveis WHERE empresa_id = $1 AND source_id = $2",
@@ -170,6 +192,13 @@ const createCombustivel = async (req, res) => {
 
 const createParteDiaria = async (req, res) => {
   logInfo("record:create-parte-diaria", { user_id: req.user?.sub, empresa_id: req.user?.empresa_id });
+  if (req.user.empresa_id == null) {
+    return res.status(400).json({
+      success: false,
+      error: "Usuário sem empresa vinculada. Contacte o administrador.",
+      message: "Usuário sem empresa vinculada. Contacte o administrador.",
+    });
+  }
   const payload = parteSchema.parse(req.body);
   const before = await pool.query(
     "SELECT id FROM parte_diaria WHERE empresa_id = $1 AND source_id = $2",

@@ -5,7 +5,7 @@ import { saveWithOffline } from "../services/syncService";
 import SaveBar from "../components/SaveBar";
 import { emitToast } from "../services/uiEvents";
 import { generateId } from "../utils/id";
-import api from "../services/api";
+import api, { extractApiErrorMessage } from "../services/api";
 import { nowLocalDateTimeString, toIsoWithCurrentTimeIfDateOnly } from "../utils/datetime";
 import { parseDecimalInput } from "../utils/numberParse";
 
@@ -167,43 +167,73 @@ export default function CombustivelPage({ onSaved }) {
     }
     setLoading(true);
     try {
+      let editRecord = null;
       const editRaw = localStorage.getItem("fc_edit_record");
-      const editRecord = editRaw ? JSON.parse(editRaw) : null;
+      if (editRaw) {
+        try {
+          editRecord = JSON.parse(editRaw);
+        } catch {
+          localStorage.removeItem("fc_edit_record");
+        }
+      }
       const executionDate = editRecord ? toIsoWithCurrentTimeIfDateOnly(form.data) : nowLocalDateTimeString();
-      const createPayloadIdentity = editRecord
-        ? {}
-        : {
-            source_id: generateId(),
-          };
+      const tipoCombustivel = String(form.tipo_combustivel || "").trim() || "Diesel";
+      const horimetroNum =
+        form.horimetro === "" || form.horimetro === undefined || form.horimetro === null
+          ? undefined
+          : Number(form.horimetro);
+      const hodometroNum =
+        form.hodometro === "" || form.hodometro === undefined || form.hodometro === null
+          ? undefined
+          : Number(form.hodometro);
+
+      let sourceId;
+      let versionOf;
+      if (!editRecord) {
+        sourceId = generateId();
+      } else if (isSyncedStatus(editRecord.status)) {
+        sourceId = generateId();
+        versionOf = editRecord.source_id;
+      } else {
+        sourceId = editRecord.source_id || form.source_id || generateId();
+      }
+
       const payload = {
-        ...form,
-        ...createPayloadIdentity,
-        ...(isSyncedStatus(editRecord?.status)
-          ? { source_id: generateId(), version_of: editRecord.source_id }
-          : {}),
+        source_id: sourceId,
+        client_id: sourceId,
+        ...(versionOf ? { version_of: versionOf } : {}),
         data: executionDate,
         recorded_at_client: executionDate,
         veiculo_id: Number(form.veiculo_id),
-        veiculo_nome: selectedVehicle?.nome || user?.veiculo_nome || "",
-        placa: selectedVehicle?.placa || user?.placa || "",
+        tipo_combustivel: tipoCombustivel,
         litros: litrosNum,
         valor_total: valorNum,
-        horimetro: form.horimetro ? Number(form.horimetro) : undefined,
-        hodometro: form.hodometro ? Number(form.hodometro) : undefined,
+        veiculo_nome: selectedVehicle?.nome || user?.veiculo_nome || "",
+        placa: selectedVehicle?.placa || user?.placa || "",
+        ...(Number.isFinite(horimetroNum) ? { horimetro: horimetroNum } : {}),
+        ...(Number.isFinite(hodometroNum) ? { hodometro: hodometroNum } : {}),
       };
-      console.log("Combustivel payload:", payload);
+
       const result = await saveWithOffline("combustiveis", payload);
-      console.log("Combustivel response:", result);
-      onSaved(result.status);
+      if (result.status === "error") {
+        emitToast(
+          extractApiErrorMessage(result.error) || "Não foi possível guardar o registo. Tente novamente.",
+          "error"
+        );
+        return;
+      }
+
+      onSaved?.(result.status);
       setFeedback(result.status);
-      emitToast(
-        result.status === "synced"
-          ? "Registro salvo com sucesso"
-          : result.status === "syncing"
-          ? "Falha na sincronização. Registro mantido pendente para retry."
-          : "Registro salvo com sucesso (pendente de sincronização)",
-        result.status === "synced" ? "success" : result.status === "syncing" ? "error" : "warning"
-      );
+      if (result.status === "synced") {
+        emitToast("Registro salvo com sucesso", "success");
+      } else if (result.status === "pending" && result.apiMessage) {
+        /* syncService já emitiu toast com a mensagem do servidor */
+      } else if (result.status === "pending") {
+        emitToast("Registro salvo com sucesso (pendente de sincronização)", "warning");
+      } else if (result.status === "syncing") {
+        emitToast("Falha na sincronização. Registro mantido pendente para retry.", "error");
+      }
       localStorage.removeItem("fc_edit_record");
       localStorage.removeItem("fc_draft_combustivel");
       setForm((prev) => ({
@@ -217,11 +247,10 @@ export default function CombustivelPage({ onSaved }) {
       }));
     } catch (err) {
       console.error(err);
-      const apiMsg =
-        err?.response?.data?.message ||
-        err?.response?.data?.error ||
-        err?.response?.data?.issues?.[0]?.message;
-      emitToast(apiMsg || "Erro ao salvar combustível. Verifique os dados e a ligação.", "error");
+      emitToast(
+        extractApiErrorMessage(err) || "Erro ao salvar combustível. Verifique os dados e a ligação.",
+        "error"
+      );
     } finally {
       setLoading(false);
     }

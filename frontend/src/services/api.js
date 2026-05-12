@@ -14,6 +14,21 @@ export const getBaseURL = () => {
   return PROD_API_FALLBACK;
 };
 
+/** Mensagem legível a partir de erro Axios ou genérico (para toast / logs). */
+export const extractApiErrorMessage = (err) => {
+  if (!err) return "";
+  const data = err?.response?.data;
+  if (typeof data === "string" && data.trim()) return data.trim();
+  const fromIssues = Array.isArray(data?.issues) ? data.issues.find((i) => i?.message)?.message : null;
+  return (
+    (typeof data?.message === "string" && data.message) ||
+    (typeof data?.error === "string" && data.error) ||
+    (typeof fromIssues === "string" && fromIssues) ||
+    (typeof err.message === "string" && err.message) ||
+    ""
+  );
+};
+
 export const resolveBackendAssetUrl = (value) => {
   if (!value) return null;
   const raw = String(value).trim();
