@@ -43,6 +43,25 @@ const getViagensResumoProducao = async (empresa_id, bounds = {}, db = pool) => {
   return rows[0];
 };
 
+/** Contagem de viagens do dia corrente no fuso America/Sao_Paulo (campo). */
+const countViagensHojeEmpresaSaoPaulo = async (empresa_id, db = pool) => {
+  const { rows } = await db.query(
+    `SELECT
+      COALESCE(COUNT(*) FILTER (WHERE tipo = 'esteril'), 0)::int AS esteril,
+      COALESCE(COUNT(*) FILTER (WHERE tipo = 'rocha'), 0)::int AS rocha
+     FROM viagens
+     WHERE empresa_id = $1
+       AND (marcacao AT TIME ZONE 'America/Sao_Paulo')::date
+         = (CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')::date`,
+    [empresa_id]
+  );
+  const row = rows[0];
+  return {
+    esteril: row?.esteril ?? 0,
+    rocha: row?.rocha ?? 0,
+  };
+};
+
 /** Limites [start,end) em ISO UTC a partir de datas YYYY-MM-DD inclusive (fim = dia seguinte ao data_fim). */
 const utcBoundsFromDateRangeYmd = (data_inicio_ymd, data_fim_ymd) => {
   const parse = (ymd) => {
@@ -61,5 +80,6 @@ const utcBoundsFromDateRangeYmd = (data_inicio_ymd, data_fim_ymd) => {
 module.exports = {
   insertViagem,
   getViagensResumoProducao,
+  countViagensHojeEmpresaSaoPaulo,
   utcBoundsFromDateRangeYmd,
 };

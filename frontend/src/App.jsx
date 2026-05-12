@@ -305,7 +305,7 @@ function App() {
           element={
             <Protected>
               <ProtectedApontador>
-                <div className="min-h-screen bg-slate-950" id="conteudo-principal">
+                <div className="min-h-[100dvh] min-h-screen bg-slate-950" id="conteudo-principal">
                   <ApontadorHomePage />
                 </div>
               </ProtectedApontador>

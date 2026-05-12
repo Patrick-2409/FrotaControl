@@ -1,5 +1,5 @@
 const { listVehicles } = require("../models/vehicleModel");
-const { insertViagem } = require("../models/viagemModel");
+const { insertViagem, countViagensHojeEmpresaSaoPaulo } = require("../models/viagemModel");
 const { pool } = require("../db");
 const { z } = require("zod");
 
@@ -39,6 +39,22 @@ const listVehiclesApontador = async (req, res) => {
     total: result.total,
     page,
     totalPages: Math.max(1, Math.ceil(result.total / limit)),
+  });
+};
+
+const getContagemHojeApontador = async (req, res) => {
+  const empresaId = req.user?.empresa_id;
+  if (!empresaId) {
+    return res.status(403).json({
+      success: false,
+      error: "Empresa não associada ao usuário.",
+      message: "Empresa não associada ao usuário.",
+    });
+  }
+  const counts = await countViagensHojeEmpresaSaoPaulo(empresaId);
+  return res.json({
+    success: true,
+    hoje: counts,
   });
 };
 
@@ -109,5 +125,6 @@ const createViagemApontador = async (req, res) => {
 
 module.exports = {
   listVehiclesApontador,
+  getContagemHojeApontador,
   createViagemApontador,
 };
