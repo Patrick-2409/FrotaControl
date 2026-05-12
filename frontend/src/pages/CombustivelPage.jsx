@@ -7,6 +7,7 @@ import { emitToast } from "../services/uiEvents";
 import { generateId } from "../utils/id";
 import api from "../services/api";
 import { nowLocalDateTimeString, toIsoWithCurrentTimeIfDateOnly } from "../utils/datetime";
+import { parseDecimalInput } from "../utils/numberParse";
 
 const toDatetimeLocal = (value) => {
   if (!value) return "";
@@ -154,6 +155,16 @@ export default function CombustivelPage({ onSaved }) {
       emitToast("Selecione o veículo (modelo e placa) para registrar o abastecimento.", "warning");
       return;
     }
+    const litrosNum = parseDecimalInput(form.litros);
+    const valorNum = parseDecimalInput(form.valor_total);
+    if (!Number.isFinite(litrosNum) || litrosNum <= 0) {
+      emitToast("Informe a quantidade em litros (número maior que zero). Use ponto ou vírgula para decimais.", "warning");
+      return;
+    }
+    if (!Number.isFinite(valorNum) || valorNum <= 0) {
+      emitToast("Informe o valor total em reais (número maior que zero). Use ponto ou vírgula para decimais.", "warning");
+      return;
+    }
     setLoading(true);
     try {
       const editRaw = localStorage.getItem("fc_edit_record");
@@ -175,8 +186,8 @@ export default function CombustivelPage({ onSaved }) {
         veiculo_id: Number(form.veiculo_id),
         veiculo_nome: selectedVehicle?.nome || user?.veiculo_nome || "",
         placa: selectedVehicle?.placa || user?.placa || "",
-        litros: Number(form.litros),
-        valor_total: Number(form.valor_total),
+        litros: litrosNum,
+        valor_total: valorNum,
         horimetro: form.horimetro ? Number(form.horimetro) : undefined,
         hodometro: form.hodometro ? Number(form.hodometro) : undefined,
       };
@@ -206,8 +217,11 @@ export default function CombustivelPage({ onSaved }) {
       }));
     } catch (err) {
       console.error(err);
-      setError("Erro ao carregar dados");
-      emitToast("Erro ao salvar combustível.", "error");
+      const apiMsg =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err?.response?.data?.issues?.[0]?.message;
+      emitToast(apiMsg || "Erro ao salvar combustível. Verifique os dados e a ligação.", "error");
     } finally {
       setLoading(false);
     }

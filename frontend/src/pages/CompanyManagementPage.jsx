@@ -9,11 +9,16 @@ import { CenteredSpinner } from "../components/LoadingState";
 import useDebouncedValue from "../hooks/useDebouncedValue";
 import Avatar from "../components/Avatar";
 
-const roleLabel = (role) => (role === "ADMIN_EMPRESA" ? "Administrador" : "Motorista");
-const roleBadgeClass = (role) =>
-  role === "ADMIN_EMPRESA"
-    ? "border-violet-400/40 bg-violet-500/15 text-violet-100"
-    : "border-blue-400/40 bg-blue-500/15 text-blue-100";
+const roleLabel = (role) => {
+  if (role === "ADMIN_EMPRESA") return "Administrador";
+  if (role === "APONTADOR") return "Apontador";
+  return "Motorista";
+};
+const roleBadgeClass = (role) => {
+  if (role === "ADMIN_EMPRESA") return "border-violet-400/40 bg-violet-500/15 text-violet-100";
+  if (role === "APONTADOR") return "border-cyan-400/35 bg-cyan-500/15 text-cyan-100";
+  return "border-blue-400/40 bg-blue-500/15 text-blue-100";
+};
 const dedupeById = (items = []) => {
   const map = new Map();
   for (const item of items) {
@@ -126,7 +131,12 @@ export default function CompanyManagementPage() {
       emitToast("Informe o nome completo do usuário (nome e sobrenome).", "warning");
       return;
     }
-    const veiculoId = userForm.veiculo_id ? Number(userForm.veiculo_id) : null;
+    if (userForm.role !== "MOTORISTA" && !userForm.email.trim()) {
+      emitToast("Administrador e apontador precisam de e-mail (o apontador entra com e-mail e senha).", "warning");
+      return;
+    }
+    const veiculoId =
+      userForm.role === "MOTORISTA" && userForm.veiculo_id ? Number(userForm.veiculo_id) : null;
     if (userForm.role === "MOTORISTA" && !veiculoId) {
       emitToast("Motorista precisa ter veículo vinculado.", "warning");
       return;
@@ -213,25 +223,46 @@ export default function CompanyManagementPage() {
             <h3 className="mb-1 text-base font-semibold text-white">
               {userForm.id ? "Editar usuário" : "Criar usuário"}
             </h3>
-            <p className="mb-4 text-sm text-slate-400">Preencha os dados e confirme para salvar.</p>
+            <p className="mb-4 text-sm text-slate-400">
+              Preencha os dados e confirme para salvar. O apontador usa o mesmo e-mail e senha em{" "}
+              <span className="text-slate-300">Apontador</span> na página inicial (romaneio).
+            </p>
             <form onSubmit={onSaveUser}>
               <div className="grid gap-2 md:grid-cols-2">
                 <input className={inputClass} placeholder="Nome" value={userForm.nome} onChange={(e) => setUserForm((f) => ({ ...f, nome: e.target.value }))} />
                 <input className={inputClass} placeholder="E-mail" value={userForm.email} onChange={(e) => setUserForm((f) => ({ ...f, email: e.target.value }))} />
                 <input className={inputClass} placeholder="CPF/ID" value={userForm.cpf_id} onChange={(e) => setUserForm((f) => ({ ...f, cpf_id: e.target.value }))} />
                 <input className={inputClass} type="password" placeholder={userForm.id ? "Nova senha (opcional)" : "Senha"} value={userForm.senha} onChange={(e) => setUserForm((f) => ({ ...f, senha: e.target.value }))} />
-                <select className={inputClass} value={userForm.role} onChange={(e) => setUserForm((f) => ({ ...f, role: e.target.value }))}>
+                <select
+                  className={inputClass}
+                  value={userForm.role}
+                  onChange={(e) => {
+                    const role = e.target.value;
+                    setUserForm((f) => ({
+                      ...f,
+                      role,
+                      veiculo_id: role === "MOTORISTA" ? f.veiculo_id : "",
+                    }));
+                  }}
+                >
                   <option value="MOTORISTA">Motorista</option>
                   <option value="ADMIN_EMPRESA">Admin da empresa</option>
+                  <option value="APONTADOR">Apontador</option>
                 </select>
-                <select className={inputClass} value={userForm.veiculo_id} onChange={(e) => setUserForm((f) => ({ ...f, veiculo_id: e.target.value }))}>
-                  <option value="">Vínculo de veículo</option>
-                  {vehicleOptions.map((v) => (
-                    <option key={`v-opt-${v.id}`} value={v.id}>
-                      {v.nome} - {v.placa}
-                    </option>
-                  ))}
-                </select>
+                {userForm.role === "MOTORISTA" ? (
+                  <select className={inputClass} value={userForm.veiculo_id} onChange={(e) => setUserForm((f) => ({ ...f, veiculo_id: e.target.value }))}>
+                    <option value="">Vínculo de veículo</option>
+                    {vehicleOptions.map((v) => (
+                      <option key={`v-opt-${v.id}`} value={v.id}>
+                        {v.nome} - {v.placa}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="flex items-center rounded-lg border border-slate-800/80 bg-slate-900/50 px-3 py-2.5 text-xs text-slate-500 md:col-span-2">
+                    Veículo só se aplica a motoristas.
+                  </p>
+                )}
               </div>
               <button className="fc-btn mt-3 rounded-lg bg-blue-600 px-4 py-3">{userForm.id ? "Atualizar usuário" : "Criar usuário"}</button>
             </form>
@@ -255,7 +286,13 @@ export default function CompanyManagementPage() {
             />
             <div className="mt-4 space-y-3">
               {loadingUsers && <SkeletonRows rows={4} />}
-              {!loadingUsers && users.length === 0 && <EmptyState compact title="Sem usuários cadastrados" description="Crie motoristas e admins da empresa para iniciar a operação." />}
+              {!loadingUsers && users.length === 0 && (
+                <EmptyState
+                  compact
+                  title="Sem usuários cadastrados"
+                  description="Crie motoristas, apontadores ou outro administrador da empresa para iniciar a operação."
+                />
+              )}
               {users.map((u) => (
                 <article key={`u-${u.id}`} className="rounded-xl border border-slate-700/90 bg-slate-950/65 p-4 shadow-md shadow-slate-950/30">
                   <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">

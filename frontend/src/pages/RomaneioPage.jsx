@@ -125,8 +125,11 @@ export default function RomaneioPage({ onSaved }) {
       }));
     } catch (err) {
       console.error(err);
-      setError("Erro ao carregar dados");
-      emitToast("Erro ao salvar romaneio.", "error");
+      const apiMsg =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err?.response?.data?.issues?.[0]?.message;
+      emitToast(apiMsg || "Erro ao salvar romaneio. Verifique os dados e a ligação.", "error");
     } finally {
       setLoading(false);
     }

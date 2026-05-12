@@ -18,6 +18,19 @@ const normalizeClientPayload = (value) => {
   };
 };
 
+/** Aceita string pt-BR (ex.: 1.234,56) ou número. */
+const preprocessDecimal = (val) => {
+  if (typeof val === "number" && Number.isFinite(val)) return val;
+  if (val === null || val === undefined || val === "") return val;
+  const s = String(val).trim();
+  if (!s) return val;
+  const lastComma = s.lastIndexOf(",");
+  const lastDot = s.lastIndexOf(".");
+  const normalized = lastComma > lastDot ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : val;
+};
+
 const romaneioSchema = z
   .object({
     source_id: z.string().min(8).optional(),
@@ -44,8 +57,14 @@ const combustivelSchema = z
     data: z.string(),
     recorded_at_client: z.string().optional(),
     veiculo_id: z.coerce.number().int().positive().optional(),
-    litros: z.coerce.number().positive({ message: "litros deve ser maior que zero." }),
-    valor_total: z.coerce.number().positive({ message: "valor_total deve ser maior que zero." }),
+    litros: z.preprocess(
+      preprocessDecimal,
+      z.coerce.number().positive({ message: "litros deve ser maior que zero." })
+    ),
+    valor_total: z.preprocess(
+      preprocessDecimal,
+      z.coerce.number().positive({ message: "valor_total deve ser maior que zero." })
+    ),
     tipo_combustivel: z.string().min(2),
     horimetro: z.coerce.number().optional(),
     hodometro: z.coerce.number().optional(),

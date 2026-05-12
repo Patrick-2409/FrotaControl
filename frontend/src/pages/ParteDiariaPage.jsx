@@ -349,8 +349,11 @@ export default function ParteDiariaPage({ onSaved }) {
       }));
     } catch (err) {
       console.error(err);
-      setError("Erro ao carregar dados");
-      emitToast("Erro ao salvar parte diária.", "error");
+      const apiMsg =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err?.response?.data?.issues?.[0]?.message;
+      emitToast(apiMsg || "Erro ao salvar parte diária. Verifique os dados e a ligação.", "error");
     } finally {
       setLoading(false);
     }

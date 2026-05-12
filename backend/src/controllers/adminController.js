@@ -80,6 +80,13 @@ const userSchema = z.object({
       message: "Informe o nome completo (nome e sobrenome).",
     });
   }
+  if (val.role !== "MOTORISTA" && !String(val.email || "").trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["email"],
+      message: "E-mail é obrigatório para administrador, apontador e super administrador.",
+    });
+  }
 });
 
 const vehicleSchema = z.object({

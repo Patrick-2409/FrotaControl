@@ -2,10 +2,12 @@ const { logError } = require("../services/loggerService");
 
 const errorMiddleware = (err, req, res, next) => {
   if (err?.name === "ZodError") {
+    const first = err.issues?.[0];
+    const detail = first?.message || "Dados inválidos";
     return res.status(400).json({
       success: false,
-      error: "Dados inválidos",
-      message: "Dados inválidos",
+      error: detail,
+      message: detail,
       issues: err.issues,
     });
   }
