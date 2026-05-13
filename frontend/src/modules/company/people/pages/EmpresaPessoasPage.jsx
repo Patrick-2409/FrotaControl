@@ -2,6 +2,8 @@ import { Link } from "react-router-dom";
 import Avatar from "../../../../components/Avatar";
 import PaginationControls from "../../../../components/PaginationControls";
 import SkeletonRows from "../../../../components/SkeletonRows";
+import BIDashboardShell from "../../bi/components/BIDashboardShell";
+import BIKpiCard from "../../bi/components/BIKpiCard";
 import EmpresaModuleErrorPanel from "../../shared/components/EmpresaModuleErrorPanel";
 import { resolveBackendAssetUrl } from "../../../../services/api";
 import { useEmpresaPeople } from "../hooks/useEmpresaPeople";
@@ -21,34 +23,31 @@ function statusPessoaClass(s) {
 export default function EmpresaPessoasPage() {
   const p = useEmpresaPeople();
 
+  const headerAside = (
+    <>
+      <Link
+        to="/empresa/alertas"
+        className="rounded-lg border border-amber-700/50 bg-amber-950/30 px-4 py-2 text-sm font-medium text-amber-100 hover:border-amber-500/60"
+      >
+        Alertas pessoas
+      </Link>
+      <Link
+        to="/dashboard/gestao?secao=motoristas"
+        className="rounded-lg border border-zinc-600 bg-zinc-900/80 px-4 py-2 text-sm text-zinc-200 hover:border-zinc-500"
+      >
+        Gestão clássica
+      </Link>
+    </>
+  );
+
   return (
-    <div className="fc-erp-workspace">
-      <header className="border-b border-zinc-800 pb-6">
-        <p className="fc-erp-eyebrow">Módulo pessoas</p>
-        <div className="mt-2 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h1 className="fc-erp-h1">Equipa operacional</h1>
-            <p className="fc-erp-lead mt-3 max-w-2xl">
-              Motoristas, apontadores e administradores da empresa. Produtividade, vínculos com frota e equipamento,
-              documentação CNH e alertas operacionais integrados ao feed central.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Link
-              to="/empresa/alertas"
-              className="rounded-lg border border-amber-700/50 bg-amber-950/30 px-4 py-2 text-sm font-medium text-amber-100 hover:border-amber-500/60"
-            >
-              Alertas pessoas
-            </Link>
-            <Link
-              to="/dashboard/gestao?secao=motoristas"
-              className="rounded-lg border border-zinc-600 bg-zinc-900/80 px-4 py-2 text-sm text-zinc-200 hover:border-zinc-500"
-            >
-              Gestão clássica
-            </Link>
-          </div>
-        </div>
-      </header>
+    <BIDashboardShell
+      eyebrow="Painéis BI"
+      title="Pessoas"
+      lead="Motoristas, apontadores e administradores da empresa. Produtividade, vínculos com frota e equipamento,
+      documentação CNH e alertas operacionais integrados ao feed central."
+      headerAside={headerAside}
+    >
 
       {p.summaryError ? (
         <div className="mt-6">
@@ -64,32 +63,31 @@ export default function EmpresaPessoasPage() {
         </div>
       ) : (
         <section className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Indicadores de pessoas">
-          <article className="fc-card border-zinc-800/80 p-4 sm:p-5">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Motoristas / apontadores</p>
-            <p className="mt-2 text-2xl font-semibold tabular-nums text-zinc-50">
-              {p.fmtInt(p.summary?.motoristas)} <span className="text-zinc-500">/</span> {p.fmtInt(p.summary?.apontadores)}
-            </p>
-          </article>
-          <article className="fc-card border-zinc-800/80 p-4 sm:p-5">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Lançamentos (7 dias)</p>
-            <p className="mt-2 text-2xl font-semibold tabular-nums text-zinc-50">
-              {p.fmtInt(p.summary?.romaneios_7d)} <span className="text-zinc-500">rom.</span>
-            </p>
-            <p className="mt-1 text-xs text-zinc-500">Partes diárias: {p.fmtInt(p.summary?.parte_diaria_7d)}</p>
-          </article>
-          <article className="fc-card border-zinc-800/80 p-4 sm:p-5">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">CNH (janela 60 dias)</p>
-            <p className="mt-2 text-2xl font-semibold tabular-nums text-zinc-50">{p.fmtInt(p.summary?.cnh_janela_60d)}</p>
-            <p className="mt-1 text-xs text-zinc-500">Motoristas com vencimento próximo ou em atraso.</p>
-          </article>
-          <article className="fc-card border-zinc-800/80 p-4 sm:p-5">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Risco operacional</p>
-            <p className="mt-2 text-sm leading-relaxed text-zinc-300">
-              Sem romaneio (7d): <span className="font-semibold text-zinc-100">{p.fmtInt(p.summary?.motoristas_sem_romaneio_7d)}</span>
-              <br />
-              Baixa atividade: <span className="font-semibold text-zinc-100">{p.fmtInt(p.summary?.motoristas_baixa_atividade)}</span>
-            </p>
-          </article>
+          <BIKpiCard
+            label="Motoristas / apontadores"
+            value={`${p.fmtInt(p.summary?.motoristas)} / ${p.fmtInt(p.summary?.apontadores)}`}
+          />
+          <BIKpiCard
+            label="Lançamentos (7 dias)"
+            value={`${p.fmtInt(p.summary?.romaneios_7d)} rom.`}
+            hint={`Partes diárias: ${p.fmtInt(p.summary?.parte_diaria_7d)}`}
+          />
+          <BIKpiCard
+            label="CNH (janela 60 dias)"
+            value={p.fmtInt(p.summary?.cnh_janela_60d)}
+            hint="Motoristas com vencimento próximo ou em atraso."
+          />
+          <BIKpiCard
+            label="Risco operacional"
+            valueNode={
+              <span className="text-lg font-semibold leading-snug text-zinc-100">
+                Sem romaneio: {p.fmtInt(p.summary?.motoristas_sem_romaneio_7d)}
+                <br />
+                Baixa atividade: {p.fmtInt(p.summary?.motoristas_baixa_atividade)}
+              </span>
+            }
+            hint="Sincronizado com regras do feed de alertas."
+          />
         </section>
       )}
 
@@ -541,6 +539,6 @@ export default function EmpresaPessoasPage() {
           </div>
         </div>
       ) : null}
-    </div>
+    </BIDashboardShell>
   );
 }

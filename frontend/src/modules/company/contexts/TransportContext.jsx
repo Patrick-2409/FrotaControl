@@ -1,9 +1,12 @@
 /* eslint-disable react-refresh/only-export-components -- ficheiro agrupa Provider + hook de consumo do contexto */
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useEmpresaTransporte } from "../transport/hooks/useEmpresaTransporte";
 import { useEmpresaTransporteProdutividade } from "../transport/hooks/useEmpresaTransporteProdutividade";
+import { readSessionJson, writeSessionJson } from "../shared/sessionFilters";
 
 const TransportContext = createContext(null);
+
+const MATERIAL_TABS = new Set(["todos", "esteril", "rocha"]);
 
 /**
  * Contexto isolado do módulo Transporte (viagens, metas, produtividade).
@@ -12,7 +15,14 @@ const TransportContext = createContext(null);
 export function TransportProvider({ children }) {
   const operations = useEmpresaTransporte({ enabled: true });
   const metrics = useEmpresaTransporteProdutividade({ enabled: true });
-  const [materialTab, setMaterialTab] = useState("todos");
+  const savedTab = useMemo(() => readSessionJson("filters:transport:v1", null), []);
+  const [materialTab, setMaterialTab] = useState(() =>
+    MATERIAL_TABS.has(savedTab?.materialTab) ? savedTab.materialTab : "todos"
+  );
+
+  useEffect(() => {
+    writeSessionJson("filters:transport:v1", { materialTab });
+  }, [materialTab]);
 
   const value = useMemo(
     () => ({

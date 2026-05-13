@@ -1,6 +1,8 @@
 import { useCallback } from "react";
 import { Link } from "react-router-dom";
 import SkeletonRows from "../../../../components/SkeletonRows";
+import BIDashboardShell from "../../bi/components/BIDashboardShell";
+import BIChartCard from "../../bi/components/BIChartCard";
 import { FuelProvider } from "../../contexts/FuelContext";
 import { useFuelMetrics } from "../../hooks/useFuelMetrics";
 import EmpresaModuleErrorPanel from "../../shared/components/EmpresaModuleErrorPanel";
@@ -23,14 +25,12 @@ function FuelDashboardContent() {
   }, [fuel]);
 
   return (
-    <div className="fc-erp-workspace">
-      <header className="border-b border-zinc-800 pb-8">
-        <p className="fc-erp-eyebrow">Módulo combustível</p>
-        <h1 className="fc-erp-h1 mt-2">Consumo e custo</h1>
-        <p className="fc-erp-lead mt-3">
-          Litros, valores, médias, pizza por veículo e ranking. Estado e filtros isolados no contexto do módulo.
-        </p>
-      </header>
+    <BIDashboardShell
+      eyebrow="Painéis BI"
+      title="Combustível"
+      lead="Consumo e custo — litros, valores, médias e ranking. Filtros persistem por sessão (`filters:fuel`) e pedidos
+      usam debounce para reduzir carga no servidor."
+    >
 
       {fuel.temAlertasCombustivel && fuel.resumo ? (
         <div role="status" className="fc-erp-alert-panel fc-erp-alert-panel--amber space-y-2.5 p-4 text-sm text-zinc-200 sm:p-5">
@@ -123,7 +123,13 @@ function FuelDashboardContent() {
             <FuelMetricsCards resumo={fuel.resumo} mediaPorVeiculo={fuel.mediaPorVeiculo} />
 
             <div className="mt-10 grid min-w-0 gap-8 xl:grid-cols-2 xl:items-start">
-              <FuelCharts pie={fuel.pie} />
+              <BIChartCard
+                title="Consumo por veículo"
+                subtitle="Diagrama radial proporcional — renderização CSS, adequado a dispositivos móveis."
+                bodyClassName="min-h-[12rem]"
+              >
+                <FuelCharts pie={fuel.pie} compact />
+              </BIChartCard>
               <FuelVehicleTable rows={fuel.resumo.por_veiculo} />
             </div>
           </>
@@ -171,7 +177,7 @@ function FuelDashboardContent() {
           Visão operacional completa
         </Link>
       </div>
-    </div>
+    </BIDashboardShell>
   );
 }
 

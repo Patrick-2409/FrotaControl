@@ -1,6 +1,11 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import SkeletonRows from "../../../../components/SkeletonRows";
+import BIDashboardShell from "../../bi/components/BIDashboardShell";
+import BIChartCard from "../../bi/components/BIChartCard";
+import BIKpiCard from "../../bi/components/BIKpiCard";
+import BILineSeriesChart from "../../bi/components/BILineSeriesChart";
+import { growthPercent } from "../../bi/utils/chartMath";
 import { useEmpresaExecutiveStats } from "../hooks/useEmpresaExecutiveStats";
 
 const fmtInt = (n) => Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
@@ -11,21 +16,26 @@ export default function EmpresaExecutiveDashboardPage() {
   const { stats, loading } = useEmpresaExecutiveStats();
 
   const trend = useMemo(() => stats?.ultimos_7_dias || [], [stats]);
+  const trendSorted = useMemo(
+    () => [...trend].sort((a, b) => new Date(a.dia) - new Date(b.dia)),
+    [trend]
+  );
+  const sparkSeries = useMemo(() => trendSorted.map((d) => d.total || 0), [trendSorted]);
+
   const trendSummary = useMemo(() => {
-    if (!trend.length) {
+    if (!trendSorted.length) {
       return { delta: 0, direction: "neutral", peak: 0, avg: 0 };
     }
-    const sorted = [...trend].sort((a, b) => new Date(a.dia) - new Date(b.dia));
-    const last = sorted[sorted.length - 1]?.total || 0;
-    const prev = sorted[sorted.length - 2]?.total || 0;
+    const last = trendSorted[trendSorted.length - 1]?.total || 0;
+    const prev = trendSorted[trendSorted.length - 2]?.total || 0;
     const delta = last - prev;
     const direction = delta > 0 ? "up" : delta < 0 ? "down" : "neutral";
-    const peak = sorted.reduce((m, item) => Math.max(m, item.total || 0), 0);
+    const peak = trendSorted.reduce((m, item) => Math.max(m, item.total || 0), 0);
     const avg = Math.round(
-      sorted.reduce((acc, item) => acc + (item.total || 0), 0) / Math.max(1, sorted.length)
+      trendSorted.reduce((acc, item) => acc + (item.total || 0), 0) / Math.max(1, trendSorted.length)
     );
     return { delta, direction, peak, avg };
-  }, [trend]);
+  }, [trendSorted]);
 
   const trendLabel =
     trendSummary.direction === "up"
@@ -33,12 +43,6 @@ export default function EmpresaExecutiveDashboardPage() {
       : trendSummary.direction === "down"
         ? "Tendência negativa"
         : "Tendência estável";
-  const trendClass =
-    trendSummary.direction === "up"
-      ? "fc-kpi-trend-up"
-      : trendSummary.direction === "down"
-        ? "fc-kpi-trend-down"
-        : "fc-kpi-trend-neutral";
 
   const parteDiariaRegistros = useMemo(() => {
     const arr = stats?.por_tipo || [];
@@ -46,9 +50,26 @@ export default function EmpresaExecutiveDashboardPage() {
     return Number(hit?.total ?? 0);
   }, [stats]);
 
+  const metaSemanalSoft = Math.max(1, trendSummary.avg * 7);
+  const pctSemanal =
+    stats && trendSummary.avg > 0
+      ? Math.min(100, Math.round(((stats.total_semanal || 0) / metaSemanalSoft) * 100))
+      : null;
+  const pctHoje =
+    stats && trendSummary.avg > 0
+      ? Math.min(100, Math.round(((stats.total_hoje || 0) / Math.max(1, trendSummary.avg)) * 100))
+      : null;
+
+  const growthSemanal = growthPercent(stats?.total_semanal, metaSemanalSoft);
+
   if (loading) {
     return (
-      <div className="fc-erp-workspace">
+      <BIDashboardShell
+        eyebrow="Painéis BI"
+        title="Executivo"
+        lead="Consolidado multi-módulo. Cada domínio operacional mantém filtros e cache independentes."
+        showRoadmap={false}
+      >
         <div className="fc-erp-grid-kpi">
           {[1, 2, 3, 4].map((k) => (
             <div key={k} className="fc-card fc-erp-kpi-card border-zinc-800/90 p-5">
@@ -59,51 +80,68 @@ export default function EmpresaExecutiveDashboardPage() {
         <div className="fc-card border-zinc-800/90 p-6">
           <SkeletonRows rows={3} />
         </div>
-      </div>
+      </BIDashboardShell>
     );
   }
 
   if (!stats) {
-    return <p className="text-sm text-red-400/90">Não foi possível carregar o painel executivo.</p>;
+    return (
+      <BIDashboardShell
+        eyebrow="Painéis BI"
+        title="Executivo"
+        lead="Consolidado da operação."
+        showRoadmap={false}
+      >
+        <p className="text-sm text-red-400/90">Não foi possível carregar o painel executivo.</p>
+      </BIDashboardShell>
+    );
   }
 
   return (
-    <div className="fc-erp-workspace">
-      <header className="border-b border-zinc-800 pb-8">
-        <p className="fc-erp-eyebrow">Dashboard</p>
-        <h1 className="fc-erp-h1 mt-2">Visão consolidada</h1>
-        <p className="fc-erp-lead mt-3">
-          Indicadores sintéticos. Transporte e combustível detalhados têm módulos próprios com filtros isolados.
-        </p>
-      </header>
-
+    <BIDashboardShell
+      eyebrow="Painéis BI"
+      title="Executivo"
+      lead="Indicadores sintéticos com tendência e comparação à média móvel da série. Transporte, combustível e frota
+      mantêm painéis dedicados com filtros persistentes por módulo."
+    >
       <section aria-labelledby="exec-resumo">
         <h2 id="exec-resumo" className="sr-only">
           Resumo rápido
         </h2>
         <div className="fc-erp-grid-kpi">
-          <article className="fc-card fc-erp-kpi-card border-zinc-800/90 p-5">
-            <p className="fc-erp-eyebrow">Motoristas ativos</p>
-            <p className="mt-3 text-3xl font-semibold tabular-nums text-zinc-50">{fmtInt(stats.motoristas_ativos)}</p>
-            <p className="mt-2 text-xs leading-relaxed text-zinc-500">Com lançamentos na semana</p>
-          </article>
-          <article className="fc-card fc-erp-kpi-card border-zinc-800/90 p-5">
-            <p className="fc-erp-eyebrow">Veículos ativos</p>
-            <p className="mt-3 text-3xl font-semibold tabular-nums text-zinc-50">{fmtInt(stats.veiculos_ativos)}</p>
-            <p className="mt-2 text-xs leading-relaxed text-zinc-500">Frota da empresa</p>
-          </article>
-          <article className="fc-card fc-erp-kpi-card border-zinc-800/90 p-5">
-            <p className="fc-erp-eyebrow">Registros hoje</p>
-            <p className="mt-3 text-3xl font-semibold tabular-nums text-zinc-50">{fmtInt(stats.total_hoje)}</p>
-            <p className={`mt-2 text-xs font-medium ${trendClass}`}>
-              {trendLabel} · {Math.abs(trendSummary.delta)} vs. ontem · méd. {trendSummary.avg}/dia
-            </p>
-          </article>
-          <article className="fc-card fc-erp-kpi-card border-zinc-800/90 p-5">
-            <p className="fc-erp-eyebrow">Total 7 dias</p>
-            <p className="mt-3 text-3xl font-semibold tabular-nums text-zinc-50">{fmtInt(stats.total_semanal)}</p>
-            <p className="mt-2 text-xs leading-relaxed text-zinc-500">Pico diário: {trendSummary.peak}</p>
-          </article>
+          <BIKpiCard
+            label="Motoristas ativos"
+            value={fmtInt(stats.motoristas_ativos)}
+            hint="Com lançamentos na semana"
+            sparklineValues={sparkSeries}
+          />
+          <BIKpiCard
+            label="Veículos ativos"
+            value={fmtInt(stats.veiculos_ativos)}
+            hint="Frota da empresa"
+            sparklineValues={sparkSeries}
+          />
+          <BIKpiCard
+            label="Registros hoje"
+            value={fmtInt(stats.total_hoje)}
+            trendDirection={trendSummary.direction}
+            deltaLabel={`${trendLabel} · ${Math.abs(trendSummary.delta)} vs. ontem`}
+            comparisonLabel={`Média série: ${trendSummary.avg}/dia`}
+            targetPct={pctHoje}
+            sparklineValues={sparkSeries}
+          />
+          <BIKpiCard
+            label="Total 7 dias"
+            value={fmtInt(stats.total_semanal)}
+            comparisonLabel={`Pico diário: ${trendSummary.peak}`}
+            targetPct={pctSemanal}
+            growthLabel={
+              growthSemanal != null
+                ? `Variação vs. meta derivada da média: ${growthSemanal >= 0 ? "+" : ""}${growthSemanal.toFixed(1)}%`
+                : undefined
+            }
+            sparklineValues={sparkSeries}
+          />
         </div>
       </section>
 
@@ -115,7 +153,7 @@ export default function EmpresaExecutiveDashboardPage() {
           <div>
             <p className="fc-erp-eyebrow">Produção / porto</p>
             <p className="mt-4 text-sm leading-relaxed text-zinc-400">
-              Toneladas, estéril/rocha, metas e gráfico planejado x executado foram centralizados no módulo Transporte.
+              Toneladas, estéril/rocha, metas e gráfico planejado x executado no módulo Transporte.
             </p>
           </div>
           <Link
@@ -130,7 +168,7 @@ export default function EmpresaExecutiveDashboardPage() {
           <div>
             <p className="fc-erp-eyebrow">Combustível</p>
             <p className="mt-4 text-sm leading-relaxed text-zinc-400">
-              Litros, custos, pizza por veículo, médias e ranking estão no módulo Combustível, com filtros próprios.
+              Litros, custos, diagrama por veículo e ranking com filtros próprios e cache local.
             </p>
           </div>
           <Link
@@ -154,35 +192,29 @@ export default function EmpresaExecutiveDashboardPage() {
         <h2 id="exec-charts" className="sr-only">
           Gráficos resumidos
         </h2>
-        <article className="fc-card fc-erp-module-card border-zinc-800/90 p-6">
-          <p className="fc-erp-eyebrow">Ritmo · últimos 7 dias</p>
-          <div className="mt-5 space-y-2.5">
-            {trend.length === 0 ? (
-              <p className="text-sm text-zinc-500">Sem série para exibir.</p>
-            ) : (
-              trend.map((d) => (
-                <div key={d.dia} className="flex items-center gap-3">
-                  <span className="w-[4.5rem] shrink-0 text-xs tabular-nums text-zinc-500">
-                    {new Date(d.dia).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
-                  </span>
-                  <div className="h-2 flex-1 overflow-hidden rounded-sm bg-zinc-800">
-                    <div
-                      className="h-2 rounded-sm bg-gradient-to-r from-amber-700/90 to-amber-500/85"
-                      style={{ width: `${Math.max(3, Math.min(100, (d.total || 0) * 8))}%` }}
-                    />
-                  </div>
-                  <span className="w-8 shrink-0 text-right text-xs font-medium tabular-nums text-zinc-300">{d.total}</span>
-                </div>
-              ))
-            )}
-          </div>
-        </article>
+        <BIChartCard
+          title="Ritmo operacional"
+          subtitle="Série diária — escala normalizada, zoom por janela e leitura ao cursor."
+          legend={
+            <span className="inline-flex items-center gap-2">
+              <span className="h-2 w-6 rounded-sm bg-gradient-to-r from-amber-800 to-amber-400" aria-hidden />
+              Registros / dia
+            </span>
+          }
+          bodyClassName="min-h-[14rem]"
+        >
+          {trendSorted.length === 0 ? (
+            <p className="text-sm text-zinc-500">Sem série para exibir.</p>
+          ) : (
+            <BILineSeriesChart data={trendSorted} valueKey="total" labelKey="dia" yAxisLabel="Registros" height={220} />
+          )}
+        </BIChartCard>
 
         <article className="fc-card fc-erp-module-card flex flex-col justify-between border-zinc-800/90 p-6">
-          <p className="fc-erp-eyebrow">Meta e execução</p>
+          <p className="fc-erp-eyebrow">Metas e planejamento</p>
           <p className="mt-4 text-sm leading-relaxed text-zinc-400">
-            O gráfico de atingimento de metas e o planejamento semanal estão no módulo Transporte, com filtros e estado
-            próprios.
+            Atingimento de metas e planejado x executado estão no painel Transporte, com material (todos / estéril /
+            rocha) persistido por sessão.
           </p>
           <Link
             to="/empresa/transporte"
@@ -225,6 +257,14 @@ export default function EmpresaExecutiveDashboardPage() {
             <span className="text-sm font-semibold text-zinc-100">Combustível</span>
             <span className="text-xs leading-snug text-zinc-500">Litros, custos e ranking</span>
           </Link>
+          <Link to="/empresa/frota" className={shortcutClass}>
+            <span className="text-sm font-semibold text-zinc-100">Frota</span>
+            <span className="text-xs leading-snug text-zinc-500">Disponibilidade e documentação</span>
+          </Link>
+          <Link to="/empresa/pessoas" className={shortcutClass}>
+            <span className="text-sm font-semibold text-zinc-100">Pessoas</span>
+            <span className="text-xs leading-snug text-zinc-500">Produtividade e vínculos</span>
+          </Link>
           <Link to="/empresa/parte-diaria" className={shortcutClass}>
             <span className="text-sm font-semibold text-zinc-100">Parte diária</span>
             <span className="text-xs leading-snug text-zinc-500">Documentação operacional</span>
@@ -243,6 +283,6 @@ export default function EmpresaExecutiveDashboardPage() {
           </Link>
         </div>
       </section>
-    </div>
+    </BIDashboardShell>
   );
 }

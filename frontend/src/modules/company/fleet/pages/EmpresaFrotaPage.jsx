@@ -1,6 +1,9 @@
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import PaginationControls from "../../../../components/PaginationControls";
 import SkeletonRows from "../../../../components/SkeletonRows";
+import BIDashboardShell from "../../bi/components/BIDashboardShell";
+import BIKpiCard from "../../bi/components/BIKpiCard";
 import EmpresaModuleErrorPanel from "../../shared/components/EmpresaModuleErrorPanel";
 import { useEmpresaFleet } from "../hooks/useEmpresaFleet";
 
@@ -35,42 +38,48 @@ function statusLabel(s) {
 export default function EmpresaFrotaPage() {
   const fl = useEmpresaFleet();
 
+  const fleetSpark = useMemo(() => {
+    const s = fl.summary;
+    if (!s) return [];
+    const t = Number(s.total_veiculos) || 0;
+    const d = Number(s.disponiveis_operacao) || 0;
+    const m = Number(s.manutencao_fila_30d) || 0;
+    if (!t && !d) return [];
+    return [t, d, Math.max(0, d - m)];
+  }, [fl.summary]);
+
+  const headerAside = (
+    <>
+      <button
+        type="button"
+        onClick={fl.openCreate}
+        className="rounded-lg bg-amber-500/90 px-4 py-2 text-sm font-semibold text-zinc-950 shadow-sm hover:bg-amber-400"
+      >
+        Novo veículo
+      </button>
+      <button
+        type="button"
+        onClick={() => fl.downloadFleetCsv()}
+        className="rounded-lg border border-zinc-600 bg-zinc-900/80 px-4 py-2 text-sm font-medium text-zinc-100 hover:border-zinc-500"
+      >
+        Exportar CSV
+      </button>
+      <Link
+        to="/dashboard/gestao?secao=veiculos"
+        className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:border-zinc-500 hover:text-zinc-100"
+      >
+        Vista clássica
+      </Link>
+    </>
+  );
+
   return (
-    <div className="fc-erp-workspace">
-      <header className="border-b border-zinc-800 pb-6">
-        <p className="fc-erp-eyebrow">Módulo frota</p>
-        <div className="mt-2 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="fc-erp-h1">Painel operacional</h1>
-            <p className="fc-erp-lead mt-3 max-w-2xl">
-              Disponibilidade, documentação, manutenção e consumo médio. Cadastro alinhado à operação industrial e
-              logística.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={fl.openCreate}
-              className="rounded-lg bg-amber-500/90 px-4 py-2 text-sm font-semibold text-zinc-950 shadow-sm hover:bg-amber-400"
-            >
-              Novo veículo
-            </button>
-            <button
-              type="button"
-              onClick={() => fl.downloadFleetCsv()}
-              className="rounded-lg border border-zinc-600 bg-zinc-900/80 px-4 py-2 text-sm font-medium text-zinc-100 hover:border-zinc-500"
-            >
-              Exportar CSV
-            </button>
-            <Link
-              to="/dashboard/gestao?secao=veiculos"
-              className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:border-zinc-500 hover:text-zinc-100"
-            >
-              Vista clássica
-            </Link>
-          </div>
-        </div>
-      </header>
+    <BIDashboardShell
+      eyebrow="Painéis BI"
+      title="Frota"
+      lead="Disponibilidade, documentação, manutenção e consumo médio. Cadastro alinhado à operação industrial e logística."
+      headerAside={headerAside}
+    >
 
       {fl.summaryError ? (
         <div className="mt-6">
@@ -86,37 +95,33 @@ export default function EmpresaFrotaPage() {
         </div>
       ) : (
         <section className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Indicadores de frota">
-          <article className="fc-card border-zinc-800/80 p-4 sm:p-5">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Total / disponíveis</p>
-            <p className="mt-2 text-2xl font-semibold tabular-nums text-zinc-50">
-              {fl.fmtInt(fl.summary?.total_veiculos)} <span className="text-zinc-500">/</span>{" "}
-              {fl.fmtInt(fl.summary?.disponiveis_operacao)}
-            </p>
-            <p className="mt-1 text-xs text-zinc-500">Disponíveis: status ativo ou em operação.</p>
-          </article>
-          <article className="fc-card border-zinc-800/80 p-4 sm:p-5">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Documentação (45 dias)</p>
-            <p className="mt-2 text-2xl font-semibold tabular-nums text-zinc-50">
-              {fl.fmtInt(fl.summary?.documentacao_janela_45d)}
-            </p>
-            <p className="mt-1 text-xs text-zinc-500">Revisão, licenciamento, seguro ou inspeção na janela.</p>
-          </article>
-          <article className="fc-card border-zinc-800/80 p-4 sm:p-5">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Manutenção (fila)</p>
-            <p className="mt-2 text-2xl font-semibold tabular-nums text-zinc-50">
-              {fl.fmtInt(fl.summary?.manutencao_fila_30d)}
-            </p>
-            <p className="mt-1 text-xs text-zinc-500">Status manutenção ou agendamento em 30 dias.</p>
-          </article>
-          <article className="fc-card border-zinc-800/80 p-4 sm:p-5">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Consumo médio (90 dias)</p>
-            <p className="mt-2 text-2xl font-semibold tabular-nums text-zinc-50">
-              {fl.summary?.consumo_medio_litros_100km != null
+          <BIKpiCard
+            label="Total / disponíveis"
+            value={`${fl.fmtInt(fl.summary?.total_veiculos)} / ${fl.fmtInt(fl.summary?.disponiveis_operacao)}`}
+            hint="Disponíveis: status ativo ou em operação."
+            sparklineValues={fleetSpark}
+          />
+          <BIKpiCard
+            label="Documentação (45 dias)"
+            value={fl.fmtInt(fl.summary?.documentacao_janela_45d)}
+            hint="Revisão, licenciamento, seguro ou inspeção na janela."
+            sparklineValues={fleetSpark}
+          />
+          <BIKpiCard
+            label="Manutenção (fila)"
+            value={fl.fmtInt(fl.summary?.manutencao_fila_30d)}
+            hint="Status manutenção ou agendamento em 30 dias."
+            sparklineValues={fleetSpark}
+          />
+          <BIKpiCard
+            label="Consumo médio (90 dias)"
+            value={
+              fl.summary?.consumo_medio_litros_100km != null
                 ? `${fl.summary.consumo_medio_litros_100km} L/100km`
-                : "—"}
-            </p>
-            <p className="mt-1 text-xs text-zinc-500">Baseado em abastecimentos com hodômetro.</p>
-          </article>
+                : "—"
+            }
+            hint="Baseado em abastecimentos com hodômetro."
+          />
         </section>
       )}
 
@@ -594,6 +599,6 @@ export default function EmpresaFrotaPage() {
           </div>
         </div>
       ) : null}
-    </div>
+    </BIDashboardShell>
   );
 }

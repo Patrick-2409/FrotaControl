@@ -750,3 +750,72 @@ textarea:focus-visible,
     color: #f8fafc;
   }
 }
+
+/* —— Painéis BI (corporativo / industrial) —— */
+.fc-theme-empresa .fc-bi-dashboard-root {
+  gap: clamp(1.5rem, 2.8vw, 2.25rem);
+}
+
+.fc-bi-module-switcher {
+  border-radius: 0.5rem;
+  border: 1px solid rgba(39, 39, 42, 0.85);
+  background: linear-gradient(180deg, rgba(18, 18, 21, 0.92) 0%, rgba(9, 9, 11, 0.96) 100%);
+  padding: 0.25rem;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset;
+}
+
+.fc-bi-tab {
+  color: #a1a1aa;
+  border: 1px solid transparent;
+}
+
+.fc-bi-tab--idle:hover {
+  color: #e4e4e7;
+  background: rgba(39, 39, 42, 0.55);
+}
+
+.fc-bi-tab--active {
+  color: #fafafa;
+  border-color: rgba(212, 175, 55, 0.35);
+  background: linear-gradient(180deg, rgba(66, 52, 18, 0.35) 0%, rgba(24, 24, 27, 0.95) 100%);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+.fc-bi-roadmap summary:hover {
+  color: #d4d4d8;
+}
+
+.fc-bi-roadmap[open] {
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+
+.fc-bi-chart-card {
+  overflow: hidden;
+}
+
+.fc-bi-line-chart__svg {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+}
+
+.fc-bi-sparkline--empty {
+  width: 7.5rem;
+  border-radius: 0.35rem;
+  background: linear-gradient(90deg, rgba(39, 39, 42, 0.35), rgba(24, 24, 27, 0.2));
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (max-width: 639px) {
+  .fc-bi-dashboard-header .fc-erp-h1 {
+    font-size: 1.35rem;
+  }
+}

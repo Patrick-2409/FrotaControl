@@ -10,6 +10,7 @@
     "dev": "vite",
     "build": "vite build",
     "validate": "npm run build && eslint .",
+    "test": "node --test test/bi-chart-math.test.mjs",
     "start": "serve -s dist -l tcp://0.0.0.0:${PORT:-3000}",
     "lint": "eslint .",
     "preview": "vite preview",

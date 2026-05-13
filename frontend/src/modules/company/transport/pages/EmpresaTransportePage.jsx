@@ -1,5 +1,10 @@
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import SkeletonRows from "../../../../components/SkeletonRows";
+import BIDashboardShell from "../../bi/components/BIDashboardShell";
+import BIChartCard from "../../bi/components/BIChartCard";
+import BIKpiCard from "../../bi/components/BIKpiCard";
+import BILineSeriesChart from "../../bi/components/BILineSeriesChart";
 import { TransportProvider } from "../../contexts/TransportContext";
 import { useTransportMetrics } from "../../hooks/useTransportMetrics";
 import EmpresaModuleErrorPanel from "../../shared/components/EmpresaModuleErrorPanel";
@@ -12,12 +17,22 @@ const fmtPct = (n) =>
 
 function EmpresaTransportePageContent() {
   const { operations: tr, metrics: prod, materialTab, setMaterialTab } = useTransportMetrics();
+  const trendSorted = useMemo(
+    () => [...(prod.trend || [])].sort((a, b) => new Date(a.dia) - new Date(b.dia)),
+    [prod.trend]
+  );
+  const sparkSeries = useMemo(() => trendSorted.map((d) => d.total || 0), [trendSorted]);
 
   const pageLoading = prod.loading && !prod.stats;
 
   if (pageLoading) {
     return (
-      <div className="fc-erp-workspace">
+      <BIDashboardShell
+        eyebrow="Painéis BI"
+        title="Transporte"
+        lead="Carregando indicadores e operação de porto."
+        showRoadmap={false}
+      >
         <div className="grid gap-4 md:grid-cols-3">
           <div className="fc-card p-5">
             <SkeletonRows rows={2} />
@@ -32,45 +47,53 @@ function EmpresaTransportePageContent() {
         <div className="fc-card p-5">
           <SkeletonRows rows={4} />
         </div>
-      </div>
+      </BIDashboardShell>
     );
   }
 
   if (!prod.loading && !prod.stats && prod.statsError) {
     return (
-      <div className="fc-erp-workspace">
+      <BIDashboardShell
+        eyebrow="Painéis BI"
+        title="Transporte"
+        lead="Porto e produção."
+        showRoadmap={false}
+      >
         <EmpresaModuleErrorPanel
           title="Indicadores de transporte indisponíveis"
           description={prod.statsError}
           onRetry={prod.refetchStats}
         />
-      </div>
+      </BIDashboardShell>
     );
   }
 
   if (!prod.stats) {
     return (
-      <div className="fc-erp-workspace">
+      <BIDashboardShell
+        eyebrow="Painéis BI"
+        title="Transporte"
+        lead="Porto e produção."
+        showRoadmap={false}
+      >
         <EmpresaModuleErrorPanel
           title="Módulo de transporte"
           description="Não foi possível carregar os indicadores de produtividade. Verifique a sessão e a ligação à rede."
           onRetry={prod.refetchStats}
         />
-      </div>
+      </BIDashboardShell>
     );
   }
 
-  const { stats, trend, trendSummary, trendLabel, trendClass } = prod;
+  const { stats, trendSummary, trendLabel } = prod;
 
   return (
-    <div className="fc-erp-workspace">
-      <header className="border-b border-zinc-800 pb-6">
-        <p className="fc-erp-eyebrow">Módulo transporte</p>
-        <h1 className="fc-erp-h1 mt-2">Porto e produção</h1>
-        <p className="fc-erp-lead mt-3">
-          Toneladas, metas, planejado x executado e produtividade. Filtros e estado são exclusivos desta rota.
-        </p>
-      </header>
+    <BIDashboardShell
+      eyebrow="Painéis BI"
+      title="Transporte"
+      lead="Porto e produção — toneladas, metas, planejado x executado. Filtros e estado são exclusivos desta rota; o
+      separador de material (todos / estéril / rocha) persiste na sessão do browser."
+    >
 
       {tr.temAlertasTransporte ? (
         <div role="status" className="fc-erp-alert-panel fc-erp-alert-panel--amber space-y-3 p-4 text-sm text-zinc-100 sm:p-5">
@@ -105,37 +128,39 @@ function EmpresaTransportePageContent() {
           Produtividade e ritmo
         </h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-5">
-          <article className="fc-card border-zinc-800/90 p-5">
-            <p className="fc-erp-eyebrow">Motoristas ativos</p>
-            <p className="mt-3 text-3xl font-bold tabular-nums text-zinc-100">{stats.motoristas_ativos || 0}</p>
-            <p className="mt-2 text-sm leading-relaxed text-zinc-400">Motoristas com lançamentos na semana.</p>
-            <p className={`mt-3 text-xs font-semibold ${trendClass}`}>
-              {trendLabel} — ritmo operacional semanal
-            </p>
-          </article>
-
-          <article className="fc-card border-zinc-800/90 p-5">
-            <p className="fc-erp-eyebrow">Veículos ativos</p>
-            <p className="mt-3 text-3xl font-bold tabular-nums text-zinc-100">{stats.veiculos_ativos || 0}</p>
-            <p className="mt-2 text-sm leading-relaxed text-zinc-400">Veículos cadastrados na frota da empresa.</p>
-            <p className="mt-3 text-xs font-semibold text-zinc-500">Pico em 7 dias: {trendSummary.peak} registros</p>
-          </article>
-
-          <article className="fc-card border-zinc-800/90 p-5 sm:col-span-2 lg:col-span-1">
-            <p className="fc-erp-eyebrow">Registros hoje</p>
-            <p className="mt-3 text-3xl font-bold tabular-nums text-zinc-100">{stats.total_hoje}</p>
-            <p className="mt-2 text-sm leading-relaxed text-zinc-400">Registros operacionais lançados hoje.</p>
-            <p className={`mt-3 text-xs font-semibold ${trendClass}`}>
-              {trendLabel} · {Math.abs(trendSummary.delta)} vs. ontem · média diária: {trendSummary.avg}
-            </p>
-          </article>
+          <BIKpiCard
+            label="Motoristas ativos"
+            value={fmtInt(stats.motoristas_ativos || 0)}
+            hint="Motoristas com lançamentos na semana."
+            trendDirection={trendSummary.direction}
+            deltaLabel={`${trendLabel} — ritmo semanal`}
+            sparklineValues={sparkSeries}
+          />
+          <BIKpiCard
+            label="Veículos ativos"
+            value={fmtInt(stats.veiculos_ativos || 0)}
+            hint="Veículos cadastrados na frota da empresa."
+            comparisonLabel={`Pico em 7 dias: ${trendSummary.peak} registros`}
+            sparklineValues={sparkSeries}
+          />
+          <BIKpiCard
+            label="Registros hoje"
+            value={fmtInt(stats.total_hoje || 0)}
+            hint="Registros operacionais lançados hoje."
+            trendDirection={trendSummary.direction}
+            deltaLabel={`${trendLabel} · ${Math.abs(trendSummary.delta)} vs. ontem`}
+            comparisonLabel={`Média diária (série): ${trendSummary.avg}`}
+            sparklineValues={sparkSeries}
+            className="sm:col-span-2 lg:col-span-1"
+          />
         </div>
 
-        <article className="fc-card border-zinc-800/90 p-5">
-          <p className="fc-erp-eyebrow">Total semanal</p>
-          <p className="mt-3 text-3xl font-bold tabular-nums text-zinc-100">{stats.total_semanal || 0}</p>
-          <p className="mt-2 text-sm leading-relaxed text-zinc-400">Total de lançamentos nos últimos 7 dias.</p>
-        </article>
+        <BIKpiCard
+          label="Total semanal"
+          value={fmtInt(stats.total_semanal || 0)}
+          hint="Total de lançamentos nos últimos 7 dias."
+          sparklineValues={sparkSeries}
+        />
       </section>
 
       <section className="fc-erp-panel space-y-6 p-6 lg:p-8" aria-labelledby="transporte-porto-title">
@@ -453,26 +478,24 @@ function EmpresaTransportePageContent() {
         </div>
       </div>
 
-      <div className="fc-card border-zinc-800/90 p-5 lg:p-6">
-        <h3 className="text-base font-semibold text-zinc-100">Últimos 7 dias</h3>
-        <p className="mt-2 text-xs leading-relaxed text-zinc-500">Volume diário de lançamentos.</p>
-        <div className="mt-4 space-y-2.5">
-          {trend.map((d) => (
-            <div key={d.dia} className="flex items-center gap-3">
-              <span className="w-24 shrink-0 text-xs tabular-nums text-zinc-500">
-                {new Date(d.dia).toLocaleDateString("pt-BR")}
-              </span>
-              <div className="h-3 min-w-0 flex-1 rounded-sm bg-zinc-800">
-                <div
-                  className="h-3 rounded-sm bg-amber-600/85"
-                  style={{ width: `${Math.max(4, Math.min(100, d.total * 10))}%` }}
-                />
-              </div>
-              <span className="w-8 shrink-0 text-right text-xs tabular-nums text-zinc-400">{d.total}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+      <BIChartCard
+        title="Últimos 7 dias"
+        subtitle="Volume diário de lançamentos — zoom por janela e leitura ao cursor."
+        legend={
+          <span className="inline-flex items-center gap-2">
+            <span className="h-2 w-6 rounded-sm bg-amber-600/90" aria-hidden />
+            Registros / dia
+          </span>
+        }
+        className="mt-2"
+        bodyClassName="min-h-[12rem]"
+      >
+        {trendSorted.length === 0 ? (
+          <p className="text-sm text-zinc-500">Sem série para exibir.</p>
+        ) : (
+          <BILineSeriesChart data={trendSorted} valueKey="total" labelKey="dia" yAxisLabel="Registros" height={200} />
+        )}
+      </BIChartCard>
 
       <div className="flex flex-wrap gap-3">
         <Link
@@ -494,7 +517,7 @@ function EmpresaTransportePageContent() {
           Relatórios
         </Link>
       </div>
-    </div>
+    </BIDashboardShell>
   );
 }
 
