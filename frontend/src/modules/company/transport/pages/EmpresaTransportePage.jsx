@@ -505,12 +505,6 @@ function EmpresaTransportePageContent() {
           Painel executivo
         </Link>
         <Link
-          to="/dashboard"
-          className="fc-btn inline-flex rounded-md border border-amber-500/40 bg-zinc-800/80 px-4 py-3 text-center font-semibold text-zinc-100 hover:border-amber-500/55"
-        >
-          Visão operacional completa
-        </Link>
-        <Link
           to="/empresa/relatorios"
           className="fc-btn inline-flex rounded-md border border-zinc-600 px-4 py-3 text-center font-semibold text-zinc-200"
         >

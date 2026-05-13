@@ -12,15 +12,11 @@ export default function EmpresaModulePlaceholder({ title, description }) {
       </div>
       <div className="rounded-2xl border border-blue-500/25 bg-slate-900/60 p-6">
         <p className="text-sm leading-relaxed text-slate-400">
-          Os fluxos atuais permanecem intactos na{" "}
-          <Link to="/dashboard" className="font-semibold text-blue-300 underline-offset-2 hover:underline">
-            visão geral em /dashboard
-          </Link>
-          . O dashboard executivo modular está em{" "}
+          O painel principal da empresa está em{" "}
           <Link to="/empresa/dashboard" className="font-semibold text-blue-300 underline-offset-2 hover:underline">
-            /empresa/dashboard
+            Dashboard
           </Link>
-          ; os widgets serão movidos para cá por etapas, sem remover funcionalidade.
+          ; os widgets serão consolidados aqui por etapas, sem remover funcionalidade.
         </p>
       </div>
     </div>

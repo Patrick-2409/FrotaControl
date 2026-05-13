@@ -36,7 +36,7 @@ export default function AdminLoginPage() {
         setError("Acesso restrito a administrador de empresa.");
         return;
       }
-      navigate("/dashboard");
+      navigate("/empresa/dashboard");
     } catch (err) {
       logout();
       const status = err?.response?.status;

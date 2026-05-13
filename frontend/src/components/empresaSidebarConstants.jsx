@@ -129,7 +129,6 @@ export const EMPRESA_SIDEBAR_SECTIONS = [
     title: null,
     items: [
       { to: "/empresa/dashboard", label: "Dashboard", icon: "overview", exact: true },
-      { to: "/dashboard", label: "Resumo operacional", icon: "overview", legacyRoot: true },
       { to: "/empresa/alertas", label: "Alertas", icon: "bell", exact: false },
     ],
   },
@@ -174,9 +173,6 @@ export function empresaSidebarTabIsActive(pathname, search, tab) {
   const sp = new URLSearchParams(search && search.startsWith("?") ? search.slice(1) : search || "");
   if (tab.match === "gestao-root") {
     return pathname === "/dashboard/gestao" && !sp.get("secao");
-  }
-  if (tab.legacyRoot) {
-    return pathname === "/dashboard";
   }
   const to = tab.to;
   if (to.includes("?")) {

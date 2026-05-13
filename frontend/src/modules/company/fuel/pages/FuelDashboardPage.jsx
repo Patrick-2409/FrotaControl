@@ -170,12 +170,6 @@ function FuelDashboardContent() {
         >
           Transporte
         </Link>
-        <Link
-          to="/dashboard"
-          className="fc-btn fc-btn-empresa-accent inline-flex rounded-md px-4 py-3 text-sm font-semibold"
-        >
-          Visão operacional completa
-        </Link>
       </div>
     </BIDashboardShell>
   );
