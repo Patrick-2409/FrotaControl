@@ -34,6 +34,14 @@ export default function ParteDiariaDashboardPage() {
     clearFilters();
   }, [clearFilters]);
 
+  const onPagePrev = useCallback(() => {
+    setPage((p) => Math.max(1, p - 1));
+  }, [setPage]);
+
+  const onPageNext = useCallback(() => {
+    setPage((p) => Math.min(totalPages, p + 1));
+  }, [setPage, totalPages]);
+
   return (
     <div className="space-y-8">
       <header className="border-b border-slate-800/90 pb-6">
@@ -98,8 +106,8 @@ export default function ParteDiariaDashboardPage() {
                 <PaginationControls
                   page={page}
                   totalPages={totalPages}
-                  onPrev={() => setPage((p) => Math.max(1, p - 1))}
-                  onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  onPrev={onPagePrev}
+                  onNext={onPageNext}
                 />
               </div>
             )}

@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { Link } from "react-router-dom";
 import SkeletonRows from "../../../../components/SkeletonRows";
 import { useEmpresaFuelDashboard } from "../hooks/useEmpresaFuelDashboard";
@@ -9,6 +10,10 @@ import FuelVehicleTable from "../components/FuelVehicleTable";
 
 export default function FuelDashboardPage() {
   const fuel = useEmpresaFuelDashboard();
+
+  const verPeriodoMes = useCallback(() => {
+    fuel.setPeriodo("mes");
+  }, [fuel]);
 
   return (
     <div className="space-y-8">
@@ -91,7 +96,7 @@ export default function FuelDashboardPage() {
                 <button
                   type="button"
                   className="fc-btn mt-4 inline-flex rounded-lg border border-emerald-500/50 bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/25"
-                  onClick={() => fuel.setPeriodo("mes")}
+                  onClick={verPeriodoMes}
                 >
                   Ver mês
                 </button>
@@ -122,7 +127,7 @@ export default function FuelDashboardPage() {
             <button
               type="button"
               className="fc-btn mt-4 inline-flex rounded-lg border border-emerald-500/50 bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/25"
-              onClick={() => fuel.setPeriodo("mes")}
+              onClick={verPeriodoMes}
             >
               Ver mês
             </button>

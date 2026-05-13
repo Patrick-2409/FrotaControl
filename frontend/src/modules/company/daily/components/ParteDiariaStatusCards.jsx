@@ -1,9 +1,11 @@
+import { memo } from "react";
+
 const fmtInt = (n) => Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 
 const cardBase =
   "rounded-xl border bg-slate-950/60 p-4 shadow-inner ring-1 ring-inset ring-white/5";
 
-export default function ParteDiariaStatusCards({ total, rowsOnPage, aggregates }) {
+function ParteDiariaStatusCards({ total, rowsOnPage, aggregates }) {
   const { statusOperacional, ultimaAtualizacao, comClima, comProducao } = aggregates;
 
   const statusLabel =
@@ -67,3 +69,5 @@ export default function ParteDiariaStatusCards({ total, rowsOnPage, aggregates }
     </section>
   );
 }
+
+export default memo(ParteDiariaStatusCards);

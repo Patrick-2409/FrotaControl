@@ -1,6 +1,7 @@
+import { memo } from "react";
 import { fmtBRL, fmtLitros } from "../services/fuelFormatters";
 
-export default function FuelMetricsCards({ resumo, mediaPorVeiculo }) {
+function FuelMetricsCards({ resumo, mediaPorVeiculo }) {
   if (!resumo) return null;
 
   return (
@@ -32,3 +33,5 @@ export default function FuelMetricsCards({ resumo, mediaPorVeiculo }) {
     </div>
   );
 }
+
+export default memo(FuelMetricsCards);

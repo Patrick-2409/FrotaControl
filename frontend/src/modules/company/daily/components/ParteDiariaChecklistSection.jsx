@@ -1,6 +1,8 @@
+import { memo } from "react";
+
 const fmtInt = (n) => Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 
-export default function ParteDiariaChecklistSection({ aggregates }) {
+function ParteDiariaChecklistSection({ aggregates }) {
   const {
     checklistRegistrosOk,
     checklistRegistrosPendencia,
@@ -40,3 +42,5 @@ export default function ParteDiariaChecklistSection({ aggregates }) {
     </section>
   );
 }
+
+export default memo(ParteDiariaChecklistSection);

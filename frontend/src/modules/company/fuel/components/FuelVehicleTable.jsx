@@ -1,6 +1,7 @@
+import { memo } from "react";
 import { fmtBRL, fmtLitros, veiculoCombustivelLabel } from "../services/fuelFormatters";
 
-export default function FuelVehicleTable({ rows }) {
+function FuelVehicleTable({ rows }) {
   return (
     <div className="min-w-0">
       <h3 className="text-sm font-semibold text-white">Ranking por veículo</h3>
@@ -44,3 +45,5 @@ export default function FuelVehicleTable({ rows }) {
     </div>
   );
 }
+
+export default memo(FuelVehicleTable);

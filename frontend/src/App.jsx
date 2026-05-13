@@ -8,12 +8,13 @@ import RouteTransition from "./components/RouteTransition";
 import ToastHost from "./components/ToastHost";
 import { countPending, syncPending } from "./services/syncService";
 import { generateId } from "./utils/id";
-import HomePage from "./pages/HomePage";
-import RomaneioPage from "./pages/RomaneioPage";
-import CombustivelPage from "./pages/CombustivelPage";
-import ParteDiariaPage from "./pages/ParteDiariaPage";
-import HistoricoPage from "./pages/HistoricoPage";
-import ProfilePage from "./pages/ProfilePage";
+
+const HomePage = lazy(() => import("./pages/HomePage"));
+const RomaneioPage = lazy(() => import("./pages/RomaneioPage"));
+const CombustivelPage = lazy(() => import("./pages/CombustivelPage"));
+const ParteDiariaPage = lazy(() => import("./pages/ParteDiariaPage"));
+const HistoricoPage = lazy(() => import("./pages/HistoricoPage"));
+const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 const LoginPage = lazy(() => import("./pages/LoginPage"));

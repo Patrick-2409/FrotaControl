@@ -1,6 +1,7 @@
+import { memo } from "react";
 import { formatOperationalDateTime } from "../services/parteDiariaFormatters";
 
-export default function ParteDiariaOcorrenciasSection({ ocorrenciasPreview, totalComTexto }) {
+function ParteDiariaOcorrenciasSection({ ocorrenciasPreview, totalComTexto }) {
   return (
     <section aria-labelledby="pd-ocorrencias-title" className="fc-card border-rose-500/25 p-5 ring-1 ring-rose-500/15">
       <h2 id="pd-ocorrencias-title" className="text-lg font-semibold text-white">
@@ -38,3 +39,5 @@ export default function ParteDiariaOcorrenciasSection({ ocorrenciasPreview, tota
     </section>
   );
 }
+
+export default memo(ParteDiariaOcorrenciasSection);

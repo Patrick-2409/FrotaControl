@@ -1,6 +1,7 @@
+import { memo } from "react";
 import { formatOperationalDateTime, fmtHorimetroPair } from "../services/parteDiariaFormatters";
 
-export default function ParteDiariaRecordsTable({ rows }) {
+function ParteDiariaRecordsTable({ rows }) {
   if (!rows.length) return null;
 
   return (
@@ -46,3 +47,5 @@ export default function ParteDiariaRecordsTable({ rows }) {
     </section>
   );
 }
+
+export default memo(ParteDiariaRecordsTable);

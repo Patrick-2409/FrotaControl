@@ -145,22 +145,39 @@ export function useEmpresaFuelDashboard() {
     );
   }, [loading, resumo]);
 
-  return {
-    periodo,
-    setPeriodo,
-    filtroVeiculoId,
-    setFiltroVeiculoId,
-    filtroMotoristaId,
-    setFiltroMotoristaId,
-    veiculosOpt,
-    motoristasOpt,
-    resumo,
-    loading,
-    totalGeralAno,
-    clearFiltrosVeiculoMotorista,
-    mediaPorVeiculo,
-    pie,
-    semAbastecimentosNoPeriodo,
-    temAlertasCombustivel,
-  };
+  return useMemo(
+    () => ({
+      periodo,
+      setPeriodo,
+      filtroVeiculoId,
+      setFiltroVeiculoId,
+      filtroMotoristaId,
+      setFiltroMotoristaId,
+      veiculosOpt,
+      motoristasOpt,
+      resumo,
+      loading,
+      totalGeralAno,
+      clearFiltrosVeiculoMotorista,
+      mediaPorVeiculo,
+      pie,
+      semAbastecimentosNoPeriodo,
+      temAlertasCombustivel,
+    }),
+    [
+      periodo,
+      filtroVeiculoId,
+      filtroMotoristaId,
+      veiculosOpt,
+      motoristasOpt,
+      resumo,
+      loading,
+      totalGeralAno,
+      clearFiltrosVeiculoMotorista,
+      mediaPorVeiculo,
+      pie,
+      semAbastecimentosNoPeriodo,
+      temAlertasCombustivel,
+    ]
+  );
 }

@@ -1,7 +1,9 @@
+import { memo } from "react";
+
 const mini =
   "rounded-xl border border-indigo-500/25 bg-gradient-to-b from-indigo-950/30 to-slate-950/80 p-4 ring-1 ring-indigo-500/10";
 
-export default function ParteDiariaHorimetroSection({ aggregates }) {
+function ParteDiariaHorimetroSection({ aggregates }) {
   const { fmtMediaHoras, fmtMaxHoras, fmtMediaDelta, horimetroDeltaCount } = aggregates;
 
   return (
@@ -34,3 +36,5 @@ export default function ParteDiariaHorimetroSection({ aggregates }) {
     </section>
   );
 }
+
+export default memo(ParteDiariaHorimetroSection);

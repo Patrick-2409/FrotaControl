@@ -1,7 +1,9 @@
+import { memo } from "react";
+
 const selectClass =
   "mt-1 w-full rounded-lg border border-slate-600 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/40";
 
-export default function FuelFilters({
+function FuelFilters({
   periodo,
   onPeriodoChange,
   filtroVeiculoId,
@@ -86,3 +88,5 @@ export default function FuelFilters({
     </div>
   );
 }
+
+export default memo(FuelFilters);

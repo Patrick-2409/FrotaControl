@@ -1,6 +1,7 @@
+import { memo } from "react";
 import { fmtLitros, fmtPct } from "../services/fuelFormatters";
 
-export default function FuelCharts({ pie }) {
+function FuelCharts({ pie }) {
   return (
     <div className="min-w-0">
       <h3 className="text-sm font-semibold text-white">Consumo por veículo</h3>
@@ -36,3 +37,5 @@ export default function FuelCharts({ pie }) {
     </div>
   );
 }
+
+export default memo(FuelCharts);
