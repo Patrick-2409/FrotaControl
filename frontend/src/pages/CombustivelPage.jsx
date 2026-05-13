@@ -156,13 +156,23 @@ export default function CombustivelPage({ onSaved }) {
       return;
     }
     const litrosNum = parseDecimalInput(form.litros);
-    const valorNum = parseDecimalInput(form.valor_total);
-    if (!Number.isFinite(litrosNum) || litrosNum <= 0) {
-      emitToast("Informe a quantidade em litros (número maior que zero). Use ponto ou vírgula para decimais.", "warning");
+    const valorTotalRaw = form.valor_total;
+    if (
+      valorTotalRaw === "" ||
+      valorTotalRaw === undefined ||
+      valorTotalRaw === null ||
+      String(valorTotalRaw).trim() === ""
+    ) {
+      emitToast("Informe o valor total do abastecimento", "warning");
       return;
     }
+    const valorNum = parseDecimalInput(form.valor_total);
     if (!Number.isFinite(valorNum) || valorNum <= 0) {
-      emitToast("Informe o valor total em reais (número maior que zero). Use ponto ou vírgula para decimais.", "warning");
+      emitToast("Informe o valor total do abastecimento", "warning");
+      return;
+    }
+    if (!Number.isFinite(litrosNum) || litrosNum <= 0) {
+      emitToast("Informe a quantidade em litros (número maior que zero). Use ponto ou vírgula para decimais.", "warning");
       return;
     }
     setLoading(true);
@@ -207,12 +217,14 @@ export default function CombustivelPage({ onSaved }) {
         veiculo_id: Number(form.veiculo_id),
         tipo_combustivel: tipoCombustivel,
         litros: litrosNum,
-        valor_total: valorNum,
+        valor_total: Number(valorNum),
         veiculo_nome: selectedVehicle?.nome || user?.veiculo_nome || "",
         placa: selectedVehicle?.placa || user?.placa || "",
         ...(Number.isFinite(horimetroNum) ? { horimetro: horimetroNum } : {}),
         ...(Number.isFinite(hodometroNum) ? { hodometro: hodometroNum } : {}),
       };
+
+      console.log(payload);
 
       const result = await saveWithOffline("combustiveis", payload);
       if (result.status === "error") {
@@ -371,6 +383,8 @@ export default function CombustivelPage({ onSaved }) {
         <FormField label="Valor total (R$)">
           <input
             type="number"
+            name="valor_total"
+            required
             min="0"
             step="0.01"
             inputMode="decimal"
