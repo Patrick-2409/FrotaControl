@@ -447,7 +447,7 @@ const renderParteDiariaSheet = (row, companyName, logoUrl) => {
     .join("");
 
   return `
-    <section class="sheet">
+    <section class="sheet sheet-parte-diaria">
       <div class="header-row">
         <div class="logo-box"><img src="${escapeHtml(logoUrl)}" alt="Logótipo" style="height:60px;"/></div>
         <div class="title-bar-wrap">
@@ -484,15 +484,15 @@ const renderParteDiariaSheet = (row, companyName, logoUrl) => {
       </table>
 
       <h4>OCORRÊNCIAS</h4>
-      <table class="form-table">
-        <tr><td>Tempo de parada</td><td>${escapeHtml(row.tempo_parado || "-")}</td></tr>
-        <tr><td>Outros (checklist)</td><td>${escapeHtml(row.outros_descricao || "-")}</td></tr>
-        <tr><td>Observações</td><td class="text-area">${escapeHtml(row.observacoes || "-")}</td></tr>
+      <table class="form-table form-table-longtext">
+        <tr><td>Tempo de parada</td><td colspan="3" class="text-area-long">${escapeHtml(row.tempo_parado || "-")}</td></tr>
+        <tr><td>Outros (checklist)</td><td colspan="3" class="text-area-long">${escapeHtml(row.outros_descricao || "-")}</td></tr>
+        <tr><td>Observações</td><td colspan="3" class="text-area-long">${escapeHtml(row.observacoes || "-")}</td></tr>
       </table>
 
       <h4>PRODUÇÃO</h4>
-      <table class="form-table">
-        <tr><td class="text-area">${escapeHtml(row.producao || "-")}</td></tr>
+      <table class="form-table form-table-longtext">
+        <tr><td colspan="4" class="text-area-long">${escapeHtml(row.producao || "-")}</td></tr>
       </table>
 
       <div class="signatures">
@@ -648,10 +648,27 @@ const buildOfficialHtml = ({ companyName, logoUrl, records, summaryText }) => {
       <head>
         <meta charset="utf-8" />
         <style>
-          @page { size: A4; margin: 16mm; }
-          body { font-family: Arial, sans-serif; font-size: 12px; color: #111; margin: 0; }
+          @page { size: A4; margin: 14mm; }
+          html, body { font-family: Arial, sans-serif; font-size: 12px; color: #111; margin: 0; overflow: visible; }
           .sheet { page-break-after: always; }
           .sheet:last-child { page-break-after: auto; }
+          .sheet-parte-diaria { page-break-inside: auto; break-inside: auto; }
+          .sheet-parte-diaria table,
+          .sheet-parte-diaria tr,
+          .sheet-parte-diaria td,
+          .sheet-parte-diaria th {
+            page-break-inside: auto;
+            break-inside: auto;
+          }
+          .sheet-parte-diaria h4 { page-break-after: avoid; }
+          .text-area-long {
+            white-space: pre-wrap;
+            word-break: break-word;
+            overflow: visible;
+            min-height: 2.5em;
+            line-height: 1.35;
+          }
+          .form-table-longtext td { vertical-align: top; }
           .header-row { display: grid; grid-template-columns: 140px 1fr; align-items: center; margin-bottom: 8px; }
           .logo-box { height: 70px; border: 1px solid #000; display: flex; align-items: center; justify-content: center; overflow: hidden; }
           .logo-box img { max-width: 100%; object-fit: contain; }
@@ -725,33 +742,95 @@ const buildFallbackPdfBuffer = async ({ companyName, records, logoImage, filterS
       contentStartY = doc.y + 10;
     }
 
-    const drawCells = (y, height, cells, { fontSize = small, bold = false, padding = 4 } = {}) => {
+    const pageBottomY = () => doc.page.height - margin;
+
+    /** Garante espaço vertical; quebra página quando necessário. */
+    const advancePage = (y, need) => {
+      if (y + need > pageBottomY()) {
+        doc.addPage();
+        return margin;
+      }
+      return y;
+    };
+
+    /** Texto longo que pode ocupar várias páginas (sem clip de altura). */
+    const drawFlowingBlock = (y, titleLine, bodyText, { withTitle = true } = {}) => {
+      let yy = advancePage(y, withTitle ? 48 : 32);
+      if (withTitle && titleLine) {
+        doc.font("Helvetica-Bold").fontSize(normal).fillColor("#000000").text(String(titleLine), margin, yy, {
+          width: pageWidth,
+        });
+        yy = doc.y + 6;
+      }
+      yy = advancePage(yy, 28);
+      doc.font("Helvetica").fontSize(small).fillColor("#000000");
+      doc.text(String(bodyText ?? ""), margin, yy, {
+        width: pageWidth,
+        lineGap: 2,
+        align: "left",
+      });
+      return doc.y + 12;
+    };
+
+    const drawCells = (y, height, cells, opts = {}) => {
+      const padding = opts.padding ?? 4;
+      const fontSize = opts.fontSize ?? small;
+      const lineGap = opts.lineGap ?? 2;
+      const clipH = opts.clipText !== false;
+      let effHeight = height;
+
+      if (opts.dynamicHeight || height === null || height === "auto") {
+        effHeight = opts.minRowHeight ?? 22;
+        cells.forEach((cell) => {
+          const fs = cell.fontSize || fontSize;
+          const useBold = !!(cell.bold || opts.bold);
+          doc.font(useBold ? "Helvetica-Bold" : "Helvetica").fontSize(fs);
+          const innerW = Math.max(1, cell.width - 2 * padding);
+          const innerH = doc.heightOfString(String(cell.text ?? ""), { width: innerW, lineGap });
+          effHeight = Math.max(effHeight, innerH + 2 * padding);
+        });
+      }
+
+      while (y + effHeight > pageBottomY()) {
+        doc.addPage();
+        y = margin;
+      }
+      let pageAvail = pageBottomY() - y;
+      let effectiveClip = clipH;
+      if (effHeight > pageAvail) {
+        effHeight = Math.max(opts.minRowHeight ?? 22, pageAvail);
+        if (opts.dynamicHeight) effectiveClip = false;
+      }
+
       let x = margin;
       cells.forEach((cell) => {
         const width = cell.width;
-        doc.rect(x, y, width, height).lineWidth(0.8).stroke("#000");
+        doc.rect(x, y, width, effHeight).lineWidth(0.8).stroke("#000");
         if (cell.imageBuffer) {
           try {
-            doc.image(cell.imageBuffer, x + 6, y + 4, { fit: [Math.max(20, width - 12), Math.max(18, height - 8)] });
+            doc.image(cell.imageBuffer, x + 6, y + 4, { fit: [Math.max(20, width - 12), Math.max(18, effHeight - 8)] });
           } catch {
             // ignora erros de renderizacao de imagem no fallback
           }
         }
         if (cell.text !== undefined && cell.text !== null) {
-          doc
-            .font(cell.bold || bold ? "Helvetica-Bold" : "Helvetica")
-            .fontSize(cell.fontSize || fontSize)
-            .text(String(cell.text), x + padding, y + padding, {
-              width: width - padding * 2,
-              height: height - padding * 2,
-              align: cell.align || "left",
-              valign: "center",
-              lineBreak: true,
-            });
+          const fs = cell.fontSize || fontSize;
+          const useBold = !!(cell.bold || opts.bold);
+          doc.font(useBold ? "Helvetica-Bold" : "Helvetica").fontSize(fs).fillColor("#000000");
+          const textOpts = {
+            width: width - padding * 2,
+            lineGap,
+            align: cell.align || "left",
+            lineBreak: true,
+          };
+          if (effectiveClip) {
+            textOpts.height = Math.max(8, effHeight - padding * 2);
+          }
+          doc.text(String(cell.text), x + padding, y + padding, textOpts);
         }
         x += width;
       });
-      return y + height + rowGap;
+      return y + effHeight + rowGap;
     };
 
     const drawSectionTitle = (y, title) =>
@@ -880,22 +959,18 @@ const buildFallbackPdfBuffer = async ({ companyName, records, logoImage, filterS
           { width: statusCol, text: status === "não_funcional" ? "X" : "", align: "center", bold: true },
         ]);
       });
-      y = drawCells(y, 24, [
-        { width: col, text: "Outros (detalhes):", bold: true },
-        { width: pageWidth - col, text: asDisplayValue(row.outros_descricao) },
-      ]);
+      y = drawFlowingBlock(y, "Outros (detalhes)", asDisplayValue(row.outros_descricao), { withTitle: true });
 
       y = drawSectionTitle(y, "OCORRENCIAS");
       y = drawCells(y, 24, [
         { width: col, text: "Tempo parado:", bold: true },
         { width: pageWidth - col, text: asDisplayValue(row.tempo_parado) },
-      ]);
-      y = drawCells(y, 40, [
-        { width: col, text: "Observacoes:", bold: true },
-        { width: pageWidth - col, text: asDisplayValue(row.observacoes) },
-      ]);
+      ], { dynamicHeight: true, minRowHeight: 24 });
+      y = drawFlowingBlock(y, "Observações", asDisplayValue(row.observacoes), { withTitle: true });
+
       y = drawSectionTitle(y, "PRODUCAO");
-      y = drawCells(y, 32, [{ width: pageWidth, text: asDisplayValue(row.producao) }]);
+      y = drawFlowingBlock(y, null, asDisplayValue(row.producao), { withTitle: false });
+      y = advancePage(y, 36);
       y = drawCells(y, 26, [
         { width: pageWidth / 2, text: "Operador: ________________________________" },
         { width: pageWidth / 2, text: "Responsavel: ________________________________" },
@@ -1146,6 +1221,20 @@ const addParteDiariaWorksheet = (workbook, row, companyName, logoImageId, index)
   const reportDate = getEffectiveDateValue(row);
   const worksheet = workbook.addWorksheet(`ParteDiaria-${index + 1}`);
   applyBaseStyle(worksheet);
+  worksheet.pageSetup = {
+    paperSize: 9,
+    orientation: "portrait",
+    fitToPage: false,
+    scale: 100,
+    margins: {
+      left: 0.35,
+      right: 0.35,
+      top: 0.35,
+      bottom: 0.35,
+      header: 0.2,
+      footer: 0.2,
+    },
+  };
 
   worksheet.mergeCells("A1:B3");
   worksheet.mergeCells("C1:H3");
@@ -1303,14 +1392,21 @@ const addParteDiariaWorksheet = (workbook, row, companyName, logoImageId, index)
   applyBorderAndFont(worksheet, currentRow, currentRow, 1, 8);
   currentRow += 1;
 
-  worksheet.mergeCells(`A${currentRow}:B${currentRow + 2}`);
-  worksheet.mergeCells(`C${currentRow}:H${currentRow + 2}`);
+  const countVisualLines = (text, charsPerLine = 88) => {
+    const s = String(text ?? "");
+    if (!s || s === "-") return 1;
+    return s.split(/\r?\n/).reduce((acc, line) => acc + Math.max(1, Math.ceil(line.length / charsPerLine)), 0);
+  };
+
+  const obsSpan = Math.min(45, Math.max(3, countVisualLines(row.observacoes, 85)));
+  worksheet.mergeCells(`A${currentRow}:B${currentRow + obsSpan - 1}`);
+  worksheet.mergeCells(`C${currentRow}:H${currentRow + obsSpan - 1}`);
   worksheet.getCell(`A${currentRow}`).value = "Observações:";
   worksheet.getCell(`A${currentRow}`).font = { name: "Arial", size: 10, bold: true };
   worksheet.getCell(`C${currentRow}`).value = asDisplayValue(row.observacoes);
   worksheet.getCell(`C${currentRow}`).alignment = { vertical: "top", horizontal: "left", wrapText: true };
-  applyBorderAndFont(worksheet, currentRow, currentRow + 2, 1, 8);
-  currentRow += 3;
+  applyBorderAndFont(worksheet, currentRow, currentRow + obsSpan - 1, 1, 8);
+  currentRow += obsSpan;
 
   worksheet.mergeCells(`A${currentRow}:H${currentRow}`);
   worksheet.getCell(`A${currentRow}`).value = "PRODUÇÃO";
@@ -1318,11 +1414,12 @@ const addParteDiariaWorksheet = (workbook, row, companyName, logoImageId, index)
   applyBorderAndFont(worksheet, currentRow, currentRow, 1, 8);
   currentRow += 1;
 
-  worksheet.mergeCells(`A${currentRow}:H${currentRow + 1}`);
+  const prodSpan = Math.min(50, Math.max(2, countVisualLines(row.producao, 95)));
+  worksheet.mergeCells(`A${currentRow}:H${currentRow + prodSpan - 1}`);
   worksheet.getCell(`A${currentRow}`).value = asDisplayValue(row.producao);
   worksheet.getCell(`A${currentRow}`).alignment = { vertical: "top", horizontal: "left", wrapText: true };
-  applyBorderAndFont(worksheet, currentRow, currentRow + 1, 1, 8);
-  currentRow += 3;
+  applyBorderAndFont(worksheet, currentRow, currentRow + prodSpan - 1, 1, 8);
+  currentRow += prodSpan;
 
   worksheet.mergeCells(`A${currentRow}:D${currentRow}`);
   worksheet.mergeCells(`E${currentRow}:H${currentRow}`);
@@ -1878,9 +1975,14 @@ const exportPdf = async (req, res) => {
   try {
     browser = await launchBrowser();
     const page = await browser.newPage();
-    await page.setViewport({ width: 1240, height: 1754, deviceScaleFactor: 2 });
+    await page.setViewport({ width: 1240, height: 800, deviceScaleFactor: 2 });
     await page.setContent(html, { waitUntil: "domcontentloaded" });
     await page.waitForNetworkIdle({ idleTime: 500, timeout: 30000 }).catch(() => {});
+    const scrollHeight = await page.evaluate(() =>
+      Math.max(document.body?.scrollHeight ?? 0, document.documentElement?.scrollHeight ?? 0, 800)
+    );
+    const pdfViewportHeight = Math.min(Math.max(scrollHeight + 80, 900), 16384);
+    await page.setViewport({ width: 1240, height: pdfViewportHeight, deviceScaleFactor: 2 });
     pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
