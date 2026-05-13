@@ -1,19 +1,71 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../services/auth";
 import useHaptics from "../hooks/useHaptics";
 import CompanyLogo from "./CompanyLogo";
 import Avatar from "./Avatar";
 
-const tabs = [
-  { to: "/dashboard", label: "Visão geral", icon: "overview" },
-  { to: "/dashboard/relatorios", label: "Relatórios", icon: "reports" },
-  { to: "/dashboard/gestao", label: "Gestão", icon: "management" },
-  { to: "/dashboard/perfil", label: "Meu Perfil", icon: "profile" },
-];
-
 function MenuIcon({ type }) {
   const iconClass = "h-4 w-4";
+  if (type === "transport") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={iconClass} aria-hidden="true">
+        <path
+          d="M3 13h12v5H3v-5ZM3 9h14l2.5 4v5h-2.5v-2H3V9Z"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinejoin="round"
+        />
+        <circle cx="7.5" cy="18.5" r="1.5" fill="currentColor" />
+        <circle cx="14.5" cy="18.5" r="1.5" fill="currentColor" />
+      </svg>
+    );
+  }
+  if (type === "fuel") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={iconClass} aria-hidden="true">
+        <path d="M7 3h6v10H7V3Z" stroke="currentColor" strokeWidth="1.6" />
+        <path
+          d="M9 15v5H5v-7M14 6h3l2 3v9h-3"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+  if (type === "diary") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={iconClass} aria-hidden="true">
+        <rect x="5" y="4" width="14" height="17" rx="2" stroke="currentColor" strokeWidth="1.6" />
+        <path d="M9 9h6M9 13h6M9 17h4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (type === "fleet") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={iconClass} aria-hidden="true">
+        <path d="M3 15h15V8l-2-3H5L3 8v7Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+        <circle cx="7.5" cy="16.5" r="1.4" fill="currentColor" />
+        <circle cx="14.5" cy="16.5" r="1.4" fill="currentColor" />
+      </svg>
+    );
+  }
+  if (type === "people") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={iconClass} aria-hidden="true">
+        <circle cx="9" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.6" />
+        <circle cx="17" cy="9" r="2" stroke="currentColor" strokeWidth="1.6" />
+        <path
+          d="M4 20c0-2.5 2.6-4 5-4s5 1.5 5 4M13 20c0-1.6 1.6-2.8 3.5-2.8S20 18.4 20 20"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+        />
+      </svg>
+    );
+  }
   if (type === "reports") {
     return (
       <svg viewBox="0 0 24 24" fill="none" className={iconClass} aria-hidden="true">
@@ -47,11 +99,54 @@ function MenuIcon({ type }) {
   );
 }
 
+function useNavGroups(pathname) {
+  return useMemo(() => {
+    const empresaShell = pathname.startsWith("/empresa");
+    if (empresaShell) {
+      return {
+        empresaShell: true,
+        primary: [
+          { to: "/empresa/dashboard", label: "Executivo", icon: "overview", exact: true },
+          { to: "/empresa/transporte", label: "Transporte", icon: "transport", exact: false },
+          { to: "/empresa/combustivel", label: "Combustível", icon: "fuel", exact: false },
+          { to: "/empresa/parte-diaria", label: "Parte diária", icon: "diary", exact: false },
+          { to: "/empresa/frota", label: "Gestão de frota", icon: "fleet", exact: false },
+          { to: "/empresa/pessoas", label: "Gestão de pessoas", icon: "people", exact: false },
+        ],
+        secondary: [
+          { to: "/dashboard/relatorios", label: "Relatórios", icon: "reports" },
+          { to: "/dashboard/gestao", label: "Gestão", icon: "management" },
+          { to: "/dashboard/perfil", label: "Meu Perfil", icon: "profile" },
+        ],
+      };
+    }
+    return {
+      empresaShell: false,
+      primary: [
+        { to: "/dashboard", label: "Visão geral", icon: "overview", exact: true },
+        { to: "/dashboard/relatorios", label: "Relatórios", icon: "reports", exact: false },
+        { to: "/dashboard/gestao", label: "Gestão", icon: "management", exact: false },
+        { to: "/dashboard/perfil", label: "Meu Perfil", icon: "profile", exact: false },
+      ],
+      secondary: [],
+    };
+  }, [pathname]);
+}
+
+function tabIsActive(pathname, to, exact) {
+  if (exact) {
+    if (pathname === to) return true;
+    if (to === "/empresa/dashboard" && pathname === "/empresa") return true;
+    return false;
+  }
+  return pathname.startsWith(to);
+}
+
 export default function EmpresaLayout({ children }) {
   const { user, logout, refreshUser } = useAuth();
   const { pathname } = useLocation();
   const { tap } = useHaptics();
-  const isActive = (to) => (to === "/dashboard" ? pathname === to : pathname.startsWith(to));
+  const { primary, secondary, empresaShell } = useNavGroups(pathname);
 
   useEffect(() => {
     refreshUser?.().catch(() => {});
@@ -84,13 +179,13 @@ export default function EmpresaLayout({ children }) {
 
       <div className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-6 sm:px-6 md:grid-cols-[240px_1fr]">
         <aside className="flex gap-2 overflow-x-auto rounded-2xl border border-blue-500/25 bg-slate-900/75 p-3 shadow-lg shadow-blue-950/20 md:block" aria-label="Navegacao do dashboard">
-          {tabs.map((tab) => (
+          {primary.map((tab) => (
             <Link
               key={tab.to}
               to={tab.to}
               onClick={() => tap(8)}
               className={`fc-tab-link mb-0 flex shrink-0 items-center gap-2 rounded-xl px-3 py-2.5 text-sm md:mb-2 ${
-                isActive(tab.to)
+                tabIsActive(pathname, tab.to, tab.exact)
                   ? "active bg-blue-600/35 text-blue-100 shadow-md shadow-blue-900/30"
                   : "text-slate-300 hover:bg-slate-800 hover:text-slate-100"
               }`}
@@ -99,8 +194,30 @@ export default function EmpresaLayout({ children }) {
               {tab.label}
             </Link>
           ))}
+          {empresaShell && secondary.length > 0 && (
+            <div className="mt-2 border-t border-blue-500/20 pt-2 md:mt-3 md:pt-3">
+              <p className="mb-2 hidden px-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500 md:block">Painel legado</p>
+              {secondary.map((tab) => (
+                <Link
+                  key={tab.to}
+                  to={tab.to}
+                  onClick={() => tap(8)}
+                  className={`fc-tab-link mb-0 flex shrink-0 items-center gap-2 rounded-xl px-3 py-2.5 text-sm md:mb-2 ${
+                    tabIsActive(pathname, tab.to, false)
+                      ? "active bg-blue-600/35 text-blue-100 shadow-md shadow-blue-900/30"
+                      : "text-slate-300 hover:bg-slate-800 hover:text-slate-100"
+                  }`}
+                >
+                  <MenuIcon type={tab.icon} />
+                  {tab.label}
+                </Link>
+              ))}
+            </div>
+          )}
         </aside>
-        <main className="fc-page min-w-0" id="conteudo-principal">{children}</main>
+        <main className="fc-page min-w-0" id="conteudo-principal">
+          {children}
+        </main>
       </div>
     </div>
   );

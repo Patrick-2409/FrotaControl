@@ -25,6 +25,11 @@ const AdminLoginPage = lazy(() => import("./pages/AdminLoginPage"));
 const SuperAdminLoginPage = lazy(() => import("./pages/SuperAdminLoginPage"));
 const ApontadorLoginPage = lazy(() => import("./pages/ApontadorLoginPage"));
 const ApontadorHomePage = lazy(() => import("./pages/ApontadorHomePage"));
+const EmpresaTransportePage = lazy(() => import("./pages/empresa/EmpresaTransportePage"));
+const EmpresaCombustivelPage = lazy(() => import("./pages/empresa/EmpresaCombustivelPage"));
+const EmpresaParteDiariaPage = lazy(() => import("./pages/empresa/EmpresaParteDiariaPage"));
+const EmpresaFrotaPage = lazy(() => import("./pages/empresa/EmpresaFrotaPage"));
+const EmpresaPessoasPage = lazy(() => import("./pages/empresa/EmpresaPessoasPage"));
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -275,6 +280,30 @@ function App() {
                       <Route path="relatorios" element={<ManagerRecordsPage />} />
                       <Route path="gestao" element={<CompanyManagementPage />} />
                       <Route path="perfil" element={<ProfilePage />} />
+                    </Routes>
+                  </RouteTransition>
+                </EmpresaLayout>
+              </ProtectedDashboard>
+            </Protected>
+          }
+        />
+
+        <Route
+          path="/empresa/*"
+          element={
+            <Protected>
+              <ProtectedDashboard>
+                <EmpresaLayout>
+                  <RouteTransition>
+                    <Routes>
+                      <Route path="/" element={<Navigate to="dashboard" replace />} />
+                      <Route path="dashboard" element={<ManagerDashboardPage />} />
+                      <Route path="transporte" element={<EmpresaTransportePage />} />
+                      <Route path="combustivel" element={<EmpresaCombustivelPage />} />
+                      <Route path="parte-diaria" element={<EmpresaParteDiariaPage />} />
+                      <Route path="frota" element={<EmpresaFrotaPage />} />
+                      <Route path="pessoas" element={<EmpresaPessoasPage />} />
+                      <Route path="*" element={<Navigate to="dashboard" replace />} />
                     </Routes>
                   </RouteTransition>
                 </EmpresaLayout>
