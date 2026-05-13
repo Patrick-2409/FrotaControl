@@ -139,6 +139,8 @@ export default function ManagerDashboardPage() {
   const [combustivelFiltroMotorista, setCombustivelFiltroMotorista] = useState("");
   const [combustivelVeiculosOpt, setCombustivelVeiculosOpt] = useState([]);
   const [combustivelMotoristasOpt, setCombustivelMotoristasOpt] = useState([]);
+  /** Referência: soma de valor_total no ano civil atual (GET resumo periodo=ano, sem filtros de veículo/motorista). */
+  const [combustivelTotalGeralAno, setCombustivelTotalGeralAno] = useState(null);
   const [alertas, setAlertas] = useState({
     veiculos_sem_capacidade: 0,
     custo_alto: false,
@@ -226,7 +228,7 @@ export default function ManagerDashboardPage() {
       });
     } catch {
       setCombustivelResumo(null);
-      emitToast("Sem dados de combustível no período", "warning");
+      emitToast("Não foi possível carregar o resumo de combustível.", "warning");
     } finally {
       setCombustivelLoading(false);
     }
@@ -320,6 +322,24 @@ export default function ManagerDashboardPage() {
         }
       }
     })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loading]);
+
+  useEffect(() => {
+    if (loading) return;
+    let cancelled = false;
+    api
+      .get("/dashboard/combustiveis/resumo", { params: { periodo: "ano" } })
+      .then(({ data }) => {
+        if (cancelled) return;
+        const v = data?.total_valor;
+        setCombustivelTotalGeralAno(v != null && Number.isFinite(Number(v)) ? Number(v) : 0);
+      })
+      .catch(() => {
+        if (!cancelled) setCombustivelTotalGeralAno(null);
+      });
     return () => {
       cancelled = true;
     };
@@ -432,6 +452,11 @@ export default function ManagerDashboardPage() {
     () => buildConsumoPorVeiculoPie(combustivelResumo?.por_veiculo),
     [combustivelResumo?.por_veiculo]
   );
+
+  const semAbastecimentosNoPeriodo = useMemo(() => {
+    if (!combustivelResumo || combustivelLoading) return false;
+    return Number(combustivelResumo.total_litros) === 0 && Number(combustivelResumo.total_valor) === 0;
+  }, [combustivelResumo, combustivelLoading]);
 
   if (loading) {
     return (
@@ -638,6 +663,29 @@ export default function ManagerDashboardPage() {
           </div>
         ) : combustivelResumo ? (
           <>
+            {semAbastecimentosNoPeriodo ? (
+              <div className="mt-6 rounded-xl border border-emerald-500/35 bg-slate-900/75 p-4 ring-1 ring-emerald-500/15">
+                <p className="text-base font-medium text-emerald-100">
+                  Sem abastecimentos neste período selecionado
+                </p>
+                <p className="mt-3 text-sm text-slate-200">
+                  Total geral acumulado:{" "}
+                  <strong className="tabular-nums text-white">
+                    {combustivelTotalGeralAno == null ? "—" : fmtBRL(combustivelTotalGeralAno)}
+                  </strong>
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Valor somado no ano civil atual, considerando todos os abastecimentos da empresa (referência).
+                </p>
+                <button
+                  type="button"
+                  className="fc-btn mt-4 inline-flex rounded-lg border border-emerald-500/50 bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/25"
+                  onClick={() => setPeriodoCombustivel("mes")}
+                >
+                  Ver mês
+                </button>
+              </div>
+            ) : null}
             <div className="mt-6 grid gap-4 sm:grid-cols-3">
               <article className="rounded-xl border border-emerald-500/35 bg-slate-950/60 p-4 shadow-inner">
                 <p className="text-xs uppercase tracking-wider text-slate-400">Total litros</p>
@@ -779,7 +827,27 @@ export default function ManagerDashboardPage() {
             </div>
           </>
         ) : (
-          <p className="mt-6 text-sm text-slate-500">Sem dados de combustível no período</p>
+          <div className="mt-6 rounded-xl border border-slate-600 bg-slate-900/70 p-4">
+            <p className="text-base font-medium text-slate-200">
+              Não foi possível carregar o resumo de combustível para este período.
+            </p>
+            <p className="mt-3 text-sm text-slate-200">
+              Total geral acumulado:{" "}
+              <strong className="tabular-nums text-white">
+                {combustivelTotalGeralAno == null ? "—" : fmtBRL(combustivelTotalGeralAno)}
+              </strong>
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              Referência do ano civil atual (todos os abastecimentos da empresa), quando disponível.
+            </p>
+            <button
+              type="button"
+              className="fc-btn mt-4 inline-flex rounded-lg border border-emerald-500/50 bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/25"
+              onClick={() => setPeriodoCombustivel("mes")}
+            >
+              Ver mês
+            </button>
+          </div>
         )}
       </section>
 
