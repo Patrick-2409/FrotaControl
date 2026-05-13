@@ -5,10 +5,6 @@ import SkeletonRows from "../../components/SkeletonRows";
 import { emitToast } from "../../services/uiEvents";
 
 const fmtInt = (n) => Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
-const fmtTon = (n) =>
-  Number(n || 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-const fmtPct = (n) =>
-  Number(n || 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 1 });
 const fmtBRL = (n) =>
   Number(n || 0).toLocaleString("pt-BR", {
     style: "currency",
@@ -35,33 +31,8 @@ const shortcutClass =
 export default function EmpresaExecutiveDashboardPage() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [viagensResumo, setViagensResumo] = useState(null);
-  const [viagensLoading, setViagensLoading] = useState(true);
-  const [comparacao, setComparacao] = useState(null);
-  const [comparLoading, setComparLoading] = useState(true);
   const [combustivelResumo, setCombustivelResumo] = useState(null);
   const [combustivelLoading, setCombustivelLoading] = useState(true);
-  const [alertas, setAlertas] = useState({
-    veiculos_sem_capacidade: 0,
-    custo_alto: false,
-    meta_risco: false,
-  });
-
-  const loadViagensResumo = useCallback(async () => {
-    setViagensLoading(true);
-    try {
-      const { data } = await api.get("/dashboard/viagens/resumo", { params: { periodo: "semana" } });
-      setViagensResumo({
-        total_toneladas_esteril: data?.total_toneladas_esteril ?? 0,
-        total_toneladas_rocha: data?.total_toneladas_rocha ?? 0,
-      });
-    } catch {
-      setViagensResumo(null);
-      emitToast("Não foi possível carregar o resumo de transporte.", "warning");
-    } finally {
-      setViagensLoading(false);
-    }
-  }, []);
 
   const loadCombustivelResumo = useCallback(async () => {
     setCombustivelLoading(true);
@@ -90,40 +61,6 @@ export default function EmpresaExecutiveDashboardPage() {
     }
   }, []);
 
-  const loadAlertas = useCallback(async () => {
-    try {
-      const { data } = await api.get("/dashboard/alertas", { params: { periodo: "semana" } });
-      setAlertas({
-        veiculos_sem_capacidade: Number(data?.veiculos_sem_capacidade ?? 0),
-        custo_alto: Boolean(data?.custo_alto),
-        meta_risco: Boolean(data?.meta_risco),
-      });
-    } catch {
-      setAlertas({ veiculos_sem_capacidade: 0, custo_alto: false, meta_risco: false });
-    }
-  }, []);
-
-  const loadComparacao = useCallback(async () => {
-    setComparLoading(true);
-    try {
-      const { data } = await api.get("/dashboard/viagens/comparacao");
-      setComparacao({
-        planejado_esteril: data?.planejado_esteril ?? 0,
-        planejado_rocha: data?.planejado_rocha ?? 0,
-        executado_esteril: data?.executado_esteril ?? 0,
-        executado_rocha: data?.executado_rocha ?? 0,
-        percentual_esteril: data?.percentual_esteril ?? 0,
-        percentual_rocha: data?.percentual_rocha ?? 0,
-        percentual_total: data?.percentual_total ?? 0,
-      });
-    } catch {
-      setComparacao(null);
-      emitToast("Não foi possível carregar meta vs executado.", "warning");
-    } finally {
-      setComparLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
     api
       .get("/dashboard/stats")
@@ -134,11 +71,8 @@ export default function EmpresaExecutiveDashboardPage() {
 
   useEffect(() => {
     if (loading) return;
-    void loadViagensResumo();
     void loadCombustivelResumo();
-    void loadAlertas();
-    void loadComparacao();
-  }, [loading, loadViagensResumo, loadCombustivelResumo, loadAlertas, loadComparacao]);
+  }, [loading, loadCombustivelResumo]);
 
   const trend = useMemo(() => stats?.ultimos_7_dias || [], [stats]);
   const trendSummary = useMemo(() => {
@@ -165,11 +99,6 @@ export default function EmpresaExecutiveDashboardPage() {
       ? "text-rose-400"
       : "text-slate-400";
 
-  const temAlertasDashboard = useMemo(
-    () => alertas.veiculos_sem_capacidade > 0 || alertas.meta_risco || alertas.custo_alto,
-    [alertas]
-  );
-
   const temAlertasCombustivel = useMemo(() => {
     if (combustivelLoading || !combustivelResumo?.alertas_combustivel) return false;
     const a = combustivelResumo.alertas_combustivel;
@@ -181,40 +110,11 @@ export default function EmpresaExecutiveDashboardPage() {
     );
   }, [combustivelLoading, combustivelResumo]);
 
-  const mostrarBarraAlertas = temAlertasDashboard || temAlertasCombustivel;
-
-  const metaPlanejadaTotal = comparacao
-    ? Number(comparacao.planejado_esteril || 0) + Number(comparacao.planejado_rocha || 0)
-    : 0;
-  const executadoTotal = comparacao
-    ? Number(comparacao.executado_esteril || 0) + Number(comparacao.executado_rocha || 0)
-    : 0;
-  const barWidthPct = Math.min(100, Math.max(0, Number(comparacao?.percentual_total ?? 0)));
-
-  const planVsExecPieStyle = useMemo(() => {
-    if (!comparacao) return { background: "conic-gradient(#334155 0% 100%)" };
-    const plan = Math.max(0, metaPlanejadaTotal);
-    const exec = Math.max(0, executadoTotal);
-    if (plan <= 0 && exec <= 0) return { background: "conic-gradient(#334155 0% 100%)" };
-    if (plan <= 0) {
-      return { background: "conic-gradient(#22c55e 0 100%)" };
-    }
-    const pctExec = Math.min(100, (exec / plan) * 100);
-    return {
-      background: `conic-gradient(#22c55e 0 ${pctExec}%, #475569 ${pctExec}% 100%)`,
-    };
-  }, [comparacao, metaPlanejadaTotal, executadoTotal]);
-
   const parteDiariaRegistros = useMemo(() => {
     const arr = stats?.por_tipo || [];
     const hit = arr.find((x) => String(x.tipo || "").toLowerCase() === "parte_diaria");
     return Number(hit?.total ?? 0);
   }, [stats]);
-
-  const tonTotaisSemana = useMemo(() => {
-    if (!viagensResumo) return 0;
-    return Number(viagensResumo.total_toneladas_esteril || 0) + Number(viagensResumo.total_toneladas_rocha || 0);
-  }, [viagensResumo]);
 
   if (loading) {
     return (
@@ -243,40 +143,18 @@ export default function EmpresaExecutiveDashboardPage() {
         <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Painel executivo</p>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white md:text-3xl">Visão consolidada</h1>
         <p className="mt-2 max-w-2xl text-sm text-slate-400">
-          Indicadores sintéticos da operação. Detalhes, filtros e tabelas permanecem nas rotas modulares e na visão
-          operacional completa.
+          Indicadores sintéticos. Toneladas, metas e planejado x executado estão no módulo Transporte; combustível
+          detalhado no módulo correspondente.
         </p>
       </header>
 
-      {mostrarBarraAlertas ? (
+      {temAlertasCombustivel ? (
         <div
           role="status"
           className="rounded-lg border-l-4 border-amber-500 bg-amber-950/25 px-4 py-3 text-sm text-amber-50 shadow-sm"
         >
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-amber-200/90">Alertas operacionais</p>
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-amber-200/90">Alertas · combustível</p>
           <ul className="space-y-2">
-            {alertas.veiculos_sem_capacidade > 0 ? (
-              <li className="flex gap-2 font-medium">
-                <span aria-hidden>⚠️</span>
-                <span>
-                  {alertas.veiculos_sem_capacidade === 1
-                    ? "1 veículo sem capacidade definida"
-                    : `${fmtInt(alertas.veiculos_sem_capacidade)} veículos sem capacidade definida`}
-                </span>
-              </li>
-            ) : null}
-            {alertas.custo_alto ? (
-              <li className="flex gap-2 font-medium">
-                <span aria-hidden>⚠️</span>
-                <span>Custo operacional acima do esperado</span>
-              </li>
-            ) : null}
-            {alertas.meta_risco ? (
-              <li className="flex gap-2 font-medium">
-                <span aria-hidden>⚠️</span>
-                <span>Produção abaixo da meta planejada</span>
-              </li>
-            ) : null}
             {!combustivelLoading && combustivelResumo?.alertas_combustivel?.consumo_elevado?.length
               ? combustivelResumo.alertas_combustivel.consumo_elevado.map((row) => (
                   <li key={`comb-${row.veiculo_id ?? "x"}`} className="flex gap-2 font-medium">
@@ -343,12 +221,17 @@ export default function EmpresaExecutiveDashboardPage() {
         </h2>
         <article className="fc-card flex flex-col justify-between border-cyan-900/40 bg-gradient-to-b from-slate-950/90 to-slate-950/50 p-5">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-cyan-500/90">Transporte · semana</p>
-            <p className="mt-3 text-3xl font-semibold tabular-nums text-white">
-              {viagensLoading ? "—" : `${fmtTon(tonTotaisSemana)} t`}
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-cyan-500/90">Produção / porto</p>
+            <p className="mt-3 text-sm text-slate-300">
+              Toneladas, estéril/rocha, metas e gráfico planejado x executado foram centralizados no módulo Transporte.
             </p>
-            <p className="mt-2 text-xs text-slate-500">Toneladas movimentadas na semana (com capacidade informada).</p>
           </div>
+          <Link
+            to="/empresa/transporte"
+            className="fc-btn mt-4 inline-flex w-fit rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white"
+          >
+            Abrir Transporte
+          </Link>
         </article>
 
         <article className="fc-card flex flex-col justify-between border-emerald-900/40 bg-gradient-to-b from-slate-950/90 to-slate-950/50 p-5">
@@ -411,49 +294,18 @@ export default function EmpresaExecutiveDashboardPage() {
           </div>
         </article>
 
-        <article className="fc-card border-slate-700/70 p-5">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Meta vs. executado</p>
-          {comparLoading ? (
-            <div className="mt-6">
-              <SkeletonRows rows={2} />
-            </div>
-          ) : comparacao ? (
-            <div className="mt-4 flex flex-col items-center gap-5 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-4">
-                <div
-                  className="h-28 w-28 shrink-0 rounded-full border-2 border-slate-700 shadow-inner"
-                  style={planVsExecPieStyle}
-                  role="img"
-                  aria-label="Executado em relação à meta"
-                />
-                <div className="text-sm text-slate-300">
-                  <p className="tabular-nums text-lg font-semibold text-white">{fmtPct(comparacao.percentual_total)}%</p>
-                  <p className="text-xs text-slate-500">atingimento total</p>
-                </div>
-              </div>
-              <div className="w-full min-w-0 flex-1 space-y-2">
-                <div className="flex justify-between text-xs text-slate-500">
-                  <span>Executado</span>
-                  <span className="tabular-nums text-slate-300">{fmtTon(executadoTotal)} t</span>
-                </div>
-                <div
-                  className="h-2 overflow-hidden rounded-full bg-slate-800"
-                  role="progressbar"
-                  aria-valuenow={Math.round(barWidthPct)}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                >
-                  <div
-                    className="h-2 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 transition-[width]"
-                    style={{ width: `${barWidthPct}%` }}
-                  />
-                </div>
-                <p className="text-xs text-slate-500">Meta planejada {fmtTon(metaPlanejadaTotal)} t</p>
-              </div>
-            </div>
-          ) : (
-            <p className="mt-6 text-sm text-slate-500">Indicador indisponível.</p>
-          )}
+        <article className="fc-card flex flex-col justify-between border-slate-700/70 p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Meta e execução</p>
+          <p className="mt-3 text-sm text-slate-400">
+            O gráfico de atingimento de metas e o planejamento semanal estão no módulo Transporte, com filtros e estado
+            próprios.
+          </p>
+          <Link
+            to="/empresa/transporte"
+            className="fc-btn mt-4 inline-flex w-fit rounded-lg border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-100"
+          >
+            Ver metas e produção
+          </Link>
         </article>
       </section>
 
@@ -465,14 +317,14 @@ export default function EmpresaExecutiveDashboardPage() {
           {(stats.por_tipo || [])
             .filter((item) => String(item.tipo || "").toLowerCase() !== "parte_diaria")
             .map((item) => (
-            <span
-              key={item.tipo}
-              className="inline-flex items-center gap-2 rounded-full border border-slate-700/80 bg-slate-900/60 px-3 py-1.5 text-xs text-slate-200"
-            >
-              <span className="text-slate-500">{item.tipo}</span>
-              <span className="font-semibold tabular-nums text-white">{item.total}</span>
-            </span>
-          ))}
+              <span
+                key={item.tipo}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-700/80 bg-slate-900/60 px-3 py-1.5 text-xs text-slate-200"
+              >
+                <span className="text-slate-500">{item.tipo}</span>
+                <span className="font-semibold tabular-nums text-white">{item.total}</span>
+              </span>
+            ))}
         </div>
       </section>
 
@@ -483,7 +335,7 @@ export default function EmpresaExecutiveDashboardPage() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <Link to="/empresa/transporte" className={shortcutClass}>
             <span className="text-sm font-semibold text-white">Transporte</span>
-            <span className="text-xs text-slate-500">Módulo em expansão</span>
+            <span className="text-xs text-slate-500">Toneladas, metas e produtividade</span>
           </Link>
           <Link to="/empresa/combustivel" className={shortcutClass}>
             <span className="text-sm font-semibold text-white">Combustível</span>
@@ -495,7 +347,7 @@ export default function EmpresaExecutiveDashboardPage() {
           </Link>
           <Link to="/dashboard" className={shortcutClass}>
             <span className="text-sm font-semibold text-white">Visão operacional completa</span>
-            <span className="text-xs text-slate-500">Painel legado com todos os blocos</span>
+            <span className="text-xs text-slate-500">Painel legado</span>
           </Link>
           <Link to="/dashboard/relatorios" className={shortcutClass}>
             <span className="text-sm font-semibold text-white">Relatórios</span>
