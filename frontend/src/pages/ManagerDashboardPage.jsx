@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import api from "../services/api";
+import api, { extractApiErrorMessage } from "../services/api";
 import SkeletonRows from "../components/SkeletonRows";
 import { emitToast } from "../services/uiEvents";
 
@@ -195,9 +195,12 @@ export default function ManagerDashboardPage() {
           preco_fora_media_historico: Boolean(data?.alertas_combustivel?.preco_fora_media_historico),
         },
       });
-    } catch {
+    } catch (err) {
       setCombustivelResumo(null);
-      emitToast("Não foi possível carregar o resumo de combustível.", "warning");
+      emitToast(
+        extractApiErrorMessage(err) || "Não foi possível carregar o resumo de combustível.",
+        "warning"
+      );
     } finally {
       setCombustivelLoading(false);
     }

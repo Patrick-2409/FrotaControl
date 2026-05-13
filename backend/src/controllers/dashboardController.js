@@ -446,9 +446,8 @@ const combustiveisResumo = async (req, res) => {
   }
 
   const rawPeriodo = req.query.periodo != null ? String(req.query.periodo).trim().toLowerCase() : "";
-  const periodoParsed = z
-    .enum(["dia", "semana", "mes", "ano"])
-    .safeParse(rawPeriodo === "" ? undefined : rawPeriodo);
+  const periodoNormalizado = ["dia", "semana", "mes", "ano"].includes(rawPeriodo) ? rawPeriodo : "mes";
+  const periodoParsed = z.enum(["dia", "semana", "mes", "ano"]).safeParse(periodoNormalizado);
   if (!periodoParsed.success) {
     return res.status(400).json({
       success: false,

@@ -600,9 +600,9 @@ const listMotoristaRecords = async ({ empresa_id, usuario_id }) => {
   return rows;
 };
 
-/** Instante absoluto a partir de data/hora local gravada sem fuso (app envia horário de operação em BRT). */
-const COMB_EVENT_TS = `(COALESCE(recorded_at_client, data)::timestamp AT TIME ZONE 'America/Sao_Paulo')`;
-const COMB_EVENT_TS_C = `(COALESCE(c.recorded_at_client, c.data)::timestamp AT TIME ZONE 'America/Sao_Paulo')`;
+/** Instante absoluto (timestamptz): hora local BRT gravada como timestamp sem fuso na app. Usa timezone() para evitar ambiguidade do AT TIME ZONE com tipos mistos. */
+const COMB_EVENT_TS = `timezone('America/Sao_Paulo', COALESCE(recorded_at_client, data)::timestamp)`;
+const COMB_EVENT_TS_C = `timezone('America/Sao_Paulo', COALESCE(c.recorded_at_client, c.data)::timestamp)`;
 
 /**
  * Agrega combustíveis no intervalo [start, end) em timestamptz (instante do registo em SP vs limites já em UTC).
