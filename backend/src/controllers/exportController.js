@@ -6,6 +6,7 @@ const path = require("path");
 const { listManagerRecords } = require("../models/recordModel");
 const { buildRegistrosCsvContent } = require("../utils/registrosCsv");
 const { getCompanyById } = require("../models/companyModel");
+const viagemModel = require("../models/viagemModel");
 const { z } = require("zod");
 
 /** Puppeteer só aqui: evitar require no arranque (Render/OOM e cold start). */
@@ -145,6 +146,11 @@ const parseExportFilters = (query = {}) => {
       motorista: z.string().optional(),
       tipo: z.enum(["romaneio", "combustivel", "parte_diaria"]).optional(),
       source_id: z.string().min(8).optional(),
+      modelo: z.preprocess((v) => {
+        const s = String(v ?? "").trim().toLowerCase();
+        if (s === "porto" || s === "padrao") return s;
+        return undefined;
+      }, z.enum(["porto", "padrao"]).optional()),
     })
     .parse({
       data: normalizedDate,
@@ -154,6 +160,7 @@ const parseExportFilters = (query = {}) => {
       motorista: query.motorista ? String(query.motorista).trim() : undefined,
       tipo: query.tipo ? String(query.tipo).trim() : undefined,
       source_id: query.source_id ? String(query.source_id).trim() : undefined,
+      modelo: query.modelo,
     });
   return filter;
 };
@@ -186,6 +193,7 @@ const formatExportFiltersSummaryPt = (filter, recordCount = 0) => {
   }
   if (filter.motorista) lines.push(`Filtro — motorista / texto: ${filter.motorista}`);
   if (filter.tipo) lines.push(`Filtro — tipo de registo: ${filter.tipo}`);
+  if (filter.modelo === "porto") lines.push("Modelo de impressão: Porto (grelhas e resumo de produção quando aplicável).");
   if (filter.source_id) lines.push(`Filtro — registo específico: ${filter.source_id}`);
   if (lines.length === 2) lines.push("Sem filtros adicionais explícitos (âmbito: empresa autenticada).");
   return lines.join("\n");
@@ -362,6 +370,38 @@ const getLogoAssets = async (req, logoUrl) => {
   }
 };
 
+const escapeForSvgText = (value) =>
+  String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+
+/** Logo de substituição (SVG) quando a empresa não carregou ficheiro — garante área visível em PDF/Excel. */
+const buildPlaceholderLogoDataUrl = (companyName) => {
+  const name = escapeForSvgText(String(companyName || "Empresa").trim().slice(0, 72)) || "Empresa";
+  const initial = String(companyName || "E").trim().charAt(0).toUpperCase() || "E";
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="96" viewBox="0 0 360 96">
+  <rect width="360" height="96" fill="#ffffff" stroke="#1e3a8a" stroke-width="2" rx="6"/>
+  <circle cx="48" cy="48" r="30" fill="#1e3a8a"/>
+  <text x="48" y="56" text-anchor="middle" fill="#ffffff" font-family="Arial,sans-serif" font-size="26" font-weight="700">${escapeForSvgText(
+    initial
+  )}</text>
+  <text x="92" y="44" fill="#1e3a8a" font-family="Arial,sans-serif" font-size="15" font-weight="700">${name}</text>
+  <text x="92" y="66" fill="#64748b" font-family="Arial,sans-serif" font-size="10">Logótipo (definir em perfil da empresa)</text>
+</svg>`;
+  return `data:image/svg+xml;base64,${Buffer.from(svg, "utf8").toString("base64")}`;
+};
+
+const resolveEmpresaLogoAssets = async (req, company) => {
+  const base = await getLogoAssets(req, company?.logo_url);
+  if (base.htmlSrc) return base;
+  return {
+    htmlSrc: buildPlaceholderLogoDataUrl(company?.nome || "Empresa"),
+    excelImage: null,
+  };
+};
+
 const marker = (checked) => (checked ? "&#10005;" : "&nbsp;");
 const getActivityName = (tipo) => {
   if (tipo === "parte_diaria") return "PARTE DIÁRIA";
@@ -409,9 +449,9 @@ const renderParteDiariaSheet = (row, companyName, logoUrl) => {
   return `
     <section class="sheet">
       <div class="header-row">
-        <div class="logo-box">${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="Logo" style="height:60px;"/>` : ""}</div>
-        <div>
-          <div class="title">PARTE DIÁRIA DE EQUIPAMENTO</div>
+        <div class="logo-box"><img src="${escapeHtml(logoUrl)}" alt="Logótipo" style="height:60px;"/></div>
+        <div class="title-bar-wrap">
+          <div class="title-bar">PARTE DIÁRIA DE EQUIPAMENTO</div>
           <div class="subtitle">Atividade principal: ${getActivityName(row.tipo)} | Data executada: ${asDate(reportDate)}</div>
         </div>
       </div>
@@ -469,7 +509,8 @@ const renderCombustivelSheet = (row, companyName, logoUrl) => {
   const weekRowsHtml = weekdayRows
     .map((day) => {
       const isRow = weekdayIndex === day.key;
-      return `<tr>
+      const weekend = day.key === 6 || day.key === 0 ? " weekend" : "";
+      return `<tr class="${weekend.trim()}">
         <td>${day.label}</td>
         <td>${isRow ? asDate(reportDate) : ""}</td>
         <td>${isRow ? escapeHtml(row.litros ?? "") : ""}</td>
@@ -482,10 +523,9 @@ const renderCombustivelSheet = (row, companyName, logoUrl) => {
   return `
     <section class="sheet">
       <div class="header-row">
-        <div class="logo-box">${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="Logo" style="height:60px;"/>` : ""}</div>
-        <div>
-          <div class="title">CONTROLE DE COMBUSTÍVEL SEMANAL</div>
-          <div class="subtitle">Atividade principal: ${getActivityName(row.tipo)} | Data executada: ${asDate(reportDate)} (${escapeHtml(asWeekdayName(reportDate))})</div>
+        <div class="logo-box"><img src="${escapeHtml(logoUrl)}" alt="Logótipo" style="height:60px;"/></div>
+        <div class="title-bar-wrap">
+          <div class="title-bar fuel-title">CONTROLE DE COMBUSTÍVEL SEMANAL</div>
         </div>
       </div>
       <table class="form-table">
@@ -496,6 +536,7 @@ const renderCombustivelSheet = (row, companyName, logoUrl) => {
         <tr><th>Dia</th><th>Data</th><th>Quantidade (L)</th><th>Combustível</th><th>Horímetro</th><th>Hodômetro</th></tr>
         ${weekRowsHtml}
       </table>
+      <div class="assinaturas-bar">ASSINATURAS</div>
       <div class="signatures">
         <div>Operador: ________________________________</div>
         <div>Responsável: ________________________________</div>
@@ -504,39 +545,83 @@ const renderCombustivelSheet = (row, companyName, logoUrl) => {
   `;
 };
 
-const renderRomaneioSheet = (row, logoUrl) => `
+const renderRomaneioSheet = (row, logoUrl) => {
+  const reportDate = getEffectiveDateValue(row);
+  const tt = String(row.tipo_transporte || "").toLowerCase();
+  const markE = tt.includes("estéril") || tt.includes("esteril");
+  const markRa = tt.includes("amarração") || tt.includes("amarracao");
+  const markRp = tt.includes("pulmão") || tt.includes("pulmao");
+  const tallyMark = (on) => (on ? "&#10005;" : "");
+  const nums = Array.from({ length: 10 }, (_, i) => `<th class="small center">${i + 1}</th>`).join("");
+  const emptyTally = Array.from({ length: 9 }, () => "<td></td>").join("");
+  return `
   <section class="sheet">
     <div class="header-row">
-      <div class="logo-box">${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="Logo" style="height:60px;"/>` : ""}</div>
-      <div>
-        <div class="title">CONTROLE DIÁRIO DE TRANSPORTE</div>
-        <div class="subtitle">Atividade principal: ${getActivityName(row.tipo)} | Data executada: ${asDate(getEffectiveDateValue(row))}</div>
+      <div class="logo-box"><img src="${escapeHtml(logoUrl)}" alt="Logótipo" style="height:60px;"/></div>
+      <div class="title-bar-wrap">
+        <div class="title-bar">CONTROLE DIÁRIO DE TRANSPORTE</div>
       </div>
     </div>
-    <table class="form-table"><tr><td>DATA:</td><td>${asDate(getEffectiveDateValue(row))}</td></tr></table>
-    <table class="grid-table">
-      <tr><th>Equipamento</th><th>Placa</th><th>Motorista</th><th>Transporte</th></tr>
-      <tr><td>${escapeHtml(row.veiculo || "-")}</td><td>${escapeHtml(row.placa || "-")}</td><td>${escapeHtml(row.motorista || "-")}</td><td>${escapeHtml(row.tipo_transporte || "-")}</td></tr>
-      <tr><td colspan="3">Estéril</td><td>${marker((row.tipo_transporte || "").toLowerCase().includes("estéril"))}</td></tr>
-      <tr><td colspan="3">Rocha (amarração)</td><td>${marker((row.tipo_transporte || "").toLowerCase().includes("amarração"))}</td></tr>
-      <tr><td colspan="3">Rocha (pulmão)</td><td>${marker((row.tipo_transporte || "").toLowerCase().includes("pulmão"))}</td></tr>
-      <tr><td colspan="3">Destinação</td><td>${escapeHtml(row.destino || "-")}</td></tr>
+    <table class="form-table"><tr><td class="bold">DATA:</td><td colspan="3">${asDate(reportDate)}</td></tr></table>
+    <table class="grid-table transport-main">
+      <colgroup>
+        <col class="col-equip" /><col class="col-placa" /><col class="col-motor" />
+        <col class="col-sub" /><col span="10" />
+      </colgroup>
+      <thead>
+        <tr>
+          <th rowspan="2">Equipamento</th>
+          <th rowspan="2">Placa</th>
+          <th rowspan="2">Motorista</th>
+          <th colspan="11" class="center">Transporte</th>
+        </tr>
+        <tr>
+          <th class="small narrow"></th>
+          ${nums}
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td rowspan="4">${escapeHtml(row.veiculo || "-")}</td>
+          <td rowspan="4">${escapeHtml(row.placa || "-")}</td>
+          <td rowspan="4">${escapeHtml(row.motorista || "-")}</td>
+          <td class="narrow bold">Estéril</td>
+          <td class="center">${tallyMark(markE)}</td>
+          ${emptyTally}
+        </tr>
+        <tr>
+          <td class="narrow bold">Rocha (amarração)</td>
+          <td class="center">${tallyMark(markRa)}</td>
+          ${emptyTally}
+        </tr>
+        <tr>
+          <td class="narrow bold">Rocha (pulmão)</td>
+          <td class="center">${tallyMark(markRp)}</td>
+          ${emptyTally}
+        </tr>
+        <tr>
+          <td class="narrow bold">Destinação</td>
+          <td colspan="10" class="left">${escapeHtml(row.destino || "-")}</td>
+        </tr>
+      </tbody>
     </table>
-    <table class="form-table"><tr><td>Observação</td><td>${escapeHtml(row.observacao || "-")}</td></tr></table>
+    <table class="form-table"><tr><td class="bold">Observação</td><td colspan="3">${escapeHtml(row.observacao || "-")}</td></tr></table>
     <p class="legend">Legenda: Site (ST) / Depósito de Rochas (DP) / Vias de Acesso (VA)</p>
+    <div class="assinaturas-bar">ASSINATURAS</div>
     <div class="signatures">
       <div>Apontador: ________________________________</div>
       <div>Responsável: ________________________________</div>
     </div>
   </section>
 `;
+};
 
 const buildExportCoverSection = ({ companyName, logoUrl, summaryText }) => {
   const safeSummary = escapeHtml(summaryText).replaceAll("\n", "<br/>");
   return `
   <section class="sheet export-cover">
     <div class="header-row">
-      <div class="logo-box">${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="Logo" />` : ""}</div>
+      <div class="logo-box"><img src="${escapeHtml(logoUrl)}" alt="Logótipo" /></div>
       <div>
         <div class="title">${escapeHtml(companyName)}</div>
         <div class="subtitle">Exportação de registros operacionais · FrotaControl</div>
@@ -579,6 +664,22 @@ const buildOfficialHtml = ({ companyName, logoUrl, records, summaryText }) => {
           }
           .grid-table th { background: #f3f4f6; text-align: center; }
           .center { text-align: center; }
+          .left { text-align: left; }
+          .bold { font-weight: 700; }
+          .title-bar-wrap { width: 100%; }
+          .title-bar {
+            text-align: center; font-weight: 700; text-transform: uppercase; font-size: 15px;
+            background: #e5e7eb; border: 1px solid #000; padding: 6px;
+          }
+          .fuel-title { color: #0f172a; }
+          .transport-main th.small { font-size: 9px; padding: 2px; }
+          .transport-main .narrow { font-size: 10px; max-width: 88px; }
+          .assinaturas-bar {
+            text-align: center; font-weight: 700; text-transform: uppercase; border: 1px solid #000;
+            padding: 4px; margin: 10px 0 4px; background: #f3f4f6;
+          }
+          tr.weekend td:first-child { color: #b91c1c; font-weight: 600; }
+          .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; font-size: 11px; }
           .text-area { min-height: 38px; }
           .legend { margin: 6px 0; font-size: 11px; }
           .export-cover { margin-bottom: 10px; }
@@ -967,7 +1068,17 @@ const toExcelCompatibleImage = async (htmlSrc, excelImage) => {
   }
 };
 
-const getColumnLetter = (index) => String.fromCharCode(64 + index);
+/** Índice de coluna 1-based (A=1) para letra(s), até além da coluna Z. */
+const getColumnLetter = (index) => {
+  let n = index;
+  let letter = "";
+  while (n > 0) {
+    const m = (n - 1) % 26;
+    letter = String.fromCharCode(65 + m) + letter;
+    n = Math.floor((n - 1) / 26);
+  }
+  return letter;
+};
 
 const applyBaseStyle = (worksheet) => {
   worksheet.pageSetup = {
@@ -1051,6 +1162,10 @@ const addParteDiariaWorksheet = (workbook, row, companyName, logoImageId, index)
       br: { col: 1.9, row: 2.9 },
       editAs: "oneCell",
     });
+  } else {
+    worksheet.getCell("A1").value = "LOGO";
+    worksheet.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
+    worksheet.getCell("A1").font = { name: "Arial", size: 10, italic: true, color: { argb: "FF64748B" } };
   }
 
   putLabelValue(worksheet, 4, "A4:B4", "C4:D4", "CONTRATADO:", row.contratado || companyName);
@@ -1218,16 +1333,361 @@ const addParteDiariaWorksheet = (workbook, row, companyName, logoImageId, index)
   applyBorderAndFont(worksheet, currentRow, currentRow, 1, 8);
 };
 
-const addSimpleFormWorksheet = (workbook, row, logoImageId, index) => {
+const toYmdFromPg = (dia) => {
+  if (dia == null) return null;
+  const s = String(dia).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const d = dia instanceof Date ? dia : new Date(dia);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+};
+
+const enumerateDaysInclusiveYmd = (ymdStart, ymdEnd) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(ymdStart)) || !/^\d{4}-\d{2}-\d{2}$/.test(String(ymdEnd))) return [];
+  const out = [];
+  let cur = String(ymdStart);
+  const end = String(ymdEnd);
+  let guard = 0;
+  while (cur <= end && guard < 500) {
+    out.push(cur);
+    const dt = new Date(`${cur}T12:00:00Z`);
+    dt.setUTCDate(dt.getUTCDate() + 1);
+    cur = dt.toISOString().slice(0, 10);
+    guard += 1;
+  }
+  return out;
+};
+
+const fmtDiaCurtoPtUtc = (ymd) => {
+  const [yy, mm, dd] = ymd.split("-").map(Number);
+  const dt = new Date(Date.UTC(yy, mm - 1, dd));
+  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", timeZone: "UTC" })
+    .format(dt)
+    .replace(".", "");
+};
+
+const ROM_COL_LAST = 14;
+
+const addRomaneioPortoWorksheet = (workbook, row, logoImageId, index) => {
   const reportDate = getEffectiveDateValue(row);
-  const kind = row.tipo === "combustivel" ? "Combustivel" : "Romaneio";
-  const worksheet = workbook.addWorksheet(`${kind}-${index + 1}`);
+  const ws = workbook.addWorksheet(`Romaneio-${index + 1}`);
+  ws.pageSetup = {
+    paperSize: 9,
+    orientation: "portrait",
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: 0,
+    margins: { left: 0.35, right: 0.35, top: 0.35, bottom: 0.35, header: 0.2, footer: 0.2 },
+  };
+  ws.views = [{ showGridLines: false }];
+  ws.properties.defaultRowHeight = 18;
+  for (let c = 1; c <= ROM_COL_LAST; c += 1) {
+    ws.getColumn(c).width = c <= 3 ? 14 : c === 4 ? 16 : 8.5;
+  }
+
+  ws.mergeCells("A1:B3");
+  ws.mergeCells("C1:N3");
+  ws.getCell("C1").value = `CONTROLE DIÁRIO DE TRANSPORTE\nAtividade: ${getActivityName(row.tipo)} · Data: ${asDate(
+    reportDate
+  )}`;
+  ws.getCell("C1").font = { name: "Arial", size: 14, bold: true };
+  ws.getCell("C1").alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+  applyBorderAndFont(ws, 1, 3, 1, ROM_COL_LAST);
+
+  if (logoImageId !== null && logoImageId !== undefined) {
+    ws.addImage(logoImageId, {
+      tl: { col: 0.1, row: 0.1 },
+      br: { col: 1.9, row: 2.9 },
+      editAs: "oneCell",
+    });
+  } else {
+    ws.getCell("A1").value = "LOGO";
+    ws.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
+    ws.getCell("A1").font = { name: "Arial", size: 10, italic: true, color: { argb: "FF64748B" } };
+  }
+
+  ws.mergeCells("A4:N4");
+  ws.getCell("A4").value = `DATA: ${asDate(reportDate)}`;
+  ws.getCell("A4").font = { name: "Arial", size: 11, bold: true };
+  applyBorderAndFont(ws, 4, 4, 1, ROM_COL_LAST);
+
+  const hdr = 6;
+  ws.getCell(`A${hdr}`).value = "Equipamento";
+  ws.getCell(`B${hdr}`).value = "Placa";
+  ws.getCell(`C${hdr}`).value = "Motorista";
+  ws.mergeCells(`D${hdr}:N${hdr}`);
+  ws.getCell(`D${hdr}`).value = "TRANSPORTE";
+  ["A", "B", "C", "D"].forEach((col) => {
+    ws.getCell(`${col}${hdr}`).font = { name: "Arial", size: 10, bold: true };
+    ws.getCell(`${col}${hdr}`).alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+  });
+  ws.getCell(`D${hdr}`).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE5E7EB" } };
+  applyBorderAndFont(ws, hdr, hdr, 1, ROM_COL_LAST);
+
+  const h2 = hdr + 1;
+  ws.mergeCells(`A${h2}:C${h2}`);
+  ws.getCell(`D${h2}`).value = "";
+  for (let i = 0; i < 10; i += 1) {
+    const colL = getColumnLetter(5 + i);
+    ws.getCell(`${colL}${h2}`).value = i + 1;
+    ws.getCell(`${colL}${h2}`).font = { name: "Arial", size: 9, bold: true };
+    ws.getCell(`${colL}${h2}`).alignment = { vertical: "middle", horizontal: "center" };
+    ws.getCell(`${colL}${h2}`).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF3F4F6" } };
+  }
+  applyBorderAndFont(ws, h2, h2, 1, ROM_COL_LAST);
+
+  const r0 = h2 + 1;
+  ws.mergeCells(`A${r0}:A${r0 + 3}`);
+  ws.mergeCells(`B${r0}:B${r0 + 3}`);
+  ws.mergeCells(`C${r0}:C${r0 + 3}`);
+  ws.getCell(`A${r0}`).value = asDisplayValue(row.veiculo);
+  ws.getCell(`B${r0}`).value = asDisplayValue(row.placa);
+  ws.getCell(`C${r0}`).value = asDisplayValue(row.motorista);
+  ["A", "B", "C"].forEach((col) => {
+    ws.getCell(`${col}${r0}`).alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+  });
+
+  const tt = String(row.tipo_transporte || "").toLowerCase();
+  const mark = (cond) => (cond ? "X" : "");
+  const labels = [
+    ["Estéril", mark(tt.includes("estéril") || tt.includes("esteril"))],
+    ["Rocha (amarração)", mark(tt.includes("amarração") || tt.includes("amarracao"))],
+    ["Rocha (pulmão)", mark(tt.includes("pulmão") || tt.includes("pulmao"))],
+  ];
+  labels.forEach(([label, cellMark], i) => {
+    const r = r0 + i;
+    ws.getCell(`D${r}`).value = label;
+    ws.getCell(`D${r}`).font = { name: "Arial", size: 9, bold: true };
+    ws.getCell(`E${r}`).value = cellMark;
+    ws.getCell(`E${r}`).alignment = { vertical: "middle", horizontal: "center" };
+    ws.mergeCells(`F${r}:N${r}`);
+  });
+  const rDest = r0 + 3;
+  ws.getCell(`D${rDest}`).value = "Destinação";
+  ws.getCell(`D${rDest}`).font = { name: "Arial", size: 9, bold: true };
+  ws.mergeCells(`E${rDest}:N${rDest}`);
+  ws.getCell(`E${rDest}`).value = asDisplayValue(row.destino);
+  ws.getCell(`E${rDest}`).alignment = { vertical: "middle", horizontal: "left", wrapText: true };
+  applyBorderAndFont(ws, r0, r0 + 3, 1, ROM_COL_LAST);
+
+  const orow = r0 + 4;
+  ws.mergeCells(`A${orow}:N${orow}`);
+  ws.getCell(`A${orow}`).value = `Observação: ${asDisplayValue(row.observacao)}`;
+  applyBorderAndFont(ws, orow, orow, 1, ROM_COL_LAST);
+
+  const lrow = orow + 1;
+  ws.mergeCells(`A${lrow}:N${lrow}`);
+  ws.getCell(`A${lrow}`).value = "Legenda: Site (ST) / Depósito de Rochas (DP) / Vias de Acesso (VA)";
+  ws.getCell(`A${lrow}`).font = { name: "Arial", size: 9, italic: true };
+  applyBorderAndFont(ws, lrow, lrow, 1, ROM_COL_LAST);
+
+  const srow = lrow + 1;
+  ws.mergeCells(`A${srow}:N${srow}`);
+  ws.getCell(`A${srow}`).value = "ASSINATURAS";
+  ws.getCell(`A${srow}`).font = { name: "Arial", size: 11, bold: true };
+  ws.getCell(`A${srow}`).alignment = { horizontal: "center", vertical: "middle" };
+  ws.getCell(`A${srow}`).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF3F4F6" } };
+  applyBorderAndFont(ws, srow, srow, 1, ROM_COL_LAST);
+
+  const sig = srow + 1;
+  ws.mergeCells(`A${sig}:G${sig}`);
+  ws.mergeCells(`H${sig}:N${sig}`);
+  ws.getCell(`A${sig}`).value = "Apontador: ________________________________";
+  ws.getCell(`H${sig}`).value = "Responsável: ________________________________";
+  applyBorderAndFont(ws, sig, sig, 1, ROM_COL_LAST);
+};
+
+const PROD_HDR_FILL = "FF404040";
+const PROD_HDR_FONT = "FFFFFFFF";
+const PROD_ROW_FILL = "FFFFDCC2";
+const PROD_SUM_FILL = "FF92D050";
+
+const addProducaoPortoSheets = async (workbook, { empresaId, dataInicio, dataFim, logoImageId, companyName }) => {
+  const bounds = viagemModel.utcBoundsFromDateRangeYmd(dataInicio, dataFim);
+  if (!bounds?.start || !bounds?.end) return;
+  const raw = await viagemModel.listViagensByVehicleDay(empresaId, bounds.start, bounds.end);
+  const days = enumerateDaysInclusiveYmd(dataInicio, dataFim);
+  if (!days.length) return;
+
+  const vehiclesMap = new Map();
+  for (const r of raw) {
+    const id = r.veiculo_id;
+    const day = toYmdFromPg(r.dia_local);
+    if (!day) continue;
+    if (!vehiclesMap.has(id)) {
+      vehiclesMap.set(id, {
+        nome: r.veiculo_nome,
+        placa: r.placa || "",
+        ton: Number(r.ton) || 0,
+        esteril: {},
+        rocha: {},
+      });
+    }
+    const v = vehiclesMap.get(id);
+    v.esteril[day] = (v.esteril[day] || 0) + (Number(r.esteril) || 0);
+    v.rocha[day] = (v.rocha[day] || 0) + (Number(r.rocha) || 0);
+  }
+  const vehicles = [...vehiclesMap.values()].sort((a, b) => String(a.nome).localeCompare(String(b.nome)));
+
+  const paintHeaderRow = (ws, row, fromCol, toCol) => {
+    for (let c = fromCol; c <= toCol; c += 1) {
+      const cell = ws.getCell(`${getColumnLetter(c)}${row}`);
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: PROD_HDR_FILL } };
+      cell.font = { name: "Arial", size: 10, bold: true, color: { argb: PROD_HDR_FONT } };
+      cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+      cell.border = {
+        top: { style: "thin" },
+        left: { style: "thin" },
+        bottom: { style: "thin" },
+        right: { style: "thin" },
+      };
+    }
+  };
+
+  const paintDataRow = (ws, row, fromCol, toCol) => {
+    for (let c = fromCol; c <= toCol; c += 1) {
+      const cell = ws.getCell(`${getColumnLetter(c)}${row}`);
+      cell.font = { name: "Arial", size: 10 };
+      cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: PROD_ROW_FILL } };
+      cell.border = {
+        top: { style: "thin" },
+        left: { style: "thin" },
+        bottom: { style: "thin" },
+        right: { style: "thin" },
+      };
+    }
+  };
+
+  const paintSumRow = (ws, row, fromCol, toCol) => {
+    for (let c = fromCol; c <= toCol; c += 1) {
+      const cell = ws.getCell(`${getColumnLetter(c)}${row}`);
+      cell.font = { name: "Arial", size: 10, bold: true };
+      cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: PROD_SUM_FILL } };
+      cell.border = {
+        top: { style: "thin" },
+        left: { style: "thin" },
+        bottom: { style: "thin" },
+        right: { style: "thin" },
+      };
+    }
+  };
+
+  const buildSheet = (tipoKey, titlePt) => {
+    const sheetName = `Resumo-${tipoKey}`.slice(0, 31).replace(/[[\]:*?/\\]/g, "-");
+    const ws = workbook.addWorksheet(sheetName);
+    ws.pageSetup = {
+      paperSize: 9,
+      orientation: "landscape",
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 0,
+      margins: { left: 0.35, right: 0.35, top: 0.35, bottom: 0.35, header: 0.2, footer: 0.2 },
+    };
+    ws.views = [{ showGridLines: false }];
+    ws.mergeCells("A1:B3");
+    ws.mergeCells("C1:H3");
+    ws.getCell("C1").value = `${titlePt}\n${companyName || "Empresa"} · ${dataInicio} a ${dataFim}`;
+    ws.getCell("C1").font = { name: "Arial", size: 13, bold: true };
+    ws.getCell("C1").alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+    applyBorderAndFont(ws, 1, 3, 1, 8);
+    if (logoImageId !== null && logoImageId !== undefined) {
+      ws.addImage(logoImageId, {
+        tl: { col: 0.1, row: 0.1 },
+        br: { col: 1.9, row: 2.9 },
+        editAs: "oneCell",
+      });
+    }
+
+    const lastCol = 2 + days.length + 2;
+    for (let c = 1; c <= lastCol; c += 1) {
+      ws.getColumn(c).width = c <= 2 ? 16 : 9;
+    }
+
+    const hr = 5;
+    let c = 1;
+    ws.getCell(`${getColumnLetter(c)}${hr}`).value = "CB";
+    c += 1;
+    ws.getCell(`${getColumnLetter(c)}${hr}`).value = "TON";
+    c += 1;
+    days.forEach((d) => {
+      ws.getCell(`${getColumnLetter(c)}${hr}`).value = fmtDiaCurtoPtUtc(d);
+      c += 1;
+    });
+    ws.getCell(`${getColumnLetter(c)}${hr}`).value = "TOTAL VIAGENS";
+    c += 1;
+    ws.getCell(`${getColumnLetter(c)}${hr}`).value = "TOTAL TONELADAS";
+    paintHeaderRow(ws, hr, 1, lastCol);
+
+    let dataRow = hr + 1;
+    vehicles.forEach((v) => {
+      let col = 1;
+      ws.getCell(`${getColumnLetter(col)}${dataRow}`).value = asDisplayValue(v.nome);
+      col += 1;
+      ws.getCell(`${getColumnLetter(col)}${dataRow}`).value = v.ton ? String(v.ton) : "-";
+      col += 1;
+      let tripSum = 0;
+      days.forEach((d) => {
+        const n = v[tipoKey][d] || 0;
+        tripSum += n;
+        ws.getCell(`${getColumnLetter(col)}${dataRow}`).value = n > 0 ? n : "";
+        col += 1;
+      });
+      ws.getCell(`${getColumnLetter(col)}${dataRow}`).value = tripSum;
+      col += 1;
+      const tonTot = (Number(v.ton) || 0) * tripSum;
+      ws.getCell(`${getColumnLetter(col)}${dataRow}`).value = tonTot ? Math.round(tonTot * 10) / 10 : "";
+      paintDataRow(ws, dataRow, 1, lastCol);
+      dataRow += 1;
+    });
+
+    const totalsByDay = {};
+    days.forEach((d) => {
+      totalsByDay[d] = vehicles.reduce((s, v) => s + (v[tipoKey][d] || 0), 0);
+    });
+    const grandTrips = vehicles.reduce(
+      (s, v) => s + days.reduce((t, d) => t + (v[tipoKey][d] || 0), 0),
+      0
+    );
+    const grandTon = vehicles.reduce((s, v) => {
+      const trips = days.reduce((t, d) => t + (v[tipoKey][d] || 0), 0);
+      return s + (Number(v.ton) || 0) * trips;
+    }, 0);
+
+    let col = 1;
+    ws.getCell(`${getColumnLetter(col)}${dataRow}`).value = "TOTAL";
+    ws.getCell(`${getColumnLetter(col)}${dataRow}`).font = { name: "Arial", size: 10, bold: true };
+    col += 1;
+    ws.getCell(`${getColumnLetter(col)}${dataRow}`).value = "";
+    col += 1;
+    days.forEach((d) => {
+      const dayTot = totalsByDay[d];
+      ws.getCell(`${getColumnLetter(col)}${dataRow}`).value = dayTot > 0 ? dayTot : "";
+      col += 1;
+    });
+    ws.getCell(`${getColumnLetter(col)}${dataRow}`).value = grandTrips;
+    col += 1;
+    ws.getCell(`${getColumnLetter(col)}${dataRow}`).value = grandTon ? Math.round(grandTon * 10) / 10 : "";
+    paintSumRow(ws, dataRow, 1, lastCol);
+  };
+
+  buildSheet("esteril", "ESTÉRIL — viagens por dia");
+  buildSheet("rocha", "ROCHA — viagens por dia");
+};
+
+const addSimpleFormWorksheet = (workbook, row, logoImageId, index) => {
+  if (row.tipo !== "combustivel") {
+    addRomaneioPortoWorksheet(workbook, row, logoImageId, index);
+    return;
+  }
+
+  const reportDate = getEffectiveDateValue(row);
+  const worksheet = workbook.addWorksheet(`Combustivel-${index + 1}`);
   applyBaseStyle(worksheet);
 
   worksheet.mergeCells("A1:B3");
   worksheet.mergeCells("C1:H3");
-  const title =
-    row.tipo === "combustivel" ? "CONTROLE DE COMBUSTÍVEL SEMANAL" : "CONTROLE DIÁRIO DE TRANSPORTE";
+  const title = "CONTROLE DE COMBUSTÍVEL SEMANAL";
   worksheet.getCell("C1").value = `${title}\nAtividade principal: ${getActivityName(
     row.tipo
   )} | Data executada: ${asDate(reportDate)}`;
@@ -1241,6 +1701,10 @@ const addSimpleFormWorksheet = (workbook, row, logoImageId, index) => {
       br: { col: 1.9, row: 2.9 },
       editAs: "oneCell",
     });
+  } else {
+    worksheet.getCell("A1").value = "LOGO";
+    worksheet.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
+    worksheet.getCell("A1").font = { name: "Arial", size: 10, italic: true, color: { argb: "FF64748B" } };
   }
 
   putLabelValue(worksheet, 4, "A4:B4", "C4:D4", "DATA:", asDate(reportDate));
@@ -1248,68 +1712,61 @@ const addSimpleFormWorksheet = (workbook, row, logoImageId, index) => {
   putLabelValue(worksheet, 5, "A5:B5", "C5:D5", "MOTORISTA:", row.motorista);
   putLabelValue(worksheet, 5, "E5:F5", "G5:H5", "VEÍCULO:", row.veiculo);
 
-  if (row.tipo === "combustivel") {
-    worksheet.mergeCells("A6:H6");
-    worksheet.getCell("A6").value = "CONTROLE SEMANAL";
-    worksheet.getCell("A6").font = { name: "Arial", size: 11, bold: true };
-    applyBorderAndFont(worksheet, 6, 6, 1, 8);
+  worksheet.mergeCells("A6:H6");
+  worksheet.getCell("A6").value = "CONTROLE SEMANAL";
+  worksheet.getCell("A6").font = { name: "Arial", size: 11, bold: true };
+  applyBorderAndFont(worksheet, 6, 6, 1, 8);
 
-    worksheet.getCell("A7").value = "Dia";
-    worksheet.mergeCells("B7:C7");
-    worksheet.getCell("B7").value = "Data";
-    worksheet.getCell("D7").value = "Quantidade (L)";
-    worksheet.getCell("E7").value = "Combustível";
-    worksheet.getCell("F7").value = "Horímetro";
-    worksheet.mergeCells("G7:H7");
-    worksheet.getCell("G7").value = "Hodômetro";
-    applyBorderAndFont(worksheet, 7, 7, 1, 8);
-    ["A7", "B7", "D7", "E7", "F7", "G7"].forEach((addr) => {
-      worksheet.getCell(addr).font = { name: "Arial", size: 10, bold: true };
-      worksheet.getCell(addr).alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+  worksheet.getCell("A7").value = "Dia";
+  worksheet.mergeCells("B7:C7");
+  worksheet.getCell("B7").value = "Data";
+  worksheet.getCell("D7").value = "Quantidade (L)";
+  worksheet.getCell("E7").value = "Combustível";
+  worksheet.getCell("F7").value = "Horímetro";
+  worksheet.mergeCells("G7:H7");
+  worksheet.getCell("G7").value = "Hodômetro";
+  applyBorderAndFont(worksheet, 7, 7, 1, 8);
+  ["A7", "B7", "D7", "E7", "F7", "G7"].forEach((addr) => {
+    worksheet.getCell(addr).font = { name: "Arial", size: 10, bold: true };
+    worksheet.getCell(addr).alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+  });
+
+  const weekdayIndex = getWeekdayIndex(reportDate);
+  let currentRow = 8;
+  weekdayRows.forEach((day) => {
+    const isRow = weekdayIndex === day.key;
+    const weekend = day.key === 6 || day.key === 0;
+    worksheet.getCell(`A${currentRow}`).value = day.label;
+    worksheet.mergeCells(`B${currentRow}:C${currentRow}`);
+    worksheet.getCell(`B${currentRow}`).value = isRow ? asDate(reportDate) : "";
+    worksheet.getCell(`D${currentRow}`).value = isRow ? asDisplayValue(row.litros) : "";
+    worksheet.getCell(`E${currentRow}`).value = isRow ? asDisplayValue(row.tipo_combustivel) : "";
+    worksheet.getCell(`F${currentRow}`).value = isRow ? asDisplayValue(row.horimetro) : "";
+    worksheet.mergeCells(`G${currentRow}:H${currentRow}`);
+    worksheet.getCell(`G${currentRow}`).value = isRow ? asDisplayValue(row.hodometro) : "";
+    applyBorderAndFont(worksheet, currentRow, currentRow, 1, 8);
+    ["A", "B", "D", "E", "F", "G"].forEach((col) => {
+      const cell = worksheet.getCell(`${col}${currentRow}`);
+      cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+      if (weekend && col === "A") {
+        cell.font = { name: "Arial", size: 10, color: { argb: "FFB91C1C" }, bold: true };
+      }
     });
+    currentRow += 1;
+  });
 
-    const weekdayIndex = getWeekdayIndex(reportDate);
-    let currentRow = 8;
-    weekdayRows.forEach((day) => {
-      const isRow = weekdayIndex === day.key;
-      worksheet.getCell(`A${currentRow}`).value = day.label;
-      worksheet.mergeCells(`B${currentRow}:C${currentRow}`);
-      worksheet.getCell(`B${currentRow}`).value = isRow ? asDate(reportDate) : "";
-      worksheet.getCell(`D${currentRow}`).value = isRow ? asDisplayValue(row.litros) : "";
-      worksheet.getCell(`E${currentRow}`).value = isRow ? asDisplayValue(row.tipo_combustivel) : "";
-      worksheet.getCell(`F${currentRow}`).value = isRow ? asDisplayValue(row.horimetro) : "";
-      worksheet.mergeCells(`G${currentRow}:H${currentRow}`);
-      worksheet.getCell(`G${currentRow}`).value = isRow ? asDisplayValue(row.hodometro) : "";
-      applyBorderAndFont(worksheet, currentRow, currentRow, 1, 8);
-      ["A", "B", "D", "E", "F", "G"].forEach((col) => {
-        worksheet.getCell(`${col}${currentRow}`).alignment = { vertical: "middle", horizontal: "center", wrapText: true };
-      });
-      currentRow += 1;
-    });
+  worksheet.mergeCells("A15:H15");
+  worksheet.getCell("A15").value = "ASSINATURAS";
+  worksheet.getCell("A15").font = { name: "Arial", size: 11, bold: true };
+  worksheet.getCell("A15").alignment = { horizontal: "center", vertical: "middle" };
+  worksheet.getCell("A15").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF3F4F6" } };
+  applyBorderAndFont(worksheet, 15, 15, 1, 8);
 
-    worksheet.mergeCells("A16:D16");
-    worksheet.mergeCells("E16:H16");
-    worksheet.getCell("A16").value = "Operador: ________________________________";
-    worksheet.getCell("E16").value = "Responsável: ________________________________";
-    applyBorderAndFont(worksheet, 16, 16, 1, 8);
-    return;
-  } else {
-    putLabelValue(worksheet, 6, "A6:B6", "C6:D6", "TRANSPORTE:", row.tipo_transporte);
-    putLabelValue(worksheet, 6, "E6:F6", "G6:H6", "DESTINO:", row.destino);
-    worksheet.mergeCells("A7:B7");
-    worksheet.mergeCells("C7:H7");
-    worksheet.getCell("A7").value = "OBSERVAÇÃO:";
-    worksheet.getCell("A7").font = { name: "Arial", size: 10, bold: true };
-    worksheet.getCell("C7").value = asDisplayValue(row.observacao);
-    worksheet.getCell("C7").alignment = { vertical: "middle", horizontal: "left", wrapText: true };
-    applyBorderAndFont(worksheet, 7, 7, 1, 8);
-  }
-
-  worksheet.mergeCells("A10:D10");
-  worksheet.mergeCells("E10:H10");
-  worksheet.getCell("A10").value = "Operador: ________________________________";
-  worksheet.getCell("E10").value = "Responsável: ________________________________";
-  applyBorderAndFont(worksheet, 10, 10, 1, 8);
+  worksheet.mergeCells("A16:D16");
+  worksheet.mergeCells("E16:H16");
+  worksheet.getCell("A16").value = "Operador: ________________________________";
+  worksheet.getCell("E16").value = "Responsável: ________________________________";
+  applyBorderAndFont(worksheet, 16, 16, 1, 8);
 };
 
 const addExportSummaryWorksheet = (workbook, { companyName, summaryText }) => {
@@ -1345,7 +1802,7 @@ const exportExcel = async (req, res) => {
   const company = await getCompanyById(scope.empresa_id);
   const data = (await getData(scope, filters)).items;
   const workbook = new ExcelJS.Workbook();
-  const logoAssets = await getLogoAssets(req, company?.logo_url);
+  const logoAssets = await resolveEmpresaLogoAssets(req, company);
   const excelImage = await toExcelCompatibleImage(logoAssets.htmlSrc, logoAssets.excelImage);
   const logoImageId = await loadLogoImage(workbook, excelImage);
   const summaryText = formatExportFiltersSummaryPt(filters, data.length);
@@ -1363,6 +1820,25 @@ const exportExcel = async (req, res) => {
       }
       addSimpleFormWorksheet(workbook, row, logoImageId, index);
     });
+    if (
+      filters.modelo === "porto" &&
+      filters.data_inicio &&
+      filters.data_fim &&
+      !filters.source_id &&
+      scope.empresa_id
+    ) {
+      try {
+        await addProducaoPortoSheets(workbook, {
+          empresaId: scope.empresa_id,
+          dataInicio: filters.data_inicio,
+          dataFim: filters.data_fim,
+          logoImageId,
+          companyName: company?.nome || "Empresa",
+        });
+      } catch {
+        // evita falhar exportação se agregação de viagens não estiver disponível
+      }
+    }
   }
 
   res.setHeader(
@@ -1388,7 +1864,7 @@ const exportPdf = async (req, res) => {
   const scope = resolveExportScope(req);
   const company = await getCompanyById(scope.empresa_id);
   const data = (await getData(scope, filters)).items;
-  const logoAssets = await getLogoAssets(req, company?.logo_url);
+  const logoAssets = await resolveEmpresaLogoAssets(req, company);
   const summaryText = formatExportFiltersSummaryPt(filters, data.length);
   const html = buildOfficialHtml({
     companyName: company?.nome || "Empresa",
@@ -1418,10 +1894,11 @@ const exportPdf = async (req, res) => {
       },
     });
   } catch (error) {
+    const rasterForFallback = await toExcelCompatibleImage(logoAssets.htmlSrc, logoAssets.excelImage);
     const fallbackBuffer = await buildFallbackPdfBuffer({
       companyName: company?.nome || "Empresa",
       records: data,
-      logoImage: logoAssets.excelImage,
+      logoImage: rasterForFallback,
       filterSummary: summaryText,
     });
     res.setHeader("X-PDF-Fallback", "1");

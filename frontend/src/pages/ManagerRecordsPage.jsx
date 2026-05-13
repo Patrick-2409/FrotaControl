@@ -151,6 +151,7 @@ export default function ManagerRecordsPage({
   const buildExportQueryParams = useCallback(() => {
     const params = {
       motorista: debouncedMotorista?.trim() || undefined,
+      modelo: "porto",
     };
     if (filtro.periodo === "dia") params.data = filtro.data?.trim() || undefined;
     if (filtro.periodo === "mes") params.mes = filtro.mes?.trim() || undefined;
@@ -300,6 +301,7 @@ export default function ManagerRecordsPage({
       const params = {
         tipo: row?.tipo,
         source_id: row?.source_id,
+        modelo: "porto",
       };
       const { data } = await api.get(`/dashboard/export/${format}`, {
         responseType: "blob",

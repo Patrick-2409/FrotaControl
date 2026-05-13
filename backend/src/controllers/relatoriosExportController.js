@@ -7,6 +7,7 @@ const { exportExcel, exportPdf } = require("./exportController");
 const mergeQueryForPreset = (query, preset) => {
   const next = { ...query };
   delete next.format;
+  if (!next.modelo) next.modelo = "porto";
   if (preset === "completo") {
     delete next.tipo;
   } else if (preset === "producao") {

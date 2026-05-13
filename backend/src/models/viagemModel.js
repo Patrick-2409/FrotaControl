@@ -89,9 +89,37 @@ const utcBoundsFromDateRangeYmd = (data_inicio_ymd, data_fim_ymd) => {
   return { start: start.toISOString(), end: endDay.toISOString() };
 };
 
+/**
+ * Viagens agregadas por veículo e dia civil (America/Sao_Paulo) — exportações tipo Porto.
+ * @param {number} empresa_id
+ * @param {string} startIso
+ * @param {string} endIso
+ */
+const listViagensByVehicleDay = async (empresa_id, startIso, endIso, db = pool) => {
+  const { rows } = await db.query(
+    `SELECT v.id AS veiculo_id,
+            v.nome AS veiculo_nome,
+            v.placa,
+            COALESCE(v.capacidade_ton, 0)::double precision AS ton,
+            (vi.marcacao AT TIME ZONE 'America/Sao_Paulo')::date AS dia_local,
+            COUNT(*) FILTER (WHERE vi.tipo = 'esteril')::int AS esteril,
+            COUNT(*) FILTER (WHERE vi.tipo = 'rocha')::int AS rocha
+     FROM viagens vi
+     INNER JOIN veiculos v ON v.id = vi.veiculo_id AND v.empresa_id = vi.empresa_id
+     WHERE vi.empresa_id = $1
+       AND vi.marcacao >= $2::timestamptz
+       AND vi.marcacao < $3::timestamptz
+     GROUP BY v.id, v.nome, v.placa, v.capacidade_ton, (vi.marcacao AT TIME ZONE 'America/Sao_Paulo')::date
+     ORDER BY v.nome, dia_local`,
+    [empresa_id, startIso, endIso]
+  );
+  return rows;
+};
+
 module.exports = {
   insertViagem,
   getViagensResumoProducao,
   countViagensHojeEmpresaSaoPaulo,
   utcBoundsFromDateRangeYmd,
+  listViagensByVehicleDay,
 };
