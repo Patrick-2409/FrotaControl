@@ -50,6 +50,14 @@ const defaultWeekRangeLocal = () => {
   return { data_inicio: ymd(monday), data_fim: ymd(sunday) };
 };
 
+const PERIODOS_API_COMBUSTIVEL = new Set(["dia", "semana", "mes", "ano"]);
+
+/** Garante query `periodo` válida para /dashboard/combustiveis/resumo (default semana). */
+const normalizePeriodoCombustivel = (v) => {
+  const p = String(v ?? "semana").trim().toLowerCase();
+  return PERIODOS_API_COMBUSTIVEL.has(p) ? p : "semana";
+};
+
 export default function ManagerDashboardPage() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -115,9 +123,10 @@ export default function ManagerDashboardPage() {
 
   const loadCombustivelResumo = useCallback(async () => {
     setCombustivelLoading(true);
+    const periodo = normalizePeriodoCombustivel(periodoViagens);
     try {
       const { data } = await api.get("/dashboard/combustiveis/resumo", {
-        params: { periodo: periodoViagens, group_by: "veiculo" },
+        params: { periodo, group_by: "veiculo" },
       });
       setCombustivelResumo({
         total_litros: data?.total_litros ?? 0,
@@ -133,7 +142,7 @@ export default function ManagerDashboardPage() {
       });
     } catch {
       setCombustivelResumo(null);
-      emitToast("Não foi possível carregar o resumo de combustível.", "warning");
+      emitToast("Sem dados de combustível no período", "warning");
     } finally {
       setCombustivelLoading(false);
     }
@@ -489,7 +498,7 @@ export default function ManagerDashboardPage() {
             ) : null}
           </>
         ) : (
-          <p className="mt-2 text-sm text-slate-500">Resumo de combustível indisponível.</p>
+          <p className="mt-2 text-sm text-slate-500">Sem dados de combustível no período</p>
         )}
       </section>
 
