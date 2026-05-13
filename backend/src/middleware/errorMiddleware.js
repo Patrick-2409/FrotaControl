@@ -23,12 +23,22 @@ const errorMiddleware = (err, req, res, next) => {
     stack: err.stack,
     ...pgMeta,
   });
-  const clientMessage = status >= 500 ? "Erro interno no servidor" : err.message || "Erro na requisição";
-  return res.status(status).json({
+  const clientMessage =
+    status >= 500
+      ? typeof err?.code === "string" && /^[0-9A-Z]{5}$/.test(err.code) && typeof err.message === "string"
+        ? err.message
+        : "Erro interno no servidor"
+      : err.message || "Erro na requisição";
+  const body = {
     success: false,
     error: clientMessage,
     message: clientMessage,
-  });
+  };
+  if (typeof err?.code === "string" && /^[0-9A-Z]{5}$/.test(err.code)) {
+    body.code = err.code;
+    if (err.detail) body.detail = String(err.detail);
+  }
+  return res.status(status).json(body);
 };
 
 module.exports = { errorMiddleware };

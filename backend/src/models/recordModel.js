@@ -1,4 +1,5 @@
 const { pool } = require("../db");
+const { logError } = require("../services/loggerService");
 
 const upsertRomaneio = async (empresa_id, usuario_id, payload) => {
   const { rows } = await pool.query(
@@ -615,10 +616,21 @@ const getCombustiveisResumoMetrics = async (
   { empresa_id, bounds, groupByVeiculo = false, veiculoId = null, motoristaId = null },
   db = pool
 ) => {
+  const eid = Number(empresa_id);
+  if (!Number.isFinite(eid) || eid < 1) {
+    const err = new Error("empresa_id inválido.");
+    err.statusCode = 400;
+    throw err;
+  }
   const { start, end } = bounds;
+  if (typeof start !== "string" || typeof end !== "string" || !start || !end) {
+    const err = new Error("Intervalo do período inválido (start/end).");
+    err.statusCode = 400;
+    throw err;
+  }
   const vf = veiculoId != null && Number.isFinite(Number(veiculoId)) ? Number(veiculoId) : null;
   const mf = motoristaId != null && Number.isFinite(Number(motoristaId)) ? Number(motoristaId) : null;
-  const params = [empresa_id, start, end, vf, mf];
+  const params = [eid, start, end, vf, mf];
   const filterBase = `
     AND ($4::int IS NULL OR veiculo_id = $4)
     AND ($5::int IS NULL OR usuario_id = $5)`;
@@ -673,7 +685,7 @@ const getCombustiveisResumoMetrics = async (
     };
   }
 
-  const histParams = [empresa_id, vf, mf];
+  const histParams = [eid, vf, mf];
   const histFilter = `
     AND ($2::int IS NULL OR c.veiculo_id = $2)
     AND ($3::int IS NULL OR c.usuario_id = $3)`;
@@ -686,7 +698,8 @@ const getCombustiveisResumoMetrics = async (
     AND ${COMB_EVENT_TS_C} < $3::timestamptz
     ${filterC}`;
 
-  const [groupsRes, consumoElevadoRes, precoAcimaRes, histPrecoRes, hist365Res] = await Promise.all([
+  const subLabels = ["por_veiculo", "consumo_elevado", "preco_acima_media", "hist_preco", "hist_365d"];
+  const settled = await Promise.allSettled([
     db.query(
       `SELECT
         c.veiculo_id,
@@ -775,6 +788,29 @@ const getCombustiveisResumoMetrics = async (
       histParams
     ),
   ]);
+
+  settled.forEach((r, i) => {
+    if (r.status === "rejected") {
+      const reason = r.reason;
+      logError("getCombustiveisResumoMetrics: subquery falhou", {
+        sub: subLabels[i],
+        message: reason?.message || String(reason),
+        code: reason?.code,
+        detail: reason?.detail,
+      });
+    }
+  });
+
+  const groupsRes =
+    settled[0].status === "fulfilled" ? settled[0].value : { rows: [] };
+  const consumoElevadoRes =
+    settled[1].status === "fulfilled" ? settled[1].value : { rows: [] };
+  const precoAcimaRes =
+    settled[2].status === "fulfilled" ? settled[2].value : { rows: [{ preco_acima_media: false }] };
+  const histPrecoRes =
+    settled[3].status === "fulfilled" ? settled[3].value : { rows: [{ pm: null }] };
+  const hist365Res =
+    settled[4].status === "fulfilled" ? settled[4].value : { rows: [{ litros: 0 }] };
 
   const groups = groupsRes.rows || [];
   const consumoElevado = (consumoElevadoRes.rows || []).map((g) => ({
