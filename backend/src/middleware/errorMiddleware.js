@@ -21,6 +21,9 @@ const errorMiddleware = (err, req, res, next) => {
     path: req.originalUrl,
     method: req.method,
     stack: err.stack,
+    userId: req.user?.sub ?? null,
+    empresaId: req.user?.empresa_id ?? null,
+    role: req.user?.role ?? null,
     ...pgMeta,
   });
   const clientMessage =

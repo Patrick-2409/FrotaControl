@@ -169,12 +169,16 @@ async function syncPendentesInternal() {
   }
   for (const v of pending) {
     try {
-      await api.post("/apontador/viagens", {
-        veiculo_id: v.veiculo_id,
-        motorista_id: v.motorista_id,
-        tipo: v.tipo,
-        timestamp: v.timestamp,
-      });
+      await api.post(
+        "/apontador/viagens",
+        {
+          veiculo_id: v.veiculo_id,
+          motorista_id: v.motorista_id,
+          tipo: v.tipo,
+          timestamp: v.timestamp,
+        },
+        { skipGlobalErrorToast: true }
+      );
       await markAsSynced(v.id_local);
     } catch {
       /* mantém pendente */

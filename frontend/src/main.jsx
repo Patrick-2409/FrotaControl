@@ -6,9 +6,10 @@ import App from "./App.jsx";
 import { AuthProvider } from "./services/auth";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { getBaseURL } from "./services/api";
+import { fcLogger } from "./services/logger";
 
 if (import.meta.env.DEV) {
-  console.info("[FrotaControl] BASE URL:", getBaseURL() || "(não definida — use VITE_API_URL em produção)");
+  fcLogger.info("bootstrap", { baseURL: getBaseURL() || "(não definida — use VITE_API_URL em produção)" });
 }
 
 if ("serviceWorker" in navigator) {

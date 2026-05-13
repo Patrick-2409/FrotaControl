@@ -17,7 +17,7 @@ const devRoutes = require("./routes/devRoutes");
 const { authMiddleware, requireRole } = require("./middleware/authMiddleware");
 const { errorMiddleware } = require("./middleware/errorMiddleware");
 const path = require("path");
-const { logInfo } = require("./services/loggerService");
+const { requestLogMiddleware } = require("./middleware/requestLogMiddleware");
 
 const app = express();
 const isProduction = process.env.NODE_ENV === "production";
@@ -133,13 +133,14 @@ app.use(
 app.use(compression());
 app.use(express.json({ limit: "2mb" }));
 app.use(sanitizeInputMiddleware);
-app.use(
-  morgan("dev", {
-    stream: {
-      write: (message) => logInfo("http", { line: message.trim() }),
-    },
-  })
-);
+app.use(requestLogMiddleware);
+if (!isProduction) {
+  app.use(
+    morgan("dev", {
+      stream: process.stdout,
+    })
+  );
+}
 app.use(
   "/uploads",
   (req, res, next) => {

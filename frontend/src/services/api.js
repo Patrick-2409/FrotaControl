@@ -1,6 +1,8 @@
 import axios from "axios";
+import { createLogger } from "./logger";
 
 const PROD_API_FALLBACK = "https://frotacontrol.onrender.com";
+const httpLogger = createLogger("http");
 
 export const getBaseURL = () => {
   const rawEnvUrl = (import.meta.env.VITE_API_URL || "").trim();
@@ -37,6 +39,36 @@ export const extractApiErrorMessage = (err) => {
 };
 
 /**
+ * Mensagem para o utilizador (toast / UI), sem detalhes técnicos agressivos.
+ */
+export const getFriendlyApiErrorMessage = (error) => {
+  if (!error) return "Ocorreu um erro inesperado.";
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    return "Sem ligação à internet. Verifique a rede e tente novamente.";
+  }
+  if (error.code === "ECONNABORTED") {
+    return "O pedido excedeu o tempo limite. Tente novamente.";
+  }
+  if (String(error.message || "").toLowerCase().includes("timeout")) {
+    return "O pedido excedeu o tempo limite. Tente novamente.";
+  }
+  if (error.code === "ERR_NETWORK" || !error.response) {
+    return "Não foi possível contactar o servidor. Verifique a ligação ou tente mais tarde.";
+  }
+  const status = error.response?.status;
+  const fromServer = extractApiErrorMessage(error);
+  if (status === 401) return "Sessão expirada ou inválida. Inicie sessão novamente.";
+  if (status === 403) return fromServer || "Não tem permissão para esta operação.";
+  if (status === 404) return fromServer || "O recurso pedido não foi encontrado.";
+  if (status === 408 || status === 504) return "Tempo de espera esgotado. Tente novamente.";
+  if (status !== undefined && status >= 500) {
+    return "O servidor está temporariamente indisponível. Tente dentro de instantes.";
+  }
+  if (fromServer) return fromServer;
+  return "Não foi possível concluir o pedido.";
+};
+
+/**
  * Resolve URL de ficheiro do backend para uso em <img src> etc.
  * Rejeita esquemas não http(s) e URLs protocol-relative (//host) para reduzir risco de XSS/open redirect em atributos.
  */
@@ -63,12 +95,15 @@ export const resolveBackendAssetUrl = (value) => {
 const resolvedBaseURL = getBaseURL();
 const apiBaseURL = resolvedBaseURL ? `${resolvedBaseURL}/api` : "/api";
 
+const apiTimeoutMs = Math.min(120000, Math.max(5000, Number(import.meta.env.VITE_API_TIMEOUT_MS || 45000)));
+
 if (import.meta.env.DEV) {
-  console.info("[FrotaControl] API base:", getBaseURL() || "(relativo /api)");
+  httpLogger.info("api_client_init", { baseURL: getBaseURL() || "(relativo /api)", timeoutMs: apiTimeoutMs });
 }
 
 const api = axios.create({
   baseURL: apiBaseURL,
+  timeout: apiTimeoutMs,
 });
 
 const clearCriticalCache = () => {
@@ -93,14 +128,36 @@ api.interceptors.request.use((config) => {
   } else if (config?.headers?.Authorization) {
     delete config.headers.Authorization;
   }
+  if (typeof performance !== "undefined") {
+    config.metadata = { startedAt: performance.now() };
+  } else {
+    config.metadata = { startedAt: Date.now() };
+  }
   return config;
 });
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const cfg = response.config;
+    const start = cfg?.metadata?.startedAt;
+    if (start != null && typeof performance !== "undefined") {
+      const durationMs = Math.round(performance.now() - start);
+      const slowMs = Math.max(2000, Number(import.meta.env.VITE_API_SLOW_MS || 4000));
+      if (durationMs >= slowMs) {
+        httpLogger.warn("api_slow_response", {
+          url: cfg?.url,
+          method: cfg?.method,
+          status: response.status,
+          durationMs,
+        });
+      }
+    }
+    return response;
+  },
   (error) => {
     const status = error?.response?.status;
-    const requestUrl = String(error?.config?.url || "");
+    const cfg = error?.config || {};
+    const requestUrl = String(cfg?.url || "");
     const token = getStoredToken();
     const isAuthLoginEndpoint =
       requestUrl.includes("/auth/login") ||
@@ -110,24 +167,37 @@ api.interceptors.response.use(
       requestUrl.includes("/auth/super-admin-login");
     const isAuthSessionEndpoint = requestUrl.includes("/auth/me");
     const isExpectedAuth401 = status === 401 && (isAuthLoginEndpoint || isAuthSessionEndpoint);
-    if (!isExpectedAuth401 && import.meta.env.DEV) {
-      console.error("API error:", error);
+
+    const start = cfg?.metadata?.startedAt;
+    const durationMs =
+      start != null && typeof performance !== "undefined" ? Math.round(performance.now() - start) : null;
+
+    if (!isExpectedAuth401) {
+      httpLogger.error("api_request_failed", {
+        url: requestUrl,
+        method: cfg?.method,
+        status: status ?? null,
+        code: error?.code ?? null,
+        durationMs,
+        detail: extractApiErrorMessage(error).slice(0, 240),
+      });
+    } else {
+      httpLogger.debug("api_expected_401", { url: requestUrl });
     }
 
     if (status === 401 && token && !isAuthLoginEndpoint) {
       clearCriticalCache();
+      httpLogger.warn("auth_session_expired", { url: requestUrl });
       window.dispatchEvent(new CustomEvent("fc:auth-expired"));
     }
 
-    if (!isExpectedAuth401) {
-      const raw =
-        error?.response?.data?.message ||
-        (navigator.onLine ? "Servidor indisponível" : "Você está sem internet.");
-      const message =
-        typeof raw === "string" && raw.length > MAX_API_ERROR_MESSAGE_LEN
-          ? `${raw.slice(0, MAX_API_ERROR_MESSAGE_LEN)}…`
-          : raw;
-      window.dispatchEvent(new CustomEvent("fc:api-error", { detail: message }));
+    if (!isExpectedAuth401 && !cfg.skipGlobalErrorToast) {
+      const friendly = getFriendlyApiErrorMessage(error);
+      const forToast =
+        typeof friendly === "string" && friendly.length > MAX_API_ERROR_MESSAGE_LEN
+          ? `${friendly.slice(0, MAX_API_ERROR_MESSAGE_LEN)}…`
+          : friendly;
+      window.dispatchEvent(new CustomEvent("fc:api-error", { detail: forToast }));
     }
     return Promise.reject(error);
   }

@@ -1,4 +1,5 @@
 const { Pool } = require("pg");
+const { logWarn } = require("./services/loggerService");
 
 const connectionString = process.env.DATABASE_URL;
 const databaseSslExplicit = String(process.env.DATABASE_SSL || "").toLowerCase();
@@ -11,6 +12,27 @@ const pool = new Pool({
   connectionString,
   ...(useSsl ? { ssl: { rejectUnauthorized: false } } : {}),
 });
+
+const PG_SLOW_MS = Math.max(500, Number(process.env.PG_SLOW_QUERY_MS || 5000));
+(() => {
+  const origQuery = pool.query.bind(pool);
+  pool.query = (...args) => {
+    const started = Date.now();
+    const preview =
+      typeof args[0] === "string"
+        ? args[0].slice(0, 320)
+        : args[0]?.text?.slice(0, 320) || "(prepared)";
+    return origQuery(...args).finally(() => {
+      const durationMs = Date.now() - started;
+      if (durationMs >= PG_SLOW_MS) {
+        logWarn("pg_slow_query", {
+          durationMs,
+          sqlPreview: String(preview).replace(/\s+/g, " ").trim(),
+        });
+      }
+    });
+  };
+})();
 
 const initDb = async () => {
   await pool.query(`

@@ -1,4 +1,8 @@
-import api, { extractApiErrorMessage } from "./api";
+import api, { extractApiErrorMessage, getFriendlyApiErrorMessage } from "./api";
+import { createLogger } from "./logger";
+
+const syncLog = createLogger("sync");
+const SYNC_SLOW_MS = 5000;
 import {
   getPending,
   markAsSynced,
@@ -31,7 +35,7 @@ const safeLogOfflineError = async (context, err) => {
   try {
     await logOfflineError(context, extractApiErrorMessage(err) || "erro_desconhecido");
   } catch (e) {
-    console.warn("logOfflineError:", e);
+    syncLog.warn("log_offline_error_failed", { detail: String(e?.message || e) });
   }
 };
 
@@ -109,7 +113,7 @@ export const saveWithOffline = async (module, payload) => {
           status: "pending",
         });
       } catch (e) {
-        console.warn("saveLocal offline (sem rede):", e);
+        syncLog.warn("save_local_offline_network", { detail: String(e?.message || e) });
         emitToast("Não foi possível guardar localmente. Libere espaço ou verifique o armazenamento do navegador.", "error");
         return { status: "error", error: e };
       }
@@ -128,7 +132,7 @@ export const saveWithOffline = async (module, payload) => {
           status: "pending",
         });
       } catch (e) {
-        console.warn("saveLocal offline (sessão):", e);
+        syncLog.warn("save_local_offline_session", { detail: String(e?.message || e) });
         emitToast("Não foi possível guardar o registo localmente.", "error");
         return { status: "error", error: e };
       }
@@ -151,13 +155,16 @@ export const saveWithOffline = async (module, payload) => {
         status: "syncing",
       });
       const startedAt = performance.now();
-      await api.post(endpointByModule[normalizedModule], normalizedPayload);
+      await api.post(endpointByModule[normalizedModule], normalizedPayload, { skipGlobalErrorToast: true });
       const durationMs = Math.max(0, performance.now() - startedAt);
+      if (durationMs >= SYNC_SLOW_MS) {
+        syncLog.warn("sync_slow_post", { module: normalizedModule, durationMs, phase: "saveWithOffline" });
+      }
 
       try {
         await addSyncMetric({ module: normalizedModule, durationMs, ok: true });
       } catch (metricErr) {
-        console.warn("addSyncMetric (saveWithOffline):", metricErr);
+        syncLog.warn("add_sync_metric_failed", { phase: "saveWithOffline", detail: String(metricErr?.message || metricErr) });
       }
       try {
         const pendingRows = await getPending();
@@ -172,7 +179,7 @@ export const saveWithOffline = async (module, payload) => {
           }
         }
       } catch (pendingErr) {
-        console.warn("markAsSynced pendentes (saveWithOffline):", pendingErr);
+        syncLog.warn("mark_synced_pending_failed", { phase: "saveWithOffline", detail: String(pendingErr?.message || pendingErr) });
       }
       try {
         await saveLocal({
@@ -182,16 +189,19 @@ export const saveWithOffline = async (module, payload) => {
           status: "synced",
         });
       } catch (historyErr) {
-        console.warn("saveLocal synced (saveWithOffline):", historyErr);
+        syncLog.warn("save_local_synced_history_failed", { phase: "saveWithOffline", detail: String(historyErr?.message || historyErr) });
       }
       emitSyncState("synced");
       return { status: "synced" };
     } catch (err) {
-      console.error("Erro ao sincronizar:", err);
+      syncLog.error("sync_save_with_offline_failed", {
+        module: normalizedModule,
+        detail: extractApiErrorMessage(err).slice(0, 400),
+      });
       try {
         await addSyncMetric({ module: normalizedModule, durationMs: 0, ok: false });
       } catch (metricErr) {
-        console.warn("addSyncMetric falha (saveWithOffline):", metricErr);
+        syncLog.warn("add_sync_metric_failed", { phase: "saveWithOffline_error", detail: String(metricErr?.message || metricErr) });
       }
       try {
         await saveLocal({
@@ -201,13 +211,13 @@ export const saveWithOffline = async (module, payload) => {
           status: "pending",
         });
       } catch (localErr) {
-        console.warn("saveLocal pending após erro (saveWithOffline):", localErr);
+        syncLog.warn("save_local_pending_after_error", { phase: "saveWithOffline", detail: String(localErr?.message || localErr) });
       }
       await safeLogOfflineError("saveWithOffline", err);
       emitSyncState("pending");
       const apiMsg = extractApiErrorMessage(err);
       emitToast(
-        apiMsg || "Falha no envio. Registro mantido pendente para nova tentativa.",
+        getFriendlyApiErrorMessage(err) || "Falha no envio. Registro mantido pendente para nova tentativa.",
         "warning"
       );
       return { status: "pending", error: err, apiMessage: apiMsg || null };
@@ -267,17 +277,20 @@ export const syncNow = async () => {
             status: "syncing",
           });
           const startedAt = performance.now();
-          await api.post(endpointByModule[moduleName], payload);
+          await api.post(endpointByModule[moduleName], payload, { skipGlobalErrorToast: true });
           const durationMs = Math.max(0, performance.now() - startedAt);
+          if (durationMs >= SYNC_SLOW_MS) {
+            syncLog.warn("sync_slow_post", { module: moduleName, durationMs, phase: "syncNow" });
+          }
           try {
             await addSyncMetric({ module: moduleName, durationMs, ok: true });
           } catch (metricErr) {
-            console.warn("addSyncMetric (syncNow):", metricErr);
+            syncLog.warn("add_sync_metric_failed", { phase: "syncNow", detail: String(metricErr?.message || metricErr) });
           }
           try {
             await markAsSynced(item.id);
           } catch (markErr) {
-            console.warn("markAsSynced (syncNow):", markErr);
+            syncLog.warn("mark_as_synced_failed", { phase: "syncNow", detail: String(markErr?.message || markErr) });
           }
           try {
             await saveLocal({
@@ -287,21 +300,24 @@ export const syncNow = async () => {
               status: "synced",
             });
           } catch (saveErr) {
-            console.warn("saveLocal synced (syncNow):", saveErr);
+            syncLog.warn("save_local_synced_failed", { phase: "syncNow", detail: String(saveErr?.message || saveErr) });
           }
           synced += 1;
         } catch (err) {
-          console.error("Erro ao sincronizar:", err);
+          syncLog.error("sync_now_item_failed", {
+            module: moduleName,
+            detail: extractApiErrorMessage(err).slice(0, 400),
+          });
           try {
             await addSyncMetric({ module: moduleName, durationMs: 0, ok: false });
           } catch (metricErr) {
-            console.warn("addSyncMetric falha (syncNow):", metricErr);
+            syncLog.warn("add_sync_metric_failed", { phase: "syncNow_error", detail: String(metricErr?.message || metricErr) });
           }
           failed += 1;
           try {
             await updatePendingRetry(item, extractApiErrorMessage(err) || err?.message || "erro");
           } catch (retryErr) {
-            console.warn("updatePendingRetry (syncNow):", retryErr);
+            syncLog.warn("update_pending_retry_failed", { phase: "syncNow", detail: String(retryErr?.message || retryErr) });
           }
           try {
             await saveLocal({
@@ -315,7 +331,7 @@ export const syncNow = async () => {
               status: "pending",
             });
           } catch (localErr) {
-            console.warn("saveLocal pending após erro (syncNow):", localErr);
+            syncLog.warn("save_local_pending_after_error", { phase: "syncNow", detail: String(localErr?.message || localErr) });
           }
           await safeLogOfflineError("syncNow", err);
         }
