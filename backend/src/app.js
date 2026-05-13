@@ -9,6 +9,7 @@ const vehicleRoutes = require("./routes/vehicleRoutes");
 const recordRoutes = require("./routes/recordRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
 const companyAdminRoutes = require("./routes/companyAdminRoutes");
+const fleetRoutes = require("./routes/fleetRoutes");
 const exportRoutes = require("./routes/exportRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const userProfileRoutes = require("./routes/userProfileRoutes");
@@ -196,6 +197,12 @@ app.use(
   authMiddleware,
   requireRole("ADMIN_EMPRESA"),
   companyAdminRoutes
+);
+app.use(
+  "/api/dashboard/fleet",
+  authMiddleware,
+  requireRole("ADMIN_EMPRESA", "SUPER_ADMIN"),
+  fleetRoutes
 );
 app.use(
   "/api/apontador",

@@ -155,7 +155,8 @@ function useNavGroups(pathname) {
             id: "frota",
             title: "Frota",
             items: [
-              { to: "/dashboard/gestao?secao=veiculos", label: "Veículos", icon: "fleet", exact: false },
+              { to: "/empresa/frota", label: "Painel frota", icon: "fleet", exact: false },
+              { to: "/dashboard/gestao?secao=veiculos", label: "Veículos (clássico)", icon: "fleet", exact: false },
               { to: "/empresa/pessoas", label: "Pessoas", icon: "people", exact: false },
               { to: "/dashboard/gestao?secao=motoristas", label: "Motoristas", icon: "wheel", exact: false },
             ],

@@ -90,26 +90,8 @@ const userSchema = z.object({
   }
 });
 
-const vehicleSchema = z.object({
-  nome: z.string().trim().min(2),
-  placa: z.string().trim().min(4),
-  marca: z.string().trim().optional().nullable(),
-  modelo: z.string().trim().optional().nullable(),
-  capacidade_ton: z.coerce.number().positive().optional().nullable(),
-  usa_para_transporte: z.coerce.boolean().optional().default(false),
-});
-
-const toVehicleWritePayload = (parsed) => {
-  const usa = Boolean(parsed.usa_para_transporte);
-  return {
-    nome: parsed.nome,
-    placa: parsed.placa,
-    marca: parsed.marca != null && String(parsed.marca).trim() !== "" ? String(parsed.marca).trim() : null,
-    modelo: parsed.modelo != null && String(parsed.modelo).trim() !== "" ? String(parsed.modelo).trim() : null,
-    usa_para_transporte: usa,
-    capacidade_ton: usa ? parsed.capacidade_ton ?? null : null,
-  };
-};
+const { vehicleBodySchema, toVehicleWritePayload } = require("../validators/vehicleWriteSchema");
+const vehicleSchema = vehicleBodySchema;
 
 const getCompanyId = (req) => {
   if (req.user.role === "SUPER_ADMIN") {
@@ -666,8 +648,7 @@ const listVehiclesCtrl = async (req, res) => {
     const rows = await pool.query(
       `
       SELECT
-        v.id, v.nome, v.placa, v.empresa_id, v.created_at,
-        v.marca, v.modelo, v.capacidade_ton, v.usa_para_transporte,
+        v.*,
         e.nome AS empresa_nome,
         u.id AS motorista_id, u.nome AS motorista_nome
       FROM veiculos v
@@ -696,7 +677,15 @@ const listVehiclesCtrl = async (req, res) => {
     });
   }
   const { page, limit, search } = getPagination(req);
-  const result = await listVehicles(empresa_id, { page, limit, search });
+  const status_operacional = String(req.query.status_operacional || "").trim();
+  const tipo = String(req.query.tipo || "").trim();
+  const result = await listVehicles(empresa_id, {
+    page,
+    limit,
+    search,
+    status_operacional,
+    tipo,
+  });
   return res.json({
     ...result,
     page,

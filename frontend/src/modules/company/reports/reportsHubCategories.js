@@ -39,7 +39,7 @@ export const REPORT_HUB_CATEGORIES = [
     id: "frota",
     label: "Frota",
     items: [
-      { id: "fl_veic", label: "Veículos", action: { kind: "link", to: "/dashboard/gestao?secao=veiculos" } },
+      { id: "fl_veic", label: "Veículos", action: { kind: "link", to: "/empresa/frota" } },
       { id: "fl_manut", label: "Manutenção", hint: "Planejado", action: { kind: "link", to: "/empresa/frota" } },
       { id: "fl_doc", label: "Documentação", hint: "Planejado", action: { kind: "link", to: "/empresa/frota" } },
     ],

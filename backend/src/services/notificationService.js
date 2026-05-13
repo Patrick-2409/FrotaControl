@@ -110,7 +110,8 @@ async function gatherSignals(empresaId) {
     motoristasRows,
     inativosRows,
     cnhRows,
-    docRows,
+    docRevisaoRows,
+    docExtrasRows,
     manutRows,
   ] = await Promise.all([
     pool.query(
@@ -180,6 +181,31 @@ async function gatherSignals(empresaId) {
        WHERE empresa_id = $1
          AND doc_revisao_validade IS NOT NULL
          AND doc_revisao_validade <= CURRENT_DATE + INTERVAL '60 days'`,
+      [empresaId]
+    ),
+    pool.query(
+      `SELECT id, nome, placa, doc_tipo, dias FROM (
+        SELECT id, nome, placa, 'licenciamento'::text AS doc_tipo,
+          (doc_licenciamento_validade - CURRENT_DATE)::int AS dias
+        FROM veiculos
+        WHERE empresa_id = $1
+          AND doc_licenciamento_validade IS NOT NULL
+          AND doc_licenciamento_validade <= CURRENT_DATE + INTERVAL '60 days'
+        UNION ALL
+        SELECT id, nome, placa, 'seguro',
+          (doc_seguro_validade - CURRENT_DATE)::int
+        FROM veiculos
+        WHERE empresa_id = $1
+          AND doc_seguro_validade IS NOT NULL
+          AND doc_seguro_validade <= CURRENT_DATE + INTERVAL '60 days'
+        UNION ALL
+        SELECT id, nome, placa, 'inspecao',
+          (doc_inspecao_validade - CURRENT_DATE)::int
+        FROM veiculos
+        WHERE empresa_id = $1
+          AND doc_inspecao_validade IS NOT NULL
+          AND doc_inspecao_validade <= CURRENT_DATE + INTERVAL '60 days'
+      ) x`,
       [empresaId]
     ),
     pool.query(
@@ -272,7 +298,16 @@ async function gatherSignals(empresaId) {
   }
 
   const cnh_proximas = cnhRows.rows.map((r) => ({ id: r.id, nome: r.nome, dias: Number(r.dias) }));
-  const docs_proximos = docRows.rows.map((r) => ({ id: r.id, nome: r.nome, placa: r.placa, dias: Number(r.dias) }));
+  const docs_proximos = docRevisaoRows.rows.map((r) => ({ id: r.id, nome: r.nome, placa: r.placa, dias: Number(r.dias) }));
+  const doc_licenciamento_proximos = [];
+  const doc_seguro_proximos = [];
+  const doc_inspecao_proximos = [];
+  for (const r of docExtrasRows.rows) {
+    const row = { id: r.id, nome: r.nome, placa: r.placa, dias: Number(r.dias) };
+    if (r.doc_tipo === "licenciamento") doc_licenciamento_proximos.push(row);
+    else if (r.doc_tipo === "seguro") doc_seguro_proximos.push(row);
+    else if (r.doc_tipo === "inspecao") doc_inspecao_proximos.push(row);
+  }
   const manut_pendentes = manutRows.rows.map((r) => ({ id: r.id, nome: r.nome, placa: r.placa, dias: Number(r.dias) }));
 
   return {
@@ -288,6 +323,9 @@ async function gatherSignals(empresaId) {
     veiculos_inativos,
     cnh_proximas,
     docs_proximos,
+    doc_licenciamento_proximos,
+    doc_seguro_proximos,
+    doc_inspecao_proximos,
     manut_pendentes,
   };
 }

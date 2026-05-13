@@ -1,30 +1,12 @@
-const { z } = require("zod");
 const {
-  createVehicle,
-  listVehicles,
-  updateVehicle,
-  deleteVehicle,
-} = require("../models/vehicleModel");
-
-const schema = z.object({
-  nome: z.string().trim().min(2),
-  placa: z.string().trim().min(4),
-  marca: z.string().trim().optional(),
-  modelo: z.string().trim().optional(),
-  capacidade_ton: z.coerce.number().positive().optional().nullable(),
-  usa_para_transporte: z.coerce.boolean().optional().default(false),
-});
+  vehicleBodySchema: schema,
+  toVehicleWritePayload,
+} = require("../validators/vehicleWriteSchema");
+const { createVehicle, listVehicles, updateVehicle, deleteVehicle } = require("../models/vehicleModel");
 
 const create = async (req, res) => {
   const parsed = schema.parse(req.body);
-  const usa = Boolean(parsed.usa_para_transporte);
-  const data = {
-    ...parsed,
-    marca: parsed.marca || null,
-    modelo: parsed.modelo || null,
-    usa_para_transporte: usa,
-    capacidade_ton: usa ? parsed.capacidade_ton ?? null : null,
-  };
+  const data = toVehicleWritePayload(parsed);
   const vehicle = await createVehicle({
     ...data,
     empresa_id: req.user.empresa_id,
@@ -44,7 +26,9 @@ const list = async (req, res) => {
   const page = Number(req.query.page || 1);
   const limit = Number(req.query.limit || 50);
   const search = req.query.search || "";
-  const result = await listVehicles(empresaId, { page, limit, search });
+  const status_operacional = String(req.query.status_operacional || "").trim();
+  const tipo = String(req.query.tipo || "").trim();
+  const result = await listVehicles(empresaId, { page, limit, search, status_operacional, tipo });
   if (!req.user) {
     return res.json(result.items);
   }
@@ -58,15 +42,7 @@ const list = async (req, res) => {
 
 const update = async (req, res) => {
   const parsed = schema.parse(req.body);
-  const usa = Boolean(parsed.usa_para_transporte);
-  const data = {
-    nome: parsed.nome,
-    placa: parsed.placa,
-    marca: parsed.marca || null,
-    modelo: parsed.modelo || null,
-    usa_para_transporte: usa,
-    capacidade_ton: usa ? parsed.capacidade_ton ?? null : null,
-  };
+  const data = toVehicleWritePayload(parsed);
   const vehicle = await updateVehicle(Number(req.params.id), req.user.empresa_id, data);
   return res.json(vehicle);
 };

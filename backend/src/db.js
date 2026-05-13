@@ -323,6 +323,54 @@ const initDb = async () => {
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS doc_revisao_validade DATE;
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS manutencao_agendar_ate DATE;
   `);
+
+  await pool.query(`
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS tipo VARCHAR(80);
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS categoria VARCHAR(80);
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS ano INTEGER;
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS renavam VARCHAR(32);
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS chassi VARCHAR(48);
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS combustivel_principal VARCHAR(50);
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS capacidade_litros NUMERIC(12, 2);
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS horimetro_atual NUMERIC(14, 2);
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS hodometro_atual NUMERIC(14, 2);
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS status_operacional VARCHAR(24) NOT NULL DEFAULT 'ativo';
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS doc_licenciamento_validade DATE;
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS doc_seguro_validade DATE;
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS doc_inspecao_validade DATE;
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS fleet_telemetry_meta JSONB NOT NULL DEFAULT '{}'::jsonb;
+  `);
+
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'veiculos_status_operacional_chk'
+      ) THEN
+        ALTER TABLE veiculos
+          ADD CONSTRAINT veiculos_status_operacional_chk
+          CHECK (status_operacional IN ('ativo', 'manutencao', 'indisponivel', 'parado', 'operacao'));
+      END IF;
+    END
+    $$;
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS veiculo_manutencoes (
+      id SERIAL PRIMARY KEY,
+      empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+      veiculo_id INTEGER NOT NULL REFERENCES veiculos(id) ON DELETE CASCADE,
+      tipo VARCHAR(20) NOT NULL CHECK (tipo IN ('preventiva', 'corretiva')),
+      titulo VARCHAR(200) NOT NULL,
+      descricao TEXT,
+      custo NUMERIC(14, 2),
+      data_servico DATE NOT NULL,
+      odometro_snapshot NUMERIC(14, 2),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_veiculo_manut_empresa ON veiculo_manutencoes (empresa_id, data_servico DESC);
+    CREATE INDEX IF NOT EXISTS idx_veiculo_manut_veiculo ON veiculo_manutencoes (veiculo_id, data_servico DESC);
+  `);
 };
 
 module.exports = {

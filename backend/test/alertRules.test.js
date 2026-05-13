@@ -18,6 +18,9 @@ test("meta risco gera alerta critical", () => {
     veiculos_inativos: [],
     cnh_proximas: [],
     docs_proximos: [],
+    doc_licenciamento_proximos: [],
+    doc_seguro_proximos: [],
+    doc_inspecao_proximos: [],
     manut_pendentes: [],
   });
   assert.ok(items.some((i) => i.alert_key === "transport.meta_abaixo_planejado"));
@@ -38,6 +41,9 @@ test("ausência romaneios com frota de transporte", () => {
     veiculos_inativos: [],
     cnh_proximas: [],
     docs_proximos: [],
+    doc_licenciamento_proximos: [],
+    doc_seguro_proximos: [],
+    doc_inspecao_proximos: [],
     manut_pendentes: [],
   });
   assert.ok(items.some((i) => i.alert_key === "transport.ausencia_lancamentos_romaneios"));

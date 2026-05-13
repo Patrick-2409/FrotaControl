@@ -141,11 +141,44 @@ function buildAlertsFromSignals(s) {
 
   for (const row of s.docs_proximos || []) {
     out.push({
-      alert_key: `frota.documentacao:${row.id}`,
+      alert_key: `frota.documentacao_revisao:${row.id}`,
       severity: row.dias <= 14 ? "critical" : "warning",
       category: "frota",
-      title: "Documentação / revisão a vencer",
-      body: `Veículo ${row.placa || row.nome}: prazo em ${row.dias} dia(s).`,
+      title: "Revisão / documentação a vencer",
+      body: `Veículo ${row.placa || row.nome}: revisão em ${row.dias} dia(s).`,
+      payload: { veiculo_id: row.id, dias: row.dias, doc: "revisao" },
+    });
+  }
+
+  for (const row of s.doc_licenciamento_proximos || []) {
+    out.push({
+      alert_key: `frota.licenciamento:${row.id}`,
+      severity: row.dias <= 14 ? "critical" : "warning",
+      category: "frota",
+      title: "Licenciamento a vencer",
+      body: `Veículo ${row.placa || row.nome}: licenciamento em ${row.dias} dia(s).`,
+      payload: { veiculo_id: row.id, dias: row.dias },
+    });
+  }
+
+  for (const row of s.doc_seguro_proximos || []) {
+    out.push({
+      alert_key: `frota.seguro:${row.id}`,
+      severity: row.dias <= 14 ? "critical" : "warning",
+      category: "frota",
+      title: "Seguro a vencer",
+      body: `Veículo ${row.placa || row.nome}: seguro em ${row.dias} dia(s).`,
+      payload: { veiculo_id: row.id, dias: row.dias },
+    });
+  }
+
+  for (const row of s.doc_inspecao_proximos || []) {
+    out.push({
+      alert_key: `frota.inspecao:${row.id}`,
+      severity: row.dias <= 14 ? "critical" : "warning",
+      category: "frota",
+      title: "Inspeção / vistoria a vencer",
+      body: `Veículo ${row.placa || row.nome}: inspeção em ${row.dias} dia(s).`,
       payload: { veiculo_id: row.id, dias: row.dias },
     });
   }
