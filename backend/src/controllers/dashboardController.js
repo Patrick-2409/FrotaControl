@@ -433,10 +433,20 @@ const combustiveisResumo = async (req, res) => {
   const groupRaw = req.query.group_by != null ? String(req.query.group_by).trim().toLowerCase() : "";
   const groupByVeiculo = groupRaw === "veiculo";
 
+  const parseOptionalPositiveInt = (raw) => {
+    if (raw == null || String(raw).trim() === "") return null;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? Math.trunc(n) : null;
+  };
+  const veiculoIdFilter = parseOptionalPositiveInt(req.query.veiculo_id);
+  const motoristaIdFilter = parseOptionalPositiveInt(req.query.motorista_id);
+
   const payload = await getCombustiveisResumoMetrics({
     empresa_id,
     bounds,
     groupByVeiculo,
+    veiculoId: veiculoIdFilter,
+    motoristaId: motoristaIdFilter,
   });
 
   return res.json(payload);

@@ -602,14 +602,23 @@ const listMotoristaRecords = async ({ empresa_id, usuario_id }) => {
 
 /**
  * Agrega combustíveis no intervalo [start, end) em timestamptz (COALESCE(recorded_at_client, data)).
- * @param {{ empresa_id: number, bounds: { start: string, end: string }, groupByVeiculo?: boolean }} params
+ * @param {{ empresa_id: number, bounds: { start: string, end: string }, groupByVeiculo?: boolean, veiculoId?: number|null, motoristaId?: number|null }} params
  */
-const getCombustiveisResumoMetrics = async ({ empresa_id, bounds, groupByVeiculo = false }, db = pool) => {
+const getCombustiveisResumoMetrics = async (
+  { empresa_id, bounds, groupByVeiculo = false, veiculoId = null, motoristaId = null },
+  db = pool
+) => {
   const { start, end } = bounds;
-  const params = [empresa_id, start, end];
+  const vf = veiculoId != null && Number.isFinite(Number(veiculoId)) ? Number(veiculoId) : null;
+  const mf = motoristaId != null && Number.isFinite(Number(motoristaId)) ? Number(motoristaId) : null;
+  const params = [empresa_id, start, end, vf, mf];
+  const filterBase = `
+    AND ($4::int IS NULL OR veiculo_id = $4)
+    AND ($5::int IS NULL OR usuario_id = $5)`;
   const whereTime = `empresa_id = $1
     AND COALESCE(recorded_at_client, data) >= $2::timestamptz
-    AND COALESCE(recorded_at_client, data) < $3::timestamptz`;
+    AND COALESCE(recorded_at_client, data) < $3::timestamptz
+    ${filterBase}`;
 
   const { rows: aggRows } = await db.query(
     `SELECT
@@ -630,13 +639,46 @@ const getCombustiveisResumoMetrics = async ({ empresa_id, bounds, groupByVeiculo
         : Number(row.preco_medio_litro),
   };
 
-  if (!groupByVeiculo) return base;
+  const diasNoPeriodo = Math.max(
+    1,
+    Math.ceil((new Date(end).getTime() - new Date(start).getTime()) / 86400000)
+  );
+  const mediaDiariaLitros = base.total_litros / diasNoPeriodo;
+  const mediaMensalLitros = mediaDiariaLitros * 30;
 
+  if (!groupByVeiculo) {
+    return {
+      ...base,
+      inteligencia: {
+        dias_no_periodo: diasNoPeriodo,
+        media_diaria_litros: Number.isFinite(mediaDiariaLitros) ? mediaDiariaLitros : 0,
+        media_mensal_litros: Number.isFinite(mediaMensalLitros) ? mediaMensalLitros : 0,
+        preco_medio_historico: null,
+        historico_media_diaria_litros: null,
+      },
+      alertas_combustivel: {
+        consumo_elevado: [],
+        preco_acima_media: false,
+        consumo_alto_periodo: false,
+        preco_fora_media_historico: false,
+      },
+    };
+  }
+
+  const histParams = [empresa_id, vf, mf];
+  const histFilter = `
+    AND ($2::int IS NULL OR c.veiculo_id = $2)
+    AND ($3::int IS NULL OR c.usuario_id = $3)`;
+
+  const filterC = `
+    AND ($4::int IS NULL OR c.veiculo_id = $4)
+    AND ($5::int IS NULL OR c.usuario_id = $5)`;
   const whereTimeC = `c.empresa_id = $1
     AND COALESCE(c.recorded_at_client, c.data) >= $2::timestamptz
-    AND COALESCE(c.recorded_at_client, c.data) < $3::timestamptz`;
+    AND COALESCE(c.recorded_at_client, c.data) < $3::timestamptz
+    ${filterC}`;
 
-  const [groupsRes, consumoElevadoRes, precoAcimaRes] = await Promise.all([
+  const [groupsRes, consumoElevadoRes, precoAcimaRes, histPrecoRes, hist365Res] = await Promise.all([
     db.query(
       `SELECT
         c.veiculo_id,
@@ -650,7 +692,7 @@ const getCombustiveisResumoMetrics = async ({ empresa_id, bounds, groupByVeiculo
        WHERE ${whereTimeC}
        GROUP BY c.veiculo_id
        ORDER BY COALESCE(SUM(c.litros), 0) DESC NULLS LAST
-       LIMIT 5`,
+       LIMIT 200`,
       params
     ),
     db.query(
@@ -709,6 +751,21 @@ const getCombustiveisResumoMetrics = async ({ empresa_id, bounds, groupByVeiculo
       ) AS preco_acima_media`,
       params
     ),
+    db.query(
+      `SELECT (COALESCE(SUM(c.valor_total), 0) / NULLIF(COALESCE(SUM(c.litros), 0), 0))::double precision AS pm
+       FROM combustiveis c
+       WHERE c.empresa_id = $1
+         ${histFilter}`,
+      histParams
+    ),
+    db.query(
+      `SELECT COALESCE(SUM(c.litros), 0)::double precision AS litros
+       FROM combustiveis c
+       WHERE c.empresa_id = $1
+         AND COALESCE(c.recorded_at_client, c.data) >= (NOW() AT TIME ZONE 'UTC') - INTERVAL '365 days'
+         ${histFilter}`,
+      histParams
+    ),
   ]);
 
   const groups = groupsRes.rows || [];
@@ -721,8 +778,33 @@ const getCombustiveisResumoMetrics = async ({ empresa_id, bounds, groupByVeiculo
   const precoRow = precoAcimaRes.rows?.[0];
   const preco_acima_media = Boolean(precoRow?.preco_acima_media);
 
+  const histPmRaw = histPrecoRes.rows?.[0]?.pm;
+  const preco_medio_historico =
+    histPmRaw == null || Number.isNaN(Number(histPmRaw)) ? null : Number(histPmRaw);
+  const litros365Raw = hist365Res.rows?.[0]?.litros;
+  const litros365 = litros365Raw == null ? 0 : Number(litros365Raw);
+  const historico_media_diaria_litros = litros365 / 365;
+
+  const consumo_alto_periodo =
+    historico_media_diaria_litros > 0 && mediaDiariaLitros > historico_media_diaria_litros * 1.25;
+  const preco_fora_media_historico =
+    preco_medio_historico != null &&
+    preco_medio_historico > 0 &&
+    base.preco_medio_litro != null &&
+    Number.isFinite(Number(base.preco_medio_litro)) &&
+    Number(base.preco_medio_litro) > preco_medio_historico * 1.08;
+
   return {
     ...base,
+    inteligencia: {
+      dias_no_periodo: diasNoPeriodo,
+      media_diaria_litros: Number.isFinite(mediaDiariaLitros) ? mediaDiariaLitros : 0,
+      media_mensal_litros: Number.isFinite(mediaMensalLitros) ? mediaMensalLitros : 0,
+      preco_medio_historico,
+      historico_media_diaria_litros: Number.isFinite(historico_media_diaria_litros)
+        ? historico_media_diaria_litros
+        : 0,
+    },
     por_veiculo: groups.map((g) => ({
       veiculo_id: g.veiculo_id == null ? null : Number(g.veiculo_id),
       veiculo_nome: g.veiculo_nome || null,
@@ -737,6 +819,8 @@ const getCombustiveisResumoMetrics = async ({ empresa_id, bounds, groupByVeiculo
     alertas_combustivel: {
       consumo_elevado: consumoElevado,
       preco_acima_media,
+      consumo_alto_periodo,
+      preco_fora_media_historico,
     },
   };
 };
