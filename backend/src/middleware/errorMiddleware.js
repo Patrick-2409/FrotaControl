@@ -13,10 +13,15 @@ const errorMiddleware = (err, req, res, next) => {
   }
 
   const status = err.status || err.statusCode || 500;
+  const pgMeta =
+    err?.code && typeof err.code === "string"
+      ? { pgCode: err.code, pgDetail: err.detail, pgConstraint: err.constraint, pgTable: err.table }
+      : {};
   logError(err.message || "Erro interno", {
     path: req.originalUrl,
     method: req.method,
     stack: err.stack,
+    ...pgMeta,
   });
   const clientMessage = status >= 500 ? "Erro interno no servidor" : err.message || "Erro na requisição";
   return res.status(status).json({

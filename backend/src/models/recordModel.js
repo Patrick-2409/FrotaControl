@@ -600,12 +600,15 @@ const listMotoristaRecords = async ({ empresa_id, usuario_id }) => {
   return rows;
 };
 
-/** Instante absoluto (timestamptz): hora local BRT gravada como timestamp sem fuso na app. Usa timezone() para evitar ambiguidade do AT TIME ZONE com tipos mistos. */
-const COMB_EVENT_TS = `timezone('America/Sao_Paulo', COALESCE(recorded_at_client, data)::timestamp)`;
-const COMB_EVENT_TS_C = `timezone('America/Sao_Paulo', COALESCE(c.recorded_at_client, c.data)::timestamp)`;
+/**
+ * Instante do registo para filtro temporal: mesma coluna que antes (timestamp sem fuso).
+ * Os limites [start,end) vêm do controller alinhados ao calendário America/Sao_Paulo em ISO UTC.
+ */
+const COMB_EVENT_TS = `COALESCE(recorded_at_client, data)`;
+const COMB_EVENT_TS_C = `COALESCE(c.recorded_at_client, c.data)`;
 
 /**
- * Agrega combustíveis no intervalo [start, end) em timestamptz (instante do registo em SP vs limites já em UTC).
+ * Agrega combustíveis no intervalo [start, end) (comparação com COALESCE(recorded_at_client, data) como timestamptz).
  * @param {{ empresa_id: number, bounds: { start: string, end: string }, groupByVeiculo?: boolean, veiculoId?: number|null, motoristaId?: number|null }} params
  */
 const getCombustiveisResumoMetrics = async (
@@ -643,9 +646,10 @@ const getCombustiveisResumoMetrics = async (
         : Number(row.preco_medio_litro),
   };
 
+  const spanMs = new Date(end).getTime() - new Date(start).getTime();
   const diasNoPeriodo = Math.max(
     1,
-    Math.ceil((new Date(end).getTime() - new Date(start).getTime()) / 86400000)
+    Number.isFinite(spanMs) ? Math.ceil(spanMs / 86400000) : 1
   );
   const mediaDiariaLitros = base.total_litros / diasNoPeriodo;
   const mediaMensalLitros = mediaDiariaLitros * 30;
