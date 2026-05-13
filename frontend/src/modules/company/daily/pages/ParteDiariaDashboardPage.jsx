@@ -60,25 +60,25 @@ function ParteDiariaDashboardInner() {
   return (
     <div className="fc-erp-workspace">
       <header className="border-b border-zinc-800 pb-6">
-        <p className="fc-erp-eyebrow">Módulo parte diária</p>
+        <p className="fc-erp-eyebrow">Parte diária</p>
         <h1 className="fc-erp-h1 mt-2">Operação e documentação do dia</h1>
         <p className="fc-erp-lead mt-3">
-          Registros consolidados da empresa, horímetro, checklist, ocorrências e status — isolados dos painéis de
-          transporte e combustível.
+          Visão do que foi registrado na empresa: horas de equipamento, checklist, ocorrências e estado — sem misturar
+          com transporte ou abastecimento.
         </p>
         <div className="mt-5 flex flex-wrap gap-3 text-sm">
           <Link
             to="/dashboard/registros"
             className="fc-btn inline-flex rounded-md border border-zinc-600 px-3 py-2 font-medium text-zinc-200 hover:border-zinc-500"
           >
-            Edição avançada em Registros
+            Abrir registro detalhado
           </Link>
         </div>
       </header>
 
       <section className="fc-card border-zinc-800/90 p-6 lg:p-8" aria-labelledby="pd-module-wrap">
         <h2 id="pd-module-wrap" className="sr-only">
-          Conteúdo do módulo parte diária
+          Conteúdo da parte diária
         </h2>
 
         <ParteDiariaFilters
@@ -134,7 +134,7 @@ function ParteDiariaDashboardInner() {
               <div className="mt-8">
                 <EmptyState
                   title="Nenhuma linha corresponde aos filtros locais"
-                  description="Altere equipamento/local ou o filtro de status, ou limpe os filtros de vista."
+                  description="Experimente outro equipamento, local ou estado, ou limpe estes filtros extra."
                 />
               </div>
             ) : (

@@ -807,7 +807,7 @@ textarea:focus-visible,
   }
 }
 
-/* —— Painéis BI (corporativo / industrial) —— */
+/* —— Indicadores (estilo corporativo / industrial) —— */
 .fc-theme-empresa .fc-bi-dashboard-root {
   gap: clamp(1.5rem, 2.8vw, 2.25rem);
 }

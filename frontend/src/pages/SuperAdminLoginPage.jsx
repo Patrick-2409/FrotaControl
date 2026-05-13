@@ -33,7 +33,7 @@ export default function SuperAdminLoginPage() {
       const user = await superAdminLogin({ email: normalizedEmail, senha: normalizedSenha });
       if (user.role !== "SUPER_ADMIN") {
         logout();
-        setError("Acesso restrito a super admin.");
+        setError("Acesso reservado ao administrador geral da plataforma.");
         return;
       }
       navigate("/super-admin");
@@ -45,7 +45,7 @@ export default function SuperAdminLoginPage() {
       } else if (!err?.response || status >= 500) {
         setError("Servidor indisponível");
       } else {
-        setError(err.response?.data?.message || "Falha no login super admin");
+        setError(err.response?.data?.message || "Não foi possível iniciar sessão. Tente novamente.");
       }
     } finally {
       submitLockRef.current = false;
@@ -55,13 +55,13 @@ export default function SuperAdminLoginPage() {
 
   return (
     <div className="fc-page grid min-h-screen place-content-center bg-slate-950 p-6">
-      {submitting && <CenteredSpinner label="Autenticando super admin..." />}
+      {submitting && <CenteredSpinner label="A validar credenciais…" />}
       <form onSubmit={onSubmit} className="fc-card w-full max-w-sm p-6">
         <div className="mb-4 flex justify-center">
           <SystemLogo variant="auth" />
         </div>
-        <h1 className="mb-1 text-2xl font-bold text-white">Acesso Administrador do Sistema</h1>
-        <p className="mb-5 text-sm text-slate-400">Controle central de empresas do FrotaControl</p>
+        <h1 className="mb-1 text-2xl font-bold text-white">Administração da plataforma</h1>
+        <p className="mb-5 text-sm text-slate-400">Gestão central das empresas que utilizam o FrotaControl</p>
 
         <FormField label="E-mail">
           <input
@@ -84,7 +84,7 @@ export default function SuperAdminLoginPage() {
         </FormField>
 
         {error && <p className="mb-3 text-sm text-red-400" role="alert">{error}</p>}
-        <button className={primaryButtonClass} disabled={submitting}>Entrar como super admin</button>
+        <button className={primaryButtonClass} disabled={submitting}>Entrar</button>
         <Link to="/" className="mt-3 block text-center text-sm text-blue-300">Voltar para tela inicial</Link>
       </form>
     </div>

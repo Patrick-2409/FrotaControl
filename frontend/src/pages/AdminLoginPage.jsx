@@ -45,7 +45,7 @@ export default function AdminLoginPage() {
       } else if (!err?.response || status >= 500) {
         setError("Servidor indisponível");
       } else {
-        setError(err.response?.data?.message || "Falha no login administrativo");
+        setError(err.response?.data?.message || "Não foi possível iniciar sessão. Verifique os dados e tente novamente.");
       }
     } finally {
       submitLockRef.current = false;

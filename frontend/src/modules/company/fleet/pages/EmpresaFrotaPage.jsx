@@ -75,7 +75,7 @@ export default function EmpresaFrotaPage() {
 
   return (
     <BIDashboardShell
-      eyebrow="Painéis BI"
+      eyebrow="Indicadores"
       title="Frota"
       lead="Disponibilidade, documentação, manutenção e consumo médio. Cadastro alinhado à operação industrial e logística."
       headerAside={headerAside}

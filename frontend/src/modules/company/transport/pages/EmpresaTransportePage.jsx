@@ -28,7 +28,7 @@ function EmpresaTransportePageContent() {
   if (pageLoading) {
     return (
       <BIDashboardShell
-        eyebrow="Painéis BI"
+        eyebrow="Indicadores"
         title="Transporte"
         lead="Carregando indicadores e operação de porto."
         showRoadmap={false}
@@ -54,7 +54,7 @@ function EmpresaTransportePageContent() {
   if (!prod.loading && !prod.stats && prod.statsError) {
     return (
       <BIDashboardShell
-        eyebrow="Painéis BI"
+        eyebrow="Indicadores"
         title="Transporte"
         lead="Porto e produção."
         showRoadmap={false}
@@ -71,14 +71,14 @@ function EmpresaTransportePageContent() {
   if (!prod.stats) {
     return (
       <BIDashboardShell
-        eyebrow="Painéis BI"
+        eyebrow="Indicadores"
         title="Transporte"
         lead="Porto e produção."
         showRoadmap={false}
       >
         <EmpresaModuleErrorPanel
-          title="Módulo de transporte"
-          description="Não foi possível carregar os indicadores de produtividade. Verifique a sessão e a ligação à rede."
+          title="Transporte"
+          description="Não foi possível carregar os indicadores. Confirme se continua ligado e tente outra vez."
           onRetry={prod.refetchStats}
         />
       </BIDashboardShell>
@@ -89,10 +89,10 @@ function EmpresaTransportePageContent() {
 
   return (
     <BIDashboardShell
-      eyebrow="Painéis BI"
+      eyebrow="Indicadores"
       title="Transporte"
-      lead="Porto e produção — toneladas, metas, planejado x executado. Filtros e estado são exclusivos desta rota; o
-      separador de material (todos / estéril / rocha) persiste na sessão do browser."
+      lead="Porto e produção: toneladas, metas e planejado versus executado. Os filtros são só desta área; a escolha do
+      material (todos, estéril ou rocha) fica guardada neste navegador."
     >
 
       {tr.temAlertasTransporte ? (
@@ -466,7 +466,7 @@ function EmpresaTransportePageContent() {
 
       <div className="fc-card border-zinc-800/90 p-5 lg:p-6">
         <h3 className="text-base font-semibold text-zinc-100">Painel operacional</h3>
-        <p className="mt-2 text-xs leading-relaxed text-zinc-500">Registros consolidados por tipo (exceto parte diária).</p>
+        <p className="mt-2 text-xs leading-relaxed text-zinc-500">Quantidade de lançamentos por tipo, sem incluir parte diária.</p>
         <div className="mt-4 grid gap-2 text-sm text-zinc-300 md:grid-cols-2">
           {(stats.por_tipo || [])
             .filter((item) => String(item.tipo || "").toLowerCase() !== "parte_diaria")
@@ -480,7 +480,7 @@ function EmpresaTransportePageContent() {
 
       <BIChartCard
         title="Últimos 7 dias"
-        subtitle="Volume diário de lançamentos — zoom por janela e leitura ao cursor."
+        subtitle="Volume diário de lançamentos — pode aproximar o gráfico e ver o valor em cada data."
         legend={
           <span className="inline-flex items-center gap-2">
             <span className="h-2 w-6 rounded-sm bg-amber-600/90" aria-hidden />

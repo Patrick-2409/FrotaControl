@@ -21,7 +21,7 @@ function FuelFilters({
           <p className="fc-erp-eyebrow">Abastecimento</p>
           <h2 className="mt-2 text-lg font-semibold tracking-tight text-zinc-100">Filtros do período</h2>
           <p className="mt-2 max-w-xl text-sm leading-relaxed text-zinc-500">
-            Período, veículo e motorista — independentes do módulo Transporte.
+            Período, veículo e motorista são independentes dos filtros de Transporte.
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2" role="group" aria-label="Período do resumo de combustível">

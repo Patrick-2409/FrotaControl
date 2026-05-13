@@ -35,17 +35,17 @@ export default function EmpresaPessoasPage() {
         to="/dashboard/gestao?secao=motoristas"
         className="rounded-lg border border-zinc-600 bg-zinc-900/80 px-4 py-2 text-sm text-zinc-200 hover:border-zinc-500"
       >
-        Gestão clássica
+        Cadastro no sistema
       </Link>
     </>
   );
 
   return (
     <BIDashboardShell
-      eyebrow="Painéis BI"
+      eyebrow="Indicadores"
       title="Pessoas"
-      lead="Motoristas, apontadores e administradores da empresa. Produtividade, vínculos com frota e equipamento,
-      documentação CNH e alertas operacionais integrados ao feed central."
+      lead="Motoristas, apontadores e administradores da empresa: produtividade, ligação à frota e equipamento,
+      validade da CNH e alertas ligados à central de alertas."
       headerAside={headerAside}
     >
 
@@ -69,7 +69,7 @@ export default function EmpresaPessoasPage() {
           />
           <BIKpiCard
             label="Lançamentos (7 dias)"
-            value={`${p.fmtInt(p.summary?.romaneios_7d)} rom.`}
+            value={`${p.fmtInt(p.summary?.romaneios_7d)} romaneios`}
             hint={`Partes diárias: ${p.fmtInt(p.summary?.parte_diaria_7d)}`}
           />
           <BIKpiCard

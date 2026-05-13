@@ -44,27 +44,27 @@ export default function ManagerDashboardPage() {
         <p className="fc-erp-eyebrow">Visão operacional</p>
         <h2 className="fc-erp-h1 mt-2">Painel da empresa</h2>
         <p className="fc-erp-lead mt-3">
-          Abastecimentos, litros, custos, pizza e ranking por veículo estão no módulo Combustível. Transporte e
-          produção estão em Transporte. Parte diária (horímetro, checklist e ocorrências) está no módulo dedicado.
+          Abastecimentos, litros, custos e ranking por veículo estão em Combustível. Transporte e produção estão em
+          Transporte. Horas de equipamento, checklist e ocorrências estão em Parte diária.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
           <Link
             to="/empresa/combustivel"
             className="fc-btn inline-flex rounded-md border border-zinc-600 bg-zinc-800/80 px-4 py-2.5 text-sm font-semibold text-zinc-100 hover:border-zinc-500"
           >
-            Abrir módulo Combustível
+            Abrir Combustível
           </Link>
           <Link
             to="/empresa/transporte"
             className="fc-btn inline-flex rounded-md border border-zinc-600 px-4 py-2.5 text-sm font-semibold text-zinc-200 hover:border-zinc-500"
           >
-            Abrir módulo Transporte
+            Abrir Transporte
           </Link>
           <Link
             to="/empresa/parte-diaria"
             className="fc-btn inline-flex rounded-md border border-zinc-600 px-4 py-2.5 text-sm font-semibold text-zinc-200 hover:border-zinc-500"
           >
-            Abrir módulo Parte diária
+            Abrir Parte diária
           </Link>
         </div>
       </section>
@@ -74,19 +74,19 @@ export default function ManagerDashboardPage() {
           to="/empresa/combustivel"
           className="fc-btn inline-flex rounded-md border border-zinc-700 px-4 py-3 text-center text-sm font-semibold text-zinc-200"
         >
-          Módulo Combustível
+          Combustível
         </Link>
         <Link
           to="/empresa/transporte"
           className="fc-btn inline-flex rounded-md border border-zinc-700 px-4 py-3 text-center text-sm font-semibold text-zinc-200"
         >
-          Módulo Transporte
+          Transporte
         </Link>
         <Link
           to="/empresa/parte-diaria"
           className="fc-btn inline-flex rounded-md border border-zinc-700 px-4 py-3 text-center text-sm font-semibold text-zinc-200"
         >
-          Módulo Parte diária
+          Parte diária
         </Link>
         <Link
           to="/dashboard/relatorios"

@@ -13,7 +13,7 @@ function BIModuleSwitcher() {
   return (
     <nav
       className="fc-bi-module-switcher no-scrollbar mb-5 flex snap-x snap-mandatory gap-1.5 overflow-x-auto pb-1 sm:mb-6 sm:flex-wrap sm:overflow-visible sm:pb-0"
-      aria-label="Painéis BI modulares"
+      aria-label="Navegação entre áreas principais"
     >
       {MODULES.map((m) => (
         <NavLink

@@ -8,7 +8,7 @@ export const REPORT_HUB_CATEGORIES = [
     id: "transporte",
     label: "Transporte",
     items: [
-      { id: "tr_prod", label: "Produção", hint: "Metas e resumo no módulo", action: { kind: "link", to: "/empresa/transporte" } },
+      { id: "tr_prod", label: "Produção", hint: "Metas e resumo em Transporte", action: { kind: "link", to: "/empresa/transporte" } },
       { id: "tr_rom", label: "Romaneios", hint: "Fichas e exportações", action: { kind: "filterTipo", tipo: "romaneio" } },
       { id: "tr_meta", label: "Metas", action: { kind: "link", to: "/empresa/transporte" } },
       { id: "tr_produt", label: "Produtividade", action: { kind: "link", to: "/empresa/transporte" } },
@@ -40,8 +40,8 @@ export const REPORT_HUB_CATEGORIES = [
     label: "Frota",
     items: [
       { id: "fl_veic", label: "Veículos", action: { kind: "link", to: "/empresa/frota" } },
-      { id: "fl_manut", label: "Manutenção", hint: "Painel Frota", action: { kind: "link", to: "/empresa/frota" } },
-      { id: "fl_doc", label: "Documentação", hint: "Painel Frota", action: { kind: "link", to: "/empresa/frota" } },
+      { id: "fl_manut", label: "Manutenção", hint: "Área Frota", action: { kind: "link", to: "/empresa/frota" } },
+      { id: "fl_doc", label: "Documentação", hint: "Área Frota", action: { kind: "link", to: "/empresa/frota" } },
     ],
   },
   {

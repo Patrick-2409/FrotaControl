@@ -26,10 +26,9 @@ function FuelDashboardContent() {
 
   return (
     <BIDashboardShell
-      eyebrow="Painéis BI"
+      eyebrow="Indicadores"
       title="Combustível"
-      lead="Consumo e custo — litros, valores, médias e ranking. Filtros persistem por sessão (`filters:fuel`) e pedidos
-      usam debounce para reduzir carga no servidor."
+      lead="Consumo e custo: litros, valores, médias e ranking. Os filtros desta página são guardados neste navegador e as pesquisas são feitas de forma gradual para não sobrecarregar o sistema."
     >
 
       {fuel.temAlertasCombustivel && fuel.resumo ? (

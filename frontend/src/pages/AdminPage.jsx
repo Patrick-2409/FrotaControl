@@ -14,8 +14,8 @@ const resolveAsset = (value) => {
   return resolveBackendAssetUrl(value);
 };
 const formatRole = (role) => {
-  if (role === "SUPER_ADMIN") return "Super Admin";
-  if (role === "ADMIN_EMPRESA") return "Admin Empresa";
+  if (role === "SUPER_ADMIN") return "Administrador geral";
+  if (role === "ADMIN_EMPRESA") return "Administrador da empresa";
   return "Motorista";
 };
 const roleBadge = (role) =>
@@ -156,7 +156,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     Promise.all([loadOverview(), loadCompanyOptions()]).catch(() => {
-      emitToast("Falha ao carregar dados iniciais do painel global.", "error");
+      emitToast("Não foi possível carregar o resumo inicial.", "error");
     });
   }, []);
 
@@ -180,7 +180,7 @@ export default function AdminPage() {
     api
       .get("/super-admin/search", { params: { q: debouncedGlobalSearch } })
       .then(({ data }) => setSearchResults(data))
-      .catch(() => emitToast("Falha na busca global.", "warning"));
+      .catch(() => emitToast("Não foi possível concluir a busca.", "warning"));
   }, [debouncedGlobalSearch]);
 
   const onSaveCompany = async (e) => {
@@ -195,7 +195,7 @@ export default function AdminPage() {
       return;
     }
     if (!companyForm.id && (!companyForm.admin_email?.trim() || !companyForm.admin_senha?.trim())) {
-      emitToast("Informe e-mail e senha do admin da empresa.", "error");
+      emitToast("Informe o e-mail e a senha do administrador da empresa.", "error");
       return;
     }
     submitLockRef.current = true;
@@ -206,7 +206,7 @@ export default function AdminPage() {
         formData.append("nome", companyForm.nome.trim());
         formData.append("logo", companyForm.logo);
         if (!companyForm.id) {
-          formData.append("admin_nome", companyForm.admin_nome?.trim() || `Admin ${companyForm.nome.trim()}`);
+          formData.append("admin_nome", companyForm.admin_nome?.trim() || `Administrador ${companyForm.nome.trim()}`);
           formData.append("admin_email", companyForm.admin_email.trim());
           formData.append("admin_senha", companyForm.admin_senha);
         }
@@ -218,7 +218,7 @@ export default function AdminPage() {
       } else {
         const payload = { nome: companyForm.nome.trim() };
         if (!companyForm.id) {
-          payload.admin_nome = companyForm.admin_nome?.trim() || `Admin ${companyForm.nome.trim()}`;
+          payload.admin_nome = companyForm.admin_nome?.trim() || `Administrador ${companyForm.nome.trim()}`;
           payload.admin_email = companyForm.admin_email.trim();
           payload.admin_senha = companyForm.admin_senha;
         }
@@ -231,7 +231,7 @@ export default function AdminPage() {
       emitToast(
         companyForm.id
           ? "Empresa atualizada com sucesso."
-          : `Empresa criada. Login do admin: ${companyForm.admin_email}`,
+          : `Empresa criada. E-mail de acesso do administrador: ${companyForm.admin_email}`,
       );
       setCompanyForm({
         id: null,
@@ -382,7 +382,7 @@ export default function AdminPage() {
         <div className="grid gap-3 lg:grid-cols-[1fr_220px_220px_220px]">
           <input
             className={inputClass}
-            placeholder="Buscar globalmente: empresa, usuário ou veículo"
+            placeholder="Buscar em todo o sistema: empresas, pessoas ou veículos"
             value={globalSearch}
             onChange={(e) => setGlobalSearch(e.target.value)}
           />
@@ -396,8 +396,8 @@ export default function AdminPage() {
           >
             <option value="ALL">Tipo de usuário (todos)</option>
             <option value="MOTORISTA">Motorista</option>
-            <option value="ADMIN_EMPRESA">Admin empresa</option>
-            <option value="SUPER_ADMIN">Super admin</option>
+            <option value="ADMIN_EMPRESA">Administrador da empresa</option>
+            <option value="SUPER_ADMIN">Administrador geral</option>
           </select>
           <select
             className={inputClass}
@@ -429,7 +429,7 @@ export default function AdminPage() {
 
         {(searchResults.companies.length > 0 || searchResults.users.length > 0 || searchResults.vehicles.length > 0) && (
           <div className="mt-3 rounded-xl border border-slate-700 bg-slate-950/50 p-3 text-sm">
-            <p className="mb-2 text-xs uppercase tracking-wider text-slate-400">Resultado da busca global</p>
+            <p className="mb-2 text-xs uppercase tracking-wider text-slate-400">Resultados da busca</p>
             <div className="grid gap-3 md:grid-cols-3">
               <div>
                 <p className="mb-1 text-xs text-slate-400">Empresas</p>
@@ -453,20 +453,20 @@ export default function AdminPage() {
           <h2 className="mb-1 text-lg font-semibold text-white">
             {companyForm.id ? "Editar empresa" : "Nova empresa"}
           </h2>
-          <p className="mb-4 text-sm text-slate-400">Controle global de empresas e admins.</p>
+          <p className="mb-4 text-sm text-slate-400">Cadastre empresas e o administrador responsável por cada uma.</p>
           <FormField label="Nome da empresa">
             <input className={inputClass} value={companyForm.nome} onChange={(e) => setCompanyForm({ ...companyForm, nome: e.target.value })} />
           </FormField>
           {!companyForm.id && (
             <>
-              <FormField label="Nome do admin da empresa">
-                <input className={inputClass} value={companyForm.admin_nome} onChange={(e) => setCompanyForm({ ...companyForm, admin_nome: e.target.value })} placeholder="Ex: Maria Gestora" />
+              <FormField label="Nome completo do administrador">
+                <input className={inputClass} value={companyForm.admin_nome} onChange={(e) => setCompanyForm({ ...companyForm, admin_nome: e.target.value })} placeholder="Ex.: Maria Gestora" />
               </FormField>
-              <FormField label="E-mail do admin da empresa">
-                <input className={inputClass} value={companyForm.admin_email} onChange={(e) => setCompanyForm({ ...companyForm, admin_email: e.target.value })} placeholder="admin@empresa.com" />
+              <FormField label="E-mail do administrador">
+                <input className={inputClass} value={companyForm.admin_email} onChange={(e) => setCompanyForm({ ...companyForm, admin_email: e.target.value })} placeholder="gestor@empresa.com" />
               </FormField>
-              <FormField label="Senha do admin da empresa">
-                <input type="password" className={inputClass} value={companyForm.admin_senha} onChange={(e) => setCompanyForm({ ...companyForm, admin_senha: e.target.value })} placeholder="Min 8, com maiúscula, minúscula e número" />
+              <FormField label="Senha do administrador">
+                <input type="password" className={inputClass} value={companyForm.admin_senha} onChange={(e) => setCompanyForm({ ...companyForm, admin_senha: e.target.value })} placeholder="Mínimo 8 caracteres, com maiúscula, minúscula e número" />
               </FormField>
             </>
           )}
@@ -566,10 +566,10 @@ export default function AdminPage() {
 
           <article className="fc-card p-5">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-lg font-semibold text-white">Usuários (global)</h3>
+              <h3 className="text-lg font-semibold text-white">Usuários (todas as empresas)</h3>
               <input
                 className={inputClass}
-                placeholder="Buscar usuário"
+                placeholder="Buscar por nome ou e-mail"
                 value={searchUsers}
                 onChange={(e) => {
                   setUsersPage(1);
@@ -630,7 +630,7 @@ export default function AdminPage() {
 
           <article className="fc-card p-5">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-lg font-semibold text-white">Veículos (global)</h3>
+              <h3 className="text-lg font-semibold text-white">Veículos (todas as empresas)</h3>
               <input
                 className={inputClass}
                 placeholder="Buscar veículo"
@@ -721,15 +721,15 @@ export default function AdminPage() {
         <article className="space-y-4">
           {editingUser && (
             <div className="fc-card p-5">
-              <h4 className="mb-3 text-base font-semibold text-white">Editar usuário global</h4>
+              <h4 className="mb-3 text-base font-semibold text-white">Editar usuário</h4>
               <div className="grid gap-2 md:grid-cols-2">
                 <input className={inputClass} value={editingUser.nome} onChange={(e) => setEditingUser((u) => ({ ...u, nome: e.target.value }))} placeholder="Nome" />
                 <input className={inputClass} value={editingUser.email || ""} onChange={(e) => setEditingUser((u) => ({ ...u, email: e.target.value }))} placeholder="E-mail" />
                 <input className={inputClass} value={editingUser.cpf_id || ""} onChange={(e) => setEditingUser((u) => ({ ...u, cpf_id: e.target.value }))} placeholder="CPF/ID" />
                 <select className={inputClass} value={editingUser.role} onChange={(e) => setEditingUser((u) => ({ ...u, role: e.target.value }))}>
                   <option value="MOTORISTA">Motorista</option>
-                  <option value="ADMIN_EMPRESA">Admin Empresa</option>
-                  <option value="SUPER_ADMIN">Super Admin</option>
+                  <option value="ADMIN_EMPRESA">Administrador da empresa</option>
+                  <option value="SUPER_ADMIN">Administrador geral</option>
                 </select>
                 <select
                   className={inputClass}
@@ -744,7 +744,7 @@ export default function AdminPage() {
                   className={inputClass}
                   value={editingUser.veiculo_id || ""}
                   onChange={(e) => setEditingUser((u) => ({ ...u, veiculo_id: e.target.value }))}
-                  placeholder="ID do veículo (opcional)"
+                  placeholder="Código do veículo no cadastro (opcional)"
                   disabled={editingUser.role !== "MOTORISTA"}
                 />
               </div>
@@ -757,7 +757,7 @@ export default function AdminPage() {
 
           {editingVehicle && (
             <div className="fc-card p-5">
-              <h4 className="mb-3 text-base font-semibold text-white">Editar veículo global</h4>
+              <h4 className="mb-3 text-base font-semibold text-white">Editar veículo</h4>
               <div className="grid gap-2 md:grid-cols-2">
                 <input className={inputClass} value={editingVehicle.nome} onChange={(e) => setEditingVehicle((v) => ({ ...v, nome: e.target.value }))} placeholder="Nome do veículo" />
                 <input className={inputClass} value={editingVehicle.placa} onChange={(e) => setEditingVehicle((v) => ({ ...v, placa: e.target.value }))} placeholder="Placa" />

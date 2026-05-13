@@ -14,10 +14,10 @@ export default function ParteDiariaFilters({
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <p className="fc-erp-eyebrow">Parte diária</p>
-          <h2 className="fc-erp-h1 mt-2 text-xl md:text-2xl">Filtros do módulo</h2>
+          <h2 className="fc-erp-h1 mt-2 text-xl md:text-2xl">Filtros</h2>
           <p className="fc-erp-lead mt-3 max-w-xl">
-            Período e motorista aplicam à API; equipamento e status refinam apenas a vista desta página (sem afetar
-            transporte ou combustível).
+            Período e motorista definem o conjunto de registros que consulta. Equipamento, local e estado afinam só o que
+            vê nesta página, sem alterar transporte nem combustível.
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2" role="group" aria-label="Tipo de período">
@@ -110,7 +110,7 @@ export default function ParteDiariaFilters({
 
       <div className="mt-6 flex flex-col gap-4 border-t border-zinc-800/60 pt-5 lg:flex-row lg:items-end lg:justify-between">
         <label className="fc-erp-eyebrow block min-w-0 flex-1 lg:max-w-md">
-          Equipamento / local (refina esta página)
+          Equipamento ou local (só nesta página)
           <input
             type="search"
             placeholder="Ex.: escavadeira, britador…"
@@ -121,7 +121,7 @@ export default function ParteDiariaFilters({
         </label>
         <div className="shrink-0">
           <p className="fc-erp-eyebrow mb-2" id="pd-status-filter-label">
-            Status (vista)
+            Estado (só nesta página)
           </p>
           <div className="flex flex-wrap gap-2" role="group" aria-labelledby="pd-status-filter-label">
             {[

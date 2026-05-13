@@ -12,8 +12,8 @@ export default function SuperAdminLayout({ children }) {
           <div className="flex items-center gap-3">
             <SystemLogo variant="header" className="rounded-xl" />
             <div>
-            <p className="text-xs uppercase tracking-wider text-violet-300">Painel do Sistema</p>
-            <h1 className="text-xl font-semibold text-white">Super Admin</h1>
+            <p className="text-xs uppercase tracking-wider text-violet-300">Administração da plataforma</p>
+            <h1 className="text-xl font-semibold text-white">Painel geral</h1>
             </div>
           </div>
           <div className="flex items-center gap-3 text-sm">

@@ -65,9 +65,9 @@ export default function EmpresaExecutiveDashboardPage() {
   if (loading) {
     return (
       <BIDashboardShell
-        eyebrow="Painéis BI"
+        eyebrow="Indicadores"
         title="Executivo"
-        lead="Consolidado multi-módulo. Cada domínio operacional mantém filtros e cache independentes."
+        lead="As áreas de transporte, combustível e frota têm filtros próprios e guardam as últimas escolhas neste computador."
         showRoadmap={false}
       >
         <div className="fc-erp-grid-kpi">
@@ -87,9 +87,9 @@ export default function EmpresaExecutiveDashboardPage() {
   if (!stats) {
     return (
       <BIDashboardShell
-        eyebrow="Painéis BI"
+        eyebrow="Indicadores"
         title="Executivo"
-        lead="Consolidado da operação."
+        lead="Resumo da operação."
         showRoadmap={false}
       >
         <p className="text-sm text-red-400/90">Não foi possível carregar o painel executivo.</p>
@@ -99,10 +99,10 @@ export default function EmpresaExecutiveDashboardPage() {
 
   return (
     <BIDashboardShell
-      eyebrow="Painéis BI"
+      eyebrow="Indicadores"
       title="Executivo"
-      lead="Indicadores sintéticos com tendência e comparação à média móvel da série. Transporte, combustível e frota
-      mantêm painéis dedicados com filtros persistentes por módulo."
+      lead="Números-chave com tendência e comparação com a média dos últimos dias. Transporte, combustível e frota têm
+      painéis próprios, cada um com filtros que permanecem ao mudar de tela."
     >
       <section aria-labelledby="exec-resumo">
         <h2 id="exec-resumo" className="sr-only">
@@ -126,7 +126,7 @@ export default function EmpresaExecutiveDashboardPage() {
             value={fmtInt(stats.total_hoje)}
             trendDirection={trendSummary.direction}
             deltaLabel={`${trendLabel} · ${Math.abs(trendSummary.delta)} vs. ontem`}
-            comparisonLabel={`Média série: ${trendSummary.avg}/dia`}
+            comparisonLabel={`Média diária na série: ${trendSummary.avg}/dia`}
             targetPct={pctHoje}
             sparklineValues={sparkSeries}
           />
@@ -153,7 +153,7 @@ export default function EmpresaExecutiveDashboardPage() {
           <div>
             <p className="fc-erp-eyebrow">Produção / porto</p>
             <p className="mt-4 text-sm leading-relaxed text-zinc-400">
-              Toneladas, estéril/rocha, metas e gráfico planejado x executado no módulo Transporte.
+              Toneladas, material (estéril ou rocha), metas e gráfico planejado versus executado na área de Transporte.
             </p>
           </div>
           <Link
@@ -168,7 +168,7 @@ export default function EmpresaExecutiveDashboardPage() {
           <div>
             <p className="fc-erp-eyebrow">Combustível</p>
             <p className="mt-4 text-sm leading-relaxed text-zinc-400">
-              Litros, custos, diagrama por veículo e ranking com filtros próprios e cache local.
+              Litros, custos, gráfico por veículo e ranking, com filtros próprios a esta área.
             </p>
           </div>
           <Link
@@ -183,7 +183,7 @@ export default function EmpresaExecutiveDashboardPage() {
           <div>
             <p className="fc-erp-eyebrow">Parte diária</p>
             <p className="mt-4 text-3xl font-semibold tabular-nums text-zinc-100">{fmtInt(parteDiariaRegistros)}</p>
-            <p className="mt-2 text-xs leading-relaxed text-zinc-500">Registros consolidados no período do painel.</p>
+            <p className="mt-2 text-xs leading-relaxed text-zinc-500">Total de registros de parte diária no período deste painel.</p>
           </div>
         </article>
       </section>
@@ -194,7 +194,7 @@ export default function EmpresaExecutiveDashboardPage() {
         </h2>
         <BIChartCard
           title="Ritmo operacional"
-          subtitle="Série diária — escala normalizada, zoom por janela e leitura ao cursor."
+          subtitle="Evolução dia a dia — pode aproximar o gráfico e ver o valor em cada data."
           legend={
             <span className="inline-flex items-center gap-2">
               <span className="h-2 w-6 rounded-sm bg-gradient-to-r from-amber-800 to-amber-400" aria-hidden />
@@ -213,8 +213,8 @@ export default function EmpresaExecutiveDashboardPage() {
         <article className="fc-card fc-erp-module-card flex flex-col justify-between border-zinc-800/90 p-6">
           <p className="fc-erp-eyebrow">Metas e planejamento</p>
           <p className="mt-4 text-sm leading-relaxed text-zinc-400">
-            Atingimento de metas e planejado x executado estão no painel Transporte, com material (todos / estéril /
-            rocha) persistido por sessão.
+            Atingimento de metas e planejado versus executado estão no painel de Transporte; a escolha do material
+            (todos, estéril ou rocha) é memorizada neste navegador.
           </p>
           <Link
             to="/empresa/transporte"

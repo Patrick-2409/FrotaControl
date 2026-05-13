@@ -744,9 +744,9 @@ export default function ManagerRecordsPage({
       <div className="mb-4 rounded-xl border border-slate-600/50 bg-slate-900/40 p-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Relatórios — modelo Porto</p>
         <p className="mt-1 text-sm text-slate-300">
-          Excel e PDF com o mesmo layout das fichas e planilhas manuais (cabeçalho com período e logo da empresa). Para
-          exportação tabular em lote use também CSV nas fichas consolidadas abaixo.
-          Usa os filtros de período e motorista acima.
+          Excel e PDF com a mesma aparência das fichas em papel (cabeçalho com período e logomarca da empresa). Para
+          grandes volumes pode também exportar CSV a partir das fichas reunidas abaixo. Utilize o período e o motorista
+          definidos acima.
         </p>
         <ul className="mt-4 space-y-3">
           {RELATORIOS_PORTO.map((rel) => (

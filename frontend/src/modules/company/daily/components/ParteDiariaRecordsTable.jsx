@@ -10,7 +10,7 @@ function ParteDiariaRecordsTable({ rows }) {
         <h2 id="pd-registros-title" className="text-base font-semibold tracking-tight text-zinc-50 sm:text-lg">
           Registros
         </h2>
-        <p className="mt-1 text-sm text-zinc-400">Linhas retornadas pela API para o filtro atual (ordenadas por data).</p>
+        <p className="mt-1 text-sm text-zinc-400">Lista do período e motorista escolhidos, da mais recente para a mais antiga.</p>
       </div>
       <div className="fc-erp-table-scroll overflow-x-auto">
         <table className="min-w-full divide-y divide-zinc-800/90 text-left text-sm">

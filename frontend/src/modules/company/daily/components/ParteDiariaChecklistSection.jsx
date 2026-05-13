@@ -17,17 +17,17 @@ function ParteDiariaChecklistSection({ aggregates }) {
         Checklist
       </h2>
       <p className="mt-2 text-sm leading-relaxed text-zinc-400">
-        Classificação por registro: sem itens no JSON, todos OK, ou com pelo menos um item diferente de OK.
+        Por registro: sem itens de verificação, todos os itens conformes, ou com algum ponto a tratar.
       </p>
       <dl className="mt-5 grid gap-3 sm:grid-cols-3">
         <div className="rounded-md border border-zinc-800 bg-zinc-950/50 p-3 shadow-inner">
-          <dt className="fc-erp-eyebrow">Checklist OK</dt>
+          <dt className="fc-erp-eyebrow">Conformes</dt>
           <dd className="mt-2 text-2xl font-bold tabular-nums text-zinc-100">{fmtInt(checklistRegistrosOk)}</dd>
         </div>
         <div className="rounded-md border border-amber-500/35 bg-amber-950/20 p-3">
           <dt className="fc-erp-eyebrow text-amber-200/90">Com pendência</dt>
           <dd className="mt-2 text-2xl font-bold tabular-nums text-zinc-50">{fmtInt(checklistRegistrosPendencia)}</dd>
-          <p className="mt-2 text-xs text-amber-200/75">{fmtInt(totalPendenciasItens)} itens não OK (soma)</p>
+          <p className="mt-2 text-xs text-amber-200/75">{fmtInt(totalPendenciasItens)} itens por rever (total)</p>
         </div>
         <div className="rounded-md border border-zinc-800 bg-zinc-950/50 p-3">
           <dt className="fc-erp-eyebrow">Sem itens</dt>
@@ -36,7 +36,8 @@ function ParteDiariaChecklistSection({ aggregates }) {
       </dl>
       {totalLinhas > 0 ? (
         <p className="mt-4 text-xs leading-relaxed text-zinc-500">
-          Base: {fmtInt(totalLinhas)} registro(s) nesta página. Indicadores globais do período exigiriam agregação no servidor.
+          Valores referem-se aos {fmtInt(totalLinhas)} registro(s) visíveis nesta página, de acordo com o período e os
+          filtros escolhidos.
         </p>
       ) : null}
     </section>

@@ -16,6 +16,13 @@ const catLabel = (c) => {
   return m[c] || c;
 };
 
+const sevLabel = (s) => {
+  if (s === "critical") return "Crítico";
+  if (s === "warning") return "Atenção";
+  if (s === "info") return "Informação";
+  return s;
+};
+
 export default function EmpresaAlertasPage() {
   const [feed, setFeed] = useState(null);
   const [history, setHistory] = useState([]);
@@ -50,7 +57,7 @@ export default function EmpresaAlertasPage() {
     await loadAll();
   };
 
-  if (loading && !feed) return <ScreenLoading message="A carregar alertas…" />;
+  if (loading && !feed) return <ScreenLoading message="Carregando alertas…" />;
 
   const items = feed?.items || [];
   const unread = items.filter((i) => !i.read).length;
@@ -62,8 +69,8 @@ export default function EmpresaAlertasPage() {
         <p className="fc-erp-eyebrow text-zinc-400">Monitorização</p>
         <h1 className="mt-1 text-xl font-semibold tracking-tight text-zinc-50 sm:text-2xl">Central de alertas</h1>
         <p className="mt-2 max-w-3xl text-sm text-zinc-400">
-          Alertas operacionais consolidados por regras de negócio. Atualização periódica com cache no servidor para reduzir
-          carga na base de dados.
+          Alertas gerados automaticamente a partir da operação. A lista é atualizada de tempos a tempos para manter o
+          sistema rápido e estável.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <button
@@ -96,7 +103,8 @@ export default function EmpresaAlertasPage() {
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">Alertas ativos</h2>
           <span className="text-xs text-zinc-500">
-            {feed?.cached ? "Cache servidor" : "Dados frescos"} · {feed?.generated_at ? new Date(feed.generated_at).toLocaleString("pt-BR") : "—"}
+            {feed?.cached ? "Resumo guardado no servidor" : "Leitura em tempo real"} ·{" "}
+            {feed?.generated_at ? new Date(feed.generated_at).toLocaleString("pt-BR") : "—"}
           </span>
         </div>
         {!items.length ? (
@@ -113,7 +121,7 @@ export default function EmpresaAlertasPage() {
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${sevBadge(it.severity)}`}>
-                      {it.severity}
+                      {sevLabel(it.severity)}
                     </span>
                     <span className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">{catLabel(it.category)}</span>
                   </div>
@@ -138,14 +146,14 @@ export default function EmpresaAlertasPage() {
       </section>
 
       <section className="fc-card border-zinc-800/90 p-4 sm:p-5">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">Histórico (persistido)</h2>
-        <p className="mt-1 text-xs text-zinc-500">Últimos eventos registados para a empresa, incluindo alertas já inativos.</p>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">Histórico guardado</h2>
+        <p className="mt-1 text-xs text-zinc-500">Últimos eventos da empresa, inclusive alertas que já deixaram de estar ativos.</p>
         {histLoading ? (
           <div className="mt-6 flex justify-center py-8">
             <span className="fc-spinner" aria-hidden="true" />
           </div>
         ) : !history.length ? (
-          <p className="mt-4 text-sm text-zinc-500">Ainda sem histórico persistido.</p>
+          <p className="mt-4 text-sm text-zinc-500">Ainda não há histórico guardado.</p>
         ) : (
           <ul className="mt-4 divide-y divide-zinc-800/80 rounded-xl border border-zinc-800/80">
             {history.map((row) => (
@@ -155,7 +163,9 @@ export default function EmpresaAlertasPage() {
                   <p className="text-xs text-zinc-500">{row.body}</p>
                 </div>
                 <div className="text-right text-[11px] text-zinc-600">
-                  <span className={`mr-2 inline-block rounded border px-1.5 py-0.5 ${sevBadge(row.severity)}`}>{row.severity}</span>
+                  <span className={`mr-2 inline-block rounded border px-1.5 py-0.5 ${sevBadge(row.severity)}`}>
+                    {sevLabel(row.severity)}
+                  </span>
                   <span>{row.is_active ? "ativo" : "inativo"}</span>
                   <br />
                   <time dateTime={row.last_seen_at}>{new Date(row.last_seen_at).toLocaleString("pt-BR")}</time>
@@ -169,8 +179,8 @@ export default function EmpresaAlertasPage() {
       <section className="fc-card border border-dashed border-zinc-700/80 bg-zinc-950/30 p-4 sm:p-5">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Canais futuros</h2>
         <p className="mt-1 text-xs text-zinc-600">
-          Push, e-mail, WhatsApp e SMS estão preparados ao nível de API (sem envio). Consulte a documentação interna dos
-          códigos abaixo quando for implementar integrações.
+          Notificações por aplicativo, e-mail, WhatsApp ou SMS poderão ser ligadas no futuro; por agora mostramos só o
+          estado de preparação de cada canal.
         </p>
         <ul className="mt-3 grid gap-2 text-xs text-zinc-500 sm:grid-cols-2">
           {Object.entries(channels).map(([k, v]) => (

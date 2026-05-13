@@ -239,17 +239,17 @@ export default function EmpresaRelatoriosPage() {
           <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3 text-[11px] text-zinc-500">
             <p className="font-semibold text-zinc-400">Exportações</p>
             <p className="mt-1">
-              Modelo Porto: Excel e PDF. Fichas consolidadas: Excel, PDF e CSV (UTF-8, compatível com Excel). Listagem
-              com paginação (15 itens) para evitar travamentos.
+              Modelo Porto: Excel e PDF. Fichas reunidas: Excel, PDF e CSV (abre bem no Excel). A listagem
+              mostra 15 itens de cada vez para a navegação ficar leve.
             </p>
           </div>
         </aside>
 
         <div className="min-w-0 space-y-4">
           <section className="fc-card border-zinc-800/90 p-4 print:hidden">
-            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Filtros globais</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Filtros gerais</p>
             <p className="mt-1 text-xs text-zinc-500">
-              Período, motorista e tipo de atividade aplicam-se à pré-visualização e às exportações em lote.
+              Período, motorista e tipo de atividade aplicam-se à pré-visualização e às exportações em conjunto.
             </p>
             <div className="mt-3">
               <ManagerRecordsFiltersCard

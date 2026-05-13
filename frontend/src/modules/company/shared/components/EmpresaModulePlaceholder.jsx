@@ -12,11 +12,11 @@ export default function EmpresaModulePlaceholder({ title, description }) {
       </div>
       <div className="rounded-2xl border border-blue-500/25 bg-slate-900/60 p-6">
         <p className="text-sm leading-relaxed text-slate-400">
-          O painel principal da empresa está em{" "}
+          O resumo principal da empresa está no{" "}
           <Link to="/empresa/dashboard" className="font-semibold text-blue-300 underline-offset-2 hover:underline">
-            Dashboard
+            painel executivo
           </Link>
-          ; os widgets serão consolidados aqui por etapas, sem remover funcionalidade.
+          . Esta seção será preenchida aos poucos, sem retirar o que já funciona em outras telas.
         </p>
       </div>
     </div>
