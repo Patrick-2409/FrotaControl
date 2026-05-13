@@ -1,10 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../services/api";
 import SkeletonRows from "../components/SkeletonRows";
 import { emitToast } from "../services/uiEvents";
-
-const fmtInt = (n) => Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 
 export default function ManagerDashboardPage() {
   const [stats, setStats] = useState(null);
@@ -17,12 +15,6 @@ export default function ManagerDashboardPage() {
       .catch(() => emitToast("Não foi possível carregar o dashboard agora.", "warning"))
       .finally(() => setLoading(false));
   }, []);
-
-  const parteDiariaRegistros = useMemo(() => {
-    const arr = stats?.por_tipo || [];
-    const hit = arr.find((x) => String(x.tipo || "").toLowerCase() === "parte_diaria");
-    return Number(hit?.total ?? 0);
-  }, [stats]);
 
   if (loading) {
     return (
@@ -53,7 +45,7 @@ export default function ManagerDashboardPage() {
         <h2 className="mt-1 text-xl font-semibold text-white">Painel da empresa</h2>
         <p className="mt-2 text-sm text-slate-300">
           Abastecimentos, litros, custos, pizza e ranking por veículo estão no módulo Combustível. Transporte e
-          produção estão em Transporte.
+          produção estão em Transporte. Parte diária (horímetro, checklist e ocorrências) está no módulo dedicado.
         </p>
         <div className="mt-4 flex flex-wrap gap-3">
           <Link
@@ -68,24 +60,13 @@ export default function ManagerDashboardPage() {
           >
             Abrir módulo Transporte
           </Link>
+          <Link
+            to="/empresa/parte-diaria"
+            className="fc-btn inline-flex rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white"
+          >
+            Abrir módulo Parte diária
+          </Link>
         </div>
-      </section>
-
-      <section
-        className="fc-card border-violet-500/30 bg-gradient-to-br from-violet-950/20 to-slate-950/80 p-6 ring-1 ring-violet-500/15"
-        aria-labelledby="parte-diaria-admin-title"
-      >
-        <p className="text-xs font-medium uppercase tracking-wider text-violet-200/90">Documentação operacional</p>
-        <h2 id="parte-diaria-admin-title" className="mt-1 text-xl font-semibold text-white">
-          Parte diária
-        </h2>
-        <p className="mt-2 max-w-xl text-sm text-slate-400">
-          Total de registros classificados como parte diária no consolidado da empresa.
-        </p>
-        <article className="mt-6 max-w-md rounded-xl border border-violet-500/30 bg-slate-950/60 p-4">
-          <p className="text-xs uppercase tracking-wider text-slate-400">Registros (parte diária)</p>
-          <p className="mt-2 text-3xl font-bold tabular-nums text-violet-200">{fmtInt(parteDiariaRegistros)}</p>
-        </article>
       </section>
 
       <div className="flex flex-wrap gap-3">
@@ -100,6 +81,12 @@ export default function ManagerDashboardPage() {
           className="fc-btn inline-flex rounded-xl border border-cyan-500/50 px-4 py-3 text-center font-semibold text-cyan-100"
         >
           Módulo Transporte
+        </Link>
+        <Link
+          to="/empresa/parte-diaria"
+          className="fc-btn inline-flex rounded-xl border border-violet-500/50 px-4 py-3 text-center font-semibold text-violet-100"
+        >
+          Módulo Parte diária
         </Link>
         <Link to="/dashboard/relatorios" className="fc-btn inline-flex rounded-xl bg-blue-600 px-4 py-3 text-center font-semibold">
           Abrir relatórios completos
