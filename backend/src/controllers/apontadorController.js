@@ -19,7 +19,7 @@ const parseMarcacao = (timestamp) => {
   return Number.isNaN(d.getTime()) ? null : d;
 };
 
-/** Lista veículos da empresa do JWT (apontador não pode escolher outra empresa). */
+/** Lista veículos aptos ao apontamento: usa_para_transporte e capacidade_ton > 0. */
 const listVehiclesApontador = async (req, res) => {
   const empresaId = req.user?.empresa_id;
   if (!empresaId) {
@@ -32,7 +32,13 @@ const listVehiclesApontador = async (req, res) => {
   const page = Number(req.query.page || 1);
   const limit = Math.min(Math.max(Number(req.query.limit || 100), 1), 200);
   const search = String(req.query.search || "");
-  const result = await listVehicles(empresaId, { page, limit, search });
+  const result = await listVehicles(empresaId, {
+    page,
+    limit,
+    search,
+    filtrar_transporte: true,
+    exige_capacidade: true,
+  });
   return res.json({
     success: true,
     items: result.items,
@@ -78,8 +84,8 @@ const createViagemApontador = async (req, res) => {
     });
   }
 
-  const check = await pool.query(
-    `SELECT 1
+  const { rows: validRows } = await pool.query(
+    `SELECT COALESCE(v.usa_para_transporte, false) AS usa_para_transporte
      FROM veiculos v
      INNER JOIN usuarios u ON u.id = $3
        AND u.empresa_id = v.empresa_id
@@ -91,11 +97,19 @@ const createViagemApontador = async (req, res) => {
     [empresaId, body.veiculo_id, body.motorista_id]
   );
 
-  if (!check.rowCount) {
+  if (!validRows.length) {
     return res.status(400).json({
       success: false,
       error: "Veículo ou motorista inválido para esta empresa.",
       message: "Veículo ou motorista inválido para esta empresa.",
+    });
+  }
+
+  if (!validRows[0].usa_para_transporte) {
+    return res.status(400).json({
+      success: false,
+      error: "Veículo não autorizado para transporte",
+      message: "Veículo não autorizado para transporte",
     });
   }
 

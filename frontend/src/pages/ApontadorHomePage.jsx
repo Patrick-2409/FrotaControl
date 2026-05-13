@@ -334,7 +334,9 @@ export default function ApontadorHomePage() {
 
           {!loadingVeiculos && veiculos.length === 0 && (
             <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-center text-sm text-amber-100">
-              Nenhum veículo cadastrado. Contacte o administrador.
+              Nenhum veículo disponível para apontamento. O administrador deve cadastrar veículos de{" "}
+              <strong className="text-amber-50">transporte (romaneio)</strong> com{" "}
+              <strong className="text-amber-50">capacidade em toneladas</strong> (maior que zero) na gestão da empresa.
             </p>
           )}
 

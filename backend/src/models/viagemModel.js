@@ -24,11 +24,23 @@ const getViagensResumoProducao = async (empresa_id, bounds = {}, db = pool) => {
       COUNT(*) FILTER (WHERE vi.tipo = 'esteril')::int AS total_viagens_esteril,
       COUNT(*) FILTER (WHERE vi.tipo = 'rocha')::int AS total_viagens_rocha,
       COALESCE(
-        SUM(CASE WHEN vi.tipo = 'esteril' THEN COALESCE(v.capacidade_ton, 0) ELSE 0 END),
+        SUM(
+          CASE
+            WHEN vi.tipo = 'esteril' AND COALESCE(v.usa_para_transporte, false) = true
+            THEN COALESCE(v.capacidade_ton, 0)
+            ELSE 0
+          END
+        ),
         0
       )::double precision AS total_toneladas_esteril,
       COALESCE(
-        SUM(CASE WHEN vi.tipo = 'rocha' THEN COALESCE(v.capacidade_ton, 0) ELSE 0 END),
+        SUM(
+          CASE
+            WHEN vi.tipo = 'rocha' AND COALESCE(v.usa_para_transporte, false) = true
+            THEN COALESCE(v.capacidade_ton, 0)
+            ELSE 0
+          END
+        ),
         0
       )::double precision AS total_toneladas_rocha
     FROM viagens vi

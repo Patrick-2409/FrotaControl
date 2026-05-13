@@ -145,7 +145,12 @@ export default function RomaneioPage({ onSaved }) {
           <h2 className="text-lg font-semibold text-white">Controle Diário de Transporte</h2>
           <span className="fc-chip">Atividade: Romaneio</span>
         </div>
-        <p className="mt-1 text-sm text-slate-400">Motorista: {user?.nome} | Veículo: {user?.veiculo_nome || "-"}</p>
+        <p className="mt-1 text-sm text-slate-400">
+          Motorista: {user?.nome} | Veículo: {user?.veiculo_nome || "-"}
+        </p>
+        <p className="mt-2 text-xs text-slate-500">
+          O romaneio considera veículos marcados como <strong className="text-slate-300">transporte</strong> na gestão da empresa. Capacidade (t) e listagens de frota usam essa marcação.
+        </p>
         <div className="fc-progress">
           <div className="fc-progress-track">
             <div className="fc-progress-bar" style={{ width: `${progress}%` }} />

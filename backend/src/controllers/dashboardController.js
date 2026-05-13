@@ -588,6 +588,7 @@ const dashboardAlertas = async (req, res) => {
     `SELECT COUNT(*)::int AS c
      FROM veiculos
      WHERE empresa_id = $1
+       AND COALESCE(usa_para_transporte, false) = true
        AND (capacidade_ton IS NULL OR capacidade_ton <= 0)`,
     [empresa_id]
   );

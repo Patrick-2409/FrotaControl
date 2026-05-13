@@ -1,19 +1,43 @@
 const { pool } = require("../db");
 
-const createVehicle = async ({ empresa_id, nome, placa, marca = null, modelo = null, capacidade_ton = null }) => {
+const normalizeCapacidade = (usaParaTransporte, capacidade_ton) => {
+  if (!usaParaTransporte) return null;
+  if (capacidade_ton === null || capacidade_ton === undefined || capacidade_ton === "") return null;
+  const n = Number(capacidade_ton);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+const createVehicle = async ({
+  empresa_id,
+  nome,
+  placa,
+  marca = null,
+  modelo = null,
+  capacidade_ton = null,
+  usa_para_transporte = false,
+}) => {
+  const usa = Boolean(usa_para_transporte);
+  const cap = normalizeCapacidade(usa, capacidade_ton);
   const { rows } = await pool.query(
-    `INSERT INTO veiculos (empresa_id, nome, placa, marca, modelo, capacidade_ton)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO veiculos (empresa_id, nome, placa, marca, modelo, capacidade_ton, usa_para_transporte)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING *`,
-    [empresa_id, nome, placa, marca, modelo, capacidade_ton]
+    [empresa_id, nome, placa, marca, modelo, cap, usa]
   );
   return rows[0];
 };
 
-const listVehicles = async (empresa_id, { page = 1, limit = 10, search = "" } = {}) => {
+const listVehicles = async (
+  empresa_id,
+  { page = 1, limit = 10, search = "", filtrar_transporte = false, exige_capacidade = false } = {}
+) => {
   const offset = (page - 1) * limit;
+  const transportClause = filtrar_transporte ? "AND COALESCE(v.usa_para_transporte, false) = true" : "";
+  const capacidadeClause = exige_capacidade
+    ? "AND v.capacidade_ton IS NOT NULL AND v.capacidade_ton > 0"
+    : "";
   const whereSearch = search
-    ? "AND (v.nome ILIKE $2 OR v.placa ILIKE $2 OR COALESCE(v.marca, '') ILIKE $2 OR COALESCE(v.modelo, '') ILIKE $2 OR u.nome ILIKE $2)"
+    ? `AND (v.nome ILIKE $2 OR v.placa ILIKE $2 OR COALESCE(v.marca, '') ILIKE $2 OR COALESCE(v.modelo, '') ILIKE $2 OR u.nome ILIKE $2)`
     : "";
   const countValues = search ? [empresa_id, `%${search}%`] : [empresa_id];
   const rowsValues = search
@@ -25,7 +49,7 @@ const listVehicles = async (empresa_id, { page = 1, limit = 10, search = "" } = 
     `SELECT COUNT(*)::int AS total
      FROM veiculos v
      LEFT JOIN usuarios u ON u.veiculo_id = v.id AND u.empresa_id = v.empresa_id
-     WHERE v.empresa_id = $1 ${whereSearch}`,
+     WHERE v.empresa_id = $1 ${transportClause} ${capacidadeClause} ${whereSearch}`,
     countValues
   );
   const { rows } = await pool.query(
@@ -33,6 +57,8 @@ const listVehicles = async (empresa_id, { page = 1, limit = 10, search = "" } = 
      FROM veiculos v
      LEFT JOIN usuarios u ON u.veiculo_id = v.id AND u.empresa_id = v.empresa_id
      WHERE v.empresa_id = $1
+     ${transportClause}
+     ${capacidadeClause}
      ${whereSearch}
      ORDER BY v.created_at DESC
      LIMIT ${qLimit} OFFSET ${qOffset}`,
@@ -42,15 +68,37 @@ const listVehicles = async (empresa_id, { page = 1, limit = 10, search = "" } = 
 };
 
 const updateVehicle = async (id, empresa_id, data) => {
-  const values = [id, empresa_id, data.nome, data.placa, data.marca || null, data.modelo || null];
-  let sql = `UPDATE veiculos
-     SET nome = $3, placa = $4, marca = $5, modelo = $6`;
-  if (Object.prototype.hasOwnProperty.call(data, "capacidade_ton")) {
-    values.push(data.capacidade_ton);
-    sql += `, capacidade_ton = $${values.length}`;
+  const existing = await getVehicleById(id, empresa_id);
+  if (!existing) return null;
+
+  const usa = Object.prototype.hasOwnProperty.call(data, "usa_para_transporte")
+    ? Boolean(data.usa_para_transporte)
+    : Boolean(existing.usa_para_transporte);
+
+  let capacidade_ton = existing.capacidade_ton;
+  if (!usa) {
+    capacidade_ton = null;
+  } else if (Object.prototype.hasOwnProperty.call(data, "capacidade_ton")) {
+    capacidade_ton = normalizeCapacidade(true, data.capacidade_ton);
   }
-  sql += ` WHERE id = $1 AND empresa_id = $2 RETURNING *`;
-  const { rows } = await pool.query(sql, values);
+
+  const nome = data.nome ?? existing.nome;
+  const placa = data.placa ?? existing.placa;
+  const marca = Object.prototype.hasOwnProperty.call(data, "marca") ? data.marca ?? null : existing.marca ?? null;
+  const modelo = Object.prototype.hasOwnProperty.call(data, "modelo") ? data.modelo ?? null : existing.modelo ?? null;
+
+  const { rows } = await pool.query(
+    `UPDATE veiculos
+     SET nome = $3,
+         placa = $4,
+         marca = $5,
+         modelo = $6,
+         capacidade_ton = $7,
+         usa_para_transporte = $8
+     WHERE id = $1 AND empresa_id = $2
+     RETURNING *`,
+    [id, empresa_id, nome, placa, marca, modelo, capacidade_ton, usa]
+  );
   return rows[0];
 };
 

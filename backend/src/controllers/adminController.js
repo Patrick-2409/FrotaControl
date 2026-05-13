@@ -19,6 +19,7 @@ const {
   deleteVehicle,
   listVehicles,
   updateVehicle,
+  getVehicleById,
 } = require("../models/vehicleModel");
 const { logAudit } = require("../services/auditService");
 
@@ -92,7 +93,23 @@ const userSchema = z.object({
 const vehicleSchema = z.object({
   nome: z.string().trim().min(2),
   placa: z.string().trim().min(4),
+  marca: z.string().trim().optional().nullable(),
+  modelo: z.string().trim().optional().nullable(),
+  capacidade_ton: z.coerce.number().positive().optional().nullable(),
+  usa_para_transporte: z.coerce.boolean().optional().default(false),
 });
+
+const toVehicleWritePayload = (parsed) => {
+  const usa = Boolean(parsed.usa_para_transporte);
+  return {
+    nome: parsed.nome,
+    placa: parsed.placa,
+    marca: parsed.marca != null && String(parsed.marca).trim() !== "" ? String(parsed.marca).trim() : null,
+    modelo: parsed.modelo != null && String(parsed.modelo).trim() !== "" ? String(parsed.modelo).trim() : null,
+    usa_para_transporte: usa,
+    capacidade_ton: usa ? parsed.capacidade_ton ?? null : null,
+  };
+};
 
 const getCompanyId = (req) => {
   if (req.user.role === "SUPER_ADMIN") {
@@ -598,7 +615,7 @@ const deleteUserCtrl = async (req, res) => {
 };
 
 const createVehicleCtrl = async (req, res) => {
-  const payload = vehicleSchema.parse(req.body);
+  const payload = toVehicleWritePayload(vehicleSchema.parse(req.body));
   const empresa_id = getCompanyId(req);
   if (!empresa_id) {
     return res.status(400).json({
@@ -650,6 +667,7 @@ const listVehiclesCtrl = async (req, res) => {
       `
       SELECT
         v.id, v.nome, v.placa, v.empresa_id, v.created_at,
+        v.marca, v.modelo, v.capacidade_ton, v.usa_para_transporte,
         e.nome AS empresa_nome,
         u.id AS motorista_id, u.nome AS motorista_nome
       FROM veiculos v
@@ -687,29 +705,43 @@ const listVehiclesCtrl = async (req, res) => {
 };
 
 const updateVehicleCtrl = async (req, res) => {
-  const payload = vehicleSchema.parse(req.body);
+  const payload = toVehicleWritePayload(vehicleSchema.parse(req.body));
   if (req.user.role === "SUPER_ADMIN") {
-    const empresa_id = Number(req.body.empresa_id || req.query.empresa_id);
-    if (!empresa_id) {
+    const empresa_alvo = Number(req.body.empresa_id || req.query.empresa_id);
+    if (!empresa_alvo) {
       return res.status(400).json({
         success: false,
         error: "empresa_id é obrigatório",
         message: "empresa_id é obrigatório",
       });
     }
-    const result = await pool.query(
-      `UPDATE veiculos
-       SET nome = $2, placa = $3, empresa_id = $4
-       WHERE id = $1
-       RETURNING *`,
-      [Number(req.params.id), payload.nome, payload.placa, empresa_id]
-    );
-    const row = result.rows[0];
+    const vehicleId = Number(req.params.id);
+    const { rows: existRows } = await pool.query("SELECT empresa_id FROM veiculos WHERE id = $1", [vehicleId]);
+    const empresa_atual = existRows[0]?.empresa_id;
+    if (empresa_atual == null) {
+      return res.status(404).json({
+        success: false,
+        error: "Veículo não encontrado.",
+        message: "Veículo não encontrado.",
+      });
+    }
+    let row = await updateVehicle(vehicleId, empresa_atual, payload);
+    if (!row) {
+      return res.status(404).json({
+        success: false,
+        error: "Veículo não encontrado.",
+        message: "Veículo não encontrado.",
+      });
+    }
+    if (empresa_alvo !== empresa_atual) {
+      await pool.query("UPDATE veiculos SET empresa_id = $1 WHERE id = $2", [empresa_alvo, vehicleId]);
+      row = await getVehicleById(vehicleId, empresa_alvo);
+    }
     await logAudit({
       usuario_id: req.user?.sub,
       acao: "editou",
       tabela: "veiculos",
-      registro_id: row?.id || req.params.id,
+      registro_id: row.id,
     });
     return res.json(row);
   }

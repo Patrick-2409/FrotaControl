@@ -158,6 +158,7 @@ const initDb = async () => {
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS marca VARCHAR(120);
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS modelo VARCHAR(120);
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS capacidade_ton NUMERIC(10, 2);
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS usa_para_transporte BOOLEAN NOT NULL DEFAULT false;
     ALTER TABLE romaneios ADD COLUMN IF NOT EXISTS version_of VARCHAR(80);
     ALTER TABLE romaneios ADD COLUMN IF NOT EXISTS recorded_at_client TIMESTAMP;
     ALTER TABLE combustiveis ADD COLUMN IF NOT EXISTS version_of VARCHAR(80);

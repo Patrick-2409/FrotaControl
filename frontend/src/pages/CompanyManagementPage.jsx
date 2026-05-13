@@ -56,7 +56,15 @@ export default function CompanyManagementPage() {
     role: "MOTORISTA",
     veiculo_id: "",
   });
-  const [vehicleForm, setVehicleForm] = useState({ id: null, nome: "", placa: "", marca: "", modelo: "" });
+  const [vehicleForm, setVehicleForm] = useState({
+    id: null,
+    nome: "",
+    placa: "",
+    marca: "",
+    modelo: "",
+    usa_para_transporte: false,
+    capacidade_ton: "",
+  });
 
   const loadUsers = useCallback(async () => {
     setLoadingUsers(true);
@@ -98,13 +106,22 @@ export default function CompanyManagementPage() {
       emitToast("Informe nome e placa do veículo.", "warning");
       return;
     }
+    const usa = Boolean(vehicleForm.usa_para_transporte);
+    const tonRaw = String(vehicleForm.capacidade_ton ?? "").trim().replace(",", ".");
+    const tonNum = tonRaw === "" ? NaN : Number(tonRaw);
+    if (usa && (!Number.isFinite(tonNum) || tonNum <= 0)) {
+      emitToast("Para veículo de transporte, informe a capacidade em toneladas (valor maior que zero).", "warning");
+      return;
+    }
     setLoading(true);
     try {
       const payload = {
         nome: vehicleForm.nome.trim(),
         placa: vehicleForm.placa.trim(),
-        marca: vehicleForm.marca.trim(),
-        modelo: vehicleForm.modelo.trim(),
+        marca: vehicleForm.marca.trim() || undefined,
+        modelo: vehicleForm.modelo.trim() || undefined,
+        usa_para_transporte: usa,
+        capacidade_ton: usa && Number.isFinite(tonNum) && tonNum > 0 ? tonNum : null,
       };
       if (vehicleForm.id) {
         await api.put(`/dashboard/manage/vehicles/${vehicleForm.id}`, payload);
@@ -112,7 +129,15 @@ export default function CompanyManagementPage() {
         await api.post("/dashboard/manage/vehicles", payload);
       }
       emitToast(vehicleForm.id ? "Veículo atualizado com sucesso." : "Veículo criado com sucesso.");
-      setVehicleForm({ id: null, nome: "", placa: "", marca: "", modelo: "" });
+      setVehicleForm({
+        id: null,
+        nome: "",
+        placa: "",
+        marca: "",
+        modelo: "",
+        usa_para_transporte: false,
+        capacidade_ton: "",
+      });
       await loadVehicles();
     } catch (err) {
       emitToast(err.response?.data?.message || "Erro ao salvar veículo.", "error");
@@ -356,12 +381,52 @@ export default function CompanyManagementPage() {
             <h3 className="mb-1 text-base font-semibold text-white">
               {vehicleForm.id ? "Editar veículo" : "Criar veículo"}
             </h3>
-            <p className="mb-4 text-sm text-slate-400">Cadastre modelo e placa para organizar a frota.</p>
+            <p className="mb-4 text-sm text-slate-400">
+              Veículos de <strong className="text-slate-200">transporte</strong> entram no romaneio e na capacidade em toneladas. Os demais são tratados como{" "}
+              <strong className="text-slate-200">operacionais</strong> (sem capacidade neste cadastro).
+            </p>
             <form onSubmit={onSaveVehicle} className="grid gap-2">
               <input className={inputClass} placeholder="Nome do veículo" value={vehicleForm.nome} onChange={(e) => setVehicleForm((f) => ({ ...f, nome: e.target.value }))} />
               <input className={inputClass} placeholder="Placa" value={vehicleForm.placa} onChange={(e) => setVehicleForm((f) => ({ ...f, placa: e.target.value }))} />
               <input className={inputClass} placeholder="Marca (opcional)" value={vehicleForm.marca} onChange={(e) => setVehicleForm((f) => ({ ...f, marca: e.target.value }))} />
               <input className={inputClass} placeholder="Modelo (opcional)" value={vehicleForm.modelo} onChange={(e) => setVehicleForm((f) => ({ ...f, modelo: e.target.value }))} />
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-700/80 bg-slate-900/40 px-3 py-3 text-sm text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={vehicleForm.usa_para_transporte}
+                  onChange={(e) =>
+                    setVehicleForm((f) => ({
+                      ...f,
+                      usa_para_transporte: e.target.checked,
+                      capacidade_ton: e.target.checked ? f.capacidade_ton : "",
+                    }))
+                  }
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-600"
+                />
+                <span>
+                  <span className="font-medium text-white">Usado para transporte (romaneio)</span>
+                  <span className="mt-0.5 block text-xs font-normal text-slate-400">Marque só se o veículo participa do controle diário de transporte.</span>
+                </span>
+              </label>
+              {vehicleForm.usa_para_transporte ? (
+                <div className="grid gap-1">
+                  <label htmlFor="vehicle-cap-ton" className="text-xs font-medium text-slate-300">
+                    Capacidade (toneladas) <span className="text-rose-300">*</span>
+                  </label>
+                  <input
+                    id="vehicle-cap-ton"
+                    className={inputClass}
+                    type="number"
+                    inputMode="decimal"
+                    min="0.01"
+                    step="0.01"
+                    required
+                    placeholder="Ex.: 25,5"
+                    value={vehicleForm.capacidade_ton}
+                    onChange={(e) => setVehicleForm((f) => ({ ...f, capacidade_ton: e.target.value }))}
+                  />
+                </div>
+              ) : null}
               <button className="fc-btn rounded-lg bg-blue-600 px-4 py-3">{vehicleForm.id ? "Atualizar" : "Criar"}</button>
             </form>
           </article>
@@ -393,6 +458,21 @@ export default function CompanyManagementPage() {
                     <p className="text-xs text-slate-500">
                       {v.marca || "-"} {v.modelo || ""}
                     </p>
+                    <p className="mt-1.5 text-xs text-slate-400">
+                      Tipo:{" "}
+                      <span
+                        className={
+                          v.usa_para_transporte
+                            ? "font-semibold text-blue-200"
+                            : "font-semibold text-slate-200"
+                        }
+                      >
+                        {v.usa_para_transporte ? "Transporte" : "Operacional"}
+                      </span>
+                      {v.usa_para_transporte && v.capacidade_ton != null && v.capacidade_ton !== "" ? (
+                        <span className="text-slate-500"> · {v.capacidade_ton} t</span>
+                      ) : null}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -404,6 +484,8 @@ export default function CompanyManagementPage() {
                           placa: v.placa,
                           marca: v.marca || "",
                           modelo: v.modelo || "",
+                          usa_para_transporte: Boolean(v.usa_para_transporte),
+                          capacidade_ton: v.capacidade_ton != null && v.capacidade_ton !== "" ? String(v.capacidade_ton) : "",
                         })
                       }
                       className="fc-btn rounded-lg border border-blue-400/35 bg-blue-500/15 px-3 py-1.5 text-xs text-blue-100"

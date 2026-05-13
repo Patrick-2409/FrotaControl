@@ -298,8 +298,15 @@ const deleteRecord = async (req, res) => {
 
 const listAppVehicles = async (req, res) => {
   const search = String(req.query.search || "").trim();
+  const paraRomaneioRaw = String(req.query.para_romaneio ?? req.query.romaneio ?? "").trim().toLowerCase();
+  const apenasTransporte =
+    paraRomaneioRaw === "1" || paraRomaneioRaw === "true" || paraRomaneioRaw === "sim";
   const values = [req.user.empresa_id];
   let whereSql = "WHERE empresa_id = $1";
+
+  if (apenasTransporte) {
+    whereSql += " AND COALESCE(usa_para_transporte, false) = true";
+  }
 
   if (search) {
     values.push(`%${search}%`);
@@ -307,7 +314,7 @@ const listAppVehicles = async (req, res) => {
   }
 
   const { rows } = await pool.query(
-    `SELECT id, nome, placa, marca, modelo
+    `SELECT id, nome, placa, marca, modelo, capacidade_ton, usa_para_transporte
      FROM veiculos
      ${whereSql}
      ORDER BY nome ASC, placa ASC`,
