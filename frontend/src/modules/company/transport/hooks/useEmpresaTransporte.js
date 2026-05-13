@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import api from "../../../../services/api";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import api, { extractApiErrorMessage } from "../../../../services/api";
 import { emitToast } from "../../../../services/uiEvents";
 
 const PERIODOS_VALIDOS = new Set(["dia", "semana", "mes"]);
@@ -21,19 +21,27 @@ function normalizePeriodoTransporte(v) {
   return PERIODOS_VALIDOS.has(p) ? p : "semana";
 }
 
+const VIAGENS_CACHE_TTL_MS = 35_000;
+const VIAGENS_CACHE_MAX = 8;
+
 /**
  * Estado e carregamento exclusivos do módulo Transporte (viagens, metas, alertas operacionais do período).
- * Não compartilha estado com outras páginas.
+ * @param {{ enabled?: boolean }} [options]
  */
-export function useEmpresaTransporte() {
+export function useEmpresaTransporte(options = {}) {
+  const { enabled = true } = options;
+  const viagensCacheRef = useRef(new Map());
+
   const [periodoFiltro, setPeriodoFiltro] = useState("semana");
   const periodoApi = normalizePeriodoTransporte(periodoFiltro);
 
   const [viagensResumo, setViagensResumo] = useState(null);
   const [viagensLoading, setViagensLoading] = useState(true);
+  const [viagensError, setViagensError] = useState(null);
 
   const [comparacao, setComparacao] = useState(null);
   const [comparLoading, setComparLoading] = useState(true);
+  const [comparError, setComparError] = useState(null);
 
   const [planForm, setPlanForm] = useState(() => ({
     ...defaultWeekRangeLocal(),
@@ -48,27 +56,52 @@ export function useEmpresaTransporte() {
     meta_risco: false,
   });
 
+  const pruneViagensCache = useCallback((map) => {
+    while (map.size > VIAGENS_CACHE_MAX) {
+      const k = map.keys().next().value;
+      map.delete(k);
+    }
+  }, []);
+
   const loadViagensResumo = useCallback(async () => {
+    if (!enabled) {
+      setViagensLoading(false);
+      return;
+    }
+    const cacheKey = `viagens:${periodoApi}`;
+    const now = Date.now();
+    const hit = viagensCacheRef.current.get(cacheKey);
+    if (hit && now - hit.t < VIAGENS_CACHE_TTL_MS) {
+      setViagensResumo(hit.data);
+      setViagensError(null);
+      setViagensLoading(false);
+      return;
+    }
     setViagensLoading(true);
+    setViagensError(null);
     try {
       const { data } = await api.get("/dashboard/viagens/resumo", {
         params: { periodo: periodoApi },
       });
-      setViagensResumo({
+      const next = {
         total_viagens_esteril: data?.total_viagens_esteril ?? 0,
         total_viagens_rocha: data?.total_viagens_rocha ?? 0,
         total_toneladas_esteril: data?.total_toneladas_esteril ?? 0,
         total_toneladas_rocha: data?.total_toneladas_rocha ?? 0,
-      });
-    } catch {
+      };
+      viagensCacheRef.current.set(cacheKey, { t: now, data: next });
+      pruneViagensCache(viagensCacheRef.current);
+      setViagensResumo(next);
+    } catch (err) {
       setViagensResumo(null);
-      emitToast("Não foi possível carregar o resumo de viagens.", "warning");
+      setViagensError(extractApiErrorMessage(err) || "Falha ao carregar o resumo de viagens.");
     } finally {
       setViagensLoading(false);
     }
-  }, [periodoApi]);
+  }, [enabled, periodoApi, pruneViagensCache]);
 
   const loadAlertasTransporte = useCallback(async () => {
+    if (!enabled) return;
     try {
       const { data } = await api.get("/dashboard/alertas", {
         params: { periodo: periodoApi },
@@ -81,10 +114,15 @@ export function useEmpresaTransporte() {
     } catch {
       setAlertasTransporte({ veiculos_sem_capacidade: 0, custo_alto: false, meta_risco: false });
     }
-  }, [periodoApi]);
+  }, [enabled, periodoApi]);
 
   const loadComparacao = useCallback(async () => {
+    if (!enabled) {
+      setComparLoading(false);
+      return;
+    }
     setComparLoading(true);
+    setComparError(null);
     try {
       const { data } = await api.get("/dashboard/viagens/comparacao");
       setComparacao({
@@ -96,13 +134,13 @@ export function useEmpresaTransporte() {
         percentual_rocha: data?.percentual_rocha ?? 0,
         percentual_total: data?.percentual_total ?? 0,
       });
-    } catch {
+    } catch (err) {
       setComparacao(null);
-      emitToast("Não foi possível carregar planejado vs executado.", "warning");
+      setComparError(extractApiErrorMessage(err) || "Falha ao carregar planejado vs executado.");
     } finally {
       setComparLoading(false);
     }
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
     void loadViagensResumo();
@@ -112,6 +150,11 @@ export function useEmpresaTransporte() {
   useEffect(() => {
     void loadComparacao();
   }, [loadComparacao]);
+
+  const refetchViagens = useCallback(() => {
+    viagensCacheRef.current.clear();
+    return loadViagensResumo();
+  }, [loadViagensResumo]);
 
   const submitPlanejamento = useCallback(
     async (e) => {
@@ -176,22 +219,48 @@ export function useEmpresaTransporte() {
     [alertasTransporte]
   );
 
-  return {
-    periodoFiltro,
-    setPeriodoFiltro,
-    viagensResumo,
-    viagensLoading,
-    comparacao,
-    comparLoading,
-    planForm,
-    setPlanForm,
-    planSaving,
-    submitPlanejamento,
-    alertasTransporte,
-    temAlertasTransporte,
-    metaPlanejadaTotal,
-    executadoTotal,
-    barWidthPct,
-    planVsExecPieStyle,
-  };
+  return useMemo(
+    () => ({
+      periodoFiltro,
+      setPeriodoFiltro,
+      viagensResumo,
+      viagensLoading,
+      viagensError,
+      refetchViagens,
+      comparacao,
+      comparLoading,
+      comparError,
+      refetchComparacao: loadComparacao,
+      planForm,
+      setPlanForm,
+      planSaving,
+      submitPlanejamento,
+      alertasTransporte,
+      temAlertasTransporte,
+      metaPlanejadaTotal,
+      executadoTotal,
+      barWidthPct,
+      planVsExecPieStyle,
+    }),
+    [
+      periodoFiltro,
+      viagensResumo,
+      viagensLoading,
+      viagensError,
+      refetchViagens,
+      comparacao,
+      comparLoading,
+      comparError,
+      loadComparacao,
+      planForm,
+      planSaving,
+      submitPlanejamento,
+      alertasTransporte,
+      temAlertasTransporte,
+      metaPlanejadaTotal,
+      executadoTotal,
+      barWidthPct,
+      planVsExecPieStyle,
+    ]
+  );
 }

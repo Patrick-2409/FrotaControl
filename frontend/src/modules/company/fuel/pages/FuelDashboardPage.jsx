@@ -1,18 +1,25 @@
 import { useCallback } from "react";
 import { Link } from "react-router-dom";
 import SkeletonRows from "../../../../components/SkeletonRows";
-import { useEmpresaFuelDashboard } from "../hooks/useEmpresaFuelDashboard";
+import { FuelProvider } from "../../contexts/FuelContext";
+import { useFuelMetrics } from "../../hooks/useFuelMetrics";
+import EmpresaModuleErrorPanel from "../../shared/components/EmpresaModuleErrorPanel";
 import { veiculoCombustivelLabel, fmtBRL } from "../services/fuelFormatters";
 import FuelCharts from "../components/FuelCharts";
 import FuelFilters from "../components/FuelFilters";
 import FuelMetricsCards from "../components/FuelMetricsCards";
 import FuelVehicleTable from "../components/FuelVehicleTable";
 
-export default function FuelDashboardPage() {
-  const fuel = useEmpresaFuelDashboard();
+function FuelDashboardContent() {
+  const fuel = useFuelMetrics();
 
   const verPeriodoMes = useCallback(() => {
     fuel.setPeriodo("mes");
+  }, [fuel]);
+
+  const retryResumo = useCallback(() => {
+    fuel.clearLoadError();
+    void fuel.refetch();
   }, [fuel]);
 
   return (
@@ -21,7 +28,7 @@ export default function FuelDashboardPage() {
         <p className="fc-erp-eyebrow">Módulo combustível</p>
         <h1 className="fc-erp-h1 mt-2">Consumo e custo</h1>
         <p className="fc-erp-lead mt-3">
-          Litros, valores, médias, pizza por veículo e ranking. Filtros isolados do transporte.
+          Litros, valores, médias, pizza por veículo e ranking. Estado e filtros isolados no contexto do módulo.
         </p>
       </header>
 
@@ -83,6 +90,14 @@ export default function FuelDashboardPage() {
           <div className="mt-6">
             <SkeletonRows rows={3} />
           </div>
+        ) : fuel.loadError ? (
+          <div className="mt-6">
+            <EmpresaModuleErrorPanel
+              title="Resumo de combustível indisponível"
+              description={fuel.loadError}
+              onRetry={retryResumo}
+            />
+          </div>
         ) : fuel.resumo ? (
           <>
             {fuel.semAbastecimentosNoPeriodo ? (
@@ -109,28 +124,27 @@ export default function FuelDashboardPage() {
 
             <FuelMetricsCards resumo={fuel.resumo} mediaPorVeiculo={fuel.mediaPorVeiculo} />
 
-            <div className="mt-10 grid gap-8 lg:grid-cols-2 lg:items-start">
+            <div className="mt-10 grid min-w-0 gap-8 xl:grid-cols-2 xl:items-start">
               <FuelCharts pie={fuel.pie} />
               <FuelVehicleTable rows={fuel.resumo.por_veiculo} />
             </div>
           </>
         ) : (
-          <div className="mt-6 rounded-md border border-zinc-800 bg-zinc-950/50 p-5">
-            <p className="text-base font-medium text-zinc-200">
-              Não foi possível carregar o resumo de combustível para este período.
-            </p>
-            <p className="mt-3 text-sm text-zinc-400">
-              Total geral acumulado:{" "}
-              <strong className="tabular-nums text-zinc-100">
+          <div className="mt-6">
+            <EmpresaModuleErrorPanel
+              title="Sem dados de resumo"
+              description="Não foi possível obter o resumo para o período e filtros atuais. Pode alterar o período ou tentar novamente."
+              onRetry={retryResumo}
+            />
+            <p className="mt-4 text-sm text-zinc-500">
+              Referência anual (quando disponível):{" "}
+              <strong className="tabular-nums text-zinc-300">
                 {fuel.totalGeralAno == null ? "—" : fmtBRL(fuel.totalGeralAno)}
               </strong>
             </p>
-            <p className="mt-1 text-xs text-zinc-500">
-              Referência do ano civil atual (todos os abastecimentos da empresa), quando disponível.
-            </p>
             <button
               type="button"
-              className="fc-btn mt-4 inline-flex rounded-md border border-zinc-600 bg-zinc-900 px-4 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-800"
+              className="fc-btn mt-3 inline-flex rounded-md border border-zinc-600 bg-zinc-900 px-4 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-800"
               onClick={verPeriodoMes}
             >
               Ver mês
@@ -152,10 +166,21 @@ export default function FuelDashboardPage() {
         >
           Transporte
         </Link>
-        <Link to="/dashboard" className="fc-btn inline-flex rounded-md bg-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-950 hover:bg-white">
+        <Link
+          to="/dashboard"
+          className="fc-btn inline-flex rounded-md bg-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-950 hover:bg-white"
+        >
           Visão operacional completa
         </Link>
       </div>
     </div>
+  );
+}
+
+export default function FuelDashboardPage() {
+  return (
+    <FuelProvider>
+      <FuelDashboardContent />
+    </FuelProvider>
   );
 }

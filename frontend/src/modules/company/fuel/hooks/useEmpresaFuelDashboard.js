@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import api, { extractApiErrorMessage } from "../../../../services/api";
-import { emitToast } from "../../../../services/uiEvents";
+import useDebouncedValue from "../../../../hooks/useDebouncedValue";
+import { readSessionJson, writeSessionJson } from "../../shared/sessionFilters";
 import { buildConsumoPorVeiculoPie } from "../charts/fuelPie";
 
 const PERIODOS_API_COMBUSTIVEL = new Set(["dia", "semana", "mes", "ano"]);
@@ -10,33 +11,77 @@ export function normalizePeriodoCombustivel(v) {
   return PERIODOS_API_COMBUSTIVEL.has(p) ? p : "mes";
 }
 
+const CACHE_TTL_MS = 40_000;
+const CACHE_MAX = 12;
+
 /**
- * Estado exclusivo do módulo Combustível (sem vínculo com filtros de transporte).
+ * Estado exclusivo do módulo Combustível (sem vínculo com filtros de transporte ou parte diária).
+ * @param {{ enabled?: boolean, moduleId?: string }} [options]
  */
-export function useEmpresaFuelDashboard() {
-  const [periodo, setPeriodo] = useState("mes");
-  const [filtroVeiculoId, setFiltroVeiculoId] = useState("");
-  const [filtroMotoristaId, setFiltroMotoristaId] = useState("");
+export function useEmpresaFuelDashboard(options = {}) {
+  const { enabled = true, moduleId = "fuel" } = options;
+  const sessionKey = `filters:${moduleId}`;
+
+  const savedFilters = useMemo(() => readSessionJson(sessionKey, null), [sessionKey]);
+
+  const [periodo, setPeriodo] = useState(() => savedFilters?.periodo ?? "mes");
+  const [filtroVeiculoId, setFiltroVeiculoId] = useState(() => savedFilters?.filtroVeiculoId ?? "");
+  const [filtroMotoristaId, setFiltroMotoristaId] = useState(() => savedFilters?.filtroMotoristaId ?? "");
   const [veiculosOpt, setVeiculosOpt] = useState([]);
   const [motoristasOpt, setMotoristasOpt] = useState([]);
   const [resumo, setResumo] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [totalGeralAno, setTotalGeralAno] = useState(null);
+  const resumoCacheRef = useRef(new Map());
+
+  const debouncedVeiculoId = useDebouncedValue(filtroVeiculoId, 320);
+  const debouncedMotoristaId = useDebouncedValue(filtroMotoristaId, 320);
+
+  useEffect(() => {
+    writeSessionJson(sessionKey, {
+      periodo,
+      filtroVeiculoId,
+      filtroMotoristaId,
+    });
+  }, [sessionKey, periodo, filtroVeiculoId, filtroMotoristaId]);
+
+  const pruneCache = useCallback((map) => {
+    while (map.size > CACHE_MAX) {
+      const firstKey = map.keys().next().value;
+      map.delete(firstKey);
+    }
+  }, []);
 
   const loadResumo = useCallback(async () => {
-    setLoading(true);
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
     const periodoApi = normalizePeriodoCombustivel(periodo);
-    const vid = filtroVeiculoId === "" ? null : Number(filtroVeiculoId);
-    const mid = filtroMotoristaId === "" ? null : Number(filtroMotoristaId);
+    const vid = debouncedVeiculoId === "" ? null : Number(debouncedVeiculoId);
+    const mid = debouncedMotoristaId === "" ? null : Number(debouncedMotoristaId);
     const params = {
       periodo: periodoApi,
       group_by: "veiculo",
       ...(Number.isFinite(vid) && vid > 0 ? { veiculo_id: vid } : {}),
       ...(Number.isFinite(mid) && mid > 0 ? { motorista_id: mid } : {}),
     };
+    const cacheKey = JSON.stringify(params);
+    const now = Date.now();
+    const hit = resumoCacheRef.current.get(cacheKey);
+    if (hit && now - hit.t < CACHE_TTL_MS) {
+      setResumo(hit.data);
+      setLoadError(null);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setLoadError(null);
     try {
       const { data } = await api.get("/dashboard/combustiveis/resumo", { params });
-      setResumo({
+      const next = {
         total_litros: data?.total_litros ?? 0,
         total_valor: data?.total_valor ?? 0,
         preco_medio_litro: data?.preco_medio_litro,
@@ -60,20 +105,24 @@ export function useEmpresaFuelDashboard() {
           consumo_alto_periodo: Boolean(data?.alertas_combustivel?.consumo_alto_periodo),
           preco_fora_media_historico: Boolean(data?.alertas_combustivel?.preco_fora_media_historico),
         },
-      });
+      };
+      resumoCacheRef.current.set(cacheKey, { t: now, data: next });
+      pruneCache(resumoCacheRef.current);
+      setResumo(next);
     } catch (err) {
       setResumo(null);
-      emitToast(extractApiErrorMessage(err) || "Não foi possível carregar o resumo de combustível.", "warning");
+      setLoadError(extractApiErrorMessage(err) || "Falha ao carregar o resumo de combustível.");
     } finally {
       setLoading(false);
     }
-  }, [periodo, filtroVeiculoId, filtroMotoristaId]);
+  }, [enabled, periodo, debouncedVeiculoId, debouncedMotoristaId, pruneCache]);
 
   useEffect(() => {
     void loadResumo();
   }, [loadResumo]);
 
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
     (async () => {
       try {
@@ -95,9 +144,10 @@ export function useEmpresaFuelDashboard() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
     api
       .get("/dashboard/combustiveis/resumo", { params: { periodo: "ano" } })
@@ -112,12 +162,14 @@ export function useEmpresaFuelDashboard() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [enabled]);
 
   const clearFiltrosVeiculoMotorista = useCallback(() => {
     setFiltroVeiculoId("");
     setFiltroMotoristaId("");
   }, []);
+
+  const clearLoadError = useCallback(() => setLoadError(null), []);
 
   const mediaPorVeiculo = useMemo(() => {
     if (!resumo?.por_veiculo?.length) return null;
@@ -157,6 +209,9 @@ export function useEmpresaFuelDashboard() {
       motoristasOpt,
       resumo,
       loading,
+      loadError,
+      clearLoadError,
+      refetch: loadResumo,
       totalGeralAno,
       clearFiltrosVeiculoMotorista,
       mediaPorVeiculo,
@@ -172,6 +227,9 @@ export function useEmpresaFuelDashboard() {
       motoristasOpt,
       resumo,
       loading,
+      loadError,
+      clearLoadError,
+      loadResumo,
       totalGeralAno,
       clearFiltrosVeiculoMotorista,
       mediaPorVeiculo,

@@ -1,6 +1,14 @@
 import { inputClass } from "../../../../components/FormField";
 
-export default function ParteDiariaFilters({ filtro, onFiltroChange, onClear }) {
+export default function ParteDiariaFilters({
+  filtro,
+  onFiltroChange,
+  onClear,
+  equipamentoBusca = "",
+  onEquipamentoBuscaChange,
+  statusLocal = "todos",
+  onStatusLocalChange,
+}) {
   return (
     <div className="border-b border-zinc-800/80 pb-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -8,7 +16,8 @@ export default function ParteDiariaFilters({ filtro, onFiltroChange, onClear }) 
           <p className="fc-erp-eyebrow">Parte diária</p>
           <h2 className="fc-erp-h1 mt-2 text-xl md:text-2xl">Filtros do módulo</h2>
           <p className="fc-erp-lead mt-3 max-w-xl">
-            Período e motorista aplicam apenas a esta tela (independente de transporte e combustível).
+            Período e motorista aplicam à API; equipamento e status refinam apenas a vista desta página (sem afetar
+            transporte ou combustível).
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2" role="group" aria-label="Tipo de período">
@@ -96,6 +105,45 @@ export default function ParteDiariaFilters({ filtro, onFiltroChange, onClear }) 
           >
             Limpar filtros
           </button>
+        </div>
+      </div>
+
+      <div className="mt-6 flex flex-col gap-4 border-t border-zinc-800/60 pt-5 lg:flex-row lg:items-end lg:justify-between">
+        <label className="fc-erp-eyebrow block min-w-0 flex-1 lg:max-w-md">
+          Equipamento / local (refina esta página)
+          <input
+            type="search"
+            placeholder="Ex.: escavadeira, britador…"
+            className={`${inputClass} mt-1 w-full`}
+            value={equipamentoBusca}
+            onChange={(e) => onEquipamentoBuscaChange?.(e.target.value)}
+          />
+        </label>
+        <div className="shrink-0">
+          <p className="fc-erp-eyebrow mb-2" id="pd-status-filter-label">
+            Status (vista)
+          </p>
+          <div className="flex flex-wrap gap-2" role="group" aria-labelledby="pd-status-filter-label">
+            {[
+              { id: "todos", label: "Todos" },
+              { id: "regular", label: "Regular" },
+              { id: "checklist", label: "Checklist" },
+              { id: "ocorrencias", label: "Ocorrências" },
+            ].map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => onStatusLocalChange?.(s.id)}
+                className={`fc-btn rounded-md border px-3 py-2 text-sm font-medium transition ${
+                  statusLocal === s.id
+                    ? "border-amber-500/50 bg-zinc-800/80 text-zinc-50 shadow-inner"
+                    : "border-zinc-700 bg-zinc-950/60 text-zinc-300 hover:border-zinc-600"
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </div>

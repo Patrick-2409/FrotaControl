@@ -1,21 +1,37 @@
-import { useEffect, useMemo, useState } from "react";
-import api from "../../../../services/api";
-import { emitToast } from "../../../../services/uiEvents";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import api, { extractApiErrorMessage } from "../../../../services/api";
 
 /**
  * Indicadores de produtividade e série temporal para o módulo Transporte (GET /dashboard/stats isolado).
+ * @param {{ enabled?: boolean }} [options]
  */
-export function useEmpresaTransporteProdutividade() {
+export function useEmpresaTransporteProdutividade(options = {}) {
+  const { enabled = true } = options;
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [statsError, setStatsError] = useState(null);
+
+  const loadStats = useCallback(async () => {
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setStatsError(null);
+    try {
+      const { data } = await api.get("/dashboard/stats");
+      setStats(data);
+    } catch (err) {
+      setStats(null);
+      setStatsError(extractApiErrorMessage(err) || "Falha ao carregar indicadores de produtividade.");
+    } finally {
+      setLoading(false);
+    }
+  }, [enabled]);
 
   useEffect(() => {
-    api
-      .get("/dashboard/stats")
-      .then(({ data }) => setStats(data))
-      .catch(() => emitToast("Não foi possível carregar indicadores de produtividade.", "warning"))
-      .finally(() => setLoading(false));
-  }, []);
+    void loadStats();
+  }, [loadStats]);
 
   const trend = useMemo(() => stats?.ultimos_7_dias || [], [stats]);
 
@@ -49,12 +65,17 @@ export function useEmpresaTransporteProdutividade() {
         ? "Tendência negativa"
         : "Tendência estável";
 
-  return {
-    stats,
-    loading,
-    trend,
-    trendSummary,
-    trendLabel,
-    trendClass,
-  };
+  return useMemo(
+    () => ({
+      stats,
+      loading,
+      statsError,
+      refetchStats: loadStats,
+      trend,
+      trendSummary,
+      trendLabel,
+      trendClass,
+    }),
+    [stats, loading, statsError, loadStats, trend, trendSummary, trendLabel, trendClass]
+  );
 }

@@ -3,7 +3,9 @@ import { Link } from "react-router-dom";
 import SkeletonRows from "../../../../components/SkeletonRows";
 import PaginationControls from "../../../../components/PaginationControls";
 import EmptyState from "../../../../components/EmptyState";
-import { useEmpresaParteDiariaModule } from "../hooks/useEmpresaParteDiariaModule";
+import { DailyOperationsProvider } from "../../contexts/DailyOperationsContext";
+import { useDailyOperations } from "../../hooks/useDailyOperations";
+import EmpresaModuleErrorPanel from "../../shared/components/EmpresaModuleErrorPanel";
 import ParteDiariaFilters from "../components/ParteDiariaFilters";
 import ParteDiariaStatusCards from "../components/ParteDiariaStatusCards";
 import ParteDiariaHorimetroSection from "../components/ParteDiariaHorimetroSection";
@@ -11,20 +13,28 @@ import ParteDiariaChecklistSection from "../components/ParteDiariaChecklistSecti
 import ParteDiariaOcorrenciasSection from "../components/ParteDiariaOcorrenciasSection";
 import ParteDiariaRecordsTable from "../components/ParteDiariaRecordsTable";
 
-export default function ParteDiariaDashboardPage() {
+function ParteDiariaDashboardInner() {
   const {
     filtro,
     setFiltro,
+    equipamentoBusca,
+    setEquipamentoBusca,
+    statusLocal,
+    setStatusLocal,
     clearFilters,
     page,
     setPage,
     totalPages,
     total,
     rows,
+    displayRows,
     loading,
+    loadError,
+    clearLoadError,
     aggregates,
     ocorrenciasPreview,
-  } = useEmpresaParteDiariaModule();
+    refetch,
+  } = useDailyOperations();
 
   const onFiltroChange = useCallback((updater) => {
     setFiltro((f) => (typeof updater === "function" ? updater(f) : updater));
@@ -41,6 +51,11 @@ export default function ParteDiariaDashboardPage() {
   const onPageNext = useCallback(() => {
     setPage((p) => Math.min(totalPages, p + 1));
   }, [setPage, totalPages]);
+
+  const retryLoad = useCallback(() => {
+    clearLoadError();
+    void refetch();
+  }, [clearLoadError, refetch]);
 
   return (
     <div className="fc-erp-workspace">
@@ -66,7 +81,25 @@ export default function ParteDiariaDashboardPage() {
           Conteúdo do módulo parte diária
         </h2>
 
-        <ParteDiariaFilters filtro={filtro} onFiltroChange={onFiltroChange} onClear={clear} />
+        <ParteDiariaFilters
+          filtro={filtro}
+          onFiltroChange={onFiltroChange}
+          onClear={clear}
+          equipamentoBusca={equipamentoBusca}
+          onEquipamentoBuscaChange={setEquipamentoBusca}
+          statusLocal={statusLocal}
+          onStatusLocalChange={setStatusLocal}
+        />
+
+        {loadError && !loading ? (
+          <div className="mt-6">
+            <EmpresaModuleErrorPanel
+              title="Registros indisponíveis"
+              description={loadError}
+              onRetry={retryLoad}
+            />
+          </div>
+        ) : null}
 
         {loading ? (
           <div className="mt-6">
@@ -75,10 +108,10 @@ export default function ParteDiariaDashboardPage() {
         ) : (
           <>
             <div className="mt-6">
-              <ParteDiariaStatusCards total={total} rowsOnPage={rows.length} aggregates={aggregates} />
+              <ParteDiariaStatusCards total={total} rowsOnPage={displayRows.length} aggregates={aggregates} />
             </div>
 
-            <div className="mt-8 grid gap-6 lg:grid-cols-2 lg:items-start">
+            <div className="mt-8 grid min-w-0 gap-6 lg:grid-cols-2 lg:items-start">
               <ParteDiariaHorimetroSection aggregates={aggregates} />
               <ParteDiariaChecklistSection aggregates={aggregates} />
             </div>
@@ -97,9 +130,16 @@ export default function ParteDiariaDashboardPage() {
                   description="Ajuste o período ou o filtro de motorista, ou aguarde novos lançamentos no app."
                 />
               </div>
-            ) : (
+            ) : !displayRows.length ? (
               <div className="mt-8">
-                <ParteDiariaRecordsTable rows={rows} />
+                <EmptyState
+                  title="Nenhuma linha corresponde aos filtros locais"
+                  description="Altere equipamento/local ou o filtro de status, ou limpe os filtros de vista."
+                />
+              </div>
+            ) : (
+              <div className="mt-8 min-w-0">
+                <ParteDiariaRecordsTable rows={displayRows} />
                 <PaginationControls
                   page={page}
                   totalPages={totalPages}
@@ -112,5 +152,13 @@ export default function ParteDiariaDashboardPage() {
         )}
       </section>
     </div>
+  );
+}
+
+export default function ParteDiariaDashboardPage() {
+  return (
+    <DailyOperationsProvider>
+      <ParteDiariaDashboardInner />
+    </DailyOperationsProvider>
   );
 }

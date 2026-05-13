@@ -1,7 +1,8 @@
 import { Link } from "react-router-dom";
 import SkeletonRows from "../../../../components/SkeletonRows";
-import { useEmpresaTransporte } from "../hooks/useEmpresaTransporte";
-import { useEmpresaTransporteProdutividade } from "../hooks/useEmpresaTransporteProdutividade";
+import { TransportProvider } from "../../contexts/TransportContext";
+import { useTransportMetrics } from "../../hooks/useTransportMetrics";
+import EmpresaModuleErrorPanel from "../../shared/components/EmpresaModuleErrorPanel";
 
 const fmtInt = (n) => Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 const fmtTon = (n) =>
@@ -9,9 +10,8 @@ const fmtTon = (n) =>
 const fmtPct = (n) =>
   Number(n || 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 1 });
 
-export default function EmpresaTransportePage() {
-  const prod = useEmpresaTransporteProdutividade();
-  const tr = useEmpresaTransporte();
+function EmpresaTransportePageContent() {
+  const { operations: tr, metrics: prod, materialTab, setMaterialTab } = useTransportMetrics();
 
   const pageLoading = prod.loading && !prod.stats;
 
@@ -36,8 +36,28 @@ export default function EmpresaTransportePage() {
     );
   }
 
+  if (!prod.loading && !prod.stats && prod.statsError) {
+    return (
+      <div className="fc-erp-workspace">
+        <EmpresaModuleErrorPanel
+          title="Indicadores de transporte indisponíveis"
+          description={prod.statsError}
+          onRetry={prod.refetchStats}
+        />
+      </div>
+    );
+  }
+
   if (!prod.stats) {
-    return <p className="text-sm text-rose-300">Não foi possível carregar o módulo de transporte.</p>;
+    return (
+      <div className="fc-erp-workspace">
+        <EmpresaModuleErrorPanel
+          title="Módulo de transporte"
+          description="Não foi possível carregar os indicadores de produtividade. Verifique a sessão e a ligação à rede."
+          onRetry={prod.refetchStats}
+        />
+      </div>
+    );
   }
 
   const { stats, trend, trendSummary, trendLabel, trendClass } = prod;
@@ -155,6 +175,42 @@ export default function EmpresaTransportePage() {
           </div>
         </div>
 
+        <div className="flex flex-col gap-3 border-t border-zinc-800/80 pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="fc-erp-eyebrow">Foco por tipo de material</p>
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Tipo de material (visualização)">
+            {[
+              { id: "todos", label: "Todos" },
+              { id: "esteril", label: "Estéril" },
+              { id: "rocha", label: "Rocha" },
+            ].map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setMaterialTab(t.id)}
+                className={`fc-btn rounded-md border px-3 py-2 text-sm font-medium transition ${
+                  materialTab === t.id
+                    ? "border-amber-500/50 bg-zinc-800/80 text-zinc-50 shadow-inner"
+                    : "border-zinc-700 bg-zinc-950/60 text-zinc-300 hover:border-zinc-600"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {tr.viagensError && !tr.viagensLoading ? (
+          <div className="mt-6">
+            <EmpresaModuleErrorPanel
+              title="Resumo de viagens indisponível"
+              description={tr.viagensError}
+              onRetry={() => {
+                void tr.refetchViagens();
+              }}
+            />
+          </div>
+        ) : null}
+
         {tr.viagensLoading ? (
           <div className="mt-6">
             <SkeletonRows rows={2} />
@@ -166,7 +222,11 @@ export default function EmpresaTransportePage() {
             <p className="fc-erp-eyebrow">Toneladas no período</p>
             <p className="mt-1 text-xs leading-relaxed text-zinc-500">Com capacidade informada nas viagens apontadas.</p>
             <div className="mt-5 grid gap-3 sm:grid-cols-3">
-              <article className="rounded-md border border-zinc-800 bg-zinc-950/60 p-3">
+              <article
+                className={`rounded-md border border-zinc-800 bg-zinc-950/60 p-3 ${
+                  materialTab === "esteril" ? "ring-2 ring-amber-500/45 ring-offset-2 ring-offset-zinc-950" : ""
+                }`}
+              >
                 <p className="fc-erp-eyebrow">Estéril</p>
                 <p className="mt-2 text-lg font-bold tabular-nums text-zinc-100">
                   {fmtTon(tr.viagensResumo.total_toneladas_esteril)} t
@@ -175,7 +235,11 @@ export default function EmpresaTransportePage() {
                   Viagens: {fmtInt(tr.viagensResumo.total_viagens_esteril)}
                 </p>
               </article>
-              <article className="rounded-md border border-amber-500/25 bg-zinc-950/60 p-3">
+              <article
+                className={`rounded-md border border-amber-500/25 bg-zinc-950/60 p-3 ${
+                  materialTab === "rocha" ? "ring-2 ring-amber-500/45 ring-offset-2 ring-offset-zinc-950" : ""
+                }`}
+              >
                 <p className="fc-erp-eyebrow text-amber-200/90">Rocha</p>
                 <p className="mt-2 text-lg font-bold tabular-nums text-zinc-100">
                   {fmtTon(tr.viagensResumo.total_toneladas_rocha)} t
@@ -184,7 +248,11 @@ export default function EmpresaTransportePage() {
                   Viagens: {fmtInt(tr.viagensResumo.total_viagens_rocha)}
                 </p>
               </article>
-              <article className="rounded-md border border-zinc-700/80 bg-zinc-950/60 p-3">
+              <article
+                className={`rounded-md border border-zinc-700/80 bg-zinc-950/60 p-3 ${
+                  materialTab === "todos" ? "ring-2 ring-zinc-500/40 ring-offset-2 ring-offset-zinc-950" : ""
+                }`}
+              >
                 <p className="fc-erp-eyebrow">Total</p>
                 <p className="mt-2 text-lg font-bold tabular-nums text-zinc-50">
                   {fmtTon(
@@ -214,6 +282,16 @@ export default function EmpresaTransportePage() {
           {tr.comparLoading ? (
             <div className="mt-6">
               <SkeletonRows rows={2} />
+            </div>
+          ) : tr.comparError ? (
+            <div className="mt-6">
+              <EmpresaModuleErrorPanel
+                title="Planejado vs executado"
+                description={tr.comparError}
+                onRetry={() => {
+                  void tr.refetchComparacao();
+                }}
+              />
             </div>
           ) : tr.comparacao ? (
             <>
@@ -420,5 +498,13 @@ export default function EmpresaTransportePage() {
         </Link>
       </div>
     </div>
+  );
+}
+
+export default function EmpresaTransportePage() {
+  return (
+    <TransportProvider>
+      <EmpresaTransportePageContent />
+    </TransportProvider>
   );
 }

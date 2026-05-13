@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import api from "../../../../services/api";
+import api, { extractApiErrorMessage } from "../../../../services/api";
 import useDebouncedValue from "../../../../hooks/useDebouncedValue";
-import { emitToast } from "../../../../services/uiEvents";
+import { readSessionJson, writeSessionJson } from "../../shared/sessionFilters";
 import {
   countChecklistPendencias,
   fmtHoras,
@@ -15,25 +15,48 @@ const todayAsInput = () => {
 };
 
 const PAGE_LIMIT = 20;
+const SESSION_KEY = "filters:daily";
 
-export function useEmpresaParteDiariaModule() {
+/**
+ * @param {{ enabled?: boolean }} [options]
+ */
+export function useEmpresaParteDiariaModule(options = {}) {
+  const { enabled = true } = options;
+  const saved = useMemo(() => readSessionJson(SESSION_KEY, null), []);
+
   const [rows, setRows] = useState([]);
-  const [filtro, setFiltro] = useState({
-    data: todayAsInput(),
-    data_inicio: "",
-    data_fim: "",
-    mes: "",
-    motorista: "",
-    periodo: "dia",
-  });
+  const [filtro, setFiltro] = useState(() => ({
+    data: saved?.data ?? todayAsInput(),
+    data_inicio: saved?.data_inicio ?? "",
+    data_fim: saved?.data_fim ?? "",
+    mes: saved?.mes ?? "",
+    motorista: saved?.motorista ?? "",
+    periodo: saved?.periodo ?? "dia",
+  }));
+  const [equipamentoBusca, setEquipamentoBusca] = useState(() => saved?.equipamentoBusca ?? "");
+  const [statusLocal, setStatusLocal] = useState(() => saved?.statusLocal ?? "todos");
+
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
-  const debouncedMotorista = useDebouncedValue(filtro.motorista);
+  const [loadError, setLoadError] = useState(null);
+
+  const debouncedMotorista = useDebouncedValue(filtro.motorista, 400);
+  const debouncedEquipamento = useDebouncedValue(equipamentoBusca, 350);
+
+  useEffect(() => {
+    writeSessionJson(SESSION_KEY, {
+      ...filtro,
+      equipamentoBusca,
+      statusLocal,
+    });
+  }, [filtro, equipamentoBusca, statusLocal]);
 
   const load = useCallback(async () => {
+    if (!enabled) return;
     setLoading(true);
+    setLoadError(null);
     try {
       const params = {
         page,
@@ -55,25 +78,50 @@ export function useEmpresaParteDiariaModule() {
       setTotal(Number(data.total ?? 0));
       if (page > tp) setPage(tp);
     } catch (err) {
-      emitToast(err.response?.data?.message || "Falha ao carregar parte diária.", "error");
+      setLoadError(extractApiErrorMessage(err) || "Falha ao carregar parte diária.");
       setRows([]);
       setTotalPages(1);
       setTotal(0);
     } finally {
       setLoading(false);
     }
-  }, [debouncedMotorista, filtro.data, filtro.data_fim, filtro.data_inicio, filtro.mes, filtro.periodo, page]);
+  }, [enabled, debouncedMotorista, filtro.data, filtro.data_fim, filtro.data_inicio, filtro.mes, filtro.periodo, page]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   useEffect(() => {
     setPage(1);
   }, [filtro.periodo, filtro.data, filtro.data_inicio, filtro.data_fim, filtro.mes]);
 
+  const displayRows = useMemo(() => {
+    const q = debouncedEquipamento.trim().toLowerCase();
+    let list = rows;
+    if (q) {
+      list = list.filter((r) => {
+        const eq = String(r.equipamento || "").toLowerCase();
+        const loc = String(r.local || "").toLowerCase();
+        return eq.includes(q) || loc.includes(q);
+      });
+    }
+    if (statusLocal === "todos") return list;
+    return list.filter((r) => {
+      const { pendencias, semItens } = countChecklistPendencias(r.checklist);
+      const hasOcorr = Boolean(String(r.observacoes || "").trim() || String(r.tempo_parado || "").trim());
+      if (statusLocal === "checklist") return !semItens && pendencias > 0;
+      if (statusLocal === "ocorrencias") return hasOcorr;
+      if (statusLocal === "regular") {
+        return !hasOcorr && pendencias === 0;
+      }
+      return true;
+    });
+  }, [rows, debouncedEquipamento, statusLocal]);
+
   const clearFilters = useCallback(() => {
     setPage(1);
+    setEquipamentoBusca("");
+    setStatusLocal("todos");
     setFiltro({
       data: todayAsInput(),
       data_inicio: "",
@@ -85,6 +133,7 @@ export function useEmpresaParteDiariaModule() {
   }, []);
 
   const aggregates = useMemo(() => {
+    const source = displayRows;
     const horasVals = [];
     let horimetroDeltaSum = 0;
     let horimetroDeltaCount = 0;
@@ -97,7 +146,7 @@ export function useEmpresaParteDiariaModule() {
     let comProducao = 0;
     let maxUpdated = null;
 
-    for (const r of rows) {
+    for (const r of source) {
       const th = Number(r.total_horas);
       if (Number.isFinite(th) && th > 0) horasVals.push(th);
 
@@ -130,7 +179,7 @@ export function useEmpresaParteDiariaModule() {
       horimetroDeltaCount > 0 ? horimetroDeltaSum / horimetroDeltaCount : null;
 
     const statusOperacional =
-      rows.length === 0
+      source.length === 0
         ? "sem_dados"
         : checklistRegistrosPendencia > 0
           ? "atencao_checklist"
@@ -156,11 +205,11 @@ export function useEmpresaParteDiariaModule() {
       fmtMaxHoras: maxHoras == null ? "—" : fmtHoras(maxHoras),
       fmtMediaDelta: mediaDeltaHorimetro == null ? "—" : fmtHoras(mediaDeltaHorimetro),
     };
-  }, [rows]);
+  }, [displayRows]);
 
   const ocorrenciasPreview = useMemo(() => {
     const out = [];
-    for (const r of rows) {
+    for (const r of displayRows) {
       const obs = String(r.observacoes || "").trim();
       const tp = String(r.tempo_parado || "").trim();
       if (!obs && !tp) continue;
@@ -174,21 +223,49 @@ export function useEmpresaParteDiariaModule() {
       if (out.length >= 12) break;
     }
     return out;
-  }, [rows]);
+  }, [displayRows]);
 
-  return {
-    filtro,
-    setFiltro,
-    clearFilters,
-    page,
-    setPage,
-    totalPages,
-    total,
-    rows,
-    loading,
-    aggregates,
-    ocorrenciasPreview,
-    pageLimit: PAGE_LIMIT,
-    refetch: load,
-  };
+  const clearLoadError = useCallback(() => setLoadError(null), []);
+
+  return useMemo(
+    () => ({
+      filtro,
+      setFiltro,
+      equipamentoBusca,
+      setEquipamentoBusca,
+      statusLocal,
+      setStatusLocal,
+      clearFilters,
+      page,
+      setPage,
+      totalPages,
+      total,
+      rows,
+      displayRows,
+      loading,
+      loadError,
+      clearLoadError,
+      aggregates,
+      ocorrenciasPreview,
+      pageLimit: PAGE_LIMIT,
+      refetch: load,
+    }),
+    [
+      filtro,
+      equipamentoBusca,
+      statusLocal,
+      clearFilters,
+      page,
+      totalPages,
+      total,
+      rows,
+      displayRows,
+      loading,
+      loadError,
+      clearLoadError,
+      aggregates,
+      ocorrenciasPreview,
+      load,
+    ]
+  );
 }
