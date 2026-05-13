@@ -533,7 +533,7 @@ export default function EmpresaFrotaPage() {
                       type="button"
                       disabled={fl.maintSaving || !fl.maintForm.titulo.trim()}
                       onClick={() => fl.addMaintenance()}
-                      className="w-full rounded-lg bg-zinc-100 py-2 text-sm font-semibold text-zinc-900 disabled:opacity-40"
+                      className="fc-btn fc-btn-empresa-accent w-full rounded-lg py-2 text-sm font-semibold disabled:opacity-40"
                     >
                       Registar manutenção
                     </button>

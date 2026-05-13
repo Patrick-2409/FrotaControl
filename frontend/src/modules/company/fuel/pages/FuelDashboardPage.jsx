@@ -172,7 +172,7 @@ function FuelDashboardContent() {
         </Link>
         <Link
           to="/dashboard"
-          className="fc-btn inline-flex rounded-md bg-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-950 hover:bg-white"
+          className="fc-btn fc-btn-empresa-accent inline-flex rounded-md px-4 py-3 text-sm font-semibold"
         >
           Visão operacional completa
         </Link>

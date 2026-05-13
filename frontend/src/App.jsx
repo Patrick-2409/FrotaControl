@@ -20,7 +20,6 @@ const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 const LoginPage = lazy(() => import("./pages/LoginPage"));
 const ManagerDashboardPage = lazy(() => import("./pages/ManagerDashboardPage"));
-const ManagerRecordsPage = lazy(() => import("./pages/ManagerRecordsPage"));
 const CompanyManagementPage = lazy(() => import("./pages/CompanyManagementPage"));
 const AdminPage = lazy(() => import("./pages/AdminPage"));
 const AdminLoginPage = lazy(() => import("./pages/AdminLoginPage"));
@@ -282,7 +281,7 @@ function App() {
                   <RouteTransition>
                     <Routes>
                       <Route path="/" element={<ManagerDashboardPage />} />
-                      <Route path="relatorios" element={<ManagerRecordsPage />} />
+                      <Route path="relatorios" element={<Navigate to="/empresa/relatorios" replace />} />
                       <Route path="gestao" element={<CompanyManagementPage />} />
                       <Route path="perfil" element={<ProfilePage />} />
                     </Routes>

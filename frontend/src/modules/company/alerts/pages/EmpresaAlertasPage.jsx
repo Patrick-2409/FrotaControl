@@ -84,7 +84,7 @@ export default function EmpresaAlertasPage() {
                   emitToast(e?.response?.data?.message || "Falha.", "error");
                 }
               }}
-              className="fc-btn rounded-lg bg-zinc-100 px-3 py-2 text-xs font-semibold text-zinc-900"
+              className="fc-btn fc-btn-empresa-accent rounded-lg px-3 py-2 text-xs font-semibold"
             >
               Marcar visíveis como lidos
             </button>

@@ -819,3 +819,34 @@ textarea:focus-visible,
     font-size: 1.35rem;
   }
 }
+
+/* Botões admin empresa — contraste garantido no tema escuro */
+.fc-theme-empresa .fc-btn-empresa-accent {
+  border: 1px solid rgba(217, 119, 6, 0.45);
+  background: linear-gradient(180deg, rgba(251, 191, 36, 0.95) 0%, rgba(245, 158, 11, 0.88) 100%);
+  color: #0c0a09;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.2) inset;
+}
+
+.fc-theme-empresa .fc-btn-empresa-accent:hover {
+  filter: brightness(1.06);
+}
+
+.fc-theme-empresa .fc-btn-empresa-accent:disabled {
+  opacity: 0.45;
+  filter: none;
+}
+
+.fc-theme-empresa .fc-btn-empresa-ghost {
+  background: rgba(24, 24, 27, 0.95);
+  color: #f4f4f5;
+}
+
+.fc-theme-empresa .fc-btn-empresa-ghost:hover {
+  background: rgba(39, 39, 42, 0.95);
+  border-color: rgba(113, 113, 122, 0.75);
+}
+
+.fc-empresa-sidebar {
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset;
+}

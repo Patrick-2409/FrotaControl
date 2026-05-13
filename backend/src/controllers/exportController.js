@@ -168,6 +168,29 @@ const parseChecklist = (value) => {
   }
 };
 const REPORT_TIMEZONE = "America/Sao_Paulo";
+
+/** Resumo textual dos filtros e metadados para capa PDF/Excel (dados reais da query). */
+const formatExportFiltersSummaryPt = (filter, recordCount = 0) => {
+  const lines = [];
+  const tzLine = new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "medium",
+    timeZone: REPORT_TIMEZONE,
+  }).format(new Date());
+  lines.push(`Gerado em: ${tzLine} (${REPORT_TIMEZONE})`);
+  lines.push(`Fichas incluídas neste ficheiro: ${recordCount}`);
+  if (filter.data) lines.push(`Filtro — dia: ${filter.data}`);
+  if (filter.mes) lines.push(`Filtro — mês: ${filter.mes}`);
+  if (filter.data_inicio || filter.data_fim) {
+    lines.push(`Filtro — intervalo: ${filter.data_inicio || "—"} a ${filter.data_fim || "—"}`);
+  }
+  if (filter.motorista) lines.push(`Filtro — motorista / texto: ${filter.motorista}`);
+  if (filter.tipo) lines.push(`Filtro — tipo de registo: ${filter.tipo}`);
+  if (filter.source_id) lines.push(`Filtro — registo específico: ${filter.source_id}`);
+  if (lines.length === 2) lines.push("Sem filtros adicionais explícitos (âmbito: empresa autenticada).");
+  return lines.join("\n");
+};
+
 const weekdayRows = [
   { key: 1, label: "Segunda-feira" },
   { key: 2, label: "Terça-feira" },
@@ -508,7 +531,24 @@ const renderRomaneioSheet = (row, logoUrl) => `
   </section>
 `;
 
-const buildOfficialHtml = ({ companyName, logoUrl, records }) => {
+const buildExportCoverSection = ({ companyName, logoUrl, summaryText }) => {
+  const safeSummary = escapeHtml(summaryText).replaceAll("\n", "<br/>");
+  return `
+  <section class="sheet export-cover">
+    <div class="header-row">
+      <div class="logo-box">${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="Logo" />` : ""}</div>
+      <div>
+        <div class="title">${escapeHtml(companyName)}</div>
+        <div class="subtitle">Exportação de registros operacionais · FrotaControl</div>
+      </div>
+    </div>
+    <h4>Resumo dos filtros e geração</h4>
+    <p class="meta-block">${safeSummary}</p>
+  </section>`;
+};
+
+const buildOfficialHtml = ({ companyName, logoUrl, records, summaryText }) => {
+  const cover = buildExportCoverSection({ companyName, logoUrl, summaryText });
   const sheets = records
     .map((row) => {
       if (row.tipo === "parte_diaria") return renderParteDiariaSheet(row, companyName, logoUrl);
@@ -541,18 +581,20 @@ const buildOfficialHtml = ({ companyName, logoUrl, records }) => {
           .center { text-align: center; }
           .text-area { min-height: 38px; }
           .legend { margin: 6px 0; font-size: 11px; }
-          .signatures { margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-          td, th { page-break-inside: avoid; }
+          .export-cover { margin-bottom: 10px; }
+          .export-cover .title { font-size: 16px; }
+          .meta-block { font-size: 11px; line-height: 1.45; border: 1px solid #ccc; padding: 8px; background: #fafafa; }
         </style>
       </head>
       <body>
+        ${cover}
         ${sheets || '<section class="sheet"><p>Sem registros para exportação.</p></section>'}
       </body>
     </html>
   `;
 };
 
-const buildFallbackPdfBuffer = async ({ companyName, records, logoImage }) =>
+const buildFallbackPdfBuffer = async ({ companyName, records, logoImage, filterSummary }) =>
   new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: "A4",
@@ -572,6 +614,15 @@ const buildFallbackPdfBuffer = async ({ companyName, records, logoImage }) =>
     const small = 9;
     const normal = 10;
     const rowGap = 0;
+
+    let contentStartY = margin;
+    if (filterSummary) {
+      doc.font("Helvetica").fontSize(8.5).fillColor("#222222").text(String(filterSummary), margin, contentStartY, {
+        width: pageWidth,
+        lineGap: 2,
+      });
+      contentStartY = doc.y + 10;
+    }
 
     const drawCells = (y, height, cells, { fontSize = small, bold = false, padding = 4 } = {}) => {
       let x = margin;
@@ -838,7 +889,7 @@ const buildFallbackPdfBuffer = async ({ companyName, records, logoImage }) =>
     };
 
     if (!records.length) {
-      drawCells(margin, 28, [{ width: pageWidth, text: `Empresa: ${asDisplayValue(companyName)} | Sem registros para exportacao.` }], {
+      drawCells(contentStartY, 28, [{ width: pageWidth, text: `Empresa: ${asDisplayValue(companyName)} | Sem registros para exportacao.` }], {
         fontSize: normal,
       });
       doc.end();
@@ -847,7 +898,7 @@ const buildFallbackPdfBuffer = async ({ companyName, records, logoImage }) =>
 
     records.forEach((row, index) => {
       if (index > 0) doc.addPage();
-      const startY = margin;
+      const startY = index === 0 ? contentStartY : margin;
       if (row.tipo === "parte_diaria") {
         drawParteDiaria(row, startY);
       } else if (row.tipo === "combustivel") {
@@ -1261,6 +1312,24 @@ const addSimpleFormWorksheet = (workbook, row, logoImageId, index) => {
   applyBorderAndFont(worksheet, 10, 10, 1, 8);
 };
 
+const addExportSummaryWorksheet = (workbook, { companyName, summaryText }) => {
+  const ws = workbook.addWorksheet("00-Resumo-exportação", {
+    properties: { tabColor: { argb: "FF475569" } },
+  });
+  ws.getColumn(1).width = 72;
+  ws.getCell("A1").value = "FrotaControl — resumo da exportação";
+  ws.getCell("A1").font = { name: "Arial", size: 14, bold: true, color: { argb: "FF0F172A" } };
+  ws.getCell("A3").value = "Empresa";
+  ws.getCell("A3").font = { name: "Arial", bold: true, size: 11 };
+  ws.getCell("B3").value = companyName || "—";
+  ws.getCell("B3").font = { name: "Arial", size: 11 };
+  ws.getCell("A5").value = "Metadados e filtros aplicados";
+  ws.getCell("A5").font = { name: "Arial", bold: true, size: 11 };
+  ws.getCell("A6").value = summaryText;
+  ws.getCell("A6").font = { name: "Arial", size: 10 };
+  ws.getCell("A6").alignment = { wrapText: true, vertical: "top" };
+};
+
 const exportExcel = async (req, res) => {
   let filters;
   try {
@@ -1279,6 +1348,8 @@ const exportExcel = async (req, res) => {
   const logoAssets = await getLogoAssets(req, company?.logo_url);
   const excelImage = await toExcelCompatibleImage(logoAssets.htmlSrc, logoAssets.excelImage);
   const logoImageId = await loadLogoImage(workbook, excelImage);
+  const summaryText = formatExportFiltersSummaryPt(filters, data.length);
+  addExportSummaryWorksheet(workbook, { companyName: company?.nome || "Empresa", summaryText });
 
   if (!data.length) {
     const empty = workbook.addWorksheet("Sem registros");
@@ -1318,10 +1389,12 @@ const exportPdf = async (req, res) => {
   const company = await getCompanyById(scope.empresa_id);
   const data = (await getData(scope, filters)).items;
   const logoAssets = await getLogoAssets(req, company?.logo_url);
+  const summaryText = formatExportFiltersSummaryPt(filters, data.length);
   const html = buildOfficialHtml({
     companyName: company?.nome || "Empresa",
     logoUrl: logoAssets.htmlSrc,
     records: data,
+    summaryText,
   });
 
   let browser;
@@ -1349,6 +1422,7 @@ const exportPdf = async (req, res) => {
       companyName: company?.nome || "Empresa",
       records: data,
       logoImage: logoAssets.excelImage,
+      filterSummary: summaryText,
     });
     res.setHeader("X-PDF-Fallback", "1");
     res.setHeader("Content-Type", "application/pdf");
