@@ -179,6 +179,62 @@ export function useEmpresaTransporte(options = {}) {
     [planForm, loadComparacao]
   );
 
+  const loadPlanejamentoAtual = useCallback(async () => {
+    if (!enabled) return;
+    try {
+      const { data } = await api.get("/dashboard/planejamento/atual");
+      const p = data?.planejamento;
+      if (p?.data_inicio && p?.data_fim) {
+        setPlanForm((prev) => ({
+          ...prev,
+          data_inicio: String(p.data_inicio).slice(0, 10),
+          data_fim: String(p.data_fim).slice(0, 10),
+          meta_esteril_ton: p.meta_esteril_ton != null ? String(p.meta_esteril_ton) : "",
+          meta_rocha_ton: p.meta_rocha_ton != null ? String(p.meta_rocha_ton) : "",
+        }));
+      }
+    } catch {
+      /* manter valores por omissão */
+    }
+  }, [enabled]);
+
+  const clearPlanejamentoMetas = useCallback(async () => {
+    if (!enabled) return;
+    setPlanSaving(true);
+    try {
+      const { data } = await api.get("/dashboard/planejamento/atual");
+      const p = data?.planejamento;
+      if (!p?.data_inicio || !p?.data_fim) {
+        emitToast("Não há planejamento ativo para zerar.", "warning");
+        return;
+      }
+      await api.post("/dashboard/planejamento", {
+        data_inicio: String(p.data_inicio).slice(0, 10),
+        data_fim: String(p.data_fim).slice(0, 10),
+        meta_esteril_ton: 0,
+        meta_rocha_ton: 0,
+      });
+      emitToast("Metas do período atual foram zeradas.", "success");
+      setPlanForm((prev) => ({
+        ...prev,
+        data_inicio: String(p.data_inicio).slice(0, 10),
+        data_fim: String(p.data_fim).slice(0, 10),
+        meta_esteril_ton: "0",
+        meta_rocha_ton: "0",
+      }));
+      await loadComparacao();
+    } catch (err) {
+      const msg = err?.response?.data?.message || "Não foi possível atualizar o planejamento.";
+      emitToast(msg, "warning");
+    } finally {
+      setPlanSaving(false);
+    }
+  }, [enabled, loadComparacao]);
+
+  useEffect(() => {
+    void loadPlanejamentoAtual();
+  }, [loadPlanejamentoAtual]);
+
   const metaPlanejadaTotal = useMemo(
     () =>
       comparacao
@@ -235,6 +291,8 @@ export function useEmpresaTransporte(options = {}) {
       setPlanForm,
       planSaving,
       submitPlanejamento,
+      clearPlanejamentoMetas,
+      reloadPlanejamentoAtual: loadPlanejamentoAtual,
       alertasTransporte,
       temAlertasTransporte,
       metaPlanejadaTotal,
@@ -255,6 +313,8 @@ export function useEmpresaTransporte(options = {}) {
       planForm,
       planSaving,
       submitPlanejamento,
+      clearPlanejamentoMetas,
+      loadPlanejamentoAtual,
       alertasTransporte,
       temAlertasTransporte,
       metaPlanejadaTotal,

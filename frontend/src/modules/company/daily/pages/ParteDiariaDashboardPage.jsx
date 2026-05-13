@@ -12,6 +12,9 @@ import ParteDiariaHorimetroSection from "../components/ParteDiariaHorimetroSecti
 import ParteDiariaChecklistSection from "../components/ParteDiariaChecklistSection";
 import ParteDiariaOcorrenciasSection from "../components/ParteDiariaOcorrenciasSection";
 import ParteDiariaRecordsTable from "../components/ParteDiariaRecordsTable";
+import ParteDiariaResumoStrip from "../components/ParteDiariaResumoStrip";
+import ParteDiariaDayChart from "../components/ParteDiariaDayChart";
+import ParteDiariaMotoristaRanking from "../components/ParteDiariaMotoristaRanking";
 
 function ParteDiariaDashboardInner() {
   const {
@@ -34,6 +37,8 @@ function ParteDiariaDashboardInner() {
     aggregates,
     ocorrenciasPreview,
     refetch,
+    snapshotLoading,
+    snapshotInsights,
   } = useDailyOperations();
 
   const onFiltroChange = useCallback((updater) => {
@@ -60,12 +65,8 @@ function ParteDiariaDashboardInner() {
   return (
     <div className="fc-erp-workspace">
       <header className="border-b border-zinc-800 pb-6">
-        <p className="fc-erp-eyebrow">Parte diária</p>
-        <h1 className="fc-erp-h1 mt-2">Operação e documentação do dia</h1>
-        <p className="fc-erp-lead mt-3">
-          Visão do que foi registrado na empresa: horas de equipamento, checklist, ocorrências e estado — sem misturar
-          com transporte ou abastecimento.
-        </p>
+        <h1 className="fc-erp-h1">Parte diária</h1>
+        <p className="fc-erp-lead mt-3">Horas, checklist e ocorrências da operação.</p>
         <div className="mt-5 flex flex-wrap gap-3 text-sm">
           <Link
             to="/dashboard/registros"
@@ -90,6 +91,32 @@ function ParteDiariaDashboardInner() {
           statusLocal={statusLocal}
           onStatusLocalChange={setStatusLocal}
         />
+
+        {!loadError && !loading ? (
+          <div className="mt-6 space-y-6">
+            <ParteDiariaResumoStrip
+              total={total}
+              mediaHorasNum={snapshotInsights.mediaHorasSnapshot}
+              statusOperacional={aggregates.statusOperacional}
+              amostra={snapshotInsights.amostra}
+              snapshotLoading={snapshotLoading}
+            />
+            <div className="grid min-w-0 gap-6 lg:grid-cols-2">
+              <div className="fc-card border-zinc-800/90 p-5">
+                <h3 className="text-sm font-semibold text-zinc-100">Registros por dia</h3>
+                <div className="mt-4">
+                  <ParteDiariaDayChart daySeries={snapshotInsights.daySeries} loading={snapshotLoading} />
+                </div>
+              </div>
+              <div className="fc-card border-zinc-800/90 p-5">
+                <h3 className="text-sm font-semibold text-zinc-100">Horas por motorista</h3>
+                <div className="mt-4">
+                  <ParteDiariaMotoristaRanking ranking={snapshotInsights.ranking} loading={snapshotLoading} />
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {loadError && !loading ? (
           <div className="mt-6">

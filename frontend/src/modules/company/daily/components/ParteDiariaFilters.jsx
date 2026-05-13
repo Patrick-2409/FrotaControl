@@ -16,8 +16,7 @@ export default function ParteDiariaFilters({
           <p className="fc-erp-eyebrow">Parte diária</p>
           <h2 className="fc-erp-h1 mt-2 text-xl md:text-2xl">Filtros</h2>
           <p className="fc-erp-lead mt-3 max-w-xl">
-            Período e motorista definem o conjunto de registros que consulta. Equipamento, local e estado afinam só o que
-            vê nesta página, sem alterar transporte nem combustível.
+            Período e motorista definem a lista. Equipamento e estado afinam só esta página.
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2" role="group" aria-label="Tipo de período">

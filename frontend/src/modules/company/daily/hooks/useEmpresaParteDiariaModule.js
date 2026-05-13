@@ -15,6 +15,7 @@ const todayAsInput = () => {
 };
 
 const PAGE_LIMIT = 20;
+const SNAPSHOT_LIMIT = 100;
 const SESSION_KEY = "filters:daily";
 
 /**
@@ -41,6 +42,8 @@ export function useEmpresaParteDiariaModule(options = {}) {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(null);
+  const [snapshotRows, setSnapshotRows] = useState([]);
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
 
   const debouncedMotorista = useDebouncedValue(filtro.motorista, 400);
   const debouncedEquipamento = useDebouncedValue(equipamentoBusca, 350);
@@ -87,9 +90,38 @@ export function useEmpresaParteDiariaModule(options = {}) {
     }
   }, [enabled, debouncedMotorista, filtro.data, filtro.data_fim, filtro.data_inicio, filtro.mes, filtro.periodo, page]);
 
+  const loadSnapshot = useCallback(async () => {
+    if (!enabled) return;
+    setSnapshotLoading(true);
+    try {
+      const params = {
+        page: 1,
+        limit: SNAPSHOT_LIMIT,
+        tipo: "parte_diaria",
+      };
+      if (filtro.periodo === "dia" && filtro.data?.trim()) params.data = filtro.data.trim();
+      if (filtro.periodo === "mes" && filtro.mes?.trim()) params.mes = filtro.mes.trim();
+      if (filtro.periodo === "intervalo") {
+        if (filtro.data_inicio?.trim()) params.data_inicio = filtro.data_inicio.trim();
+        if (filtro.data_fim?.trim()) params.data_fim = filtro.data_fim.trim();
+      }
+      if (debouncedMotorista?.trim()) params.motorista = debouncedMotorista.trim();
+      const { data } = await api.get("/dashboard/registros", { params });
+      setSnapshotRows(data.items || []);
+    } catch {
+      setSnapshotRows([]);
+    } finally {
+      setSnapshotLoading(false);
+    }
+  }, [enabled, debouncedMotorista, filtro.data, filtro.data_fim, filtro.data_inicio, filtro.mes, filtro.periodo]);
+
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    void loadSnapshot();
+  }, [loadSnapshot]);
 
   useEffect(() => {
     setPage(1);
@@ -225,7 +257,50 @@ export function useEmpresaParteDiariaModule(options = {}) {
     return out;
   }, [displayRows]);
 
+  const snapshotInsights = useMemo(() => {
+    const source = snapshotRows;
+    let sumHoras = 0;
+    let countHoras = 0;
+    const byDay = new Map();
+    const byMot = new Map();
+    const byMotCount = new Map();
+    for (const r of source) {
+      const th = Number(r.total_horas);
+      if (Number.isFinite(th) && th > 0) {
+        sumHoras += th;
+        countHoras += 1;
+      }
+      const dayKey = String(r.data || "").slice(0, 10);
+      if (dayKey) byDay.set(dayKey, (byDay.get(dayKey) || 0) + 1);
+      const m = String(r.motorista || "—").trim() || "—";
+      const addH = Number.isFinite(th) && th > 0 ? th : 0;
+      byMot.set(m, (byMot.get(m) || 0) + addH);
+      byMotCount.set(m, (byMotCount.get(m) || 0) + 1);
+    }
+    const daySeries = [...byDay.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([dia, count]) => ({ dia, count }));
+    const rankingHours = [...byMot.entries()]
+      .filter(([, horas]) => horas > 0)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 12)
+      .map(([motorista, horas]) => ({ motorista, horas, registros: byMotCount.get(motorista) || 0 }));
+    const rankingByReg = [...byMotCount.entries()]
+      .filter(([mot, cnt]) => (byMot.get(mot) || 0) === 0 && cnt > 0)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([motorista, registros]) => ({ motorista, horas: 0, registros }));
+    const ranking = [...rankingHours, ...rankingByReg].slice(0, 12);
+    const mediaHorasSnapshot = countHoras > 0 ? sumHoras / countHoras : null;
+    return { daySeries, ranking, mediaHorasSnapshot, amostra: source.length };
+  }, [snapshotRows]);
+
   const clearLoadError = useCallback(() => setLoadError(null), []);
+
+  const refetch = useCallback(async () => {
+    await load();
+    await loadSnapshot();
+  }, [load, loadSnapshot]);
 
   return useMemo(
     () => ({
@@ -248,7 +323,10 @@ export function useEmpresaParteDiariaModule(options = {}) {
       aggregates,
       ocorrenciasPreview,
       pageLimit: PAGE_LIMIT,
-      refetch: load,
+      refetch,
+      snapshotRows,
+      snapshotLoading,
+      snapshotInsights,
     }),
     [
       filtro,
@@ -265,7 +343,10 @@ export function useEmpresaParteDiariaModule(options = {}) {
       clearLoadError,
       aggregates,
       ocorrenciasPreview,
-      load,
+      refetch,
+      snapshotRows,
+      snapshotLoading,
+      snapshotInsights,
     ]
   );
 }

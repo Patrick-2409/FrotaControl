@@ -3,8 +3,7 @@ import { Link } from "react-router-dom";
 import SkeletonRows from "../../../../components/SkeletonRows";
 import BIDashboardShell from "../../bi/components/BIDashboardShell";
 import BIChartCard from "../../bi/components/BIChartCard";
-import BIKpiCard from "../../bi/components/BIKpiCard";
-import BILineSeriesChart from "../../bi/components/BILineSeriesChart";
+import TransportPlannedVsActualBars from "../components/TransportPlannedVsActualBars";
 import { TransportProvider } from "../../contexts/TransportContext";
 import { useTransportMetrics } from "../../hooks/useTransportMetrics";
 import EmpresaModuleErrorPanel from "../../shared/components/EmpresaModuleErrorPanel";
@@ -15,37 +14,38 @@ const fmtTon = (n) =>
 const fmtPct = (n) =>
   Number(n || 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 1 });
 
+function fmtDiaBr(ymd) {
+  if (!ymd || typeof ymd !== "string") return "—";
+  const d = new Date(`${ymd}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return ymd;
+  return d.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" });
+}
+
+function pctTone(p) {
+  if (p >= 100) return "text-emerald-300";
+  if (p >= 70) return "text-amber-200";
+  return "text-rose-300";
+}
+
 function EmpresaTransportePageContent() {
   const { operations: tr, metrics: prod, materialTab, setMaterialTab } = useTransportMetrics();
   const trendSorted = useMemo(
     () => [...(prod.trend || [])].sort((a, b) => new Date(a.dia) - new Date(b.dia)),
     [prod.trend]
   );
-  const sparkSeries = useMemo(() => trendSorted.map((d) => d.total || 0), [trendSorted]);
+
+  const maxTrend = useMemo(() => {
+    if (!trendSorted.length) return 1;
+    return Math.max(1, ...trendSorted.map((d) => Number(d.total) || 0));
+  }, [trendSorted]);
 
   const pageLoading = prod.loading && !prod.stats;
 
   if (pageLoading) {
     return (
-      <BIDashboardShell
-        eyebrow="Indicadores"
-        title="Transporte"
-        lead="Carregando indicadores e operação de porto."
-        showRoadmap={false}
-      >
-        <div className="grid gap-4 md:grid-cols-3">
-          <div className="fc-card p-5">
-            <SkeletonRows rows={2} />
-          </div>
-          <div className="fc-card p-5">
-            <SkeletonRows rows={2} />
-          </div>
-          <div className="fc-card p-5">
-            <SkeletonRows rows={2} />
-          </div>
-        </div>
-        <div className="fc-card p-5">
-          <SkeletonRows rows={4} />
+      <BIDashboardShell eyebrow="Indicadores" title="Transporte" lead="" showRoadmap={false}>
+        <div className="fc-card p-8">
+          <SkeletonRows rows={5} />
         </div>
       </BIDashboardShell>
     );
@@ -53,12 +53,7 @@ function EmpresaTransportePageContent() {
 
   if (!prod.loading && !prod.stats && prod.statsError) {
     return (
-      <BIDashboardShell
-        eyebrow="Indicadores"
-        title="Transporte"
-        lead="Porto e produção."
-        showRoadmap={false}
-      >
+      <BIDashboardShell eyebrow="Indicadores" title="Transporte" lead="" showRoadmap={false}>
         <EmpresaModuleErrorPanel
           title="Indicadores de transporte indisponíveis"
           description={prod.statsError}
@@ -70,12 +65,7 @@ function EmpresaTransportePageContent() {
 
   if (!prod.stats) {
     return (
-      <BIDashboardShell
-        eyebrow="Indicadores"
-        title="Transporte"
-        lead="Porto e produção."
-        showRoadmap={false}
-      >
+      <BIDashboardShell eyebrow="Indicadores" title="Transporte" lead="" showRoadmap={false}>
         <EmpresaModuleErrorPanel
           title="Transporte"
           description="Não foi possível carregar os indicadores. Confirme se continua ligado e tente outra vez."
@@ -85,19 +75,21 @@ function EmpresaTransportePageContent() {
     );
   }
 
-  const { stats, trendSummary, trendLabel } = prod;
+  const totalToneladasPeriodo =
+    tr.viagensResumo != null
+      ? Number(tr.viagensResumo.total_toneladas_esteril || 0) + Number(tr.viagensResumo.total_toneladas_rocha || 0)
+      : 0;
+
+  const pctTotal = Number(tr.comparacao?.percentual_total ?? 0);
 
   return (
-    <BIDashboardShell
-      eyebrow="Indicadores"
-      title="Transporte"
-      lead="Porto e produção: toneladas, metas e planejado versus executado. Os filtros são só desta área; a escolha do
-      material (todos, estéril ou rocha) fica guardada neste navegador."
-    >
-
+    <BIDashboardShell eyebrow="Indicadores" title="Transporte" lead="Toneladas, metas e planejamento do período.">
       {tr.temAlertasTransporte ? (
-        <div role="status" className="fc-erp-alert-panel fc-erp-alert-panel--amber space-y-3 p-4 text-sm text-zinc-100 sm:p-5">
-          <p className="fc-erp-eyebrow text-amber-200/90">Alertas operacionais</p>
+        <div
+          role="status"
+          className="fc-erp-alert-panel fc-erp-alert-panel--amber space-y-3 rounded-xl border border-amber-500/30 bg-amber-950/25 p-4 text-sm text-zinc-100 sm:p-5"
+        >
+          <p className="fc-erp-eyebrow text-amber-200/90">Alertas</p>
           {tr.alertasTransporte.veiculos_sem_capacidade > 0 ? (
             <p className="flex items-start gap-3 font-medium leading-snug">
               <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400/95" aria-hidden />
@@ -111,71 +103,68 @@ function EmpresaTransportePageContent() {
           {tr.alertasTransporte.custo_alto ? (
             <p className="flex items-start gap-3 font-medium leading-snug">
               <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400/95" aria-hidden />
-              <span>Custo operacional elevado no período selecionado</span>
+              <span>Custo operacional elevado no período</span>
             </p>
           ) : null}
           {tr.alertasTransporte.meta_risco ? (
             <p className="flex items-start gap-3 font-medium leading-snug">
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400/95" aria-hidden />
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-rose-400/95" aria-hidden />
               <span>Produção abaixo da meta</span>
             </p>
           ) : null}
         </div>
       ) : null}
 
-      <section aria-labelledby="transporte-produtividade" className="space-y-4">
-        <h2 id="transporte-produtividade" className="fc-erp-eyebrow">
-          Produtividade e ritmo
-        </h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-5">
-          <BIKpiCard
-            label="Motoristas ativos"
-            value={fmtInt(stats.motoristas_ativos || 0)}
-            hint="Motoristas com lançamentos na semana."
-            trendDirection={trendSummary.direction}
-            deltaLabel={`${trendLabel} — ritmo semanal`}
-            sparklineValues={sparkSeries}
-          />
-          <BIKpiCard
-            label="Veículos ativos"
-            value={fmtInt(stats.veiculos_ativos || 0)}
-            hint="Veículos cadastrados na frota da empresa."
-            comparisonLabel={`Pico em 7 dias: ${trendSummary.peak} registros`}
-            sparklineValues={sparkSeries}
-          />
-          <BIKpiCard
-            label="Registros hoje"
-            value={fmtInt(stats.total_hoje || 0)}
-            hint="Registros operacionais lançados hoje."
-            trendDirection={trendSummary.direction}
-            deltaLabel={`${trendLabel} · ${Math.abs(trendSummary.delta)} vs. ontem`}
-            comparisonLabel={`Média diária (série): ${trendSummary.avg}`}
-            sparklineValues={sparkSeries}
-            className="sm:col-span-2 lg:col-span-1"
-          />
-        </div>
-
-        <BIKpiCard
-          label="Total semanal"
-          value={fmtInt(stats.total_semanal || 0)}
-          hint="Total de lançamentos nos últimos 7 dias."
-          sparklineValues={sparkSeries}
-        />
+      <section
+        className={`fc-card overflow-hidden rounded-2xl border-2 p-6 sm:p-8 ${
+          tr.comparacao && tr.metaPlanejadaTotal > 0
+            ? pctTotal >= 100
+              ? "border-emerald-500/35 bg-emerald-950/20"
+              : pctTotal >= 70
+                ? "border-amber-500/35 bg-amber-950/15"
+                : "border-rose-500/35 bg-rose-950/15"
+            : "border-zinc-700 bg-zinc-950/80"
+        }`}
+        aria-label="Total de toneladas no período"
+      >
+        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Total no período filtrado</p>
+        {tr.viagensLoading ? (
+          <div className="mt-4">
+            <SkeletonRows rows={2} />
+          </div>
+        ) : tr.viagensError ? (
+          <p className="mt-2 text-sm text-rose-300">{tr.viagensError}</p>
+        ) : (
+          <>
+            <p className="mt-2 font-mono text-4xl font-black tabular-nums tracking-tight text-zinc-50 sm:text-5xl md:text-6xl">
+              {fmtTon(totalToneladasPeriodo)} <span className="text-2xl font-bold text-zinc-400 sm:text-3xl">t</span>
+            </p>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                <p className="text-xs text-zinc-500">Estéril</p>
+                <p className="mt-1 text-xl font-bold tabular-nums text-zinc-100">
+                  {tr.viagensResumo ? `${fmtTon(tr.viagensResumo.total_toneladas_esteril)} t` : "—"}
+                </p>
+                <p className="mt-1 text-xs text-zinc-500">{fmtInt(tr.viagensResumo?.total_viagens_esteril)} viagens</p>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                <p className="text-xs text-amber-200/80">Rocha</p>
+                <p className="mt-1 text-xl font-bold tabular-nums text-zinc-100">
+                  {tr.viagensResumo ? `${fmtTon(tr.viagensResumo.total_toneladas_rocha)} t` : "—"}
+                </p>
+                <p className="mt-1 text-xs text-zinc-500">{fmtInt(tr.viagensResumo?.total_viagens_rocha)} viagens</p>
+              </div>
+            </div>
+          </>
+        )}
       </section>
 
-      <section className="fc-erp-panel space-y-6 p-6 lg:p-8" aria-labelledby="transporte-porto-title">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0">
-            <p className="fc-erp-eyebrow">Operação — Porto</p>
-            <h2 id="transporte-porto-title" className="fc-erp-h1 mt-2 text-xl md:text-2xl">
-              Transporte
-            </h2>
-            <p className="fc-erp-lead mt-3">
-              O período abaixo filtra toneladas e alertas desta tela. Planejado versus executado e o formulário de metas
-              usam o planejamento vigente.
-            </p>
-          </div>
-          <div className="flex shrink-0 flex-wrap gap-2" role="group" aria-label="Período do resumo de viagens">
+      <section className="fc-erp-panel space-y-5 rounded-2xl p-5 lg:p-7" aria-labelledby="transporte-porto-title">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <h2 id="transporte-porto-title" className="fc-erp-h1 text-lg text-zinc-100 md:text-xl">
+            Período e material
+          </h2>
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Período do resumo de viagens">
             {[
               { id: "dia", label: "Dia" },
               { id: "semana", label: "Semana" },
@@ -196,317 +185,241 @@ function EmpresaTransportePageContent() {
             ))}
           </div>
         </div>
-
-        <div className="flex flex-col gap-3 border-t border-zinc-800/80 pt-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="fc-erp-eyebrow">Foco por tipo de material</p>
-          <div className="flex flex-wrap gap-2" role="group" aria-label="Tipo de material (visualização)">
-            {[
-              { id: "todos", label: "Todos" },
-              { id: "esteril", label: "Estéril" },
-              { id: "rocha", label: "Rocha" },
-            ].map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setMaterialTab(t.id)}
-                className={`fc-btn rounded-md border px-3 py-2 text-sm font-medium transition ${
-                  materialTab === t.id
-                    ? "border-amber-500/50 bg-zinc-800/80 text-zinc-50 shadow-inner"
-                    : "border-zinc-700 bg-zinc-950/60 text-zinc-300 hover:border-zinc-600"
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
+        <div className="flex flex-wrap gap-2 border-t border-zinc-800/80 pt-4" role="group" aria-label="Tipo de material">
+          {[
+            { id: "todos", label: "Todos" },
+            { id: "esteril", label: "Estéril" },
+            { id: "rocha", label: "Rocha" },
+          ].map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setMaterialTab(t.id)}
+              className={`fc-btn rounded-md border px-3 py-2 text-sm font-medium transition ${
+                materialTab === t.id
+                  ? "border-amber-500/50 bg-zinc-800/80 text-zinc-50 shadow-inner"
+                  : "border-zinc-700 bg-zinc-950/60 text-zinc-300 hover:border-zinc-600"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
 
-        {tr.viagensError && !tr.viagensLoading ? (
-          <div className="mt-6">
-            <EmpresaModuleErrorPanel
-              title="Resumo de viagens indisponível"
-              description={tr.viagensError}
-              onRetry={() => {
-                void tr.refetchViagens();
-              }}
-            />
-          </div>
+        {!tr.viagensLoading && tr.viagensResumo && totalToneladasPeriodo <= 0 ? (
+          <p className="text-sm text-zinc-500">Sem toneladas com capacidade registada neste período.</p>
         ) : null}
+      </section>
 
-        {tr.viagensLoading ? (
-          <div className="mt-6">
-            <SkeletonRows rows={2} />
-          </div>
-        ) : tr.viagensResumo &&
-          Number(tr.viagensResumo.total_toneladas_esteril || 0) + Number(tr.viagensResumo.total_toneladas_rocha || 0) >
-            0 ? (
-          <div className="mt-6 rounded-md border border-zinc-800 bg-zinc-950/40 p-4 lg:p-5">
-            <p className="fc-erp-eyebrow">Toneladas no período</p>
-            <p className="mt-1 text-xs leading-relaxed text-zinc-500">Com capacidade informada nas viagens apontadas.</p>
-            <div className="mt-5 grid gap-3 sm:grid-cols-3">
-              <article
-                className={`rounded-md border border-zinc-800 bg-zinc-950/60 p-3 ${
-                  materialTab === "esteril" ? "ring-2 ring-amber-500/45 ring-offset-2 ring-offset-zinc-950" : ""
-                }`}
-              >
-                <p className="fc-erp-eyebrow">Estéril</p>
-                <p className="mt-2 text-lg font-bold tabular-nums text-zinc-100">
-                  {fmtTon(tr.viagensResumo.total_toneladas_esteril)} t
-                </p>
-                <p className="mt-2 text-xs text-zinc-500">
-                  Viagens: {fmtInt(tr.viagensResumo.total_viagens_esteril)}
-                </p>
-              </article>
-              <article
-                className={`rounded-md border border-amber-500/25 bg-zinc-950/60 p-3 ${
-                  materialTab === "rocha" ? "ring-2 ring-amber-500/45 ring-offset-2 ring-offset-zinc-950" : ""
-                }`}
-              >
-                <p className="fc-erp-eyebrow text-amber-200/90">Rocha</p>
-                <p className="mt-2 text-lg font-bold tabular-nums text-zinc-100">
-                  {fmtTon(tr.viagensResumo.total_toneladas_rocha)} t
-                </p>
-                <p className="mt-2 text-xs text-zinc-500">
-                  Viagens: {fmtInt(tr.viagensResumo.total_viagens_rocha)}
-                </p>
-              </article>
-              <article
-                className={`rounded-md border border-zinc-700/80 bg-zinc-950/60 p-3 ${
-                  materialTab === "todos" ? "ring-2 ring-zinc-500/40 ring-offset-2 ring-offset-zinc-950" : ""
-                }`}
-              >
-                <p className="fc-erp-eyebrow">Total</p>
-                <p className="mt-2 text-lg font-bold tabular-nums text-zinc-50">
-                  {fmtTon(
-                    Number(tr.viagensResumo.total_toneladas_esteril || 0) +
-                      Number(tr.viagensResumo.total_toneladas_rocha || 0)
-                  )}{" "}
-                  t
-                </p>
-              </article>
-            </div>
-          </div>
-        ) : !tr.viagensLoading && tr.viagensResumo ? (
-          <p className="mt-6 text-sm leading-relaxed text-zinc-500">
-            Sem toneladas com capacidade no período selecionado (apenas contagem de viagens, se houver, não entra neste
-            bloco).
-          </p>
-        ) : (
-          <p className="mt-6 text-sm text-zinc-500">Resumo de viagens indisponível.</p>
-        )}
-
-        <div className="border-t border-zinc-800 pt-6">
-          <p className="fc-erp-eyebrow">Planejado vs executado</p>
-          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-400">
-            Metas do planejamento ativo (hoje dentro do período) frente às toneladas executadas nas viagens.
-          </p>
-
-          {tr.comparLoading ? (
-            <div className="mt-6">
-              <SkeletonRows rows={2} />
-            </div>
-          ) : tr.comparError ? (
-            <div className="mt-6">
-              <EmpresaModuleErrorPanel
-                title="Planejado vs executado"
-                description={tr.comparError}
-                onRetry={() => {
-                  void tr.refetchComparacao();
-                }}
-              />
-            </div>
-          ) : tr.comparacao ? (
-            <>
-              <div className="mt-6 grid gap-4 sm:grid-cols-3">
-                <article className="rounded-md border border-zinc-800 bg-zinc-950/50 p-4">
-                  <p className="fc-erp-eyebrow">Meta total</p>
-                  <p className="mt-3 text-2xl font-bold tabular-nums text-zinc-100">{fmtTon(tr.metaPlanejadaTotal)} t</p>
-                </article>
-                <article className="rounded-md border border-zinc-800 bg-zinc-950/50 p-4">
-                  <p className="fc-erp-eyebrow">Executado total</p>
-                  <p className="mt-3 text-2xl font-bold tabular-nums text-zinc-100">{fmtTon(tr.executadoTotal)} t</p>
-                </article>
-                <article className="rounded-md border border-zinc-800 bg-zinc-950/50 p-4">
-                  <p className="fc-erp-eyebrow">% atingido (total)</p>
-                  <p className="mt-3 text-2xl font-bold tabular-nums text-amber-200/95">
-                    {fmtPct(tr.comparacao.percentual_total)}%
-                  </p>
-                </article>
-              </div>
-
-              <div className="mt-8 flex flex-col gap-8 lg:flex-row lg:items-start">
-                <div className="flex min-w-0 flex-1 flex-col items-center gap-5 sm:flex-row sm:items-center sm:justify-center lg:justify-start">
-                  <div
-                    className="h-44 w-44 shrink-0 rounded-full border-4 border-zinc-800 shadow-inner"
-                    style={tr.planVsExecPieStyle}
-                    role="img"
-                    aria-label="Diagrama planejado versus executado: fatia âmbar é o executado face à meta"
-                  />
-                  <ul className="max-w-md space-y-2.5 text-sm text-zinc-300">
-                    <li className="flex items-center gap-2">
-                      <span className="inline-block h-3 w-3 shrink-0 rounded-full bg-amber-600" aria-hidden />
-                      <span>
-                        <span className="font-semibold text-zinc-100">Executado</span> — {fmtTon(tr.executadoTotal)} t
-                      </span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <span className="inline-block h-3 w-3 shrink-0 rounded-full bg-zinc-600" aria-hidden />
-                      <span>
-                        <span className="font-semibold text-zinc-100">Restante da meta</span> —{" "}
-                        {tr.metaPlanejadaTotal > tr.executadoTotal
-                          ? `${fmtTon(tr.metaPlanejadaTotal - tr.executadoTotal)} t`
-                          : tr.metaPlanejadaTotal > 0
-                            ? "0 t (meta atingida)"
-                            : "—"}
-                      </span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <span
-                        className="inline-block h-3 w-3 shrink-0 rounded-full border border-zinc-600 bg-zinc-900"
-                        aria-hidden
-                      />
-                      <span>
-                        <span className="font-semibold text-zinc-100">Meta planejada</span> — {fmtTon(tr.metaPlanejadaTotal)} t
-                      </span>
-                    </li>
-                  </ul>
+      <BIChartCard
+        title="Planejado vs executado"
+        subtitle="Comparativo com o planejamento ativo (metas em toneladas)."
+        className="mt-2"
+        bodyClassName="min-h-[10rem]"
+      >
+        {tr.comparLoading ? (
+          <SkeletonRows rows={3} />
+        ) : tr.comparError ? (
+          <EmpresaModuleErrorPanel
+            title="Não foi possível carregar o comparativo"
+            description={tr.comparError}
+            onRetry={() => {
+              void tr.refetchComparacao();
+            }}
+          />
+        ) : tr.comparacao ? (
+          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+                  <p className="text-xs text-zinc-500">Meta</p>
+                  <p className="mt-1 text-2xl font-bold tabular-nums text-zinc-100">{fmtTon(tr.metaPlanejadaTotal)} t</p>
                 </div>
-                <div className="min-w-0 flex-1 lg:max-w-md">
-                  <p className="fc-erp-eyebrow">Barra de atingimento</p>
-                  <div
-                    className="mt-3 h-3 w-full overflow-hidden rounded-full bg-zinc-800"
-                    role="progressbar"
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={Math.round(tr.barWidthPct)}
-                  >
-                    <div
-                      className="h-3 rounded-full bg-gradient-to-r from-amber-700 to-amber-500 transition-[width] duration-500"
-                      style={{ width: `${tr.barWidthPct}%` }}
-                    />
-                  </div>
-                  <p className="mt-2 text-xs leading-relaxed text-zinc-500">
-                    Estéril {fmtPct(tr.comparacao.percentual_esteril)}% · Rocha {fmtPct(tr.comparacao.percentual_rocha)}%
-                  </p>
-                  {tr.metaPlanejadaTotal > 0 && tr.executadoTotal > tr.metaPlanejadaTotal ? (
-                    <p className="mt-2 text-xs text-amber-200/90">Execução acima da meta no período planejado.</p>
-                  ) : null}
+                <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+                  <p className="text-xs text-zinc-500">Executado</p>
+                  <p className="mt-1 text-2xl font-bold tabular-nums text-zinc-100">{fmtTon(tr.executadoTotal)} t</p>
+                </div>
+                <div
+                  className={`rounded-lg border p-3 ${
+                    pctTotal >= 100
+                      ? "border-emerald-500/40 bg-emerald-950/30"
+                      : pctTotal >= 70
+                        ? "border-amber-500/40 bg-amber-950/25"
+                        : "border-rose-500/40 bg-rose-950/25"
+                  }`}
+                >
+                  <p className="text-xs text-zinc-500">Atingimento</p>
+                  <p className={`mt-1 text-2xl font-black tabular-nums ${pctTone(pctTotal)}`}>{fmtPct(pctTotal)}%</p>
                 </div>
               </div>
-
-              {tr.metaPlanejadaTotal <= 0 ? (
-                <p className="mt-6 text-sm leading-relaxed text-amber-200/90">
-                  Não há planejamento ativo para hoje ou as metas estão zeradas. Cadastre um período que inclua a data
-                  atual e defina as metas abaixo.
-                </p>
+              <TransportPlannedVsActualBars comparacao={tr.comparacao} />
+            </div>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Atingimento total</p>
+              <div
+                className="mt-4 h-4 w-full overflow-hidden rounded-full bg-zinc-800"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(tr.barWidthPct)}
+              >
+                <div
+                  className={`h-4 rounded-full transition-[width] duration-500 ${
+                    pctTotal >= 100 ? "bg-gradient-to-r from-emerald-700 to-emerald-500" : pctTotal >= 70 ? "bg-gradient-to-r from-amber-700 to-amber-500" : "bg-gradient-to-r from-rose-700 to-rose-500"
+                  }`}
+                  style={{ width: `${tr.barWidthPct}%` }}
+                />
+              </div>
+              <p className="mt-3 text-xs text-zinc-500">
+                Estéril {fmtPct(tr.comparacao.percentual_esteril)}% · Rocha {fmtPct(tr.comparacao.percentual_rocha)}%
+              </p>
+              {tr.metaPlanejadaTotal > 0 && tr.executadoTotal > tr.metaPlanejadaTotal ? (
+                <p className="mt-2 text-xs font-medium text-emerald-300">Execução acima da meta.</p>
               ) : null}
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-zinc-500">Comparativo indisponível.</p>
+        )}
+      </BIChartCard>
 
-              <form
-                className="mt-8 grid max-w-2xl gap-4 border-t border-zinc-800 pt-6 sm:grid-cols-2"
-                onSubmit={tr.submitPlanejamento}
-              >
-                <label className="flex flex-col gap-1.5 text-sm text-zinc-300">
-                  <span className="fc-erp-eyebrow">Início</span>
-                  <input
-                    type="date"
-                    required
-                    className="fc-input rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100"
-                    value={tr.planForm.data_inicio}
-                    onChange={(ev) => tr.setPlanForm((p) => ({ ...p, data_inicio: ev.target.value }))}
-                  />
-                </label>
-                <label className="flex flex-col gap-1.5 text-sm text-zinc-300">
-                  <span className="fc-erp-eyebrow">Fim</span>
-                  <input
-                    type="date"
-                    required
-                    className="fc-input rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100"
-                    value={tr.planForm.data_fim}
-                    onChange={(ev) => tr.setPlanForm((p) => ({ ...p, data_fim: ev.target.value }))}
-                  />
-                </label>
-                <label className="flex flex-col gap-1.5 text-sm text-zinc-300">
-                  <span className="fc-erp-eyebrow">Meta estéril (t)</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    className="fc-input rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100"
-                    value={tr.planForm.meta_esteril_ton}
-                    onChange={(ev) => tr.setPlanForm((p) => ({ ...p, meta_esteril_ton: ev.target.value }))}
-                  />
-                </label>
-                <label className="flex flex-col gap-1.5 text-sm text-zinc-300">
-                  <span className="fc-erp-eyebrow">Meta rocha (t)</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    className="fc-input rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100"
-                    value={tr.planForm.meta_rocha_ton}
-                    onChange={(ev) => tr.setPlanForm((p) => ({ ...p, meta_rocha_ton: ev.target.value }))}
-                  />
-                </label>
-                <div className="sm:col-span-2">
-                  <button
-                    type="submit"
-                    disabled={tr.planSaving}
-                    className="fc-btn rounded-md border border-zinc-600 bg-zinc-800 px-4 py-2.5 text-sm font-semibold text-zinc-100 hover:border-zinc-500 disabled:opacity-50"
-                  >
-                    {tr.planSaving ? "Salvando…" : "Salvar planejamento da semana"}
-                  </button>
-                </div>
-              </form>
-            </>
-          ) : (
-            <p className="mt-6 text-sm text-zinc-500">Indicadores de planejamento indisponíveis.</p>
-          )}
+      <section className="fc-card border-zinc-800/90 p-5 lg:p-6" aria-labelledby="hist-semanal">
+        <h3 id="hist-semanal" className="text-base font-semibold text-zinc-100">
+          Histórico semanal (lançamentos)
+        </h3>
+        <p className="mt-1 text-xs text-zinc-500">Últimos 7 dias — total de registros operacionais por dia.</p>
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[320px] text-left text-sm">
+            <thead>
+              <tr className="border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500">
+                <th className="pb-2 pr-3">Dia</th>
+                <th className="pb-2 pr-3">Total</th>
+                <th className="pb-2">Ritmo</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-800/80">
+              {trendSorted.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="py-4 text-zinc-500">
+                    Sem dados.
+                  </td>
+                </tr>
+              ) : (
+                trendSorted.map((row) => {
+                  const v = Number(row.total) || 0;
+                  const w = Math.round((v / maxTrend) * 100);
+                  return (
+                    <tr key={row.dia}>
+                      <td className="py-2.5 pr-3 text-zinc-300">{fmtDiaBr(row.dia)}</td>
+                      <td className="py-2.5 pr-3 font-semibold tabular-nums text-zinc-100">{fmtInt(v)}</td>
+                      <td className="py-2.5">
+                        <div className="h-2 min-w-[80px] overflow-hidden rounded-full bg-zinc-800">
+                          <div className="h-2 rounded-full bg-amber-500/90" style={{ width: `${w}%` }} />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
       </section>
 
-      <div className="fc-card border-zinc-800/90 p-5 lg:p-6">
-        <h3 className="text-base font-semibold text-zinc-100">Painel operacional</h3>
-        <p className="mt-2 text-xs leading-relaxed text-zinc-500">Quantidade de lançamentos por tipo, sem incluir parte diária.</p>
-        <div className="mt-4 grid gap-2 text-sm text-zinc-300 md:grid-cols-2">
-          {(stats.por_tipo || [])
-            .filter((item) => String(item.tipo || "").toLowerCase() !== "parte_diaria")
-            .map((item) => (
-              <p key={item.tipo} className="rounded-md border border-zinc-800 bg-zinc-950/50 px-3 py-2.5">
-                {item.tipo}: <span className="font-semibold text-zinc-100">{item.total}</span>
-              </p>
-            ))}
-        </div>
-      </div>
+      <section className="fc-card border-zinc-800/90 p-5 lg:p-6" aria-labelledby="planejamento-form">
+        <h3 id="planejamento-form" className="text-base font-semibold text-zinc-100">
+          Planejamento
+        </h3>
+        <p className="mt-1 text-xs text-zinc-500">Edite datas e metas, ou zere as metas do período ativo.</p>
 
-      <BIChartCard
-        title="Últimos 7 dias"
-        subtitle="Volume diário de lançamentos — pode aproximar o gráfico e ver o valor em cada data."
-        legend={
-          <span className="inline-flex items-center gap-2">
-            <span className="h-2 w-6 rounded-sm bg-amber-600/90" aria-hidden />
-            Registros / dia
-          </span>
-        }
-        className="mt-2"
-        bodyClassName="min-h-[12rem]"
-      >
-        {trendSorted.length === 0 ? (
-          <p className="text-sm text-zinc-500">Sem série para exibir.</p>
-        ) : (
-          <BILineSeriesChart data={trendSorted} valueKey="total" labelKey="dia" yAxisLabel="Registros" height={200} />
-        )}
-      </BIChartCard>
+        {tr.metaPlanejadaTotal <= 0 && tr.comparacao ? (
+          <p className="mt-3 text-sm text-amber-200/90">Sem meta ativa para hoje. Defina datas que incluam hoje.</p>
+        ) : null}
+
+        <form className="mt-6 grid max-w-2xl gap-4 sm:grid-cols-2" onSubmit={tr.submitPlanejamento}>
+          <label className="flex flex-col gap-1.5 text-sm text-zinc-300">
+            <span className="fc-erp-eyebrow">Início</span>
+            <input
+              type="date"
+              required
+              className="fc-input rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100"
+              value={tr.planForm.data_inicio}
+              onChange={(ev) => tr.setPlanForm((p) => ({ ...p, data_inicio: ev.target.value }))}
+            />
+          </label>
+          <label className="flex flex-col gap-1.5 text-sm text-zinc-300">
+            <span className="fc-erp-eyebrow">Fim</span>
+            <input
+              type="date"
+              required
+              className="fc-input rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100"
+              value={tr.planForm.data_fim}
+              onChange={(ev) => tr.setPlanForm((p) => ({ ...p, data_fim: ev.target.value }))}
+            />
+          </label>
+          <label className="flex flex-col gap-1.5 text-sm text-zinc-300">
+            <span className="fc-erp-eyebrow">Meta estéril (t)</span>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              className="fc-input rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100"
+              value={tr.planForm.meta_esteril_ton}
+              onChange={(ev) => tr.setPlanForm((p) => ({ ...p, meta_esteril_ton: ev.target.value }))}
+            />
+          </label>
+          <label className="flex flex-col gap-1.5 text-sm text-zinc-300">
+            <span className="fc-erp-eyebrow">Meta rocha (t)</span>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              className="fc-input rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100"
+              value={tr.planForm.meta_rocha_ton}
+              onChange={(ev) => tr.setPlanForm((p) => ({ ...p, meta_rocha_ton: ev.target.value }))}
+            />
+          </label>
+          <div className="flex flex-wrap gap-2 sm:col-span-2">
+            <button
+              type="submit"
+              disabled={tr.planSaving}
+              className="fc-btn rounded-md border border-zinc-600 bg-zinc-800 px-4 py-2.5 text-sm font-semibold text-zinc-100 hover:border-zinc-500 disabled:opacity-50"
+            >
+              {tr.planSaving ? "Salvando…" : "Guardar planejamento"}
+            </button>
+            <button
+              type="button"
+              disabled={tr.planSaving}
+              onClick={() => void tr.reloadPlanejamentoAtual()}
+              className="fc-btn rounded-md border border-zinc-600 px-4 py-2.5 text-sm font-semibold text-zinc-200 hover:bg-zinc-900 disabled:opacity-50"
+            >
+              Carregar plano vigente
+            </button>
+            <button
+              type="button"
+              disabled={tr.planSaving}
+              onClick={() => {
+                if (!window.confirm("Zerar as metas (estéril e rocha) do período de planejamento ativo?")) return;
+                void tr.clearPlanejamentoMetas();
+              }}
+              className="fc-btn rounded-md border border-rose-500/40 bg-rose-950/30 px-4 py-2.5 text-sm font-semibold text-rose-100 hover:bg-rose-950/50 disabled:opacity-50"
+            >
+              Zerar metas do período ativo
+            </button>
+          </div>
+        </form>
+      </section>
 
       <div className="flex flex-wrap gap-3">
         <Link
           to="/empresa/dashboard"
-          className="fc-btn inline-flex rounded-md border border-zinc-600 px-4 py-3 text-center font-semibold text-zinc-200 hover:border-zinc-500"
+          className="fc-btn inline-flex rounded-md border border-zinc-600 px-4 py-3 text-center text-sm font-semibold text-zinc-200 hover:border-zinc-500"
         >
           Painel executivo
         </Link>
         <Link
           to="/empresa/relatorios"
-          className="fc-btn inline-flex rounded-md border border-zinc-600 px-4 py-3 text-center font-semibold text-zinc-200"
+          className="fc-btn inline-flex rounded-md border border-zinc-600 px-4 py-3 text-center text-sm font-semibold text-zinc-200"
         >
           Relatórios
         </Link>

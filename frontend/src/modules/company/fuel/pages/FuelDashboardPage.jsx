@@ -28,7 +28,7 @@ function FuelDashboardContent() {
     <BIDashboardShell
       eyebrow="Indicadores"
       title="Combustível"
-      lead="Consumo e custo: litros, valores, médias e ranking. Os filtros desta página são guardados neste navegador e as pesquisas são feitas de forma gradual para não sobrecarregar o sistema."
+      lead="Litros, custo e média por veículo no período escolhido."
     >
 
       {fuel.temAlertasCombustivel && fuel.resumo ? (
@@ -124,7 +124,7 @@ function FuelDashboardContent() {
             <div className="mt-10 grid min-w-0 gap-8 xl:grid-cols-2 xl:items-start">
               <BIChartCard
                 title="Consumo por veículo"
-                subtitle="Diagrama radial proporcional — renderização CSS, adequado a dispositivos móveis."
+                subtitle="Proporção por veículo no período."
                 bodyClassName="min-h-[12rem]"
               >
                 <FuelCharts pie={fuel.pie} compact />
