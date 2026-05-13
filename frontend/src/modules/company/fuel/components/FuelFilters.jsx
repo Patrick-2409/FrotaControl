@@ -35,7 +35,7 @@ function FuelFilters({
               key={p.id}
               type="button"
               onClick={() => onPeriodoChange(p.id)}
-              className={`fc-btn rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+              className={`fc-btn min-h-[44px] rounded-md border px-3 py-2.5 text-sm font-medium transition-colors sm:min-h-0 sm:py-2 ${
                 periodo === p.id
                   ? "border-zinc-500 bg-zinc-800 text-zinc-50"
                   : "border-zinc-700 bg-zinc-950/80 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200"

@@ -1,7 +1,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildSvgPathArea, buildSvgPathLine, projectLinePoints, sliceSeries } from "../utils/chartMath";
 
-const defaultPad = { l: 40, r: 14, t: 14, b: 32 };
+const defaultPadWide = { l: 40, r: 14, t: 14, b: 32 };
+const defaultPadNarrow = { l: 26, r: 8, t: 12, b: 28 };
 
 /**
  * Gráfico de linha/área em SVG — leve, responsivo (ResizeObserver), zoom por janela de índices.
@@ -52,7 +53,8 @@ function BILineSeriesChart({
 
   const chartGeom = useMemo(() => {
     const w = Math.max(200, width);
-    const proj = projectLinePoints(windowed, w, height, defaultPad);
+    const pad = w < 380 ? defaultPadNarrow : defaultPadWide;
+    const proj = projectLinePoints(windowed, w, height, pad);
     const baseline = height - proj.pad.b;
     const linePath = buildSvgPathLine(proj.points);
     const areaPath = proj.points.length ? buildSvgPathArea(proj.points, baseline) : "";
@@ -85,12 +87,12 @@ function BILineSeriesChart({
     };
   }, []);
 
-  const onMove = useCallback(
-    (e) => {
+  const updatePointer = useCallback(
+    (clientX, currentTarget) => {
       const { points, w } = chartGeom;
-      if (!points.length) return;
-      const rect = e.currentTarget.getBoundingClientRect();
-      const x = e.clientX - rect.left;
+      if (!points.length || !currentTarget) return;
+      const rect = currentTarget.getBoundingClientRect();
+      const x = clientX - rect.left;
       const ratio = w <= 0 ? 0 : x / w;
       let nearest = 0;
       let best = Infinity;
@@ -109,6 +111,14 @@ function BILineSeriesChart({
   );
 
   const onLeave = useCallback(() => setHover(null), []);
+
+  const onTouchPointer = useCallback(
+    (e) => {
+      const t = e.touches[0];
+      if (t) updatePointer(t.clientX, e.currentTarget);
+    },
+    [updatePointer]
+  );
 
   const fmtY = (v) =>
     Number(v || 0).toLocaleString("pt-BR", { maximumFractionDigits: v >= 100 ? 0 : 1 });
@@ -165,7 +175,15 @@ function BILineSeriesChart({
         </div>
       ) : null}
 
-      <div className="relative w-full" role="presentation" onMouseMove={onMove} onMouseLeave={onLeave}>
+      <div
+        className="relative w-full touch-pan-y"
+        role="presentation"
+        onMouseMove={(e) => updatePointer(e.clientX, e.currentTarget)}
+        onMouseLeave={onLeave}
+        onTouchStart={onTouchPointer}
+        onTouchMove={onTouchPointer}
+        onTouchEnd={onLeave}
+      >
         <svg
           width="100%"
           height={height}
@@ -256,6 +274,7 @@ function BILineSeriesChart({
           Escala: 0 — {fmtY(chartGeom.yRange.max)} ({windowed.length} ponto{windowed.length === 1 ? "" : "s"})
         </span>
         <span className="hidden sm:inline">Interaja passando o cursor sobre a série</span>
+        <span className="sm:hidden">Toque na série para ver valores</span>
       </div>
     </div>
   );
