@@ -81,6 +81,15 @@ function MenuIcon({ type }) {
       </svg>
     );
   }
+  if (type === "wheel") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={iconClass} aria-hidden="true">
+        <circle cx="12" cy="12" r="7" stroke="currentColor" strokeWidth="1.6" />
+        <circle cx="12" cy="12" r="1.8" fill="currentColor" />
+        <path d="M12 5v2.5M12 16.5V19M5 12h2.5M16.5 12H19" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      </svg>
+    );
+  }
   if (type === "profile") {
     return (
       <svg viewBox="0 0 24 24" fill="none" className={iconClass} aria-hidden="true">
@@ -105,36 +114,83 @@ function useNavGroups(pathname) {
     if (empresaShell) {
       return {
         empresaShell: true,
-        primary: [
-          { to: "/empresa/dashboard", label: "Executivo", icon: "overview", exact: true },
-          { to: "/empresa/transporte", label: "Transporte", icon: "transport", exact: false },
-          { to: "/empresa/combustivel", label: "Combustível", icon: "fuel", exact: false },
-          { to: "/empresa/parte-diaria", label: "Parte diária", icon: "diary", exact: false },
-          { to: "/empresa/frota", label: "Gestão de frota", icon: "fleet", exact: false },
-          { to: "/empresa/pessoas", label: "Gestão de pessoas", icon: "people", exact: false },
+        sections: [
+          {
+            id: "dash",
+            title: null,
+            items: [{ to: "/empresa/dashboard", label: "Dashboard", icon: "overview", exact: true }],
+          },
+          {
+            id: "operacao",
+            title: "Operação",
+            items: [
+              { to: "/empresa/transporte", label: "Transporte", icon: "transport", exact: false },
+              { to: "/empresa/parte-diaria", label: "Parte Diária", icon: "diary", exact: false },
+            ],
+          },
+          {
+            id: "combustivel",
+            title: "Combustível",
+            items: [{ to: "/empresa/combustivel", label: "Dashboard Combustível", icon: "fuel", exact: false }],
+          },
+          {
+            id: "frota",
+            title: "Frota",
+            items: [
+              { to: "/dashboard/gestao?secao=veiculos", label: "Veículos", icon: "fleet", exact: false },
+              { to: "/empresa/pessoas", label: "Pessoas", icon: "people", exact: false },
+              { to: "/dashboard/gestao?secao=motoristas", label: "Motoristas", icon: "wheel", exact: false },
+            ],
+          },
+          {
+            id: "relatorios",
+            title: null,
+            items: [{ to: "/dashboard/relatorios", label: "Relatórios", icon: "reports", exact: false }],
+          },
+          {
+            id: "admin",
+            title: null,
+            items: [{ to: "/dashboard/gestao", label: "Administração", icon: "management", match: "gestao-root" }],
+          },
         ],
-        secondary: [
-          { to: "/dashboard/relatorios", label: "Relatórios", icon: "reports" },
-          { to: "/dashboard/gestao", label: "Gestão", icon: "management" },
-          { to: "/dashboard/perfil", label: "Meu Perfil", icon: "profile" },
-        ],
+        footerItems: [{ to: "/dashboard/perfil", label: "Meu Perfil", icon: "profile", exact: false }],
       };
     }
     return {
       empresaShell: false,
-      primary: [
-        { to: "/dashboard", label: "Visão geral", icon: "overview", exact: true },
-        { to: "/dashboard/relatorios", label: "Relatórios", icon: "reports", exact: false },
-        { to: "/dashboard/gestao", label: "Gestão", icon: "management", exact: false },
-        { to: "/dashboard/perfil", label: "Meu Perfil", icon: "profile", exact: false },
+      sections: [
+        {
+          id: "legacy",
+          title: null,
+          items: [
+            { to: "/dashboard", label: "Visão geral", icon: "overview", exact: true },
+            { to: "/dashboard/relatorios", label: "Relatórios", icon: "reports", exact: false },
+            { to: "/dashboard/gestao", label: "Gestão", icon: "management", exact: false },
+            { to: "/dashboard/perfil", label: "Meu Perfil", icon: "profile", exact: false },
+          ],
+        },
       ],
-      secondary: [],
+      footerItems: [],
     };
   }, [pathname]);
 }
 
-function tabIsActive(pathname, to, exact) {
-  if (exact) {
+function tabIsActive(pathname, search, tab) {
+  const sp = new URLSearchParams(search && search.startsWith("?") ? search.slice(1) : search || "");
+  if (tab.match === "gestao-root") {
+    return pathname === "/dashboard/gestao" && !sp.get("secao");
+  }
+  const to = tab.to;
+  if (to.includes("?")) {
+    const [path, queryStr] = to.split("?");
+    if (pathname !== path) return false;
+    const expected = new URLSearchParams(queryStr);
+    for (const [k, v] of expected.entries()) {
+      if (sp.get(k) !== v) return false;
+    }
+    return true;
+  }
+  if (tab.exact) {
     if (pathname === to) return true;
     if (to === "/empresa/dashboard" && pathname === "/empresa") return true;
     return false;
@@ -144,9 +200,9 @@ function tabIsActive(pathname, to, exact) {
 
 export default function EmpresaLayout({ children }) {
   const { user, logout, refreshUser } = useAuth();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const { tap } = useHaptics();
-  const { primary, secondary, empresaShell } = useNavGroups(pathname);
+  const { sections, footerItems } = useNavGroups(pathname);
 
   useEffect(() => {
     refreshUser?.().catch(() => {});
@@ -177,43 +233,68 @@ export default function EmpresaLayout({ children }) {
         </div>
       </header>
 
-      <div className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-6 sm:px-6 md:grid-cols-[240px_1fr]">
-        <aside className="flex gap-2 overflow-x-auto rounded-2xl border border-blue-500/25 bg-slate-900/75 p-3 shadow-lg shadow-blue-950/20 md:block" aria-label="Navegacao do dashboard">
-          {primary.map((tab) => (
-            <Link
-              key={tab.to}
-              to={tab.to}
-              onClick={() => tap(8)}
-              className={`fc-tab-link mb-0 flex shrink-0 items-center gap-2 rounded-xl px-3 py-2.5 text-sm md:mb-2 ${
-                tabIsActive(pathname, tab.to, tab.exact)
-                  ? "active bg-blue-600/35 text-blue-100 shadow-md shadow-blue-900/30"
-                  : "text-slate-300 hover:bg-slate-800 hover:text-slate-100"
-              }`}
-            >
-              <MenuIcon type={tab.icon} />
-              {tab.label}
-            </Link>
-          ))}
-          {empresaShell && secondary.length > 0 && (
-            <div className="mt-2 border-t border-blue-500/20 pt-2 md:mt-3 md:pt-3">
-              <p className="mb-2 hidden px-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500 md:block">Painel legado</p>
-              {secondary.map((tab) => (
-                <Link
-                  key={tab.to}
-                  to={tab.to}
-                  onClick={() => tap(8)}
-                  className={`fc-tab-link mb-0 flex shrink-0 items-center gap-2 rounded-xl px-3 py-2.5 text-sm md:mb-2 ${
-                    tabIsActive(pathname, tab.to, false)
-                      ? "active bg-blue-600/35 text-blue-100 shadow-md shadow-blue-900/30"
-                      : "text-slate-300 hover:bg-slate-800 hover:text-slate-100"
-                  }`}
-                >
-                  <MenuIcon type={tab.icon} />
-                  {tab.label}
-                </Link>
-              ))}
+      <div className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-6 sm:px-6 md:grid-cols-[260px_1fr]">
+        <aside
+          className="rounded-2xl border border-blue-500/25 bg-slate-900/75 p-3 shadow-lg shadow-blue-950/20"
+          aria-label="Navegacao do dashboard"
+        >
+          <div className="flex min-w-min gap-4 overflow-x-auto pb-1 md:min-w-0 md:flex-col md:gap-0 md:overflow-visible md:pb-0">
+            {sections.map((section, si) => (
+              <div
+                key={section.id}
+                className={`flex shrink-0 flex-col gap-1 md:shrink md:pb-1 ${
+                  si > 0 ? "border-l border-blue-500/20 pl-4 md:border-l-0 md:pl-0 md:pt-4 md:border-t md:border-blue-500/20" : ""
+                }`}
+              >
+                {section.title ? (
+                  <p className="mb-1 whitespace-nowrap px-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500 md:whitespace-normal">
+                    {section.title}
+                  </p>
+                ) : null}
+                <div className="flex flex-col gap-1">
+                  {section.items.map((tab) => (
+                    <Link
+                      key={`${section.id}-${tab.to}`}
+                      to={tab.to}
+                      onClick={() => tap(8)}
+                      className={`fc-tab-link flex shrink-0 items-center gap-2 rounded-xl px-3 py-2.5 text-sm whitespace-nowrap md:whitespace-normal ${
+                        tabIsActive(pathname, search, tab)
+                          ? "active bg-blue-600/35 text-blue-100 shadow-md shadow-blue-900/30"
+                          : "text-slate-300 hover:bg-slate-800 hover:text-slate-100"
+                      }`}
+                    >
+                      <MenuIcon type={tab.icon} />
+                      {tab.label}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          {footerItems.length > 0 ? (
+            <div className="mt-3 border-t border-blue-500/20 pt-3">
+              <p className="mb-2 hidden px-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500 md:block">
+                Conta
+              </p>
+              <div className="flex flex-row gap-2 overflow-x-auto md:flex-col md:overflow-visible">
+                {footerItems.map((tab) => (
+                  <Link
+                    key={tab.to}
+                    to={tab.to}
+                    onClick={() => tap(8)}
+                    className={`fc-tab-link flex shrink-0 items-center gap-2 rounded-xl px-3 py-2.5 text-sm whitespace-nowrap md:whitespace-normal ${
+                      tabIsActive(pathname, search, tab)
+                        ? "active bg-blue-600/35 text-blue-100 shadow-md shadow-blue-900/30"
+                        : "text-slate-300 hover:bg-slate-800 hover:text-slate-100"
+                    }`}
+                  >
+                    <MenuIcon type={tab.icon} />
+                    {tab.label}
+                  </Link>
+                ))}
+              </div>
             </div>
-          )}
+          ) : null}
         </aside>
         <main className="fc-page min-w-0" id="conteudo-principal">
           {children}

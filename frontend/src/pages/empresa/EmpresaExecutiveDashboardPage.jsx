@@ -76,7 +76,7 @@ export default function EmpresaExecutiveDashboardPage() {
   return (
     <div className="space-y-8">
       <header className="border-b border-slate-800/90 pb-6">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Painel executivo</p>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Dashboard</p>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white md:text-3xl">Visão consolidada</h1>
         <p className="mt-2 max-w-2xl text-sm text-slate-400">
           Indicadores sintéticos. Transporte e combustível detalhados têm módulos próprios com filtros isolados.

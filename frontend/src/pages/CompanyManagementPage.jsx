@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import api, { resolveBackendAssetUrl } from "../services/api";
 import { inputClass } from "../components/FormField";
 import PaginationControls from "../components/PaginationControls";
@@ -33,6 +34,7 @@ const hasFullName = (value) => {
 };
 
 export default function CompanyManagementPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [loadingVehicles, setLoadingVehicles] = useState(false);
@@ -99,6 +101,13 @@ export default function CompanyManagementPage() {
   useEffect(() => {
     loadVehicles();
   }, [loadVehicles]);
+
+  useEffect(() => {
+    const secao = searchParams.get("secao");
+    if (secao === "veiculos") setActiveSection("vehicles");
+    else if (secao === "motoristas") setActiveSection("users");
+    else setActiveSection("users");
+  }, [searchParams]);
 
   const onSaveVehicle = async (e) => {
     e.preventDefault();
@@ -219,7 +228,10 @@ export default function CompanyManagementPage() {
         <div className="grid grid-cols-2 gap-2 sm:max-w-md">
           <button
             type="button"
-            onClick={() => setActiveSection("users")}
+            onClick={() => {
+              setActiveSection("users");
+              setSearchParams({ secao: "motoristas" }, { replace: true });
+            }}
             className={`fc-btn rounded-lg border px-3 py-2 text-sm ${
               activeSection === "users"
                 ? "border-blue-500 bg-blue-500/20 text-blue-100"
@@ -230,7 +242,10 @@ export default function CompanyManagementPage() {
           </button>
           <button
             type="button"
-            onClick={() => setActiveSection("vehicles")}
+            onClick={() => {
+              setActiveSection("vehicles");
+              setSearchParams({ secao: "veiculos" }, { replace: true });
+            }}
             className={`fc-btn rounded-lg border px-3 py-2 text-sm ${
               activeSection === "vehicles"
                 ? "border-blue-500 bg-blue-500/20 text-blue-100"
