@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../services/auth";
 import { inputClass } from "../components/FormField";
+import ApontadorHeader from "../components/ApontadorHeader";
 import api from "../services/api";
 import { markAsSynced, getPendingViagens, saveOfflineViagem, syncPendentes } from "../services/offlineViagens";
 import { emitToast } from "../services/uiEvents";
@@ -263,28 +264,7 @@ export default function ApontadorHomePage() {
 
   return (
     <div className="relative flex min-h-[100dvh] min-h-screen flex-col bg-slate-950 text-slate-100">
-      <div className="fixed left-1/2 top-[max(0.75rem,env(safe-area-inset-top))] z-50 flex -translate-x-1/2 flex-col items-center gap-0.5">
-        <p
-          className={`rounded-full border px-4 py-1.5 text-sm font-semibold shadow-lg shadow-black/30 ${
-            online
-              ? "border-emerald-500/40 bg-emerald-950/90 text-emerald-100"
-              : "border-amber-500/50 bg-amber-950/90 text-amber-100"
-          }`}
-          role="status"
-          aria-live="polite"
-        >
-          {online ? "Online ✅" : "Offline ⚠️"}
-        </p>
-        {textoPendentes ? (
-          <p
-            className="max-w-[90vw] text-center text-[11px] font-medium leading-tight text-slate-500"
-            role="status"
-            aria-live="polite"
-          >
-            {textoPendentes}
-          </p>
-        ) : null}
-      </div>
+      <ApontadorHeader online={online} textoPendentes={textoPendentes} onSyncManual={onSyncManual} />
 
       {registradoFlash.open ? (
         <output
@@ -300,7 +280,7 @@ export default function ApontadorHomePage() {
 
       <h1 className="sr-only">Apontador — registo de viagens</h1>
 
-      <main className="flex flex-1 flex-col items-center justify-center px-4 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pt-8 sm:pb-8">
+      <main className="flex flex-1 flex-col items-center justify-center px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-4 sm:pt-6 sm:pb-8">
         <div className="flex w-full max-w-md flex-col items-stretch justify-center space-y-6">
           <div>
             <label htmlFor="apontador-veiculo" className="mb-2 block text-center text-sm font-medium text-slate-400">
@@ -398,16 +378,6 @@ export default function ApontadorHomePage() {
               </div>
             </div>
           </section>
-
-          <button
-            type="button"
-            onClick={() => {
-              void onSyncManual();
-            }}
-            className="mx-auto w-full max-w-sm rounded-xl border border-slate-600/70 bg-slate-900/40 py-3 text-sm font-medium text-slate-300 shadow-sm transition hover:border-slate-500 hover:bg-slate-800/50 active:scale-[0.99]"
-          >
-            Sincronizar agora
-          </button>
         </div>
       </main>
     </div>
