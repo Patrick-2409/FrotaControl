@@ -25,6 +25,7 @@ const AdminLoginPage = lazy(() => import("./pages/AdminLoginPage"));
 const SuperAdminLoginPage = lazy(() => import("./pages/SuperAdminLoginPage"));
 const ApontadorLoginPage = lazy(() => import("./pages/ApontadorLoginPage"));
 const ApontadorHomePage = lazy(() => import("./pages/ApontadorHomePage"));
+const EmpresaExecutiveDashboardPage = lazy(() => import("./pages/empresa/EmpresaExecutiveDashboardPage"));
 const EmpresaTransportePage = lazy(() => import("./pages/empresa/EmpresaTransportePage"));
 const EmpresaCombustivelPage = lazy(() => import("./pages/empresa/EmpresaCombustivelPage"));
 const EmpresaParteDiariaPage = lazy(() => import("./pages/empresa/EmpresaParteDiariaPage"));
@@ -297,7 +298,7 @@ function App() {
                   <RouteTransition>
                     <Routes>
                       <Route path="/" element={<Navigate to="dashboard" replace />} />
-                      <Route path="dashboard" element={<ManagerDashboardPage />} />
+                      <Route path="dashboard" element={<EmpresaExecutiveDashboardPage />} />
                       <Route path="transporte" element={<EmpresaTransportePage />} />
                       <Route path="combustivel" element={<EmpresaCombustivelPage />} />
                       <Route path="parte-diaria" element={<EmpresaParteDiariaPage />} />
