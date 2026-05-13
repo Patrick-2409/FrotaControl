@@ -25,12 +25,12 @@ const AdminLoginPage = lazy(() => import("./pages/AdminLoginPage"));
 const SuperAdminLoginPage = lazy(() => import("./pages/SuperAdminLoginPage"));
 const ApontadorLoginPage = lazy(() => import("./pages/ApontadorLoginPage"));
 const ApontadorHomePage = lazy(() => import("./pages/ApontadorHomePage"));
-const EmpresaExecutiveDashboardPage = lazy(() => import("./pages/empresa/EmpresaExecutiveDashboardPage"));
-const EmpresaTransportePage = lazy(() => import("./pages/empresa/EmpresaTransportePage"));
-const EmpresaCombustivelPage = lazy(() => import("./pages/empresa/EmpresaCombustivelPage"));
-const EmpresaParteDiariaPage = lazy(() => import("./pages/empresa/EmpresaParteDiariaPage"));
-const EmpresaFrotaPage = lazy(() => import("./pages/empresa/EmpresaFrotaPage"));
-const EmpresaPessoasPage = lazy(() => import("./pages/empresa/EmpresaPessoasPage"));
+const EmpresaExecutiveDashboardPage = lazy(() => import("./modules/company/dashboard/pages/EmpresaExecutiveDashboardPage"));
+const EmpresaTransportePage = lazy(() => import("./modules/company/transport/pages/EmpresaTransportePage"));
+const EmpresaCombustivelPage = lazy(() => import("./modules/company/fuel/pages/EmpresaCombustivelPage"));
+const EmpresaParteDiariaPage = lazy(() => import("./modules/company/daily/pages/EmpresaParteDiariaPage"));
+const EmpresaFrotaPage = lazy(() => import("./modules/company/fleet/pages/EmpresaFrotaPage"));
+const EmpresaPessoasPage = lazy(() => import("./modules/company/people/pages/EmpresaPessoasPage"));
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
