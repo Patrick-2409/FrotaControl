@@ -128,14 +128,62 @@ const utcYearBoundsFromYmd = (yyyyMmDd) => {
   return { start: start.toISOString(), end: end.toISOString() };
 };
 
-/** Mesmos limites UTC que viagens (dia/semana/mês) + ano — não altera resolveViagensPeriodBounds. */
+/**
+ * YYYY-MM-DD do "hoje" no calendário de São Paulo (alinhado ao que motoristas gravam sem fuso).
+ */
+const brazilAnchorYmd = (dataAnchorYmd) => {
+  if (dataAnchorYmd && /^\d{4}-\d{2}-\d{2}$/.test(String(dataAnchorYmd).trim())) {
+    return String(dataAnchorYmd).trim();
+  }
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+};
+
+/**
+ * Meia-noite em America/Sao_Paulo expressa em ISO UTC (BRT = UTC−3, sem horário de verão desde 2019).
+ * Usado para [start,end) compatível com comparação via AT TIME ZONE 'America/Sao_Paulo' na query.
+ */
+const brazilLocalMidnightUtcIso = (y, m0, d) =>
+  new Date(Date.UTC(y, m0, d, 3, 0, 0, 0)).toISOString();
+
+/**
+ * Limites do resumo de combustível alinhados ao calendário operacional BR (mesma base que data/hora local gravada na app).
+ */
 const resolveCombustiveisPeriodBounds = (periodo, dataAnchorYmd) => {
   if (!periodo) return null;
-  const ymd = dataAnchorYmd || new Date().toISOString().slice(0, 10);
-  if (periodo === "dia") return utcDayBoundsFromYmd(ymd);
-  if (periodo === "semana") return utcIsoWeekBoundsFromYmd(ymd);
-  if (periodo === "mes") return utcMonthBoundsFromYmd(ymd);
-  if (periodo === "ano") return utcYearBoundsFromYmd(ymd);
+  const ymd = brazilAnchorYmd(dataAnchorYmd);
+  const parts = ymd.split("-").map(Number);
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return null;
+  const [y, mo, d] = parts;
+
+  if (periodo === "dia") {
+    return {
+      start: brazilLocalMidnightUtcIso(y, mo - 1, d),
+      end: brazilLocalMidnightUtcIso(y, mo - 1, d + 1),
+    };
+  }
+  if (periodo === "semana") {
+    const anchorUtcMs = Date.UTC(y, mo - 1, d, 3, 0, 0, 0);
+    const dow = new Date(anchorUtcMs).getUTCDay();
+    const offsetToMonday = (dow + 6) % 7;
+    const mondayUtcMs = anchorUtcMs - offsetToMonday * 86400000;
+    const nextMondayUtcMs = mondayUtcMs + 7 * 86400000;
+    return {
+      start: new Date(mondayUtcMs).toISOString(),
+      end: new Date(nextMondayUtcMs).toISOString(),
+    };
+  }
+  if (periodo === "mes") {
+    return {
+      start: brazilLocalMidnightUtcIso(y, mo - 1, 1),
+      end: brazilLocalMidnightUtcIso(y, mo, 1),
+    };
+  }
+  if (periodo === "ano") {
+    return {
+      start: brazilLocalMidnightUtcIso(y, 0, 1),
+      end: brazilLocalMidnightUtcIso(y + 1, 0, 1),
+    };
+  }
   return null;
 };
 

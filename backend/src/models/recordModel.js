@@ -600,8 +600,12 @@ const listMotoristaRecords = async ({ empresa_id, usuario_id }) => {
   return rows;
 };
 
+/** Instante absoluto a partir de data/hora local gravada sem fuso (app envia horário de operação em BRT). */
+const COMB_EVENT_TS = `(COALESCE(recorded_at_client, data)::timestamp AT TIME ZONE 'America/Sao_Paulo')`;
+const COMB_EVENT_TS_C = `(COALESCE(c.recorded_at_client, c.data)::timestamp AT TIME ZONE 'America/Sao_Paulo')`;
+
 /**
- * Agrega combustíveis no intervalo [start, end) em timestamptz (COALESCE(recorded_at_client, data)).
+ * Agrega combustíveis no intervalo [start, end) em timestamptz (instante do registo em SP vs limites já em UTC).
  * @param {{ empresa_id: number, bounds: { start: string, end: string }, groupByVeiculo?: boolean, veiculoId?: number|null, motoristaId?: number|null }} params
  */
 const getCombustiveisResumoMetrics = async (
@@ -616,8 +620,8 @@ const getCombustiveisResumoMetrics = async (
     AND ($4::int IS NULL OR veiculo_id = $4)
     AND ($5::int IS NULL OR usuario_id = $5)`;
   const whereTime = `empresa_id = $1
-    AND COALESCE(recorded_at_client, data) >= $2::timestamptz
-    AND COALESCE(recorded_at_client, data) < $3::timestamptz
+    AND ${COMB_EVENT_TS} >= $2::timestamptz
+    AND ${COMB_EVENT_TS} < $3::timestamptz
     ${filterBase}`;
 
   const { rows: aggRows } = await db.query(
@@ -674,8 +678,8 @@ const getCombustiveisResumoMetrics = async (
     AND ($4::int IS NULL OR c.veiculo_id = $4)
     AND ($5::int IS NULL OR c.usuario_id = $5)`;
   const whereTimeC = `c.empresa_id = $1
-    AND COALESCE(c.recorded_at_client, c.data) >= $2::timestamptz
-    AND COALESCE(c.recorded_at_client, c.data) < $3::timestamptz
+    AND ${COMB_EVENT_TS_C} >= $2::timestamptz
+    AND ${COMB_EVENT_TS_C} < $3::timestamptz
     ${filterC}`;
 
   const [groupsRes, consumoElevadoRes, precoAcimaRes, histPrecoRes, hist365Res] = await Promise.all([
@@ -762,7 +766,7 @@ const getCombustiveisResumoMetrics = async (
       `SELECT COALESCE(SUM(c.litros), 0)::double precision AS litros
        FROM combustiveis c
        WHERE c.empresa_id = $1
-         AND COALESCE(c.recorded_at_client, c.data) >= (NOW() AT TIME ZONE 'UTC') - INTERVAL '365 days'
+         AND ${COMB_EVENT_TS_C} >= CURRENT_TIMESTAMP - INTERVAL '365 days'
          ${histFilter}`,
       histParams
     ),
