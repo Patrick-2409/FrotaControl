@@ -1,7 +1,23 @@
 import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import api, { resolveBackendAssetUrl } from "./api";
+import { isJwtExpired, sanitizePlainText } from "../utils/security";
 
 const AuthContext = createContext(null);
+
+const MAX_EMAIL_LEN = 254;
+const MAX_CPF_DIGITS = 14;
+const MAX_PASSWORD_LEN = 128;
+
+const readStoredUser = () => {
+  const raw = localStorage.getItem("fc_user");
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    localStorage.removeItem("fc_user");
+    return null;
+  }
+};
 
 const normalizeUser = (user) => {
   if (!user) return user;
@@ -13,8 +29,11 @@ const normalizeUser = (user) => {
 };
 
 const buildMotoristaLoginPayload = (payload = {}) => {
-  const rawLogin = String(payload.login ?? payload.cpf_id ?? "").trim().replace(/\D/g, "");
-  const senha = String(payload.senha ?? payload.password ?? "");
+  const rawLogin = String(payload.login ?? payload.cpf_id ?? "")
+    .trim()
+    .replace(/\D/g, "")
+    .slice(0, MAX_CPF_DIGITS);
+  const senha = String(payload.senha ?? payload.password ?? "").slice(0, MAX_PASSWORD_LEN);
   return {
     login: rawLogin,
     senha,
@@ -22,8 +41,8 @@ const buildMotoristaLoginPayload = (payload = {}) => {
 };
 
 const buildEmailLoginPayload = (payload = {}) => {
-  const email = String(payload.email ?? "").trim().toLowerCase();
-  const senha = String(payload.senha ?? payload.password ?? "");
+  const email = sanitizePlainText(String(payload.email ?? "").trim().toLowerCase(), MAX_EMAIL_LEN);
+  const senha = String(payload.senha ?? payload.password ?? "").slice(0, MAX_PASSWORD_LEN);
   return {
     email,
     senha,
@@ -31,10 +50,7 @@ const buildEmailLoginPayload = (payload = {}) => {
 };
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(() => {
-    const raw = localStorage.getItem("fc_user");
-    return raw ? JSON.parse(raw) : null;
-  });
+  const [user, setUser] = useState(() => normalizeUser(readStoredUser()));
   const [loading, setLoading] = useState(true);
 
   const refreshUser = useCallback(async () => {
@@ -48,6 +64,13 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const token = localStorage.getItem("fc_token");
     if (!token) {
+      setLoading(false);
+      return;
+    }
+    if (isJwtExpired(token)) {
+      localStorage.removeItem("fc_token");
+      localStorage.removeItem("fc_user");
+      setUser(null);
       setLoading(false);
       return;
     }

@@ -18,8 +18,45 @@ const extensionFromMime = (mime = "") => {
   if (value.includes("png")) return ".png";
   if (value.includes("jpeg") || value.includes("jpg")) return ".jpg";
   if (value.includes("webp")) return ".webp";
-  if (value.includes("svg")) return ".svg";
   return ".png";
+};
+
+const assertSafeImageBuffer = (buffer, mimeType) => {
+  const mt = String(mimeType || "").toLowerCase();
+  if (mt.includes("svg")) {
+    const err = new Error("Formato SVG não é permitido por segurança.");
+    err.status = 400;
+    throw err;
+  }
+  if (!buffer || buffer.length < 12) {
+    const err = new Error("Arquivo de imagem inválido.");
+    err.status = 400;
+    throw err;
+  }
+  const b0 = buffer[0];
+  const b1 = buffer[1];
+  if (mt.includes("png")) {
+    if (b0 === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return;
+  } else if (mt.includes("jpeg") || mt.includes("jpg")) {
+    if (b0 === 0xff && b1 === 0xd8 && buffer[2] === 0xff) return;
+  } else if (mt.includes("webp")) {
+    if (
+      buffer.length >= 12 &&
+      buffer[0] === 0x52 &&
+      buffer[1] === 0x49 &&
+      buffer[2] === 0x46 &&
+      buffer[3] === 0x46 &&
+      buffer[8] === 0x57 &&
+      buffer[9] === 0x45 &&
+      buffer[10] === 0x42 &&
+      buffer[11] === 0x50
+    ) {
+      return;
+    }
+  }
+  const err = new Error("Conteúdo do ficheiro não corresponde a uma imagem permitida.");
+  err.status = 400;
+  throw err;
 };
 
 const localFallbackUpload = async ({ buffer, mimeType, category, ownerId }) => {
@@ -56,6 +93,7 @@ const savePersistentImage = async ({ buffer, mimeType, category, ownerId }) => {
     err.status = 400;
     throw err;
   }
+  assertSafeImageBuffer(buffer, mimeType);
 
   if (isCloudinaryConfigured()) {
     const uploadedUrl = await uploadToCloudinary({ buffer, category, ownerId });

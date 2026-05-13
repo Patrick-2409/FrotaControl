@@ -1,4 +1,4 @@
-const CACHE = "frotacontrol-v7";
+const CACHE = "frotacontrol-v8";
 const SHELL = ["/", "/manifest.json", "/icon.png"];
 
 self.addEventListener("install", (event) => {
@@ -22,7 +22,15 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(event.request.url);
   if (url.pathname.startsWith("/api/")) {
-    event.respondWith(fetch(event.request).catch(() => caches.match("/")));
+    event.respondWith(
+      fetch(event.request).catch(
+        () =>
+          new Response(JSON.stringify({ success: false, error: "offline", message: "Sem ligação" }), {
+            status: 503,
+            headers: { "Content-Type": "application/json" },
+          })
+      )
+    );
     return;
   }
 
