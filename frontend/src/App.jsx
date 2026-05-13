@@ -34,6 +34,7 @@ const EmpresaParteDiariaPage = lazy(() => import("./modules/company/daily/pages/
 const EmpresaFrotaPage = lazy(() => import("./modules/company/fleet/pages/EmpresaFrotaPage"));
 const EmpresaPessoasPage = lazy(() => import("./modules/company/people/pages/EmpresaPessoasPage"));
 const EmpresaRelatoriosPage = lazy(() => import("./modules/company/reports/pages/EmpresaRelatoriosPage"));
+const EmpresaAlertasPage = lazy(() => import("./modules/company/alerts/pages/EmpresaAlertasPage"));
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -308,6 +309,7 @@ function App() {
                       <Route path="frota" element={<EmpresaFrotaPage />} />
                       <Route path="pessoas" element={<EmpresaPessoasPage />} />
                       <Route path="relatorios" element={<EmpresaRelatoriosPage />} />
+                      <Route path="alertas" element={<EmpresaAlertasPage />} />
                       <Route path="*" element={<Navigate to="dashboard" replace />} />
                     </Routes>
                   </RouteTransition>

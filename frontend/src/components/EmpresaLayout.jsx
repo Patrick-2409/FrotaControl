@@ -4,9 +4,24 @@ import { useAuth } from "../services/auth";
 import useHaptics from "../hooks/useHaptics";
 import CompanyLogo from "./CompanyLogo";
 import Avatar from "./Avatar";
+import EmpresaNotificationsBell from "./EmpresaNotificationsBell";
 
 function MenuIcon({ type }) {
   const iconClass = "h-4 w-4";
+  if (type === "bell") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={iconClass} aria-hidden="true">
+        <path
+          d="M6 8a6 6 0 1 1 12 0c0 7 3 7 3 7H3s3 0 3-7"
+          stroke="currentColor"
+          strokeWidth="1.65"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path d="M10 21h4" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" />
+      </svg>
+    );
+  }
   if (type === "transport") {
     return (
       <svg viewBox="0 0 24 24" fill="none" className={iconClass} aria-hidden="true">
@@ -118,7 +133,10 @@ function useNavGroups(pathname) {
           {
             id: "dash",
             title: null,
-            items: [{ to: "/empresa/dashboard", label: "Dashboard", icon: "overview", exact: true }],
+            items: [
+              { to: "/empresa/dashboard", label: "Dashboard", icon: "overview", exact: true },
+              { to: "/empresa/alertas", label: "Alertas", icon: "bell", exact: false },
+            ],
           },
           {
             id: "operacao",
@@ -226,6 +244,7 @@ export default function EmpresaLayout({ children }) {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2.5 text-sm sm:gap-3">
+            <EmpresaNotificationsBell />
             <Avatar imageUrl={user?.profile_image_url} name={user?.nome} size="header" />
             <p className="hidden max-w-[11rem] truncate text-zinc-400 sm:block">{user?.nome}</p>
             <button

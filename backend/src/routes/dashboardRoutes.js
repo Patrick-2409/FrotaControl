@@ -19,11 +19,19 @@ const {
   relatorioCombustivel,
   relatorioCompleto,
 } = require("../controllers/relatoriosExportController");
+const {
+  notificationsFeed,
+  notificationsHistory,
+  notificationsRead,
+} = require("../controllers/notificationsController");
 
 const router = express.Router();
 
 router.get("/stats", asyncHandler(dashboard));
 router.get("/alertas", asyncHandler(dashboardAlertas));
+router.get("/notifications/feed", asyncHandler(notificationsFeed));
+router.get("/notifications/history", asyncHandler(notificationsHistory));
+router.post("/notifications/read", asyncHandler(notificationsRead));
 router.get("/planejamento/atual", asyncHandler(getPlanejamentoAtualHandler));
 router.post("/planejamento", asyncHandler(postPlanejamento));
 router.get("/viagens/comparacao", asyncHandler(getViagensComparacao));

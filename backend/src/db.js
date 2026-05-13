@@ -292,6 +292,36 @@ const initDb = async () => {
       CHECK (meta_esteril_ton >= 0 AND meta_rocha_ton >= 0)
     );
     CREATE INDEX IF NOT EXISTS idx_planejamento_empresa_datas ON planejamento_semanal (empresa_id, data_inicio, data_fim);
+
+    CREATE TABLE IF NOT EXISTS operational_alert_events (
+      id SERIAL PRIMARY KEY,
+      empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+      alert_key VARCHAR(190) NOT NULL,
+      severity VARCHAR(16) NOT NULL,
+      category VARCHAR(40) NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (empresa_id, alert_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_op_alert_empresa_active ON operational_alert_events (empresa_id, is_active, last_seen_at DESC);
+
+    CREATE TABLE IF NOT EXISTS operational_alert_reads (
+      usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+      alert_key VARCHAR(190) NOT NULL,
+      read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (usuario_id, alert_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_op_alert_reads_usuario ON operational_alert_reads (usuario_id, read_at DESC);
+  `);
+
+  await pool.query(`
+    ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS cnh_validade DATE;
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS doc_revisao_validade DATE;
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS manutencao_agendar_ate DATE;
   `);
 };
 
