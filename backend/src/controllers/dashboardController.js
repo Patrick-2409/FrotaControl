@@ -1,43 +1,9 @@
 const { z } = require("zod");
 const { pool } = require("../db");
-const {
-  dashboardStats,
-  listManagerRecords,
-  updateManagerRecord,
-  deleteManagerRecord,
-  getCombustiveisResumoMetrics,
-  getCombustiveisValorTotalSoma,
-} = require("../models/recordModel");
-const {
-  getViagensResumoProducao,
-  utcBoundsFromDateRangeYmd,
-} = require("../models/viagemModel");
-const {
-  insertPlanejamento,
-  getPlanejamentoAtual,
-  toYmd,
-} = require("../models/planejamentoModel");
-
-const resolveEmpresaScope = (req) => {
-  if (req.user?.role !== "SUPER_ADMIN") {
-    return req.user?.empresa_id;
-  }
-  const fromQuery = req.query?.empresa_id;
-  if (fromQuery == null || String(fromQuery).trim() === "") return null;
-  const parsed = Number(fromQuery);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-};
-
-/** Para POST: super admin pode informar empresa_id no corpo ou na query. */
-const resolveEmpresaScopeWrite = (req) => {
-  if (req.user?.role !== "SUPER_ADMIN") {
-    return req.user?.empresa_id ?? null;
-  }
-  const raw = req.body?.empresa_id ?? req.query?.empresa_id;
-  if (raw == null || String(raw).trim() === "") return null;
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-};
+const { resolveEmpresaScope, resolveEmpresaScopeWrite } = require("../domain/tenantContext");
+const dailyOps = require("../services/dailyOperationsService");
+const fuelSvc = require("../services/fuelService");
+const transportSvc = require("../services/transportService");
 
 const planejamentoBodySchema = z
   .object({
@@ -54,7 +20,7 @@ const planejamentoBodySchema = z
 
 const dashboard = async (req, res) => {
   const empresa_id = resolveEmpresaScope(req);
-  const stats = await dashboardStats({ empresa_id });
+  const stats = await dailyOps.dashboardStats({ empresa_id });
   return res.json(stats);
 };
 
@@ -261,7 +227,7 @@ const list = async (req, res) => {
   const page = filter.page || 1;
   const limit = filter.limit || 20;
   const empresa_id = resolveEmpresaScope(req);
-  const result = await listManagerRecords({
+  const result = await dailyOps.listManagerRecords({
     empresa_id,
     ...filter,
     page,
@@ -292,7 +258,7 @@ const updateRecord = async (req, res) => {
     observacoes: z.string().optional(),
   }).parse(req.body);
 
-  const updated = await updateManagerRecord({
+  const updated = await dailyOps.updateManagerRecord({
     empresa_id: resolveEmpresaScope(req),
     tipo: params.tipo,
     id: params.id,
@@ -314,7 +280,7 @@ const deleteRecord = async (req, res) => {
     id: z.coerce.number().int().positive(),
   }).parse(req.params);
 
-  const deleted = await deleteManagerRecord({
+  const deleted = await dailyOps.deleteManagerRecord({
     empresa_id: resolveEmpresaScope(req),
     tipo: params.tipo,
     id: params.id,
@@ -365,7 +331,7 @@ const viagensResumo = async (req, res) => {
 
   const bounds = resolveViagensPeriodBounds(periodo, normalizedAnchor);
 
-  const row = await getViagensResumoProducao(empresa_id, bounds || {});
+  const row = await transportSvc.getViagensResumoProducao(empresa_id, bounds || {});
 
   const toNum = (v) => (v == null ? 0 : Number(v));
 
@@ -415,12 +381,12 @@ const custoOperacional = async (req, res) => {
   const bounds = resolveViagensPeriodBounds(periodo, normalizedAnchor);
   const boundsForCombustivel = bounds?.start && bounds?.end ? bounds : null;
 
-  const row = await getViagensResumoProducao(empresa_id, bounds || {});
+  const row = await transportSvc.getViagensResumoProducao(empresa_id, bounds || {});
   const toNum = (v) => (v == null ? 0 : Number(v));
   const toneladas_total =
     toNum(row.total_toneladas_esteril) + toNum(row.total_toneladas_rocha);
 
-  const custo_total = await getCombustiveisValorTotalSoma({
+  const custo_total = await fuelSvc.getCombustiveisValorTotalSoma({
     empresa_id,
     bounds: boundsForCombustivel,
   });
@@ -488,7 +454,7 @@ const combustiveisResumo = async (req, res) => {
   const veiculoIdFilter = parseOptionalPositiveInt(req.query.veiculo_id);
   const motoristaIdFilter = parseOptionalPositiveInt(req.query.motorista_id);
 
-  const payload = await getCombustiveisResumoMetrics({
+  const payload = await fuelSvc.getCombustiveisResumoMetrics({
     empresa_id,
     bounds,
     groupByVeiculo,
@@ -522,7 +488,7 @@ const postPlanejamento = async (req, res) => {
   }
 
   const { empresa_id: _ignoredEmpresaId, ...payload } = parsed.data;
-  const row = await insertPlanejamento({
+  const row = await transportSvc.insertPlanejamento({
     empresa_id,
     ...payload,
   });
@@ -539,7 +505,7 @@ const getPlanejamentoAtualHandler = async (req, res) => {
       message: "Informe empresa_id na query (super admin) ou use conta de administrador de empresa.",
     });
   }
-  const planejamento = await getPlanejamentoAtual(empresa_id);
+  const planejamento = await transportSvc.getPlanejamentoAtual(empresa_id);
   return res.json({ planejamento });
 };
 
@@ -563,19 +529,19 @@ const getViagensComparacao = async (req, res) => {
     percentual_total: 0,
   });
 
-  const plan = await getPlanejamentoAtual(empresa_id);
+  const plan = await transportSvc.getPlanejamentoAtual(empresa_id);
   if (!plan) {
     return res.json(empty());
   }
 
-  const di = toYmd(plan.data_inicio);
-  const df = toYmd(plan.data_fim);
-  const bounds = utcBoundsFromDateRangeYmd(di, df);
+  const di = transportSvc.toYmd(plan.data_inicio);
+  const df = transportSvc.toYmd(plan.data_fim);
+  const bounds = transportSvc.utcBoundsFromDateRangeYmd(di, df);
   if (!bounds) {
     return res.json(empty());
   }
 
-  const row = await getViagensResumoProducao(empresa_id, bounds);
+  const row = await transportSvc.getViagensResumoProducao(empresa_id, bounds);
   const toNum = (v) => (v == null ? 0 : Number(v));
   const pe = toNum(plan.meta_esteril_ton);
   const pr = toNum(plan.meta_rocha_ton);
@@ -651,11 +617,11 @@ const dashboardAlertas = async (req, res) => {
   );
   const veiculos_sem_capacidade = Number(capRows[0]?.c ?? 0);
 
-  const rowViagens = await getViagensResumoProducao(empresa_id, boundsCusto || {});
+  const rowViagens = await transportSvc.getViagensResumoProducao(empresa_id, boundsCusto || {});
   const toNum = (v) => (v == null ? 0 : Number(v));
   const toneladas_total =
     toNum(rowViagens.total_toneladas_esteril) + toNum(rowViagens.total_toneladas_rocha);
-  const custo_total = await getCombustiveisValorTotalSoma({
+  const custo_total = await fuelSvc.getCombustiveisValorTotalSoma({
     empresa_id,
     bounds: boundsForCombustivel,
   });
@@ -666,14 +632,14 @@ const dashboardAlertas = async (req, res) => {
     Number.isFinite(custo_por_tonelada) &&
     custo_por_tonelada >= CUSTO_POR_TONELADA_ALERTA_ALTO;
 
-  const plan = await getPlanejamentoAtual(empresa_id);
+  const plan = await transportSvc.getPlanejamentoAtual(empresa_id);
   let meta_risco = false;
   if (plan) {
-    const di = toYmd(plan.data_inicio);
-    const df = toYmd(plan.data_fim);
-    const boundsPlan = utcBoundsFromDateRangeYmd(di, df);
+    const di = transportSvc.toYmd(plan.data_inicio);
+    const df = transportSvc.toYmd(plan.data_fim);
+    const boundsPlan = transportSvc.utcBoundsFromDateRangeYmd(di, df);
     if (boundsPlan?.start && boundsPlan?.end) {
-      const row = await getViagensResumoProducao(empresa_id, boundsPlan);
+      const row = await transportSvc.getViagensResumoProducao(empresa_id, boundsPlan);
       const pe = toNum(plan.meta_esteril_ton);
       const pr = toNum(plan.meta_rocha_ton);
       const ee = toNum(row.total_toneladas_esteril);

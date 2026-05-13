@@ -1,4 +1,5 @@
 import { dbPromise } from "./db";
+import { classifySyncFailure, computeNextTryAt } from "./syncPolicy";
 
 const SYNCED_RETENTION_DAYS = 15;
 const SYNCED_MAX_ITEMS = 300;
@@ -155,13 +156,15 @@ export const clearPending = async (id) => {
 export const updatePendingRetry = async (item, errorMessage) => {
   const db = await dbPromise;
   const attempts = (item.attempts || 0) + 1;
-  const waitMs = Math.min(30000, 2000 * attempts);
+  const now = Date.now();
+  const failureKind = classifySyncFailure(errorMessage || "");
   await db.put("pending", {
     ...item,
     owner_scope: item?.owner_scope || resolveOwnerScope(),
     attempts,
-    next_try_at: Date.now() + waitMs,
+    next_try_at: computeNextTryAt(attempts, now),
     last_error: errorMessage || "Falha ao sincronizar",
+    last_failure_kind: failureKind,
   });
 };
 
