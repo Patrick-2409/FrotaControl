@@ -371,6 +371,31 @@ const initDb = async () => {
     CREATE INDEX IF NOT EXISTS idx_veiculo_manut_empresa ON veiculo_manutencoes (empresa_id, data_servico DESC);
     CREATE INDEX IF NOT EXISTS idx_veiculo_manut_veiculo ON veiculo_manutencoes (veiculo_id, data_servico DESC);
   `);
+
+  await pool.query(`
+    ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS funcao VARCHAR(120);
+    ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS cnh_categoria VARCHAR(20);
+    ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS cnh_numero VARCHAR(40);
+    ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS treinamentos JSONB NOT NULL DEFAULT '[]'::jsonb;
+    ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS observacoes TEXT;
+    ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS equipamento_vinculo VARCHAR(200);
+    ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS operacao_escopo VARCHAR(200);
+    ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS status_operacional VARCHAR(20) NOT NULL DEFAULT 'ativo';
+  `);
+
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'usuarios_status_operacional_pessoa_chk'
+      ) THEN
+        ALTER TABLE usuarios
+          ADD CONSTRAINT usuarios_status_operacional_pessoa_chk
+          CHECK (status_operacional IN ('ativo', 'afastado', 'suspenso'));
+      END IF;
+    END
+    $$;
+  `);
 };
 
 module.exports = {

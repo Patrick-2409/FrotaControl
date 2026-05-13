@@ -12,6 +12,7 @@ const {
   deleteUser,
   listUsersByCompany,
   updateUser,
+  updateUserAsSuperAdmin,
   updateUserPassword,
 } = require("../models/userModel");
 const {
@@ -73,6 +74,27 @@ const userSchema = z.object({
     .transform((v) => (v === "" ? undefined : v)),
   role: z.enum(["MOTORISTA", "ADMIN_EMPRESA", "APONTADOR", "SUPER_ADMIN"]).default("MOTORISTA"),
   veiculo_id: z.coerce.number().int().positive().nullable().optional(),
+  profile_image_url: z
+    .string()
+    .max(2000)
+    .optional()
+    .transform((v) => (v === "" || v === undefined ? undefined : v)),
+  funcao: z.string().trim().max(120).optional().nullable(),
+  cnh_categoria: z.string().trim().max(20).optional().nullable(),
+  cnh_numero: z.string().trim().max(40).optional().nullable(),
+  cnh_validade: z.string().trim().optional().nullable(),
+  treinamentos: z
+    .array(
+      z.object({
+        titulo: z.string().trim().min(1).max(200),
+        validade: z.string().trim().optional().nullable(),
+      })
+    )
+    .optional(),
+  observacoes: z.string().trim().max(8000).optional().nullable(),
+  equipamento_vinculo: z.string().trim().max(200).optional().nullable(),
+  operacao_escopo: z.string().trim().max(200).optional().nullable(),
+  status_operacional: z.enum(["ativo", "afastado", "suspenso"]).optional(),
 }).superRefine((val, ctx) => {
   if (!hasFullName(val.nome)) {
     ctx.addIssue({
@@ -433,8 +455,7 @@ const listUsersCtrl = async (req, res) => {
     );
     const rows = await pool.query(
       `
-      SELECT
-        u.id, u.nome, u.email, u.cpf_id, u.role, u.empresa_id, u.veiculo_id, u.profile_image_url, u.created_at,
+      SELECT u.*,
         e.nome AS empresa_nome,
         v.nome AS veiculo_nome, v.placa
       FROM usuarios u
@@ -463,7 +484,14 @@ const listUsersCtrl = async (req, res) => {
     });
   }
   const { page, limit, search } = getPagination(req);
-  const result = await listUsersByCompany(empresa_id, { page, limit, search });
+  const result = await listUsersByCompany(empresa_id, {
+    page,
+    limit,
+    search,
+    role: String(req.query.role || ""),
+    status_operacional: String(req.query.status_operacional || ""),
+    escopo_operacional: String(req.query.escopo_operacional || ""),
+  });
   return res.json({
     ...result,
     page,
@@ -515,29 +543,26 @@ const updateUserCtrl = async (req, res) => {
   }
   let row;
   if (req.user.role === "SUPER_ADMIN") {
-    const result = await pool.query(
-      `UPDATE usuarios
-       SET nome = $2,
-           email = $3,
-           cpf_id = $4,
-           veiculo_id = $5,
-           role = $6,
-           empresa_id = $7
-       WHERE id = $1 AND role IN ('MOTORISTA', 'ADMIN_EMPRESA', 'APONTADOR', 'SUPER_ADMIN')
-       RETURNING id, nome, email, cpf_id, role, empresa_id, veiculo_id, profile_image_url`,
-      [
-        Number(req.params.id),
-        payload.nome,
-        payload.email || null,
-        payload.cpf_id,
-        payload.role === "SUPER_ADMIN" || payload.role === "APONTADOR" ? null : payload.veiculo_id || null,
-        payload.role,
-        empresa_id,
-      ]
-    );
-    row = result.rows[0];
+    row = await updateUserAsSuperAdmin(Number(req.params.id), {
+      ...payload,
+      empresa_id,
+    });
+    if (!row) {
+      return res.status(404).json({
+        success: false,
+        error: "Utilizador não encontrado.",
+        message: "Utilizador não encontrado.",
+      });
+    }
   } else {
     row = await updateUser(Number(req.params.id), empresa_id, payload);
+    if (!row) {
+      return res.status(404).json({
+        success: false,
+        error: "Utilizador não encontrado.",
+        message: "Utilizador não encontrado.",
+      });
+    }
   }
   if (payload.senha) {
     const senha_hash = await bcrypt.hash(payload.senha, 10);

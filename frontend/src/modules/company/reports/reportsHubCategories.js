@@ -48,7 +48,7 @@ export const REPORT_HUB_CATEGORIES = [
     id: "pessoas",
     label: "Pessoas",
     items: [
-      { id: "ps_mot", label: "Motoristas", action: { kind: "link", to: "/dashboard/gestao?secao=motoristas" } },
+      { id: "ps_mot", label: "Motoristas", action: { kind: "link", to: "/empresa/pessoas" } },
       { id: "ps_prod", label: "Produtividade", action: { kind: "link", to: "/empresa/pessoas" } },
       { id: "ps_hist", label: "Histórico", action: { kind: "link", to: "/empresa/pessoas" } },
     ],

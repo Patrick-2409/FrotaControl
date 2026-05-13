@@ -1,10 +1,546 @@
-import EmpresaModulePlaceholder from "../../shared/components/EmpresaModulePlaceholder";
+import { Link } from "react-router-dom";
+import Avatar from "../../../../components/Avatar";
+import PaginationControls from "../../../../components/PaginationControls";
+import SkeletonRows from "../../../../components/SkeletonRows";
+import EmpresaModuleErrorPanel from "../../shared/components/EmpresaModuleErrorPanel";
+import { resolveBackendAssetUrl } from "../../../../services/api";
+import { useEmpresaPeople } from "../hooks/useEmpresaPeople";
+
+function roleLabel(r) {
+  const m = { MOTORISTA: "Motorista", APONTADOR: "Apontador", ADMIN_EMPRESA: "Administrador" };
+  return m[r] || r;
+}
+
+function statusPessoaClass(s) {
+  if (s === "ativo") return "bg-emerald-500/15 text-emerald-200 ring-1 ring-emerald-500/35";
+  if (s === "afastado") return "bg-amber-500/15 text-amber-100 ring-1 ring-amber-500/35";
+  if (s === "suspenso") return "bg-rose-500/15 text-rose-100 ring-1 ring-rose-500/35";
+  return "bg-zinc-700/50 text-zinc-200 ring-1 ring-zinc-600/40";
+}
 
 export default function EmpresaPessoasPage() {
+  const p = useEmpresaPeople();
+
   return (
-    <EmpresaModulePlaceholder
-      title="Gestão de Pessoas"
-      description="Usuários, papéis e vínculos com a empresa. A tela de gestão atual permanece em /dashboard/gestao até o desmembramento deste módulo."
-    />
+    <div className="fc-erp-workspace">
+      <header className="border-b border-zinc-800 pb-6">
+        <p className="fc-erp-eyebrow">Módulo pessoas</p>
+        <div className="mt-2 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h1 className="fc-erp-h1">Equipa operacional</h1>
+            <p className="fc-erp-lead mt-3 max-w-2xl">
+              Motoristas, apontadores e administradores da empresa. Produtividade, vínculos com frota e equipamento,
+              documentação CNH e alertas operacionais integrados ao feed central.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              to="/empresa/alertas"
+              className="rounded-lg border border-amber-700/50 bg-amber-950/30 px-4 py-2 text-sm font-medium text-amber-100 hover:border-amber-500/60"
+            >
+              Alertas pessoas
+            </Link>
+            <Link
+              to="/dashboard/gestao?secao=motoristas"
+              className="rounded-lg border border-zinc-600 bg-zinc-900/80 px-4 py-2 text-sm text-zinc-200 hover:border-zinc-500"
+            >
+              Gestão clássica
+            </Link>
+          </div>
+        </div>
+      </header>
+
+      {p.summaryError ? (
+        <div className="mt-6">
+          <EmpresaModuleErrorPanel title="Resumo indisponível" description={p.summaryError} onRetry={p.refetchSummary} />
+        </div>
+      ) : p.summaryLoading && !p.summary ? (
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((k) => (
+            <div key={k} className="fc-card p-4">
+              <SkeletonRows rows={2} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <section className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Indicadores de pessoas">
+          <article className="fc-card border-zinc-800/80 p-4 sm:p-5">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Motoristas / apontadores</p>
+            <p className="mt-2 text-2xl font-semibold tabular-nums text-zinc-50">
+              {p.fmtInt(p.summary?.motoristas)} <span className="text-zinc-500">/</span> {p.fmtInt(p.summary?.apontadores)}
+            </p>
+          </article>
+          <article className="fc-card border-zinc-800/80 p-4 sm:p-5">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Lançamentos (7 dias)</p>
+            <p className="mt-2 text-2xl font-semibold tabular-nums text-zinc-50">
+              {p.fmtInt(p.summary?.romaneios_7d)} <span className="text-zinc-500">rom.</span>
+            </p>
+            <p className="mt-1 text-xs text-zinc-500">Partes diárias: {p.fmtInt(p.summary?.parte_diaria_7d)}</p>
+          </article>
+          <article className="fc-card border-zinc-800/80 p-4 sm:p-5">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">CNH (janela 60 dias)</p>
+            <p className="mt-2 text-2xl font-semibold tabular-nums text-zinc-50">{p.fmtInt(p.summary?.cnh_janela_60d)}</p>
+            <p className="mt-1 text-xs text-zinc-500">Motoristas com vencimento próximo ou em atraso.</p>
+          </article>
+          <article className="fc-card border-zinc-800/80 p-4 sm:p-5">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Risco operacional</p>
+            <p className="mt-2 text-sm leading-relaxed text-zinc-300">
+              Sem romaneio (7d): <span className="font-semibold text-zinc-100">{p.fmtInt(p.summary?.motoristas_sem_romaneio_7d)}</span>
+              <br />
+              Baixa atividade: <span className="font-semibold text-zinc-100">{p.fmtInt(p.summary?.motoristas_baixa_atividade)}</span>
+            </p>
+          </article>
+        </section>
+      )}
+
+      {p.summary?.por_status && (
+        <section className="mt-4 fc-card border-zinc-800/70 p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Status operacional (motoristas e apontadores)</p>
+          <ul className="mt-2 flex flex-wrap gap-2 text-xs text-zinc-300">
+            {Object.entries(p.summary.por_status).map(([k, v]) => (
+              <li key={k} className="rounded-md bg-zinc-800/80 px-2 py-1 tabular-nums">
+                {k}: {p.fmtInt(v)}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <section className="mt-10" aria-label="Ranking de produtividade">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-zinc-100">Ranking e participação (30 dias)</h2>
+        </div>
+        <div className="mt-3 overflow-x-auto rounded-xl border border-zinc-800/90">
+          <table className="min-w-[640px] w-full border-collapse text-left text-sm">
+            <thead>
+              <tr className="border-b border-zinc-800 bg-zinc-900/60 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                <th className="px-3 py-3">Pessoa</th>
+                <th className="px-3 py-3">Papel</th>
+                <th className="px-3 py-3">Vínculos</th>
+                <th className="px-3 py-3 text-right">Romaneios</th>
+                <th className="px-3 py-3 text-right">Parte diária</th>
+              </tr>
+            </thead>
+            <tbody>
+              {p.prodLoading ? (
+                <tr>
+                  <td colSpan={5} className="px-3 py-6">
+                    <SkeletonRows rows={3} />
+                  </td>
+                </tr>
+              ) : p.prod.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-3 py-6 text-center text-zinc-500">
+                    Sem dados de produtividade.
+                  </td>
+                </tr>
+              ) : (
+                p.prod.map((row) => (
+                  <tr key={row.id} className="border-b border-zinc-800/80 hover:bg-zinc-900/40">
+                    <td className="px-3 py-3">
+                      <div className="flex items-center gap-2">
+                        <Avatar imageUrl={resolveBackendAssetUrl(row.profile_image_url)} name={row.nome} size="list" />
+                        <div>
+                          <p className="font-medium text-zinc-100">{row.nome}</p>
+                          {row.funcao ? <p className="text-xs text-zinc-500">{row.funcao}</p> : null}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 text-zinc-400">{roleLabel(row.role)}</td>
+                    <td className="px-3 py-3 text-xs text-zinc-400">
+                      {row.role === "MOTORISTA" && (row.veiculo_placa || row.veiculo_nome) ? (
+                        <span>
+                          Veículo: {row.veiculo_placa || row.veiculo_nome}
+                        </span>
+                      ) : null}
+                      {row.role === "APONTADOR" ? <span>Coordenação de campo</span> : null}
+                    </td>
+                    <td className="px-3 py-3 text-right tabular-nums text-zinc-200">{p.fmtInt(row.romaneios)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-zinc-200">{p.fmtInt(row.partes_diaria)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="mt-10" aria-label="Lista de utilizadores">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <h2 className="text-lg font-semibold text-zinc-100">Cadastro e perfil</h2>
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            <input
+              type="search"
+              value={p.search}
+              onChange={(e) => {
+                p.setSearch(e.target.value);
+                p.setPage(1);
+              }}
+              placeholder="Nome, e-mail, CPF, função…"
+              className="w-full min-w-[12rem] rounded-lg border border-zinc-700 bg-zinc-900/80 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 sm:max-w-xs"
+            />
+            <select
+              value={p.roleFilter}
+              onChange={(e) => {
+                p.setRoleFilter(e.target.value);
+                p.setPage(1);
+              }}
+              className="rounded-lg border border-zinc-700 bg-zinc-900/80 px-3 py-2 text-sm text-zinc-100"
+            >
+              {p.ROLE_OPTS.map((o) => (
+                <option key={o.value || "all"} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={p.statusFilter}
+              onChange={(e) => {
+                p.setStatusFilter(e.target.value);
+                p.setPage(1);
+              }}
+              className="rounded-lg border border-zinc-700 bg-zinc-900/80 px-3 py-2 text-sm text-zinc-100"
+            >
+              {p.STATUS_OPTS.map((o) => (
+                <option key={o.value || "st"} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {p.listError ? (
+          <div className="mt-4">
+            <EmpresaModuleErrorPanel title="Lista indisponível" description={p.listError} onRetry={p.refetchUsers} />
+          </div>
+        ) : (
+          <div className="mt-4 overflow-x-auto rounded-xl border border-zinc-800/90">
+            <table className="min-w-[760px] w-full border-collapse text-left text-sm">
+              <thead>
+                <tr className="border-b border-zinc-800 bg-zinc-900/60 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                  <th className="px-3 py-3">Pessoa</th>
+                  <th className="px-3 py-3">Papel</th>
+                  <th className="px-3 py-3 hidden md:table-cell">Vínculo</th>
+                  <th className="px-3 py-3">Status</th>
+                  <th className="px-3 py-3 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {p.listLoading ? (
+                  <tr>
+                    <td colSpan={5} className="px-3 py-6">
+                      <SkeletonRows rows={4} />
+                    </td>
+                  </tr>
+                ) : p.users.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-3 py-8 text-center text-zinc-500">
+                      Nenhum registo encontrado.
+                    </td>
+                  </tr>
+                ) : (
+                  p.users.map((u) => (
+                    <tr key={u.id} className="border-b border-zinc-800/80 hover:bg-zinc-900/40">
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-2">
+                          <Avatar imageUrl={resolveBackendAssetUrl(u.profile_image_url)} name={u.nome} size="list" />
+                          <div>
+                            <p className="font-medium text-zinc-100">{u.nome}</p>
+                            <p className="text-xs text-zinc-500">{u.email || u.cpf_id}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-zinc-400">{roleLabel(u.role)}</td>
+                      <td className="px-3 py-3 text-xs text-zinc-400 hidden md:table-cell">
+                        {u.role === "MOTORISTA" && (u.veiculo_placa || u.veiculo_nome) ? (
+                          <span>
+                            {u.veiculo_placa} {u.veiculo_nome ? `· ${u.veiculo_nome}` : ""}
+                          </span>
+                        ) : u.equipamento_vinculo ? (
+                          <span>Equip.: {u.equipamento_vinculo}</span>
+                        ) : u.operacao_escopo ? (
+                          <span>Operação: {u.operacao_escopo}</span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="px-3 py-3">
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${statusPessoaClass(
+                            u.status_operacional || "ativo"
+                          )}`}
+                        >
+                          {u.status_operacional || "ativo"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => p.openEdit(u)}
+                          className="rounded-md border border-zinc-600 px-2 py-1 text-xs font-medium text-zinc-200 hover:border-zinc-500"
+                        >
+                          Editar perfil
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <PaginationControls
+          page={p.page}
+          totalPages={p.totalPages}
+          onPrev={() => p.setPage((x) => Math.max(1, x - 1))}
+          onNext={() => p.setPage((x) => Math.min(p.totalPages, x + 1))}
+        />
+      </section>
+
+      {p.panelOpen && p.selected ? (
+        <div
+          className="fixed inset-0 z-50 flex justify-end bg-black/55 p-0 sm:p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Editar perfil operacional"
+        >
+          <div className="flex h-full w-full max-w-lg flex-col overflow-y-auto border-l border-zinc-800 bg-zinc-950 shadow-2xl sm:max-h-[96vh] sm:rounded-xl sm:border">
+            <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+              <h3 className="text-base font-semibold text-zinc-100">Perfil profissional</h3>
+              <button
+                type="button"
+                onClick={p.closePanel}
+                className="rounded-md p-2 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+                aria-label="Fechar"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex-1 space-y-4 px-4 py-4">
+              {p.saveError ? (
+                <p className="rounded-md border border-rose-800/60 bg-rose-950/40 px-3 py-2 text-sm text-rose-100">
+                  {p.saveError}
+                </p>
+              ) : null}
+
+              <div className="flex items-center gap-3">
+                <Avatar imageUrl={resolveBackendAssetUrl(p.form.profile_image_url)} name={p.form.nome} size="header" />
+                <p className="text-xs text-zinc-500">URL da foto (opcional)</p>
+              </div>
+              <label className="block text-xs font-medium text-zinc-400">
+                Foto — URL
+                <input
+                  className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
+                  value={p.form.profile_image_url}
+                  onChange={(e) => p.setForm((f) => ({ ...f, profile_image_url: e.target.value }))}
+                />
+              </label>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block text-xs font-medium text-zinc-400 sm:col-span-2">
+                  Nome completo
+                  <input
+                    className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
+                    value={p.form.nome}
+                    onChange={(e) => p.setForm((f) => ({ ...f, nome: e.target.value }))}
+                  />
+                </label>
+                <label className="block text-xs font-medium text-zinc-400">
+                  E-mail
+                  <input
+                    className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
+                    value={p.form.email}
+                    onChange={(e) => p.setForm((f) => ({ ...f, email: e.target.value }))}
+                  />
+                </label>
+                <label className="block text-xs font-medium text-zinc-400">
+                  CPF / ID
+                  <input
+                    className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
+                    value={p.form.cpf_id}
+                    onChange={(e) => p.setForm((f) => ({ ...f, cpf_id: e.target.value }))}
+                  />
+                </label>
+                <label className="block text-xs font-medium text-zinc-400">
+                  Papel
+                  <select
+                    className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
+                    value={p.form.role}
+                    onChange={(e) => p.setForm((f) => ({ ...f, role: e.target.value }))}
+                  >
+                    <option value="MOTORISTA">Motorista</option>
+                    <option value="APONTADOR">Apontador</option>
+                    <option value="ADMIN_EMPRESA">Administrador</option>
+                  </select>
+                </label>
+                <label className="block text-xs font-medium text-zinc-400">
+                  Status operacional
+                  <select
+                    className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
+                    value={p.form.status_operacional}
+                    onChange={(e) => p.setForm((f) => ({ ...f, status_operacional: e.target.value }))}
+                  >
+                    <option value="ativo">Ativo</option>
+                    <option value="afastado">Afastado</option>
+                    <option value="suspenso">Suspenso</option>
+                  </select>
+                </label>
+                {p.form.role === "MOTORISTA" ? (
+                  <label className="block text-xs font-medium text-zinc-400 sm:col-span-2">
+                    Veículo vinculado
+                    <select
+                      className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
+                      value={p.form.veiculo_id}
+                      onChange={(e) => p.setForm((f) => ({ ...f, veiculo_id: e.target.value }))}
+                    >
+                      <option value="">— Selecionar —</option>
+                      {p.vehicles.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.placa} · {v.nome}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                <label className="block text-xs font-medium text-zinc-400 sm:col-span-2">
+                  Função / cargo operacional
+                  <input
+                    className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
+                    value={p.form.funcao}
+                    onChange={(e) => p.setForm((f) => ({ ...f, funcao: e.target.value }))}
+                    placeholder="Ex.: Motorista transporte, Operador escavadeira…"
+                  />
+                </label>
+                <label className="block text-xs font-medium text-zinc-400">
+                  CNH n.º
+                  <input
+                    className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
+                    value={p.form.cnh_numero}
+                    onChange={(e) => p.setForm((f) => ({ ...f, cnh_numero: e.target.value }))}
+                  />
+                </label>
+                <label className="block text-xs font-medium text-zinc-400">
+                  CNH categoria
+                  <input
+                    className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
+                    value={p.form.cnh_categoria}
+                    onChange={(e) => p.setForm((f) => ({ ...f, cnh_categoria: e.target.value }))}
+                    placeholder="B, C, D…"
+                  />
+                </label>
+                <label className="block text-xs font-medium text-zinc-400 sm:col-span-2">
+                  CNH validade
+                  <input
+                    type="date"
+                    className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
+                    value={p.form.cnh_validade}
+                    onChange={(e) => p.setForm((f) => ({ ...f, cnh_validade: e.target.value }))}
+                  />
+                </label>
+                <label className="block text-xs font-medium text-zinc-400 sm:col-span-2">
+                  Equipamento vinculado (operador)
+                  <input
+                    className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
+                    value={p.form.equipamento_vinculo}
+                    onChange={(e) => p.setForm((f) => ({ ...f, equipamento_vinculo: e.target.value }))}
+                  />
+                </label>
+                <label className="block text-xs font-medium text-zinc-400 sm:col-span-2">
+                  Escopo da operação (apontador)
+                  <input
+                    className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
+                    value={p.form.operacao_escopo}
+                    onChange={(e) => p.setForm((f) => ({ ...f, operacao_escopo: e.target.value }))}
+                  />
+                </label>
+                <label className="block text-xs font-medium text-zinc-400 sm:col-span-2">
+                  Observações internas
+                  <textarea
+                    rows={3}
+                    className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
+                    value={p.form.observacoes}
+                    onChange={(e) => p.setForm((f) => ({ ...f, observacoes: e.target.value }))}
+                  />
+                </label>
+                <label className="block text-xs font-medium text-zinc-400 sm:col-span-2">
+                  Nova senha (opcional)
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
+                    value={p.form.senha}
+                    onChange={(e) => p.setForm((f) => ({ ...f, senha: e.target.value }))}
+                  />
+                </label>
+              </div>
+
+              <div className="border-t border-zinc-800 pt-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Treinamentos</p>
+                  <button
+                    type="button"
+                    onClick={() => p.addTreinoRow()}
+                    className="text-xs font-medium text-amber-300 hover:text-amber-200"
+                  >
+                    + Adicionar
+                  </button>
+                </div>
+                <ul className="mt-2 space-y-2">
+                  {(p.form.treinamentos || []).map((t, idx) => (
+                    <li key={idx} className="flex flex-wrap gap-2 rounded-lg border border-zinc-800/80 bg-zinc-900/40 p-2">
+                      <input
+                        placeholder="Título"
+                        className="min-w-[8rem] flex-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-100"
+                        value={t.titulo}
+                        onChange={(e) =>
+                          p.setForm((f) => {
+                            const tr = [...(f.treinamentos || [])];
+                            tr[idx] = { ...tr[idx], titulo: e.target.value };
+                            return { ...f, treinamentos: tr };
+                          })
+                        }
+                      />
+                      <input
+                        type="date"
+                        className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-100"
+                        value={t.validade}
+                        onChange={(e) =>
+                          p.setForm((f) => {
+                            const tr = [...(f.treinamentos || [])];
+                            tr[idx] = { ...tr[idx], validade: e.target.value };
+                            return { ...f, treinamentos: tr };
+                          })
+                        }
+                      />
+                      <button
+                        type="button"
+                        onClick={() => p.removeTreinoRow(idx)}
+                        className="text-xs text-rose-400 hover:text-rose-300"
+                      >
+                        remover
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            <div className="sticky bottom-0 border-t border-zinc-800 bg-zinc-950 px-4 py-3">
+              <button
+                type="button"
+                disabled={p.saving}
+                onClick={() => p.savePerson()}
+                className="w-full rounded-lg bg-amber-500/90 py-2.5 text-sm font-semibold text-zinc-950 disabled:opacity-40"
+              >
+                {p.saving ? "A guardar…" : "Guardar alterações"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
