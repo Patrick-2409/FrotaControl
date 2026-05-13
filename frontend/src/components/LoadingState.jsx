@@ -1,3 +1,12 @@
+export function ScreenLoading({ message = "Carregando..." }) {
+  return (
+    <div className="grid min-h-screen place-content-center gap-3 px-4 text-slate-300" role="status" aria-live="polite">
+      <span className="fc-spinner mx-auto" aria-hidden="true" />
+      <span className="text-center text-sm">{message}</span>
+    </div>
+  );
+}
+
 export function InlineSpinner({ label }) {
   return (
     <span className="inline-flex items-center gap-2 text-sm text-slate-300" role="status" aria-live="polite">

@@ -6,6 +6,7 @@ import EmpresaLayout from "./components/EmpresaLayout";
 import SuperAdminLayout from "./components/SuperAdminLayout";
 import RouteTransition from "./components/RouteTransition";
 import ToastHost from "./components/ToastHost";
+import { ScreenLoading } from "./components/LoadingState";
 import { countPending, syncPending } from "./services/syncService";
 import { generateId } from "./utils/id";
 
@@ -35,7 +36,7 @@ const EmpresaPessoasPage = lazy(() => import("./modules/company/people/pages/Emp
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
-  if (loading) return <div className="grid min-h-screen place-content-center">Carregando...</div>;
+  if (loading) return <ScreenLoading />;
   if (!user) return <Navigate to="/" replace />;
   return children;
 }
@@ -66,7 +67,7 @@ function ProtectedApontador({ children }) {
 
 function PublicOnly({ children }) {
   const { user, loading } = useAuth();
-  if (loading) return <div className="grid min-h-screen place-content-center">Carregando...</div>;
+  if (loading) return <ScreenLoading />;
   if (user) return <Navigate to="/portal" replace />;
   return children;
 }
@@ -192,7 +193,7 @@ function App() {
   };
 
   return (
-    <Suspense fallback={<div className="grid min-h-screen place-content-center text-slate-300">Carregando...</div>}>
+    <Suspense fallback={<ScreenLoading />}>
       <a href="#conteudo-principal" className="fc-skip-link">Pular para o conteudo principal</a>
       {sessionExpiredNotice && (
         <div className="fixed left-1/2 top-4 z-[70] w-[min(92vw,560px)] -translate-x-1/2 rounded-xl border border-amber-400/40 bg-amber-500/15 px-4 py-3 text-sm font-semibold text-amber-100 shadow-2xl shadow-black/40">
