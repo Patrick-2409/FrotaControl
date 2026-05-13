@@ -12,30 +12,30 @@ function ParteDiariaChecklistSection({ aggregates }) {
   const totalLinhas = checklistRegistrosOk + checklistRegistrosPendencia + checklistRegistrosSemItens;
 
   return (
-    <section aria-labelledby="pd-checklist-title" className="fc-card border-fuchsia-500/25 p-5 ring-1 ring-fuchsia-500/15">
-      <h2 id="pd-checklist-title" className="text-lg font-semibold text-white">
+    <section aria-labelledby="pd-checklist-title" className="fc-card border-zinc-800/90 p-5 lg:p-6">
+      <h2 id="pd-checklist-title" className="text-lg font-semibold text-zinc-100">
         Checklist
       </h2>
-      <p className="mt-1 text-sm text-slate-400">
+      <p className="mt-2 text-sm leading-relaxed text-zinc-400">
         Classificação por registro: sem itens no JSON, todos OK, ou com pelo menos um item diferente de OK.
       </p>
-      <dl className="mt-4 grid gap-3 sm:grid-cols-3">
-        <div className="rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-3">
-          <dt className="text-[11px] font-semibold uppercase tracking-wider text-emerald-200/90">Checklist OK</dt>
-          <dd className="mt-1 text-2xl font-bold tabular-nums text-emerald-100">{fmtInt(checklistRegistrosOk)}</dd>
+      <dl className="mt-5 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-md border border-zinc-800 bg-zinc-950/50 p-3 shadow-inner">
+          <dt className="fc-erp-eyebrow">Checklist OK</dt>
+          <dd className="mt-2 text-2xl font-bold tabular-nums text-zinc-100">{fmtInt(checklistRegistrosOk)}</dd>
         </div>
-        <div className="rounded-lg border border-amber-500/35 bg-amber-950/25 p-3">
-          <dt className="text-[11px] font-semibold uppercase tracking-wider text-amber-100/90">Com pendência</dt>
-          <dd className="mt-1 text-2xl font-bold tabular-nums text-amber-50">{fmtInt(checklistRegistrosPendencia)}</dd>
-          <p className="mt-1 text-xs text-amber-200/80">{fmtInt(totalPendenciasItens)} itens não OK (soma)</p>
+        <div className="rounded-md border border-amber-500/35 bg-amber-950/20 p-3">
+          <dt className="fc-erp-eyebrow text-amber-200/90">Com pendência</dt>
+          <dd className="mt-2 text-2xl font-bold tabular-nums text-zinc-50">{fmtInt(checklistRegistrosPendencia)}</dd>
+          <p className="mt-2 text-xs text-amber-200/75">{fmtInt(totalPendenciasItens)} itens não OK (soma)</p>
         </div>
-        <div className="rounded-lg border border-slate-600 bg-slate-900/60 p-3">
-          <dt className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Sem itens</dt>
-          <dd className="mt-1 text-2xl font-bold tabular-nums text-slate-200">{fmtInt(checklistRegistrosSemItens)}</dd>
+        <div className="rounded-md border border-zinc-800 bg-zinc-950/50 p-3">
+          <dt className="fc-erp-eyebrow">Sem itens</dt>
+          <dd className="mt-2 text-2xl font-bold tabular-nums text-zinc-100">{fmtInt(checklistRegistrosSemItens)}</dd>
         </div>
       </dl>
       {totalLinhas > 0 ? (
-        <p className="mt-3 text-xs text-slate-500">
+        <p className="mt-4 text-xs leading-relaxed text-zinc-500">
           Base: {fmtInt(totalLinhas)} registro(s) nesta página. Indicadores globais do período exigiriam agregação no servidor.
         </p>
       ) : null}

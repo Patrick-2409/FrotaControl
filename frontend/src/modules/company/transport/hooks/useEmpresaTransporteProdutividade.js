@@ -35,20 +35,26 @@ export function useEmpresaTransporteProdutividade() {
     return { delta, direction, peak, avg };
   }, [trend]);
 
-  const trendIcon = trendSummary.direction === "up" ? "↑" : trendSummary.direction === "down" ? "↓" : "→";
   const trendClass =
     trendSummary.direction === "up"
       ? "fc-kpi-trend-up"
       : trendSummary.direction === "down"
-      ? "fc-kpi-trend-down"
-      : "fc-kpi-trend-neutral";
+        ? "fc-kpi-trend-down"
+        : "fc-kpi-trend-neutral";
+
+  const trendLabel =
+    trendSummary.direction === "up"
+      ? "Tendência positiva"
+      : trendSummary.direction === "down"
+        ? "Tendência negativa"
+        : "Tendência estável";
 
   return {
     stats,
     loading,
     trend,
     trendSummary,
-    trendIcon,
+    trendLabel,
     trendClass,
   };
 }

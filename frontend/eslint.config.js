@@ -17,5 +17,12 @@ export default defineConfig([
       globals: globals.browser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
+    rules: {
+      // Carregamento em useEffect (fetch, reset de estado ao mudar prop) é padrão neste projeto;
+      // a regra abaixo conflita com a maioria dos hooks de dados e com o AuthProvider.
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/immutability': 'off',
+      'react-hooks/exhaustive-deps': 'warn',
+    },
   },
 ])

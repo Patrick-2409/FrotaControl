@@ -209,58 +209,62 @@ export default function EmpresaLayout({ children }) {
   }, []);
 
   return (
-    <div className="fc-theme-empresa min-h-screen bg-slate-950 text-slate-100">
-      <header className="sticky top-0 z-50 border-b border-blue-500/30 bg-gradient-to-r from-blue-950/95 via-slate-900/95 to-blue-900/90 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-3">
+    <div className="fc-theme-empresa min-h-screen text-zinc-100 antialiased">
+      <header className="sticky top-0 z-50 border-b border-zinc-800/90 bg-zinc-950/90 backdrop-blur-md">
+        <div className="mx-auto flex w-full max-w-[90rem] flex-wrap items-center justify-between gap-4 px-4 py-3.5 sm:px-6 lg:px-8">
+          <div className="flex min-w-0 items-center gap-3 sm:gap-4">
             <CompanyLogo
               logoUrl={user?.logo_url}
               companyName={user?.empresa_nome}
-              className="h-12 w-12 border-blue-400/40 sm:h-14 sm:w-14"
+              className="h-11 w-11 shrink-0 border border-zinc-700/80 bg-zinc-900/50 sm:h-12 sm:w-12"
             />
-            <div>
-              <p className="text-xs uppercase tracking-wider text-blue-200">Dashboard Empresa</p>
-              <h1 className="text-lg font-semibold text-white sm:text-xl">{user?.empresa_nome || "Empresa"}</h1>
+            <div className="min-w-0">
+              <p className="fc-erp-eyebrow">Painel operacional</p>
+              <h1 className="truncate text-base font-semibold tracking-tight text-zinc-50 sm:text-lg">
+                {user?.empresa_nome || "Empresa"}
+              </h1>
             </div>
           </div>
-          <div className="flex items-center gap-2 text-sm sm:gap-3">
+          <div className="flex shrink-0 items-center gap-2.5 text-sm sm:gap-3">
             <Avatar imageUrl={user?.profile_image_url} name={user?.nome} size="header" />
-            <p className="hidden max-w-[180px] truncate text-slate-100 sm:block">{user?.nome}</p>
-            <button onClick={logout} className="fc-btn rounded-lg border border-blue-300/30 bg-blue-500/20 px-3 py-1.5 text-blue-100">
+            <p className="hidden max-w-[11rem] truncate text-zinc-400 sm:block">{user?.nome}</p>
+            <button
+              type="button"
+              onClick={logout}
+              className="fc-btn rounded-md border border-zinc-600 bg-zinc-900 px-3 py-2 text-xs font-semibold text-zinc-200 sm:text-sm"
+            >
               Sair
             </button>
           </div>
         </div>
       </header>
 
-      <div className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-6 sm:px-6 md:grid-cols-[260px_1fr]">
+      <div className="mx-auto grid w-full max-w-[90rem] gap-6 px-4 py-6 sm:gap-8 sm:px-6 lg:grid-cols-[minmax(0,17.5rem)_1fr] lg:gap-10 lg:px-8 lg:py-8">
         <aside
-          className="rounded-2xl border border-blue-500/25 bg-slate-900/75 p-3 shadow-lg shadow-blue-950/20"
+          className="rounded-lg border border-zinc-800/90 bg-zinc-950/70 p-3 shadow-[0_1px_0_rgba(255,255,255,0.04)_inset] sm:p-4"
           aria-label="Navegacao do dashboard"
         >
-          <div className="flex min-w-min gap-4 overflow-x-auto pb-1 md:min-w-0 md:flex-col md:gap-0 md:overflow-visible md:pb-0">
+          <div className="flex min-w-min gap-5 overflow-x-auto pb-1 md:min-w-0 md:flex-col md:gap-0 md:overflow-visible md:pb-0">
             {sections.map((section, si) => (
               <div
                 key={section.id}
-                className={`flex shrink-0 flex-col gap-1 md:shrink md:pb-1 ${
-                  si > 0 ? "border-l border-blue-500/20 pl-4 md:border-l-0 md:pl-0 md:pt-4 md:border-t md:border-blue-500/20" : ""
+                className={`flex shrink-0 flex-col gap-1.5 md:shrink md:pb-1 ${
+                  si > 0 ? "border-l border-zinc-800 pl-4 md:border-l-0 md:pl-0 md:pt-5 md:border-t md:border-zinc-800" : ""
                 }`}
               >
                 {section.title ? (
-                  <p className="mb-1 whitespace-nowrap px-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500 md:whitespace-normal">
-                    {section.title}
-                  </p>
+                  <p className="mb-0.5 whitespace-nowrap px-0.5 fc-erp-eyebrow md:whitespace-normal">{section.title}</p>
                 ) : null}
-                <div className="flex flex-col gap-1">
+                <div className="flex flex-col gap-0.5">
                   {section.items.map((tab) => (
                     <Link
                       key={`${section.id}-${tab.to}`}
                       to={tab.to}
                       onClick={() => tap(8)}
-                      className={`fc-tab-link flex shrink-0 items-center gap-2 rounded-xl px-3 py-2.5 text-sm whitespace-nowrap md:whitespace-normal ${
+                      className={`fc-tab-link flex shrink-0 items-center gap-2.5 rounded-md px-3 py-2.5 text-sm font-medium whitespace-nowrap md:whitespace-normal ${
                         tabIsActive(pathname, search, tab)
-                          ? "active bg-blue-600/35 text-blue-100 shadow-md shadow-blue-900/30"
-                          : "text-slate-300 hover:bg-slate-800 hover:text-slate-100"
+                          ? "active text-zinc-50"
+                          : "text-zinc-500 hover:bg-zinc-900/80 hover:text-zinc-200"
                       }`}
                     >
                       <MenuIcon type={tab.icon} />
@@ -272,20 +276,16 @@ export default function EmpresaLayout({ children }) {
             ))}
           </div>
           {footerItems.length > 0 ? (
-            <div className="mt-3 border-t border-blue-500/20 pt-3">
-              <p className="mb-2 hidden px-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500 md:block">
-                Conta
-              </p>
-              <div className="flex flex-row gap-2 overflow-x-auto md:flex-col md:overflow-visible">
+            <div className="mt-4 border-t border-zinc-800 pt-4">
+              <p className="mb-2 hidden px-0.5 fc-erp-eyebrow md:block">Conta</p>
+              <div className="flex flex-row gap-1 overflow-x-auto md:flex-col md:overflow-visible">
                 {footerItems.map((tab) => (
                   <Link
                     key={tab.to}
                     to={tab.to}
                     onClick={() => tap(8)}
-                    className={`fc-tab-link flex shrink-0 items-center gap-2 rounded-xl px-3 py-2.5 text-sm whitespace-nowrap md:whitespace-normal ${
-                      tabIsActive(pathname, search, tab)
-                        ? "active bg-blue-600/35 text-blue-100 shadow-md shadow-blue-900/30"
-                        : "text-slate-300 hover:bg-slate-800 hover:text-slate-100"
+                    className={`fc-tab-link flex shrink-0 items-center gap-2.5 rounded-md px-3 py-2.5 text-sm font-medium whitespace-nowrap md:whitespace-normal ${
+                      tabIsActive(pathname, search, tab) ? "active text-zinc-50" : "text-zinc-500 hover:bg-zinc-900/80 hover:text-zinc-200"
                     }`}
                   >
                     <MenuIcon type={tab.icon} />
@@ -296,7 +296,7 @@ export default function EmpresaLayout({ children }) {
             </div>
           ) : null}
         </aside>
-        <main className="fc-page min-w-0" id="conteudo-principal">
+        <main className="fc-page min-w-0 max-w-[min(100%,72rem)] lg:max-w-none" id="conteudo-principal">
           {children}
         </main>
       </div>

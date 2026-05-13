@@ -33,7 +33,7 @@ export default function ProfilePage() {
     try {
       const data = await getSyncDiagnostics();
       setDiagnostics(data);
-    } catch (err) {
+    } catch {
       emitToast("Falha ao carregar diagnóstico técnico de sync.", "error");
     } finally {
       setDiagnosticsLoading(false);

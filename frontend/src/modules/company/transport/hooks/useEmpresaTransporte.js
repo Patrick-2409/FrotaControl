@@ -155,16 +155,16 @@ export function useEmpresaTransporte() {
   const barWidthPct = Math.min(100, Math.max(0, Number(comparacao?.percentual_total ?? 0)));
 
   const planVsExecPieStyle = useMemo(() => {
-    if (!comparacao) return { background: "conic-gradient(#334155 0% 100%)" };
+    if (!comparacao) return { background: "conic-gradient(#3f3f46 0% 100%)" };
     const plan = Math.max(0, metaPlanejadaTotal);
     const exec = Math.max(0, executadoTotal);
-    if (plan <= 0 && exec <= 0) return { background: "conic-gradient(#334155 0% 100%)" };
+    if (plan <= 0 && exec <= 0) return { background: "conic-gradient(#3f3f46 0% 100%)" };
     if (plan <= 0) {
-      return { background: "conic-gradient(#22c55e 0 100%)" };
+      return { background: "conic-gradient(#d97706 0 100%)" };
     }
     const pctExec = Math.min(100, (exec / plan) * 100);
     return {
-      background: `conic-gradient(#22c55e 0 ${pctExec}%, #475569 ${pctExec}% 100%)`,
+      background: `conic-gradient(#d97706 0 ${pctExec}%, #3f3f46 ${pctExec}% 100%)`,
     };
   }, [comparacao, metaPlanejadaTotal, executadoTotal]);
 

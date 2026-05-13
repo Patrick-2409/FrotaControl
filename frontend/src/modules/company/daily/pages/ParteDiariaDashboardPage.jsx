@@ -43,28 +43,25 @@ export default function ParteDiariaDashboardPage() {
   }, [setPage, totalPages]);
 
   return (
-    <div className="space-y-8">
-      <header className="border-b border-slate-800/90 pb-6">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Módulo parte diária</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white md:text-3xl">Operação e documentação do dia</h1>
-        <p className="mt-2 max-w-2xl text-sm text-slate-400">
+    <div className="fc-erp-workspace">
+      <header className="border-b border-zinc-800 pb-6">
+        <p className="fc-erp-eyebrow">Módulo parte diária</p>
+        <h1 className="fc-erp-h1 mt-2">Operação e documentação do dia</h1>
+        <p className="fc-erp-lead mt-3">
           Registros consolidados da empresa, horímetro, checklist, ocorrências e status — isolados dos painéis de
           transporte e combustível.
         </p>
-        <div className="mt-4 flex flex-wrap gap-3 text-sm">
+        <div className="mt-5 flex flex-wrap gap-3 text-sm">
           <Link
             to="/dashboard/registros"
-            className="fc-btn inline-flex rounded-lg border border-violet-500/40 px-3 py-2 font-medium text-violet-100 hover:bg-violet-500/10"
+            className="fc-btn inline-flex rounded-md border border-zinc-600 px-3 py-2 font-medium text-zinc-200 hover:border-zinc-500"
           >
             Edição avançada em Registros
           </Link>
         </div>
       </header>
 
-      <section
-        className="fc-card border-violet-500/30 bg-gradient-to-b from-violet-950/20 via-slate-950/50 to-slate-950/80 p-6 shadow-lg ring-1 ring-violet-500/20"
-        aria-labelledby="pd-module-wrap"
-      >
+      <section className="fc-card border-zinc-800/90 p-6 lg:p-8" aria-labelledby="pd-module-wrap">
         <h2 id="pd-module-wrap" className="sr-only">
           Conteúdo do módulo parte diária
         </h2>

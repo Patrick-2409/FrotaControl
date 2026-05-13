@@ -108,7 +108,7 @@ export function useEmpresaParteDiariaModule() {
         horimetroDeltaCount += 1;
       }
 
-      const { itens, pendencias, semItens } = countChecklistPendencias(r.checklist);
+      const { pendencias, semItens } = countChecklistPendencias(r.checklist);
       if (semItens) checklistRegistrosSemItens += 1;
       else if (pendencias > 0) {
         checklistRegistrosPendencia += 1;

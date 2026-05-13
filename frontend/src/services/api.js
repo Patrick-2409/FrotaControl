@@ -14,27 +14,48 @@ export const getBaseURL = () => {
   return PROD_API_FALLBACK;
 };
 
+const MAX_API_ERROR_MESSAGE_LEN = 600;
+
 /** Mensagem legível a partir de erro Axios ou genérico (para toast / logs). */
 export const extractApiErrorMessage = (err) => {
   if (!err) return "";
   const data = err?.response?.data;
-  if (typeof data === "string" && data.trim()) return data.trim();
-  const fromIssues = Array.isArray(data?.issues) ? data.issues.find((i) => i?.message)?.message : null;
-  return (
-    (typeof data?.message === "string" && data.message) ||
-    (typeof data?.error === "string" && data.error) ||
-    (typeof fromIssues === "string" && fromIssues) ||
-    (typeof err.message === "string" && err.message) ||
-    ""
-  );
+  let out;
+  if (typeof data === "string" && data.trim()) {
+    out = data.trim();
+  } else {
+    const fromIssues = Array.isArray(data?.issues) ? data.issues.find((i) => i?.message)?.message : null;
+    out =
+      (typeof data?.message === "string" && data.message) ||
+      (typeof data?.error === "string" && data.error) ||
+      (typeof fromIssues === "string" && fromIssues) ||
+      (typeof err.message === "string" && err.message) ||
+      "";
+  }
+  if (typeof out !== "string") return "";
+  return out.length > MAX_API_ERROR_MESSAGE_LEN ? `${out.slice(0, MAX_API_ERROR_MESSAGE_LEN)}…` : out;
 };
 
+/**
+ * Resolve URL de ficheiro do backend para uso em <img src> etc.
+ * Rejeita esquemas não http(s) e URLs protocol-relative (//host) para reduzir risco de XSS/open redirect em atributos.
+ */
 export const resolveBackendAssetUrl = (value) => {
   if (!value) return null;
   const raw = String(value).trim();
   if (!raw) return null;
-  if (/^https?:\/\//i.test(raw)) return raw;
-  const normalized = raw.replace(/\\/g, "/");
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      const u = new URL(raw);
+      if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+      return u.href;
+    } catch {
+      return null;
+    }
+  }
+  const normalized = raw.replace(/\\/g, "/").trim();
+  if (!normalized || normalized.startsWith("//")) return null;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(normalized)) return null;
   const relative = normalized.startsWith("/") ? normalized : `/${normalized}`;
   return `${getBaseURL()}${relative}`;
 };
@@ -99,9 +120,13 @@ api.interceptors.response.use(
     }
 
     if (!isExpectedAuth401) {
-      const message =
+      const raw =
         error?.response?.data?.message ||
         (navigator.onLine ? "Servidor indisponível" : "Você está sem internet.");
+      const message =
+        typeof raw === "string" && raw.length > MAX_API_ERROR_MESSAGE_LEN
+          ? `${raw.slice(0, MAX_API_ERROR_MESSAGE_LEN)}…`
+          : raw;
       window.dispatchEvent(new CustomEvent("fc:api-error", { detail: message }));
     }
     return Promise.reject(error);

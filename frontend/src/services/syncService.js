@@ -246,7 +246,6 @@ export const syncNow = async () => {
       for (const item of pendings) {
         if (item.next_try_at && item.next_try_at > now) continue;
         const moduleName = normalizeModule(item.module || item.tipo || item.type);
-        let durationMs = 0;
         try {
           const rawPayload = {
             ...(item.payload || item.dados || item.data),
@@ -269,7 +268,7 @@ export const syncNow = async () => {
           });
           const startedAt = performance.now();
           await api.post(endpointByModule[moduleName], payload);
-          durationMs = Math.max(0, performance.now() - startedAt);
+          const durationMs = Math.max(0, performance.now() - startedAt);
           try {
             await addSyncMetric({ module: moduleName, durationMs, ok: true });
           } catch (metricErr) {

@@ -6,7 +6,7 @@ import { useEmpresaExecutiveStats } from "../hooks/useEmpresaExecutiveStats";
 const fmtInt = (n) => Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 
 const shortcutClass =
-  "group flex flex-col gap-1 rounded-xl border border-slate-700/80 bg-slate-900/50 p-4 transition hover:border-blue-500/40 hover:bg-slate-900/80";
+  "group flex flex-col gap-1.5 rounded-md border border-zinc-800 bg-zinc-950/40 p-4 transition-colors hover:border-zinc-600 hover:bg-zinc-900/50";
 
 export default function EmpresaExecutiveDashboardPage() {
   const { stats, loading } = useEmpresaExecutiveStats();
@@ -28,13 +28,18 @@ export default function EmpresaExecutiveDashboardPage() {
     return { delta, direction, peak, avg };
   }, [trend]);
 
-  const trendIcon = trendSummary.direction === "up" ? "↑" : trendSummary.direction === "down" ? "↓" : "→";
+  const trendLabel =
+    trendSummary.direction === "up"
+      ? "Tendência positiva"
+      : trendSummary.direction === "down"
+        ? "Tendência negativa"
+        : "Tendência estável";
   const trendClass =
     trendSummary.direction === "up"
-      ? "text-emerald-400"
+      ? "fc-kpi-trend-up"
       : trendSummary.direction === "down"
-      ? "text-rose-400"
-      : "text-slate-400";
+        ? "fc-kpi-trend-down"
+        : "fc-kpi-trend-neutral";
 
   const parteDiariaRegistros = useMemo(() => {
     const arr = stats?.por_tipo || [];
@@ -44,15 +49,15 @@ export default function EmpresaExecutiveDashboardPage() {
 
   if (loading) {
     return (
-      <div className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="fc-erp-workspace">
+        <div className="fc-erp-grid-kpi">
           {[1, 2, 3, 4].map((k) => (
-            <div key={k} className="fc-card border-slate-700/60 p-4">
+            <div key={k} className="fc-card border-zinc-800/90 p-5">
               <SkeletonRows rows={2} />
             </div>
           ))}
         </div>
-        <div className="fc-card border-slate-700/60 p-5">
+        <div className="fc-card border-zinc-800/90 p-6">
           <SkeletonRows rows={3} />
         </div>
       </div>
@@ -60,15 +65,15 @@ export default function EmpresaExecutiveDashboardPage() {
   }
 
   if (!stats) {
-    return <p className="text-sm text-rose-300">Não foi possível carregar o painel executivo.</p>;
+    return <p className="text-sm text-red-400/90">Não foi possível carregar o painel executivo.</p>;
   }
 
   return (
-    <div className="space-y-8">
-      <header className="border-b border-slate-800/90 pb-6">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Dashboard</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white md:text-3xl">Visão consolidada</h1>
-        <p className="mt-2 max-w-2xl text-sm text-slate-400">
+    <div className="fc-erp-workspace">
+      <header className="border-b border-zinc-800 pb-8">
+        <p className="fc-erp-eyebrow">Dashboard</p>
+        <h1 className="fc-erp-h1 mt-2">Visão consolidada</h1>
+        <p className="fc-erp-lead mt-3">
           Indicadores sintéticos. Transporte e combustível detalhados têm módulos próprios com filtros isolados.
         </p>
       </header>
@@ -77,112 +82,112 @@ export default function EmpresaExecutiveDashboardPage() {
         <h2 id="exec-resumo" className="sr-only">
           Resumo rápido
         </h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <article className="fc-card border-slate-700/70 bg-slate-950/40 p-4">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Motoristas ativos</p>
-            <p className="mt-2 text-3xl font-semibold tabular-nums text-white">{fmtInt(stats.motoristas_ativos)}</p>
-            <p className="mt-1 text-xs text-slate-500">Com lançamentos na semana</p>
+        <div className="fc-erp-grid-kpi">
+          <article className="fc-card border-zinc-800/90 p-5">
+            <p className="fc-erp-eyebrow">Motoristas ativos</p>
+            <p className="mt-3 text-3xl font-semibold tabular-nums text-zinc-50">{fmtInt(stats.motoristas_ativos)}</p>
+            <p className="mt-2 text-xs leading-relaxed text-zinc-500">Com lançamentos na semana</p>
           </article>
-          <article className="fc-card border-slate-700/70 bg-slate-950/40 p-4">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Veículos ativos</p>
-            <p className="mt-2 text-3xl font-semibold tabular-nums text-white">{fmtInt(stats.veiculos_ativos)}</p>
-            <p className="mt-1 text-xs text-slate-500">Frota da empresa</p>
+          <article className="fc-card border-zinc-800/90 p-5">
+            <p className="fc-erp-eyebrow">Veículos ativos</p>
+            <p className="mt-3 text-3xl font-semibold tabular-nums text-zinc-50">{fmtInt(stats.veiculos_ativos)}</p>
+            <p className="mt-2 text-xs leading-relaxed text-zinc-500">Frota da empresa</p>
           </article>
-          <article className="fc-card border-slate-700/70 bg-slate-950/40 p-4">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Registros hoje</p>
-            <p className="mt-2 text-3xl font-semibold tabular-nums text-white">{fmtInt(stats.total_hoje)}</p>
-            <p className={`mt-1 text-xs font-medium ${trendClass}`}>
-              {trendIcon} {Math.abs(trendSummary.delta)} vs. ontem · méd. {trendSummary.avg}/dia
+          <article className="fc-card border-zinc-800/90 p-5">
+            <p className="fc-erp-eyebrow">Registros hoje</p>
+            <p className="mt-3 text-3xl font-semibold tabular-nums text-zinc-50">{fmtInt(stats.total_hoje)}</p>
+            <p className={`mt-2 text-xs font-medium ${trendClass}`}>
+              {trendLabel} · {Math.abs(trendSummary.delta)} vs. ontem · méd. {trendSummary.avg}/dia
             </p>
           </article>
-          <article className="fc-card border-slate-700/70 bg-slate-950/40 p-4">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Total 7 dias</p>
-            <p className="mt-2 text-3xl font-semibold tabular-nums text-white">{fmtInt(stats.total_semanal)}</p>
-            <p className="mt-1 text-xs text-slate-500">Pico diário: {trendSummary.peak}</p>
+          <article className="fc-card border-zinc-800/90 p-5">
+            <p className="fc-erp-eyebrow">Total 7 dias</p>
+            <p className="mt-3 text-3xl font-semibold tabular-nums text-zinc-50">{fmtInt(stats.total_semanal)}</p>
+            <p className="mt-2 text-xs leading-relaxed text-zinc-500">Pico diário: {trendSummary.peak}</p>
           </article>
         </div>
       </section>
 
-      <section aria-labelledby="exec-cards" className="grid gap-4 lg:grid-cols-3">
+      <section aria-labelledby="exec-cards" className="grid gap-4 lg:grid-cols-3 lg:gap-5">
         <h2 id="exec-cards" className="sr-only">
           Cards executivos
         </h2>
-        <article className="fc-card flex flex-col justify-between border-cyan-900/40 bg-gradient-to-b from-slate-950/90 to-slate-950/50 p-5">
+        <article className="fc-card flex flex-col justify-between border-zinc-800/90 p-6">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-cyan-500/90">Produção / porto</p>
-            <p className="mt-3 text-sm text-slate-300">
+            <p className="fc-erp-eyebrow">Produção / porto</p>
+            <p className="mt-4 text-sm leading-relaxed text-zinc-400">
               Toneladas, estéril/rocha, metas e gráfico planejado x executado foram centralizados no módulo Transporte.
             </p>
           </div>
           <Link
             to="/empresa/transporte"
-            className="fc-btn mt-4 inline-flex w-fit rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white"
+            className="fc-btn mt-6 inline-flex w-fit rounded-md border border-zinc-600 bg-zinc-800 px-4 py-2.5 text-sm font-semibold text-zinc-100 hover:bg-zinc-700"
           >
             Abrir Transporte
           </Link>
         </article>
 
-        <article className="fc-card flex flex-col justify-between border-emerald-900/40 bg-gradient-to-b from-slate-950/90 to-slate-950/50 p-5">
+        <article className="fc-card flex flex-col justify-between border-zinc-800/90 p-6">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-emerald-500/90">Combustível</p>
-            <p className="mt-3 text-sm text-slate-300">
+            <p className="fc-erp-eyebrow">Combustível</p>
+            <p className="mt-4 text-sm leading-relaxed text-zinc-400">
               Litros, custos, pizza por veículo, médias e ranking estão no módulo Combustível, com filtros próprios.
             </p>
           </div>
           <Link
             to="/empresa/combustivel"
-            className="fc-btn mt-4 inline-flex w-fit rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
+            className="fc-btn mt-6 inline-flex w-fit rounded-md border border-zinc-600 bg-zinc-800 px-4 py-2.5 text-sm font-semibold text-zinc-100 hover:bg-zinc-700"
           >
             Abrir Combustível
           </Link>
         </article>
 
-        <article className="fc-card flex flex-col justify-between border-violet-900/40 bg-gradient-to-b from-slate-950/90 to-slate-950/50 p-5">
+        <article className="fc-card flex flex-col justify-between border-zinc-800/90 p-6">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-violet-400/90">Parte diária</p>
-            <p className="mt-3 text-3xl font-semibold tabular-nums text-violet-200">{fmtInt(parteDiariaRegistros)}</p>
-            <p className="mt-2 text-xs text-slate-500">Registros consolidados no período do painel.</p>
+            <p className="fc-erp-eyebrow">Parte diária</p>
+            <p className="mt-4 text-3xl font-semibold tabular-nums text-zinc-100">{fmtInt(parteDiariaRegistros)}</p>
+            <p className="mt-2 text-xs leading-relaxed text-zinc-500">Registros consolidados no período do painel.</p>
           </div>
         </article>
       </section>
 
-      <section aria-labelledby="exec-charts" className="grid gap-4 lg:grid-cols-2">
+      <section aria-labelledby="exec-charts" className="grid gap-4 lg:grid-cols-2 lg:gap-6">
         <h2 id="exec-charts" className="sr-only">
           Gráficos resumidos
         </h2>
-        <article className="fc-card border-slate-700/70 p-5">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Ritmo · últimos 7 dias</p>
-          <div className="mt-4 space-y-2">
+        <article className="fc-card border-zinc-800/90 p-6">
+          <p className="fc-erp-eyebrow">Ritmo · últimos 7 dias</p>
+          <div className="mt-5 space-y-2.5">
             {trend.length === 0 ? (
-              <p className="text-sm text-slate-500">Sem série para exibir.</p>
+              <p className="text-sm text-zinc-500">Sem série para exibir.</p>
             ) : (
               trend.map((d) => (
                 <div key={d.dia} className="flex items-center gap-3">
-                  <span className="w-[4.5rem] shrink-0 text-xs tabular-nums text-slate-500">
+                  <span className="w-[4.5rem] shrink-0 text-xs tabular-nums text-zinc-500">
                     {new Date(d.dia).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
                   </span>
-                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-800">
+                  <div className="h-2 flex-1 overflow-hidden rounded-sm bg-zinc-800">
                     <div
-                      className="h-2 rounded-full bg-gradient-to-r from-blue-600 to-blue-400"
+                      className="h-2 rounded-sm bg-gradient-to-r from-amber-700/90 to-amber-500/85"
                       style={{ width: `${Math.max(3, Math.min(100, (d.total || 0) * 8))}%` }}
                     />
                   </div>
-                  <span className="w-8 shrink-0 text-right text-xs font-medium tabular-nums text-slate-300">{d.total}</span>
+                  <span className="w-8 shrink-0 text-right text-xs font-medium tabular-nums text-zinc-300">{d.total}</span>
                 </div>
               ))
             )}
           </div>
         </article>
 
-        <article className="fc-card flex flex-col justify-between border-slate-700/70 p-5">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Meta e execução</p>
-          <p className="mt-3 text-sm text-slate-400">
+        <article className="fc-card flex flex-col justify-between border-zinc-800/90 p-6">
+          <p className="fc-erp-eyebrow">Meta e execução</p>
+          <p className="mt-4 text-sm leading-relaxed text-zinc-400">
             O gráfico de atingimento de metas e o planejamento semanal estão no módulo Transporte, com filtros e estado
             próprios.
           </p>
           <Link
             to="/empresa/transporte"
-            className="fc-btn mt-4 inline-flex w-fit rounded-lg border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-100"
+            className="fc-btn mt-6 inline-flex w-fit rounded-md border border-zinc-600 bg-transparent px-4 py-2.5 text-sm font-semibold text-zinc-200 hover:bg-zinc-900/80"
           >
             Ver metas e produção
           </Link>
@@ -190,7 +195,7 @@ export default function EmpresaExecutiveDashboardPage() {
       </section>
 
       <section aria-labelledby="exec-tipos">
-        <h2 id="exec-tipos" className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+        <h2 id="exec-tipos" className="fc-erp-eyebrow mb-4">
           Registros por tipo
         </h2>
         <div className="flex flex-wrap gap-2">
@@ -199,43 +204,43 @@ export default function EmpresaExecutiveDashboardPage() {
             .map((item) => (
               <span
                 key={item.tipo}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-700/80 bg-slate-900/60 px-3 py-1.5 text-xs text-slate-200"
+                className="inline-flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-xs text-zinc-300"
               >
-                <span className="text-slate-500">{item.tipo}</span>
-                <span className="font-semibold tabular-nums text-white">{item.total}</span>
+                <span className="text-zinc-500">{item.tipo}</span>
+                <span className="font-semibold tabular-nums text-zinc-100">{item.total}</span>
               </span>
             ))}
         </div>
       </section>
 
       <section aria-labelledby="exec-atalhos">
-        <h2 id="exec-atalhos" className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+        <h2 id="exec-atalhos" className="fc-erp-eyebrow mb-4">
           Atalhos
         </h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 lg:gap-4">
           <Link to="/empresa/transporte" className={shortcutClass}>
-            <span className="text-sm font-semibold text-white">Transporte</span>
-            <span className="text-xs text-slate-500">Toneladas, metas e produtividade</span>
+            <span className="text-sm font-semibold text-zinc-100">Transporte</span>
+            <span className="text-xs leading-snug text-zinc-500">Toneladas, metas e produtividade</span>
           </Link>
           <Link to="/empresa/combustivel" className={shortcutClass}>
-            <span className="text-sm font-semibold text-white">Combustível</span>
-            <span className="text-xs text-slate-500">Litros, custos e ranking</span>
+            <span className="text-sm font-semibold text-zinc-100">Combustível</span>
+            <span className="text-xs leading-snug text-zinc-500">Litros, custos e ranking</span>
           </Link>
           <Link to="/empresa/parte-diaria" className={shortcutClass}>
-            <span className="text-sm font-semibold text-white">Parte diária</span>
-            <span className="text-xs text-slate-500">Documentação operacional</span>
+            <span className="text-sm font-semibold text-zinc-100">Parte diária</span>
+            <span className="text-xs leading-snug text-zinc-500">Documentação operacional</span>
           </Link>
           <Link to="/dashboard" className={shortcutClass}>
-            <span className="text-sm font-semibold text-white">Visão operacional completa</span>
-            <span className="text-xs text-slate-500">Painel legado</span>
+            <span className="text-sm font-semibold text-zinc-100">Visão operacional completa</span>
+            <span className="text-xs leading-snug text-zinc-500">Painel legado</span>
           </Link>
           <Link to="/dashboard/relatorios" className={shortcutClass}>
-            <span className="text-sm font-semibold text-white">Relatórios</span>
-            <span className="text-xs text-slate-500">Exportação e auditoria</span>
+            <span className="text-sm font-semibold text-zinc-100">Relatórios</span>
+            <span className="text-xs leading-snug text-zinc-500">Exportação e auditoria</span>
           </Link>
           <Link to="/dashboard/gestao" className={shortcutClass}>
-            <span className="text-sm font-semibold text-white">Gestão</span>
-            <span className="text-xs text-slate-500">Usuários e veículos</span>
+            <span className="text-sm font-semibold text-zinc-100">Gestão</span>
+            <span className="text-xs leading-snug text-zinc-500">Usuários e veículos</span>
           </Link>
         </div>
       </section>

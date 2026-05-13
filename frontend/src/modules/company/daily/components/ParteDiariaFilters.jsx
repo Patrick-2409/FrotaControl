@@ -2,12 +2,12 @@ import { inputClass } from "../../../../components/FormField";
 
 export default function ParteDiariaFilters({ filtro, onFiltroChange, onClear }) {
   return (
-    <div className="border-b border-violet-500/20 pb-5">
+    <div className="border-b border-zinc-800/80 pb-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wider text-violet-300/90">Parte diária</p>
-          <h2 className="mt-1 text-xl font-semibold tracking-tight text-white">Filtros do módulo</h2>
-          <p className="mt-2 max-w-xl text-sm text-slate-400">
+        <div className="min-w-0">
+          <p className="fc-erp-eyebrow">Parte diária</p>
+          <h2 className="fc-erp-h1 mt-2 text-xl md:text-2xl">Filtros do módulo</h2>
+          <p className="fc-erp-lead mt-3 max-w-xl">
             Período e motorista aplicam apenas a esta tela (independente de transporte e combustível).
           </p>
         </div>
@@ -21,10 +21,10 @@ export default function ParteDiariaFilters({ filtro, onFiltroChange, onClear }) 
               key={p.id}
               type="button"
               onClick={() => onFiltroChange((f) => ({ ...f, periodo: p.id }))}
-              className={`fc-btn rounded-lg border px-3 py-2 text-sm font-medium transition ${
+              className={`fc-btn rounded-md border px-3 py-2 text-sm font-medium transition ${
                 filtro.periodo === p.id
-                  ? "border-violet-400/60 bg-violet-500/20 text-violet-100"
-                  : "border-slate-600 bg-slate-900/60 text-slate-300 hover:border-slate-500"
+                  ? "border-amber-500/50 bg-zinc-800/80 text-zinc-50 shadow-inner"
+                  : "border-zinc-700 bg-zinc-950/60 text-zinc-300 hover:border-zinc-600"
               }`}
             >
               {p.label}
@@ -35,7 +35,7 @@ export default function ParteDiariaFilters({ filtro, onFiltroChange, onClear }) 
 
       <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {filtro.periodo === "dia" ? (
-          <label className="block text-xs font-medium uppercase tracking-wide text-slate-400">
+          <label className="fc-erp-eyebrow block">
             Data operacional
             <input
               type="date"
@@ -46,7 +46,7 @@ export default function ParteDiariaFilters({ filtro, onFiltroChange, onClear }) 
           </label>
         ) : null}
         {filtro.periodo === "mes" ? (
-          <label className="block text-xs font-medium uppercase tracking-wide text-slate-400">
+          <label className="fc-erp-eyebrow block">
             Mês (AAAA-MM)
             <input
               type="month"
@@ -58,7 +58,7 @@ export default function ParteDiariaFilters({ filtro, onFiltroChange, onClear }) 
         ) : null}
         {filtro.periodo === "intervalo" ? (
           <>
-            <label className="block text-xs font-medium uppercase tracking-wide text-slate-400">
+            <label className="fc-erp-eyebrow block">
               Data início
               <input
                 type="date"
@@ -67,7 +67,7 @@ export default function ParteDiariaFilters({ filtro, onFiltroChange, onClear }) 
                 onChange={(e) => onFiltroChange((f) => ({ ...f, data_inicio: e.target.value }))}
               />
             </label>
-            <label className="block text-xs font-medium uppercase tracking-wide text-slate-400">
+            <label className="fc-erp-eyebrow block">
               Data fim
               <input
                 type="date"
@@ -78,7 +78,7 @@ export default function ParteDiariaFilters({ filtro, onFiltroChange, onClear }) 
             </label>
           </>
         ) : null}
-        <label className="block text-xs font-medium uppercase tracking-wide text-slate-400 sm:col-span-2 lg:col-span-2">
+        <label className="fc-erp-eyebrow block sm:col-span-2 lg:col-span-2">
           Motorista (busca)
           <input
             type="search"
@@ -91,7 +91,7 @@ export default function ParteDiariaFilters({ filtro, onFiltroChange, onClear }) 
         <div className="flex items-end">
           <button
             type="button"
-            className="fc-btn rounded-lg border border-slate-600 bg-slate-900/70 px-4 py-2 text-sm font-medium text-slate-200 hover:border-violet-500/40 hover:text-white"
+            className="fc-btn rounded-md border border-zinc-600 bg-zinc-950/70 px-4 py-2 text-sm font-medium text-zinc-200 hover:border-zinc-500"
             onClick={onClear}
           >
             Limpar filtros

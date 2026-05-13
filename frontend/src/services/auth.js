@@ -1,4 +1,4 @@
-import { createContext, createElement, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import api, { resolveBackendAssetUrl } from "./api";
 
 const AuthContext = createContext(null);
@@ -37,6 +37,14 @@ export const AuthProvider = ({ children }) => {
   });
   const [loading, setLoading] = useState(true);
 
+  const refreshUser = useCallback(async () => {
+    const { data } = await api.get("/auth/me");
+    const normalized = normalizeUser(data);
+    setUser(normalized);
+    localStorage.setItem("fc_user", JSON.stringify(normalized));
+    return normalized;
+  }, []);
+
   useEffect(() => {
     const token = localStorage.getItem("fc_token");
     if (!token) {
@@ -54,7 +62,7 @@ export const AuthProvider = ({ children }) => {
         }
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [refreshUser]);
 
   useEffect(() => {
     const onAuthExpired = () => {
@@ -65,14 +73,6 @@ export const AuthProvider = ({ children }) => {
     window.addEventListener("fc:auth-expired", onAuthExpired);
     return () => window.removeEventListener("fc:auth-expired", onAuthExpired);
   }, []);
-
-  const refreshUser = async () => {
-    const { data } = await api.get("/auth/me");
-    const normalized = normalizeUser(data);
-    setUser(normalized);
-    localStorage.setItem("fc_user", JSON.stringify(normalized));
-    return normalized;
-  };
 
   const login = async (payload) => {
     const { data } = await api.post("/auth/motorista-login", buildMotoristaLoginPayload(payload));

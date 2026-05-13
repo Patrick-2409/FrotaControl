@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import FormField, { inputClass } from "../components/FormField";
 import { saveWithOffline } from "../services/syncService";
 import { useAuth } from "../services/auth";
@@ -265,25 +265,28 @@ export default function ParteDiariaPage({ onSaved }) {
 
   const hasMultipleVehicles = vehicleOptions.length > 1;
 
+  const onVehicleChange = useCallback(
+    (rawId) => {
+      const nextId = rawId ? Number(rawId) : undefined;
+      const vehicle = vehicleOptions.find((v) => Number(v.id) === nextId);
+      const equipmentType = inferEquipmentType(vehicle?.nome);
+      const brandModel = buildBrandModel(vehicle?.marca, vehicle?.modelo);
+      setForm((prev) => ({
+        ...prev,
+        veiculo_id: nextId,
+        equipamento: equipmentType || prev.equipamento,
+        marca_modelo: brandModel || prev.marca_modelo,
+      }));
+    },
+    [vehicleOptions]
+  );
+
   useEffect(() => {
     if (form.veiculo_id || !vehicleOptions.length) return;
     const defaultVehicle = vehicleOptions.find((v) => v.linked) || vehicleOptions[0];
     if (!defaultVehicle) return;
     onVehicleChange(String(defaultVehicle.id));
-  }, [vehicleOptions, form.veiculo_id]);
-
-  const onVehicleChange = (rawId) => {
-    const nextId = rawId ? Number(rawId) : undefined;
-    const vehicle = vehicleOptions.find((v) => Number(v.id) === nextId);
-    const equipmentType = inferEquipmentType(vehicle?.nome);
-    const brandModel = buildBrandModel(vehicle?.marca, vehicle?.modelo);
-    setForm((prev) => ({
-      ...prev,
-      veiculo_id: nextId,
-      equipamento: equipmentType || prev.equipamento,
-      marca_modelo: brandModel || prev.marca_modelo,
-    }));
-  };
+  }, [vehicleOptions, form.veiculo_id, onVehicleChange]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -327,9 +330,7 @@ export default function ParteDiariaPage({ onSaved }) {
         veiculo_id: form.veiculo_id ? Number(form.veiculo_id) : undefined,
         checklist: normalizeChecklistForSubmit(form.checklist),
       };
-      console.log("ParteDiaria payload:", payload);
       const result = await saveWithOffline("parteDiaria", payload);
-      console.log("ParteDiaria response:", result);
       onSaved(result.status);
       setFeedback(result.status);
       emitToast(
