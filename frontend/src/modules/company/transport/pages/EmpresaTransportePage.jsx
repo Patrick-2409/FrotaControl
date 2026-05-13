@@ -488,7 +488,7 @@ function EmpresaTransportePageContent() {
           Visão operacional completa
         </Link>
         <Link
-          to="/dashboard/relatorios"
+          to="/empresa/relatorios"
           className="fc-btn inline-flex rounded-md border border-zinc-600 px-4 py-3 text-center font-semibold text-zinc-200"
         >
           Relatórios

@@ -7,6 +7,7 @@ import { emitToast } from "../services/uiEvents";
 import { InlineSpinner } from "../components/LoadingState";
 import { inputClass } from "../components/FormField";
 import EmptyState from "../components/EmptyState";
+import ManagerRecordsFiltersCard from "../components/reports/ManagerRecordsFiltersCard";
 import {
   formatDateForFilename,
   formatDayLabel,
@@ -22,9 +23,26 @@ import {
   typeLabelMap,
 } from "../utils/managerRecordsOperational";
 
-export default function ManagerRecordsPage() {
+const notifyReportsHubExport = (label) => {
+  try {
+    window.dispatchEvent(new CustomEvent("fc:reports-export", { detail: { label: String(label || "").slice(0, 120) } }));
+  } catch {
+    /* noop */
+  }
+};
+
+export default function ManagerRecordsPage({
+  layout = "standalone",
+  hubFiltro,
+  hubSetFiltro,
+  hubPage,
+  hubSetPage,
+  applyTick = 0,
+  hubLocalTreeSearch,
+  hubSetLocalTreeSearch,
+} = {}) {
   const [rows, setRows] = useState([]);
-  const [filtro, setFiltro] = useState({
+  const [internalFiltro, setInternalFiltro] = useState({
     data: todayAsInput(),
     data_inicio: "",
     data_fim: "",
@@ -39,8 +57,22 @@ export default function ManagerRecordsPage() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
-  const [localTreeSearch, setLocalTreeSearch] = useState("");
-  const [page, setPage] = useState(1);
+  const [internalPage, setInternalPage] = useState(1);
+  const isHub =
+    layout === "hub" &&
+    hubFiltro &&
+    hubSetFiltro &&
+    hubPage != null &&
+    hubSetPage;
+  const [internalLocalTreeSearch, setInternalLocalTreeSearch] = useState("");
+  const localTreeSearch =
+    isHub && hubLocalTreeSearch !== undefined && hubSetLocalTreeSearch ? hubLocalTreeSearch : internalLocalTreeSearch;
+  const setLocalTreeSearch =
+    isHub && hubLocalTreeSearch !== undefined && hubSetLocalTreeSearch ? hubSetLocalTreeSearch : setInternalLocalTreeSearch;
+  const filtro = isHub ? hubFiltro : internalFiltro;
+  const setFiltro = isHub ? hubSetFiltro : setInternalFiltro;
+  const page = isHub ? hubPage : internalPage;
+  const setPage = isHub ? hubSetPage : setInternalPage;
   const [totalPages, setTotalPages] = useState(1);
   const debouncedMotorista = useDebouncedValue(filtro.motorista);
   const hasActiveFilters = useMemo(
@@ -67,6 +99,7 @@ export default function ManagerRecordsPage() {
   }, [filtro.data, filtro.data_fim, filtro.data_inicio, filtro.mes, filtro.periodo]);
   const clearFilters = () => {
     setPage(1);
+    setLocalTreeSearch("");
     setFiltro({
       data: todayAsInput(),
       data_inicio: "",
@@ -110,6 +143,11 @@ export default function ManagerRecordsPage() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (applyTick === 0) return;
+    load();
+  }, [applyTick, load]);
+
   const buildExportQueryParams = useCallback(() => {
     const params = {
       motorista: debouncedMotorista?.trim() || undefined,
@@ -151,8 +189,52 @@ export default function ManagerRecordsPage() {
       a.click();
       URL.revokeObjectURL(url);
       emitToast(`Arquivo ${tipo.toUpperCase()} exportado.`);
+      notifyReportsHubExport(`Fichas ${tipo.toUpperCase()} — ${activityTag}`);
     } catch (err) {
       let errorMessage = err.response?.data?.message || `Falha ao gerar ${tipo.toUpperCase()}.`;
+      if (err?.response?.data instanceof Blob) {
+        try {
+          const raw = await err.response.data.text();
+          const parsed = JSON.parse(raw);
+          errorMessage = parsed?.message || parsed?.error || errorMessage;
+        } catch {
+          // fallback padrao
+        }
+      }
+      emitToast(errorMessage, "error");
+    } finally {
+      setExporting("");
+    }
+  };
+
+  const downloadCsv = async () => {
+    setExporting("csv");
+    try {
+      const params = {
+        ...buildExportQueryParams(),
+        tipo: filtro.tipo?.trim() || undefined,
+      };
+      const { data } = await api.get("/dashboard/export/csv", {
+        responseType: "blob",
+        params,
+      });
+      const url = URL.createObjectURL(data);
+      const a = document.createElement("a");
+      a.href = url;
+      const activityTag = (filtro.tipo || "todas-atividades").replaceAll("_", "-");
+      const suffix =
+        filtro.periodo === "dia"
+          ? formatDateForFilename(filtro.data || "")
+          : filtro.periodo === "mes"
+            ? formatDateForFilename(`${filtro.mes || ""}-01`)
+            : `${formatDateForFilename(filtro.data_inicio || "")}_${formatDateForFilename(filtro.data_fim || "")}`;
+      a.download = `relatorio_${activityTag}_${suffix}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      emitToast("Arquivo CSV exportado.");
+      notifyReportsHubExport(`Fichas CSV — ${activityTag}`);
+    } catch (err) {
+      let errorMessage = err.response?.data?.message || "Falha ao gerar CSV.";
       if (err?.response?.data instanceof Blob) {
         try {
           const raw = await err.response.data.text();
@@ -193,6 +275,7 @@ export default function ManagerRecordsPage() {
       a.click();
       URL.revokeObjectURL(url);
       emitToast(`${preset === "completo" ? "Relatório completo" : "Relatório"} exportado (${format.toUpperCase()}).`);
+      notifyReportsHubExport(`Porto ${preset} ${format.toUpperCase()}`);
     } catch (err) {
       let errorMessage = err.response?.data?.message || `Falha ao gerar relatório ${preset}.`;
       if (err?.response?.data instanceof Blob) {
@@ -232,10 +315,13 @@ export default function ManagerRecordsPage() {
       a.download =
         format === "excel"
           ? `relatorio_${activityTag}_${fileDate}.xlsx`
-          : `relatorio_${activityTag}_${fileDate}.pdf`;
+          : format === "csv"
+            ? `relatorio_${activityTag}_${fileDate}.csv`
+            : `relatorio_${activityTag}_${fileDate}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
       emitToast(`Relatório ${format.toUpperCase()} individual exportado.`);
+      notifyReportsHubExport(`Individual ${format.toUpperCase()} — ${row?.tipo || ""}`);
     } catch (err) {
       let errorMessage = err.response?.data?.message || `Falha ao gerar ${format.toUpperCase()} individual.`;
       if (err?.response?.data instanceof Blob) {
@@ -606,6 +692,13 @@ export default function ManagerRecordsPage() {
                                           >
                                             {exporting === `excel:${row?.source_id || row?.id}` ? "Excel..." : "Excel"}
                                           </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => downloadSingle("csv", row)}
+                                            className="fc-btn rounded-lg border border-teal-600/60 px-3 py-1 text-xs text-teal-100"
+                                          >
+                                            {exporting === `csv:${row?.source_id || row?.id}` ? "CSV..." : "CSV"}
+                                          </button>
                                         </div>
                                       </div>
                                       {fieldsRenderer(row)}
@@ -630,145 +723,27 @@ export default function ManagerRecordsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="fc-card mb-3 space-y-3 p-4">
-        <div className="grid grid-cols-3 gap-2">
-          {[
-            ["dia", "Por dia"],
-            ["mes", "Por mês"],
-            ["intervalo", "Por período"],
-          ].map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => {
-                setPage(1);
-                setFiltro((prev) => ({ ...prev, periodo: value }));
-              }}
-              className={`fc-btn rounded-lg border px-3 py-2 text-xs ${
-                filtro.periodo === value
-                  ? "border-blue-500 bg-blue-500/20 text-blue-100"
-                  : "border-slate-700 text-slate-300"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
-          {filtro.periodo === "dia" && (
-            <input
-              type="date"
-              placeholder="Data"
-              className={inputClass}
-              value={filtro.data}
-              onChange={(e) => {
-                setPage(1);
-                setFiltro((prev) => ({ ...prev, data: e.target.value }));
-              }}
-            />
-          )}
-          {filtro.periodo === "mes" && (
-            <input
-              type="month"
-              placeholder="Mês"
-              className={inputClass}
-              value={filtro.mes}
-              onChange={(e) => {
-                setPage(1);
-                setFiltro((prev) => ({ ...prev, mes: e.target.value }));
-              }}
-            />
-          )}
-          {filtro.periodo === "intervalo" && (
-            <>
-              <input
-                type="date"
-                placeholder="Data inicial"
-                className={inputClass}
-                value={filtro.data_inicio}
-                onChange={(e) => {
-                  setPage(1);
-                  setFiltro((prev) => ({ ...prev, data_inicio: e.target.value }));
-                }}
-              />
-              <input
-                type="date"
-                placeholder="Data final"
-                className={inputClass}
-                value={filtro.data_fim}
-                onChange={(e) => {
-                  setPage(1);
-                  setFiltro((prev) => ({ ...prev, data_fim: e.target.value }));
-                }}
-              />
-            </>
-          )}
-          <input placeholder="Motorista" className={inputClass} value={filtro.motorista} onChange={(e) => { setPage(1); setFiltro((prev) => ({ ...prev, motorista: e.target.value })); }} />
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:col-span-2">
-          {[["", "Todos"], ["romaneio", "Romaneio"], ["combustivel", "Combustível"], ["parte_diaria", "Parte diária"]].map(([tipo, label]) => (
-            <button
-              key={`tipo-${tipo || "todos"}`}
-              type="button"
-              onClick={() => { setPage(1); setFiltro((f) => ({ ...f, tipo })); }}
-              className={`fc-btn rounded-lg border px-3 py-2 text-xs ${filtro.tipo === tipo ? "border-blue-500 bg-blue-500/20 text-blue-100" : "border-slate-700 text-slate-300"}`}
-            >
-              {label}
-            </button>
-          ))}
-          </div>
-          <button onClick={load} className="fc-btn rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold">Filtrar</button>
-        </div>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
-          <input
-            placeholder="Busca local na árvore (motorista, placa, destino...)"
-            className={inputClass}
-            value={localTreeSearch}
-            onChange={(e) => setLocalTreeSearch(e.target.value)}
-          />
-          {localTreeSearch.trim() && (
-            <button
-              type="button"
-              onClick={() => setLocalTreeSearch("")}
-              className="fc-btn rounded-lg border border-slate-600 px-3 py-2 text-xs text-slate-200"
-            >
-              Limpar busca local
-            </button>
-          )}
-        </div>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <article className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-3">
-            <p className="text-[11px] uppercase tracking-wide text-blue-200/90">Período ativo</p>
-            <p className="mt-1 text-sm font-semibold text-blue-100">{activePeriodLabel}</p>
-          </article>
-          <article className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
-            <p className="text-[11px] uppercase tracking-wide text-emerald-200/90">Atividade ativa</p>
-            <p className="mt-1 text-sm font-semibold text-emerald-100">
-              {typeLabelMap[filtro.tipo] || "Todas as atividades"}
-            </p>
-          </article>
-          <article className="rounded-xl border border-violet-500/30 bg-violet-500/10 p-3">
-            <p className="text-[11px] uppercase tracking-wide text-violet-200/90">Motorista ativo</p>
-            <p className="mt-1 text-sm font-semibold text-violet-100">
-              {debouncedMotorista?.trim() || "Todos os motoristas"}
-            </p>
-          </article>
-        </div>
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={clearFilters}
-            className="fc-btn rounded-lg border border-slate-600 px-3 py-2 text-xs text-slate-200"
-            disabled={!hasActiveFilters}
-          >
-            Limpar filtros
-          </button>
-        </div>
-      </div>
+      {!isHub && (
+        <ManagerRecordsFiltersCard
+          filtro={filtro}
+          setFiltro={setFiltro}
+          setPage={setPage}
+          debouncedMotorista={debouncedMotorista}
+          localTreeSearch={localTreeSearch}
+          setLocalTreeSearch={setLocalTreeSearch}
+          hasActiveFilters={hasActiveFilters}
+          clearFilters={clearFilters}
+          activePeriodLabel={activePeriodLabel}
+          typeLabelMap={typeLabelMap}
+          onApplyFilter={load}
+        />
+      )}
 
       <div className="mb-4 rounded-xl border border-slate-600/50 bg-slate-900/40 p-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Relatórios — modelo Porto</p>
         <p className="mt-1 text-sm text-slate-300">
-          Excel e PDF com o mesmo layout das fichas e planilhas manuais (cabeçalho com período e logo da empresa).
+          Excel e PDF com o mesmo layout das fichas e planilhas manuais (cabeçalho com período e logo da empresa). Para
+          exportação tabular em lote use também CSV nas fichas consolidadas abaixo.
           Usa os filtros de período e motorista acima.
         </p>
         <ul className="mt-4 space-y-3">
@@ -804,7 +779,7 @@ export default function ManagerRecordsPage() {
         </ul>
       </div>
 
-      <div className="mb-4 flex gap-2">
+      <div className="mb-4 flex flex-wrap gap-2">
         <button
           type="button"
           disabled={Boolean(exporting)}
@@ -820,6 +795,14 @@ export default function ManagerRecordsPage() {
           className="fc-btn rounded-lg border border-blue-500 px-3 py-2 text-sm text-blue-300 disabled:opacity-50"
         >
           {exporting === "pdf" ? "Gerando..." : "Exportar PDF"}
+        </button>
+        <button
+          type="button"
+          disabled={Boolean(exporting)}
+          onClick={() => downloadCsv()}
+          className="fc-btn rounded-lg border border-teal-500/70 px-3 py-2 text-sm text-teal-200 disabled:opacity-50"
+        >
+          {exporting === "csv" ? "Gerando..." : "Exportar CSV"}
         </button>
         {exporting && <InlineSpinner label="Preparando arquivo..." />}
       </div>

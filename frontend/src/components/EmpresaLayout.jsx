@@ -145,7 +145,7 @@ function useNavGroups(pathname) {
           {
             id: "relatorios",
             title: null,
-            items: [{ to: "/dashboard/relatorios", label: "Relatórios", icon: "reports", exact: false }],
+            items: [{ to: "/empresa/relatorios", label: "Relatórios", icon: "reports", exact: false }],
           },
           {
             id: "admin",

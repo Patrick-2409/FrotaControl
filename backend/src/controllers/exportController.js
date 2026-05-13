@@ -4,6 +4,7 @@ const fsSync = require("fs");
 const fs = require("fs/promises");
 const path = require("path");
 const { listManagerRecords } = require("../models/recordModel");
+const { buildRegistrosCsvContent } = require("../utils/registrosCsv");
 const { getCompanyById } = require("../models/companyModel");
 const { z } = require("zod");
 
@@ -1362,7 +1363,28 @@ const exportPdf = async (req, res) => {
   res.send(pdfBuffer);
 };
 
+const exportCsv = async (req, res) => {
+  let filters;
+  try {
+    filters = parseExportFilters(req.query);
+  } catch (err) {
+    return res.status(400).json({
+      success: false,
+      error: err.message || "Filtros inválidos para exportação.",
+      message: err.message || "Filtros inválidos para exportação.",
+    });
+  }
+  const scope = resolveExportScope(req);
+  const company = await getCompanyById(scope.empresa_id);
+  const data = (await getData(scope, filters)).items;
+  const csv = buildRegistrosCsvContent(data, company?.nome || "Empresa");
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", "attachment; filename=registros.csv");
+  res.send(Buffer.from(csv, "utf8"));
+};
+
 module.exports = {
   exportExcel,
   exportPdf,
+  exportCsv,
 };

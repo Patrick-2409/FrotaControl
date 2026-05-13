@@ -233,7 +233,7 @@ export default function EmpresaExecutiveDashboardPage() {
             <span className="text-sm font-semibold text-zinc-100">Visão operacional completa</span>
             <span className="text-xs leading-snug text-zinc-500">Painel legado</span>
           </Link>
-          <Link to="/dashboard/relatorios" className={shortcutClass}>
+          <Link to="/empresa/relatorios" className={shortcutClass}>
             <span className="text-sm font-semibold text-zinc-100">Relatórios</span>
             <span className="text-xs leading-snug text-zinc-500">Exportação e auditoria</span>
           </Link>
