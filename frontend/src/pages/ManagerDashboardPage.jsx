@@ -16,6 +16,17 @@ const fmtBRL = (n) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+const fmtLitros = (n) =>
+  Number(n || 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const veiculoCombustivelLabel = (row) => {
+  const nome = String(row?.veiculo_nome ?? "").trim();
+  const placa = String(row?.veiculo_placa ?? "").trim();
+  if (nome && placa) return `${nome} — ${placa}`;
+  if (nome) return nome;
+  if (placa) return placa;
+  if (row?.veiculo_id != null) return `Veículo #${row.veiculo_id}`;
+  return "Sem veículo";
+};
 
 /** Faixas heurísticas em R$/t (menor = melhor eficiência de combustível por tonelada transportada). */
 const custoPorToneladaTier = (custoPorTonelada) => {
@@ -55,6 +66,8 @@ export default function ManagerDashboardPage() {
   const [planSaving, setPlanSaving] = useState(false);
   const [custoOp, setCustoOp] = useState(null);
   const [custoOpLoading, setCustoOpLoading] = useState(true);
+  const [combustivelResumo, setCombustivelResumo] = useState(null);
+  const [combustivelLoading, setCombustivelLoading] = useState(true);
   const [alertas, setAlertas] = useState({
     veiculos_sem_capacidade: 0,
     custo_alto: false,
@@ -97,6 +110,32 @@ export default function ManagerDashboardPage() {
       emitToast("Não foi possível carregar o custo operacional.", "warning");
     } finally {
       setCustoOpLoading(false);
+    }
+  }, [periodoViagens]);
+
+  const loadCombustivelResumo = useCallback(async () => {
+    setCombustivelLoading(true);
+    try {
+      const { data } = await api.get("/dashboard/combustiveis/resumo", {
+        params: { periodo: periodoViagens, group_by: "veiculo" },
+      });
+      setCombustivelResumo({
+        total_litros: data?.total_litros ?? 0,
+        total_valor: data?.total_valor ?? 0,
+        preco_medio_litro: data?.preco_medio_litro,
+        por_veiculo: Array.isArray(data?.por_veiculo) ? data.por_veiculo : [],
+        alertas_combustivel: {
+          consumo_elevado: Array.isArray(data?.alertas_combustivel?.consumo_elevado)
+            ? data.alertas_combustivel.consumo_elevado
+            : [],
+          preco_acima_media: Boolean(data?.alertas_combustivel?.preco_acima_media),
+        },
+      });
+    } catch {
+      setCombustivelResumo(null);
+      emitToast("Não foi possível carregar o resumo de combustível.", "warning");
+    } finally {
+      setCombustivelLoading(false);
     }
   }, [periodoViagens]);
 
@@ -155,6 +194,11 @@ export default function ManagerDashboardPage() {
 
   useEffect(() => {
     if (loading) return;
+    void loadCombustivelResumo();
+  }, [loading, loadCombustivelResumo]);
+
+  useEffect(() => {
+    if (loading) return;
     void loadAlertas();
   }, [loading, loadAlertas]);
 
@@ -193,6 +237,14 @@ export default function ManagerDashboardPage() {
       alertas.veiculos_sem_capacidade > 0 || alertas.custo_alto || alertas.meta_risco,
     [alertas]
   );
+
+  const temAlertasCombustivel = useMemo(() => {
+    if (combustivelLoading || !combustivelResumo?.alertas_combustivel) return false;
+    const a = combustivelResumo.alertas_combustivel;
+    return (a.consumo_elevado?.length ?? 0) > 0 || Boolean(a.preco_acima_media);
+  }, [combustivelLoading, combustivelResumo]);
+
+  const mostrarBarraAlertas = temAlertasDashboard || temAlertasCombustivel;
 
   const metaPlanejadaTotal = comparacao
     ? Number(comparacao.planejado_esteril || 0) + Number(comparacao.planejado_rocha || 0)
@@ -269,7 +321,7 @@ export default function ManagerDashboardPage() {
 
   return (
     <div className="space-y-6">
-      {temAlertasDashboard ? (
+      {mostrarBarraAlertas ? (
         <div
           role="status"
           className="space-y-2 rounded-xl border border-amber-500/40 bg-amber-950/35 p-4 text-sm text-amber-50 shadow-md shadow-black/20"
@@ -300,6 +352,18 @@ export default function ManagerDashboardPage() {
                 ⚠️
               </span>
               <span>Produção abaixo da meta</span>
+            </p>
+          ) : null}
+          {!combustivelLoading && combustivelResumo?.alertas_combustivel?.consumo_elevado?.length
+            ? combustivelResumo.alertas_combustivel.consumo_elevado.map((row) => (
+                <p key={`comb-consumo-${row.veiculo_id ?? "x"}`} className="flex items-start gap-2 font-medium">
+                  <span>⚠️ Consumo elevado no veículo {veiculoCombustivelLabel(row)}</span>
+                </p>
+              ))
+            : null}
+          {!combustivelLoading && combustivelResumo?.alertas_combustivel?.preco_acima_media ? (
+            <p className="flex items-start gap-2 font-medium">
+              <span>⚠️ Preço do combustível acima da média</span>
             </p>
           ) : null}
         </div>
@@ -343,6 +407,91 @@ export default function ManagerDashboardPage() {
         <p className="mt-2 text-3xl font-bold text-amber-300">{stats.total_semanal || 0}</p>
         <p className="mt-2 text-sm text-slate-300">Total de lançamentos nos últimos 7 dias.</p>
       </article>
+
+      <section className="fc-card border-emerald-500/25 p-5" aria-labelledby="consumo-combustivel-title">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-wider text-emerald-200/90">Abastecimentos</p>
+            <h2 id="consumo-combustivel-title" className="mt-1 text-lg font-semibold text-white">
+              Consumo de Combustível
+            </h2>
+            <p className="mt-1 text-sm text-slate-400">
+              Mesmo período que <span className="text-slate-300">Produção de Transporte</span> (
+              {periodoViagens === "dia" ? "Dia" : periodoViagens === "mes" ? "Mês" : "Semana"}).
+            </p>
+          </div>
+        </div>
+        {combustivelLoading ? (
+          <div className="mt-2">
+            <SkeletonRows rows={2} />
+          </div>
+        ) : combustivelResumo ? (
+          <>
+            <div className="mt-2 grid gap-4 md:grid-cols-3">
+              <article className="rounded-xl border border-emerald-500/30 bg-slate-950/55 p-4">
+                <p className="text-xs uppercase tracking-wider text-slate-400">Total litros</p>
+                <p className="mt-2 text-2xl font-bold text-emerald-300">{fmtLitros(combustivelResumo.total_litros)}</p>
+                <p className="mt-1 text-xs text-slate-500">Litros abastecidos no período.</p>
+              </article>
+              <article className="rounded-xl border border-emerald-500/30 bg-slate-950/55 p-4">
+                <p className="text-xs uppercase tracking-wider text-slate-400">Total valor (R$)</p>
+                <p className="mt-2 text-2xl font-bold text-white">{fmtBRL(combustivelResumo.total_valor)}</p>
+                <p className="mt-1 text-xs text-slate-500">Soma dos valores registrados.</p>
+              </article>
+              <article className="rounded-xl border border-emerald-500/30 bg-slate-950/55 p-4">
+                <p className="text-xs uppercase tracking-wider text-slate-400">Preço médio por litro</p>
+                <p className="mt-2 text-2xl font-bold text-emerald-200">
+                  {combustivelResumo.preco_medio_litro != null &&
+                  Number.isFinite(Number(combustivelResumo.preco_medio_litro)) ? (
+                    <>
+                      {fmtBRL(combustivelResumo.preco_medio_litro)}
+                      <span className="text-base font-semibold text-slate-400"> / L</span>
+                    </>
+                  ) : (
+                    "—"
+                  )}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">Quando não há litros no período, não há média.</p>
+              </article>
+            </div>
+
+            {combustivelResumo.por_veiculo?.length ? (
+              <div className="mt-8 border-t border-emerald-500/20 pt-6">
+                <h3 className="text-sm font-semibold text-white">Consumo por veículo (top 5)</h3>
+                <p className="mt-1 text-xs text-slate-500">Ordenado pelo maior volume de litros no período.</p>
+                <div className="mt-3 overflow-x-auto rounded-lg border border-slate-700/80">
+                  <table className="w-full min-w-[480px] text-left text-sm text-slate-200">
+                    <thead>
+                      <tr className="border-b border-slate-700 bg-slate-950/80 text-xs font-medium uppercase tracking-wide text-slate-400">
+                        <th className="px-3 py-2.5">Veículo</th>
+                        <th className="px-3 py-2.5">Litros</th>
+                        <th className="px-3 py-2.5">Valor</th>
+                        <th className="px-3 py-2.5">R$/litro</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {combustivelResumo.por_veiculo.map((row) => (
+                        <tr key={`cv-${row.veiculo_id ?? "x"}`} className="border-b border-slate-800/90 last:border-b-0">
+                          <td className="px-3 py-2.5 font-medium text-slate-100">{veiculoCombustivelLabel(row)}</td>
+                          <td className="px-3 py-2.5 tabular-nums">{fmtLitros(row.total_litros)}</td>
+                          <td className="px-3 py-2.5 tabular-nums">{fmtBRL(row.total_valor)}</td>
+                          <td className="px-3 py-2.5 tabular-nums">
+                            {row.preco_medio_litro != null && Number.isFinite(Number(row.preco_medio_litro))
+                              ? fmtBRL(row.preco_medio_litro)
+                              : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <p className="mt-2 text-sm text-slate-500">Resumo de combustível indisponível.</p>
+        )}
+      </section>
 
       <section
         className={`fc-card p-6 shadow-lg ring-1 ring-black/20 transition-colors ${custoCardStyles.wrap}`}

@@ -632,23 +632,101 @@ const getCombustiveisResumoMetrics = async ({ empresa_id, bounds, groupByVeiculo
 
   if (!groupByVeiculo) return base;
 
-  const { rows: groups } = await db.query(
-    `SELECT
-        veiculo_id,
-        COALESCE(SUM(litros), 0)::double precision AS total_litros,
-        COALESCE(SUM(valor_total), 0)::double precision AS total_valor,
-        (COALESCE(SUM(valor_total), 0) / NULLIF(COALESCE(SUM(litros), 0), 0))::double precision AS preco_medio_litro
-       FROM combustiveis
-       WHERE ${whereTime}
-       GROUP BY veiculo_id
-       ORDER BY veiculo_id NULLS LAST`,
-    params
-  );
+  const whereTimeC = `c.empresa_id = $1
+    AND COALESCE(c.recorded_at_client, c.data) >= $2::timestamptz
+    AND COALESCE(c.recorded_at_client, c.data) < $3::timestamptz`;
+
+  const [groupsRes, consumoElevadoRes, precoAcimaRes] = await Promise.all([
+    db.query(
+      `SELECT
+        c.veiculo_id,
+        MAX(v.nome) AS veiculo_nome,
+        MAX(v.placa) AS veiculo_placa,
+        COALESCE(SUM(c.litros), 0)::double precision AS total_litros,
+        COALESCE(SUM(c.valor_total), 0)::double precision AS total_valor,
+        (COALESCE(SUM(c.valor_total), 0) / NULLIF(COALESCE(SUM(c.litros), 0), 0))::double precision AS preco_medio_litro
+       FROM combustiveis c
+       LEFT JOIN veiculos v ON v.id = c.veiculo_id AND v.empresa_id = c.empresa_id
+       WHERE ${whereTimeC}
+       GROUP BY c.veiculo_id
+       ORDER BY COALESCE(SUM(c.litros), 0) DESC NULLS LAST
+       LIMIT 5`,
+      params
+    ),
+    db.query(
+      `WITH per_vehicle AS (
+        SELECT c.veiculo_id,
+               COALESCE(SUM(c.litros), 0)::double precision AS total_litros
+        FROM combustiveis c
+        WHERE ${whereTimeC}
+        GROUP BY c.veiculo_id
+      ),
+      agg AS (
+        SELECT
+          COALESCE(SUM(total_litros) FILTER (WHERE veiculo_id IS NOT NULL), 0)::double precision AS total_l,
+          COUNT(*) FILTER (WHERE veiculo_id IS NOT NULL AND total_litros > 0)::int AS n_veh
+        FROM per_vehicle
+      )
+      SELECT
+        pv.veiculo_id,
+        MAX(v.nome) AS veiculo_nome,
+        MAX(v.placa) AS veiculo_placa,
+        pv.total_litros
+      FROM per_vehicle pv
+      CROSS JOIN agg
+      LEFT JOIN veiculos v ON v.id = pv.veiculo_id AND v.empresa_id = $1
+      WHERE pv.veiculo_id IS NOT NULL
+        AND pv.total_litros > 0
+        AND agg.n_veh >= 2
+        AND pv.total_litros > (agg.total_l / NULLIF(agg.n_veh, 0)::double precision) * 1.55
+      ORDER BY pv.total_litros DESC
+      LIMIT 8`,
+      params
+    ),
+    db.query(
+      `WITH fleet AS (
+        SELECT (COALESCE(SUM(c.valor_total), 0) / NULLIF(COALESCE(SUM(c.litros), 0), 0))::double precision AS pm
+        FROM combustiveis c
+        WHERE ${whereTimeC}
+      ),
+      byv AS (
+        SELECT c.veiculo_id,
+               COALESCE(SUM(c.litros), 0)::double precision AS lit,
+               (COALESCE(SUM(c.valor_total), 0) / NULLIF(COALESCE(SUM(c.litros), 0), 0))::double precision AS pmv
+        FROM combustiveis c
+        WHERE ${whereTimeC}
+        GROUP BY c.veiculo_id
+      )
+      SELECT EXISTS (
+        SELECT 1
+        FROM byv
+        CROSS JOIN fleet
+        WHERE byv.lit >= 30
+          AND fleet.pm IS NOT NULL
+          AND fleet.pm > 0
+          AND byv.pmv IS NOT NULL
+          AND byv.pmv > fleet.pm * 1.12
+      ) AS preco_acima_media`,
+      params
+    ),
+  ]);
+
+  const groups = groupsRes.rows || [];
+  const consumoElevado = (consumoElevadoRes.rows || []).map((g) => ({
+    veiculo_id: g.veiculo_id == null ? null : Number(g.veiculo_id),
+    veiculo_nome: g.veiculo_nome || null,
+    veiculo_placa: g.veiculo_placa || null,
+    total_litros: g.total_litros == null ? 0 : Number(g.total_litros),
+  }));
+  const precoRow = precoAcimaRes.rows?.[0];
+  const preco_acima_media = Boolean(precoRow?.preco_acima_media);
 
   return {
     ...base,
     por_veiculo: groups.map((g) => ({
       veiculo_id: g.veiculo_id == null ? null : Number(g.veiculo_id),
+      veiculo_nome: g.veiculo_nome || null,
+      veiculo_placa: g.veiculo_placa || null,
       total_litros: g.total_litros == null ? 0 : Number(g.total_litros),
       total_valor: g.total_valor == null ? 0 : Number(g.total_valor),
       preco_medio_litro:
@@ -656,6 +734,10 @@ const getCombustiveisResumoMetrics = async ({ empresa_id, bounds, groupByVeiculo
           ? null
           : Number(g.preco_medio_litro),
     })),
+    alertas_combustivel: {
+      consumo_elevado: consumoElevado,
+      preco_acima_media,
+    },
   };
 };
 
