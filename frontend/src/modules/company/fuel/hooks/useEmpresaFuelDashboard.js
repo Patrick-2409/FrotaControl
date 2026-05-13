@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import api, { extractApiErrorMessage } from "../../../../services/api";
+import api, { extractApiErrorMessage, getFriendlyApiErrorMessage } from "../../../../services/api";
 import useDebouncedValue from "../../../../hooks/useDebouncedValue";
 import { readSessionJson, writeSessionJson } from "../../shared/sessionFilters";
 import { buildConsumoPorVeiculoPie } from "../charts/fuelPie";
@@ -111,7 +111,9 @@ export function useEmpresaFuelDashboard(options = {}) {
       setResumo(next);
     } catch (err) {
       setResumo(null);
-      setLoadError(extractApiErrorMessage(err) || "Falha ao carregar o resumo de combustível.");
+      setLoadError(
+        getFriendlyApiErrorMessage(err) || extractApiErrorMessage(err) || "Falha ao carregar o resumo de combustível."
+      );
     } finally {
       setLoading(false);
     }

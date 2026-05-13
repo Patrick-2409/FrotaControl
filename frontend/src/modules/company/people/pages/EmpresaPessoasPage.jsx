@@ -108,6 +108,15 @@ export default function EmpresaPessoasPage() {
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-zinc-100">Ranking e participação (30 dias)</h2>
         </div>
+        {p.prodError ? (
+          <div className="mt-3">
+            <EmpresaModuleErrorPanel
+              title="Ranking indisponível"
+              description={p.prodError}
+              onRetry={p.refetchProd}
+            />
+          </div>
+        ) : (
         <div className="mt-3 overflow-x-auto rounded-xl border border-zinc-800/90">
           <table className="min-w-[640px] w-full border-collapse text-left text-sm">
             <thead>
@@ -161,6 +170,7 @@ export default function EmpresaPessoasPage() {
             </tbody>
           </table>
         </div>
+        )}
       </section>
 
       <section className="mt-10" aria-label="Lista de utilizadores">

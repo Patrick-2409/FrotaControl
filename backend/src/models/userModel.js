@@ -239,11 +239,15 @@ const listUsersByCompany = async (
     idx += 1;
   }
 
+  const pageNum = Math.max(1, Number(page) || 1);
+  const limitNum = Math.max(1, Math.min(500, Number(limit) || 20));
+  const offset = (pageNum - 1) * limitNum;
+
   const whereSql = clauses.join(" AND ");
   const countParams = [...params];
   const limitPlaceholder = `$${idx}`;
   const offsetPlaceholder = `$${idx + 1}`;
-  params.push(limit, offset);
+  params.push(limitNum, offset);
 
   const count = await pool.query(
     `SELECT COUNT(*)::int AS total FROM usuarios u WHERE ${whereSql}`,

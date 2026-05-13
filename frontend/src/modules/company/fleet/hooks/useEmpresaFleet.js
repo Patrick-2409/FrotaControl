@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import api, { extractApiErrorMessage } from "../../../../services/api";
+import api, { extractApiErrorMessage, getFriendlyApiErrorMessage } from "../../../../services/api";
 
 const fmtInt = (n) => Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 
@@ -159,7 +159,7 @@ export function useEmpresaFleet() {
       const { data } = await api.get("/dashboard/fleet/summary");
       setSummary(data?.summary ?? null);
     } catch (e) {
-      setSummaryError(extractApiErrorMessage(e));
+      setSummaryError(getFriendlyApiErrorMessage(e) || extractApiErrorMessage(e));
       setSummary(null);
     } finally {
       setSummaryLoading(false);
@@ -183,7 +183,7 @@ export function useEmpresaFleet() {
       setTotal(Number(data?.total ?? 0));
       setTotalPages(Number(data?.totalPages ?? 1));
     } catch (e) {
-      setListError(extractApiErrorMessage(e));
+      setListError(getFriendlyApiErrorMessage(e) || extractApiErrorMessage(e));
       setVehicles([]);
     } finally {
       setListLoading(false);
@@ -253,7 +253,7 @@ export function useEmpresaFleet() {
       await loadSummary();
       closePanel();
     } catch (e) {
-      setSaveError(extractApiErrorMessage(e));
+      setSaveError(getFriendlyApiErrorMessage(e) || extractApiErrorMessage(e));
     } finally {
       setSaving(false);
     }

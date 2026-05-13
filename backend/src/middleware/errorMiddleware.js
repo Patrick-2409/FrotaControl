@@ -38,12 +38,24 @@ const errorMiddleware = (err, req, res, next) => {
   }
 
   const status = err.status || err.statusCode || 500;
+  const pathOnly = String(req.originalUrl || "").split("?")[0];
+  const pathModule =
+    pathOnly.includes("/dashboard/combustiveis") || pathOnly.includes("/combustiveis/")
+      ? "combustivel"
+      : pathOnly.includes("/dashboard/fleet")
+        ? "frota"
+        : pathOnly.includes("/dashboard/people")
+          ? "pessoas"
+          : pathOnly.includes("/dashboard/manage")
+            ? "gestao"
+            : undefined;
   const pgMeta =
     err?.code && typeof err.code === "string"
       ? { pgCode: err.code, pgDetail: err.detail, pgConstraint: err.constraint, pgTable: err.table }
       : {};
   logError(err.message || "Erro interno", {
     path: req.originalUrl,
+    pathModule,
     method: req.method,
     stack: err.stack,
     userId: req.user?.sub ?? null,

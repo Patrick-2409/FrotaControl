@@ -133,6 +133,10 @@ const listVehicles = async (
     tipo = "",
   } = {}
 ) => {
+  const pageNum = Math.max(1, Number(page) || 1);
+  const limitNum = Math.max(1, Math.min(500, Number(limit) || 25));
+  const offset = (pageNum - 1) * limitNum;
+
   const transportClause = filtrar_transporte ? "AND COALESCE(v.usa_para_transporte, false) = true" : "";
   const capacidadeClause = exige_capacidade
     ? "AND v.capacidade_ton IS NOT NULL AND v.capacidade_ton > 0"
@@ -164,7 +168,7 @@ const listVehicles = async (
   const whereSearch = extraClauses.length ? `AND ${extraClauses.join(" AND ")}` : "";
 
   const countValues = [empresa_id, ...extraVals];
-  const rowsValues = [empresa_id, ...extraVals, limit, offset];
+  const rowsValues = [empresa_id, ...extraVals, limitNum, offset];
   const qLimit = `$${paramIdx}`;
   const qOffset = `$${paramIdx + 1}`;
 

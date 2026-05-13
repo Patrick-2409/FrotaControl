@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import api, { extractApiErrorMessage } from "../../../../services/api";
+import api, { extractApiErrorMessage, getFriendlyApiErrorMessage } from "../../../../services/api";
 
 const fmtInt = (n) => Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 
@@ -112,6 +112,7 @@ export function useEmpresaPeople() {
 
   const [prod, setProd] = useState([]);
   const [prodLoading, setProdLoading] = useState(true);
+  const [prodError, setProdError] = useState(null);
 
   const [users, setUsers] = useState([]);
   const [total, setTotal] = useState(0);
@@ -144,7 +145,7 @@ export function useEmpresaPeople() {
       const { data } = await api.get("/dashboard/people/summary");
       setSummary(data?.summary ?? null);
     } catch (e) {
-      setSummaryError(extractApiErrorMessage(e));
+      setSummaryError(getFriendlyApiErrorMessage(e) || extractApiErrorMessage(e));
       setSummary(null);
     } finally {
       setSummaryLoading(false);
@@ -153,10 +154,12 @@ export function useEmpresaPeople() {
 
   const loadProductivity = useCallback(async () => {
     setProdLoading(true);
+    setProdError(null);
     try {
       const { data } = await api.get("/dashboard/people/productivity", { params: { days: 30, limit: 50 } });
       setProd(data?.items ?? []);
-    } catch {
+    } catch (e) {
+      setProdError(getFriendlyApiErrorMessage(e) || extractApiErrorMessage(e));
       setProd([]);
     } finally {
       setProdLoading(false);
@@ -189,7 +192,7 @@ export function useEmpresaPeople() {
       setTotal(Number(data?.total ?? 0));
       setTotalPages(Number(data?.totalPages ?? 1));
     } catch (e) {
-      setListError(extractApiErrorMessage(e));
+      setListError(getFriendlyApiErrorMessage(e) || extractApiErrorMessage(e));
       setUsers([]);
     } finally {
       setListLoading(false);
@@ -230,7 +233,7 @@ export function useEmpresaPeople() {
       await loadProductivity();
       closePanel();
     } catch (e) {
-      setSaveError(extractApiErrorMessage(e));
+      setSaveError(getFriendlyApiErrorMessage(e) || extractApiErrorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -257,6 +260,7 @@ export function useEmpresaPeople() {
     refetchSummary: loadSummary,
     prod,
     prodLoading,
+    prodError,
     refetchProd: loadProductivity,
     users,
     total,
