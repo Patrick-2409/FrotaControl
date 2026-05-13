@@ -6,17 +6,17 @@ function FuelMetricsCards({ resumo, mediaPorVeiculo }) {
 
   return (
     <div className="mt-6 grid gap-4 sm:grid-cols-3 lg:gap-5">
-      <article className="rounded-md border border-zinc-800 bg-zinc-950/50 p-4 shadow-inner">
+      <article className="fc-card fc-erp-kpi-card border-zinc-800/90 p-4 sm:p-5">
         <p className="fc-erp-eyebrow">Total litros</p>
         <p className="mt-3 text-2xl font-bold tabular-nums text-zinc-100">{fmtLitros(resumo.total_litros)}</p>
         <p className="mt-2 text-xs leading-relaxed text-zinc-500">Volume abastecido no intervalo filtrado.</p>
       </article>
-      <article className="rounded-md border border-zinc-800 bg-zinc-950/50 p-4 shadow-inner">
+      <article className="fc-card fc-erp-kpi-card border-zinc-800/90 p-4 sm:p-5">
         <p className="fc-erp-eyebrow">Total valor</p>
         <p className="mt-3 text-2xl font-bold tabular-nums text-zinc-100">{fmtBRL(resumo.total_valor)}</p>
         <p className="mt-2 text-xs leading-relaxed text-zinc-500">Soma dos valores registrados.</p>
       </article>
-      <article className="rounded-md border border-zinc-800 bg-zinc-950/50 p-4 shadow-inner">
+      <article className="fc-card fc-erp-kpi-card border-zinc-800/90 p-4 sm:p-5">
         <p className="fc-erp-eyebrow">Média por veículo</p>
         <p className="mt-3 text-2xl font-bold tabular-nums text-zinc-100">
           {mediaPorVeiculo != null && Number.isFinite(mediaPorVeiculo) ? (

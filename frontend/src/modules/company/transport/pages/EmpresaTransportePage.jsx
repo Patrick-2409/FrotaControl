@@ -73,14 +73,11 @@ function EmpresaTransportePageContent() {
       </header>
 
       {tr.temAlertasTransporte ? (
-        <div
-          role="status"
-          className="space-y-3 rounded-md border border-amber-500/35 bg-amber-950/25 p-4 text-sm text-zinc-100 shadow-inner"
-        >
-          <p className="fc-erp-eyebrow text-amber-200/95">Alertas operacionais</p>
+        <div role="status" className="fc-erp-alert-panel fc-erp-alert-panel--amber space-y-3 p-4 text-sm text-zinc-100 sm:p-5">
+          <p className="fc-erp-eyebrow text-amber-200/90">Alertas operacionais</p>
           {tr.alertasTransporte.veiculos_sem_capacidade > 0 ? (
             <p className="flex items-start gap-3 font-medium leading-snug">
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden />
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400/95" aria-hidden />
               <span>
                 {tr.alertasTransporte.veiculos_sem_capacidade === 1
                   ? "1 veículo sem capacidade definida"
@@ -90,13 +87,13 @@ function EmpresaTransportePageContent() {
           ) : null}
           {tr.alertasTransporte.custo_alto ? (
             <p className="flex items-start gap-3 font-medium leading-snug">
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden />
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400/95" aria-hidden />
               <span>Custo operacional elevado no período selecionado</span>
             </p>
           ) : null}
           {tr.alertasTransporte.meta_risco ? (
             <p className="flex items-start gap-3 font-medium leading-snug">
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden />
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400/95" aria-hidden />
               <span>Produção abaixo da meta</span>
             </p>
           ) : null}

@@ -5,8 +5,7 @@ import { useEmpresaExecutiveStats } from "../hooks/useEmpresaExecutiveStats";
 
 const fmtInt = (n) => Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 
-const shortcutClass =
-  "group flex flex-col gap-1.5 rounded-md border border-zinc-800 bg-zinc-950/40 p-4 transition-colors hover:border-zinc-600 hover:bg-zinc-900/50";
+const shortcutClass = "fc-erp-shortcut-card group";
 
 export default function EmpresaExecutiveDashboardPage() {
   const { stats, loading } = useEmpresaExecutiveStats();
@@ -52,7 +51,7 @@ export default function EmpresaExecutiveDashboardPage() {
       <div className="fc-erp-workspace">
         <div className="fc-erp-grid-kpi">
           {[1, 2, 3, 4].map((k) => (
-            <div key={k} className="fc-card border-zinc-800/90 p-5">
+            <div key={k} className="fc-card fc-erp-kpi-card border-zinc-800/90 p-5">
               <SkeletonRows rows={2} />
             </div>
           ))}
@@ -83,24 +82,24 @@ export default function EmpresaExecutiveDashboardPage() {
           Resumo rápido
         </h2>
         <div className="fc-erp-grid-kpi">
-          <article className="fc-card border-zinc-800/90 p-5">
+          <article className="fc-card fc-erp-kpi-card border-zinc-800/90 p-5">
             <p className="fc-erp-eyebrow">Motoristas ativos</p>
             <p className="mt-3 text-3xl font-semibold tabular-nums text-zinc-50">{fmtInt(stats.motoristas_ativos)}</p>
             <p className="mt-2 text-xs leading-relaxed text-zinc-500">Com lançamentos na semana</p>
           </article>
-          <article className="fc-card border-zinc-800/90 p-5">
+          <article className="fc-card fc-erp-kpi-card border-zinc-800/90 p-5">
             <p className="fc-erp-eyebrow">Veículos ativos</p>
             <p className="mt-3 text-3xl font-semibold tabular-nums text-zinc-50">{fmtInt(stats.veiculos_ativos)}</p>
             <p className="mt-2 text-xs leading-relaxed text-zinc-500">Frota da empresa</p>
           </article>
-          <article className="fc-card border-zinc-800/90 p-5">
+          <article className="fc-card fc-erp-kpi-card border-zinc-800/90 p-5">
             <p className="fc-erp-eyebrow">Registros hoje</p>
             <p className="mt-3 text-3xl font-semibold tabular-nums text-zinc-50">{fmtInt(stats.total_hoje)}</p>
             <p className={`mt-2 text-xs font-medium ${trendClass}`}>
               {trendLabel} · {Math.abs(trendSummary.delta)} vs. ontem · méd. {trendSummary.avg}/dia
             </p>
           </article>
-          <article className="fc-card border-zinc-800/90 p-5">
+          <article className="fc-card fc-erp-kpi-card border-zinc-800/90 p-5">
             <p className="fc-erp-eyebrow">Total 7 dias</p>
             <p className="mt-3 text-3xl font-semibold tabular-nums text-zinc-50">{fmtInt(stats.total_semanal)}</p>
             <p className="mt-2 text-xs leading-relaxed text-zinc-500">Pico diário: {trendSummary.peak}</p>
@@ -112,7 +111,7 @@ export default function EmpresaExecutiveDashboardPage() {
         <h2 id="exec-cards" className="sr-only">
           Cards executivos
         </h2>
-        <article className="fc-card flex flex-col justify-between border-zinc-800/90 p-6">
+        <article className="fc-card fc-erp-module-card flex flex-col justify-between border-zinc-800/90 p-6">
           <div>
             <p className="fc-erp-eyebrow">Produção / porto</p>
             <p className="mt-4 text-sm leading-relaxed text-zinc-400">
@@ -127,7 +126,7 @@ export default function EmpresaExecutiveDashboardPage() {
           </Link>
         </article>
 
-        <article className="fc-card flex flex-col justify-between border-zinc-800/90 p-6">
+        <article className="fc-card fc-erp-module-card flex flex-col justify-between border-zinc-800/90 p-6">
           <div>
             <p className="fc-erp-eyebrow">Combustível</p>
             <p className="mt-4 text-sm leading-relaxed text-zinc-400">
@@ -142,7 +141,7 @@ export default function EmpresaExecutiveDashboardPage() {
           </Link>
         </article>
 
-        <article className="fc-card flex flex-col justify-between border-zinc-800/90 p-6">
+        <article className="fc-card fc-erp-module-card flex flex-col justify-between border-zinc-800/90 p-6">
           <div>
             <p className="fc-erp-eyebrow">Parte diária</p>
             <p className="mt-4 text-3xl font-semibold tabular-nums text-zinc-100">{fmtInt(parteDiariaRegistros)}</p>
@@ -155,7 +154,7 @@ export default function EmpresaExecutiveDashboardPage() {
         <h2 id="exec-charts" className="sr-only">
           Gráficos resumidos
         </h2>
-        <article className="fc-card border-zinc-800/90 p-6">
+        <article className="fc-card fc-erp-module-card border-zinc-800/90 p-6">
           <p className="fc-erp-eyebrow">Ritmo · últimos 7 dias</p>
           <div className="mt-5 space-y-2.5">
             {trend.length === 0 ? (
@@ -179,7 +178,7 @@ export default function EmpresaExecutiveDashboardPage() {
           </div>
         </article>
 
-        <article className="fc-card flex flex-col justify-between border-zinc-800/90 p-6">
+        <article className="fc-card fc-erp-module-card flex flex-col justify-between border-zinc-800/90 p-6">
           <p className="fc-erp-eyebrow">Meta e execução</p>
           <p className="mt-4 text-sm leading-relaxed text-zinc-400">
             O gráfico de atingimento de metas e o planejamento semanal estão no módulo Transporte, com filtros e estado

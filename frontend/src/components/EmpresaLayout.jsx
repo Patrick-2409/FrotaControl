@@ -210,7 +210,7 @@ export default function EmpresaLayout({ children }) {
 
   return (
     <div className="fc-theme-empresa min-h-screen text-zinc-100 antialiased">
-      <header className="sticky top-0 z-50 border-b border-zinc-800/90 bg-zinc-950/90 backdrop-blur-md">
+      <header className="sticky top-0 z-50 border-b border-zinc-800/70 bg-zinc-950/92 backdrop-blur-md">
         <div className="mx-auto flex w-full max-w-[90rem] flex-wrap items-center justify-between gap-4 px-4 py-3.5 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-3 sm:gap-4">
             <CompanyLogo
@@ -241,15 +241,15 @@ export default function EmpresaLayout({ children }) {
 
       <div className="mx-auto grid w-full max-w-[90rem] gap-6 px-4 py-6 sm:gap-8 sm:px-6 lg:grid-cols-[minmax(0,17.5rem)_1fr] lg:gap-10 lg:px-8 lg:py-8">
         <aside
-          className="rounded-lg border border-zinc-800/90 bg-zinc-950/70 p-3 shadow-[0_1px_0_rgba(255,255,255,0.04)_inset] sm:p-4"
+          className="fc-erp-sidebar rounded-xl border border-zinc-800/80 p-3 sm:p-4"
           aria-label="Navegacao do dashboard"
         >
-          <div className="flex min-w-min gap-5 overflow-x-auto pb-1 md:min-w-0 md:flex-col md:gap-0 md:overflow-visible md:pb-0">
+          <div className="fc-erp-sidebar-scroll flex min-w-min gap-4 overflow-x-auto pb-1 md:min-w-0 md:flex-col md:gap-1 md:overflow-visible md:pb-0">
             {sections.map((section, si) => (
               <div
                 key={section.id}
-                className={`flex shrink-0 flex-col gap-1.5 md:shrink md:pb-1 ${
-                  si > 0 ? "border-l border-zinc-800 pl-4 md:border-l-0 md:pl-0 md:pt-5 md:border-t md:border-zinc-800" : ""
+                className={`fc-erp-sidebar-nav-section flex shrink-0 flex-col gap-1 md:shrink ${
+                  si > 0 ? "border-l border-zinc-800/90 pl-3 md:border-l-0 md:pl-0" : ""
                 }`}
               >
                 {section.title ? (

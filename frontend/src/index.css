@@ -134,7 +134,7 @@ textarea:focus-visible,
 
 .fc-theme-empresa .fc-card {
   border-color: var(--fc-erp-line);
-  border-radius: 0.625rem;
+  border-radius: 0.75rem;
   background: linear-gradient(180deg, rgba(20, 24, 31, 0.98) 0%, rgba(12, 14, 18, 0.99) 100%);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.035) inset, 0 14px 42px rgba(0, 0, 0, 0.5);
 }
@@ -209,6 +209,139 @@ textarea:focus-visible,
 .fc-theme-empresa .fc-btn:hover {
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
   filter: brightness(1.05);
+}
+
+/* ERP — cards KPI com hover discreto (desktop) */
+.fc-theme-empresa .fc-erp-kpi-card {
+  transition: border-color 180ms ease, box-shadow 220ms ease, transform 200ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .fc-theme-empresa .fc-erp-kpi-card:hover {
+    border-color: rgba(82, 82, 91, 0.95);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 22px 52px rgba(0, 0, 0, 0.55);
+    transform: translateY(-2px);
+  }
+}
+
+.fc-theme-empresa .fc-erp-module-card {
+  min-height: 11rem;
+  transition: border-color 180ms ease, box-shadow 220ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .fc-theme-empresa .fc-erp-module-card:hover {
+    border-color: rgba(91, 91, 102, 0.95);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 18px 44px rgba(0, 0, 0, 0.52);
+  }
+}
+
+.fc-theme-empresa .fc-erp-shortcut-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  border-radius: 0.625rem;
+  border: 1px solid var(--fc-erp-line);
+  background: rgba(12, 14, 18, 0.55);
+  padding: 1rem;
+  text-decoration: none;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 200ms ease, transform 200ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .fc-theme-empresa .fc-erp-shortcut-card:hover {
+    border-color: rgba(113, 113, 122, 0.55);
+    background: rgba(24, 24, 27, 0.78);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.38);
+    transform: translateY(-1px);
+  }
+}
+
+/* Painéis de alerta operacional (transporte, combustível, etc.) */
+.fc-erp-alert-panel {
+  border-radius: 0.5rem;
+  border: 1px solid rgba(63, 63, 70, 0.85);
+  background: linear-gradient(135deg, rgba(24, 24, 27, 0.88) 0%, rgba(9, 9, 11, 0.96) 100%);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.035) inset, 0 10px 28px rgba(0, 0, 0, 0.38);
+}
+
+.fc-erp-alert-panel--amber {
+  border-color: rgba(146, 64, 14, 0.38);
+  background: linear-gradient(135deg, rgba(39, 39, 42, 0.5) 0%, rgba(9, 9, 11, 0.94) 100%);
+  box-shadow: 0 1px 0 rgba(251, 191, 36, 0.05) inset, 0 12px 32px rgba(0, 0, 0, 0.42);
+}
+
+.fc-erp-alert-panel--critical {
+  border-color: rgba(127, 29, 29, 0.42);
+  background: linear-gradient(135deg, rgba(39, 39, 42, 0.55) 0%, rgba(9, 9, 11, 0.96) 100%);
+  box-shadow: 0 1px 0 rgba(248, 113, 113, 0.06) inset, 0 12px 32px rgba(0, 0, 0, 0.42);
+}
+
+/* Área de gráficos / legendas (padding e leitura mobile) */
+.fc-erp-chart-surface {
+  border-radius: 0.625rem;
+  border: 1px solid var(--fc-erp-line);
+  background: rgba(9, 11, 14, 0.5);
+  padding: clamp(1rem, 3vw, 1.35rem);
+}
+
+.fc-theme-empresa .fc-erp-table-scroll {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Inputs no shell empresa — neutro estilo Fiori / Monday */
+.fc-theme-empresa .fc-input {
+  border-radius: 0.5rem;
+  border: 1px solid rgba(63, 72, 88, 0.95);
+  background: rgba(9, 11, 14, 0.88);
+  padding: 0.65rem 0.85rem;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.025) inset;
+}
+
+.fc-theme-empresa .fc-input:focus {
+  border-color: rgba(212, 175, 55, 0.42);
+  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.14);
+}
+
+.fc-theme-empresa .fc-input::placeholder {
+  color: #71717a;
+}
+
+/* Sidebar empresa */
+.fc-theme-empresa .fc-erp-sidebar {
+  border-color: rgba(39, 39, 42, 0.95);
+  background: linear-gradient(180deg, rgba(18, 18, 20, 0.94) 0%, rgba(9, 9, 11, 0.96) 100%);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 16px 40px rgba(0, 0, 0, 0.42);
+}
+
+.fc-theme-empresa .fc-erp-sidebar-nav-section {
+  border-radius: 0.5rem;
+  padding: 0.25rem 0.125rem;
+}
+
+@media (min-width: 768px) {
+  .fc-theme-empresa .fc-erp-sidebar-nav-section:not(:first-child) {
+    margin-top: 0.125rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(39, 39, 42, 0.9);
+  }
+
+  .fc-theme-empresa .fc-erp-sidebar-nav-section:first-child {
+    padding-top: 0;
+  }
+}
+
+@media (max-width: 767px) {
+  .fc-theme-empresa .fc-erp-sidebar-scroll {
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.25rem;
+  }
+
+  .fc-theme-empresa .fc-erp-sidebar-nav-section {
+    scroll-snap-align: start;
+    min-width: min(42vw, 11rem);
+  }
 }
 
 .fc-theme-superadmin {

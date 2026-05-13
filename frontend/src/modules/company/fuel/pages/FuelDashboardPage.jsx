@@ -33,33 +33,31 @@ function FuelDashboardContent() {
       </header>
 
       {fuel.temAlertasCombustivel && fuel.resumo ? (
-        <div
-          role="status"
-          className="space-y-2 rounded-md border border-amber-900/40 bg-zinc-950/80 p-4 text-sm text-zinc-200 ring-1 ring-amber-900/25"
-        >
+        <div role="status" className="fc-erp-alert-panel fc-erp-alert-panel--amber space-y-2.5 p-4 text-sm text-zinc-200 sm:p-5">
+          <p className="fc-erp-eyebrow text-amber-200/90">Alertas operacionais</p>
           {!fuel.loading && fuel.resumo?.alertas_combustivel?.consumo_elevado?.length
             ? fuel.resumo.alertas_combustivel.consumo_elevado.map((row) => (
-                <p key={`comb-${row.veiculo_id ?? "x"}`} className="flex items-start gap-2 font-medium">
-                  <span className="mt-0.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" aria-hidden />
+                <p key={`comb-${row.veiculo_id ?? "x"}`} className="flex items-start gap-2.5 font-medium leading-snug">
+                  <span className="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400/95" aria-hidden />
                   <span>Consumo elevado no veículo {veiculoCombustivelLabel(row)}</span>
                 </p>
               ))
             : null}
           {!fuel.loading && fuel.resumo?.alertas_combustivel?.preco_acima_media ? (
-            <p className="flex items-start gap-2 font-medium">
-              <span className="mt-0.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" aria-hidden />
+            <p className="flex items-start gap-2.5 font-medium leading-snug">
+              <span className="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400/95" aria-hidden />
               <span>Preço do combustível acima da média</span>
             </p>
           ) : null}
           {!fuel.loading && fuel.resumo?.alertas_combustivel?.consumo_alto_periodo ? (
-            <p className="flex items-start gap-2 font-medium">
-              <span className="mt-0.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" aria-hidden />
+            <p className="flex items-start gap-2.5 font-medium leading-snug">
+              <span className="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400/95" aria-hidden />
               <span>Consumo alto: ritmo diário acima da média dos últimos 12 meses</span>
             </p>
           ) : null}
           {!fuel.loading && fuel.resumo?.alertas_combustivel?.preco_fora_media_historico ? (
-            <p className="flex items-start gap-2 font-medium">
-              <span className="mt-0.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" aria-hidden />
+            <p className="flex items-start gap-2.5 font-medium leading-snug">
+              <span className="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400/95" aria-hidden />
               <span>Preço fora da média: acima do preço médio histórico</span>
             </p>
           ) : null}
