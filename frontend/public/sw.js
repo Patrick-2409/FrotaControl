@@ -1,4 +1,4 @@
-const CACHE = "frotacontrol-v8";
+const CACHE = "frotacontrol-v9";
 const SHELL = ["/", "/manifest.json", "/icon.png"];
 
 self.addEventListener("install", (event) => {

@@ -1,10 +1,17 @@
 {
   "name": "FrotaControl",
   "short_name": "Frota",
+  "description": "Operação de frota, campo e apontamento com suporte offline.",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "scope": "/",
+  "id": "/",
   "start_url": "/",
   "display": "standalone",
+  "orientation": "any",
   "background_color": "#0f172a",
   "theme_color": "#0f172a",
+  "categories": ["business", "productivity"],
   "icons": [
     {
       "src": "/icon-192.png",

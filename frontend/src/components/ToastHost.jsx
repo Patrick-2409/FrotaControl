@@ -9,7 +9,11 @@ function ToastHost({ toasts, onClose }) {
 
   return (
     <div
-      className="pointer-events-none fixed right-3 top-3 z-50 space-y-2"
+      className="pointer-events-none fixed z-50 space-y-2"
+      style={{
+        top: "max(0.75rem, env(safe-area-inset-top, 0px))",
+        right: "max(0.75rem, env(safe-area-inset-right, 0px))",
+      }}
       role="region"
       aria-label="Notificacoes"
       aria-live="polite"

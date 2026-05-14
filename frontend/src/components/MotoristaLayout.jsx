@@ -69,7 +69,7 @@ export default function MotoristaLayout({ children, onSync, pendingCount, online
     <div
       className={`fc-theme-driver fc-field-mode ${
         fieldExtremeMode ? "fc-field-extreme" : ""
-      } mx-auto min-h-screen w-full max-w-xl bg-slate-950 px-4 py-4 text-slate-100 sm:px-6`}
+      } mx-auto min-h-[100dvh] min-h-screen w-full max-w-xl bg-slate-950 px-4 py-4 text-slate-100 sm:px-6`}
     >
       {!online && (
         <div className="fc-page mb-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-center text-sm font-medium text-amber-100" role="status" aria-live="assertive">
@@ -154,7 +154,12 @@ export default function MotoristaLayout({ children, onSync, pendingCount, online
         </div>
       </header>
 
-      <main className="fc-page pb-24" id="conteudo-principal">{children}</main>
+      <main
+        className="fc-page pb-[calc(6.5rem+env(safe-area-inset-bottom,0px))]"
+        id="conteudo-principal"
+      >
+        {children}
+      </main>
 
       <button
         type="button"
@@ -162,20 +167,27 @@ export default function MotoristaLayout({ children, onSync, pendingCount, online
           tap(10);
           onSync();
         }}
-        className={`fc-btn fixed right-5 z-40 rounded-full bg-emerald-600 px-5 py-3 text-sm font-bold text-white shadow-2xl shadow-emerald-950/40 transition-all duration-200 hover:bg-emerald-500 ${
-          hasSaveBarOnScreen ? "bottom-40 sm:bottom-24" : "bottom-24"
-        }`}
+        className={`fc-btn fixed z-40 rounded-full bg-emerald-600 px-5 py-3 text-sm font-bold text-white shadow-2xl shadow-emerald-950/40 transition-all duration-200 hover:bg-emerald-500 ${
+          hasSaveBarOnScreen
+            ? "bottom-[calc(10rem+env(safe-area-inset-bottom,0px))] sm:bottom-[calc(6.5rem+env(safe-area-inset-bottom,0px))]"
+            : "bottom-[calc(6.5rem+env(safe-area-inset-bottom,0px))]"
+        } right-[max(1.25rem,env(safe-area-inset-right,0px))]`}
       >
         {syncing ? "Sincronizando..." : "Sincronizar agora"}
       </button>
 
-      <nav className="fixed bottom-0 left-0 right-0 mx-auto flex max-w-xl gap-2 overflow-x-auto border-t border-slate-800 bg-slate-900/95 px-3 py-3" aria-label="Navegacao do app motorista">
+      <nav
+        className="fixed bottom-0 left-0 right-0 z-30 mx-auto flex max-w-xl gap-2 overflow-x-auto border-t border-slate-800 bg-slate-900/95 px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] [-webkit-overflow-scrolling:touch]"
+        aria-label="Navegacao do app motorista"
+      >
         {tabs.map((tab) => (
           <Link
             key={tab.to}
             to={tab.to}
             onClick={() => tap(8)}
-            className={`fc-tab-link whitespace-nowrap rounded-lg px-2 py-1 text-xs ${pathname === tab.to ? "active" : "text-slate-400 hover:text-slate-200"}`}
+            className={`fc-tab-link flex min-h-[44px] shrink-0 items-center whitespace-nowrap rounded-lg px-3 py-2 text-xs ${
+              pathname === tab.to ? "active" : "text-slate-400 hover:text-slate-200"
+            }`}
           >
             {tab.label}
           </Link>

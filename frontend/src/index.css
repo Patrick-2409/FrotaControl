@@ -20,8 +20,13 @@
   box-sizing: border-box;
 }
 
+html {
+  overflow-x: clip;
+}
+
 body {
   margin: 0;
+  overflow-x: clip;
   font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   background: radial-gradient(140% 120% at 20% 0%, rgba(45, 170, 225, 0.15) 0%, rgba(10, 15, 26, 0.98) 40%, var(--fc-bg) 100%);
   color: var(--fc-text);
@@ -29,6 +34,7 @@ body {
 }
 
 #root {
+  min-height: 100dvh;
   min-height: 100vh;
 }
 
