@@ -58,17 +58,17 @@ export default function AdminHistoricoPage() {
   }, [load]);
 
   return (
-    <div className="space-y-4">
-      <header>
-        <h2 className="text-xl font-semibold text-white">Histórico administrativo</h2>
+    <div className="fc-superadmin-historico min-w-0 space-y-4">
+      <header className="min-w-0">
+        <h2 className="break-words text-xl font-semibold text-white">Histórico administrativo</h2>
         <p className="mt-1 text-sm text-slate-400">
           Registo de criações, edições e exclusões no painel (empresas, utilizadores e veículos). Cada linha indica quem fez a ação, quando e sobre que registo.
         </p>
       </header>
 
-      <article className="fc-card overflow-hidden p-5">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-sm">
+      <article className="fc-card min-w-0 overflow-hidden p-5">
+        <div className="fc-superadmin-table-scroll -mx-1 px-1 sm:mx-0 sm:px-0">
+          <table className="w-full min-w-[800px] text-sm">
             <thead className="text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
                 <th className="pb-3 pr-3">Data e hora</th>
@@ -101,16 +101,16 @@ export default function AdminHistoricoPage() {
                           })
                         : "—"}
                     </td>
-                    <td className="py-2.5 pr-3">
+                    <td className="min-w-0 max-w-[12rem] break-words py-2.5 pr-3 sm:max-w-[16rem] lg:max-w-none">
                       <span className="font-medium text-slate-100">{row.usuario_nome || "—"}</span>
                       {row.usuario_email && (
-                        <span className="mt-0.5 block truncate text-xs text-slate-500">{row.usuario_email}</span>
+                        <span className="mt-0.5 block break-words text-xs text-slate-500">{row.usuario_email}</span>
                       )}
                       {!row.usuario_id && <span className="text-xs text-slate-500"> (conta removida ou sistema)</span>}
                     </td>
                     <td className="py-2.5 pr-3">
                       <span
-                        className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold ${acaoBadgeClass(row.acao)}`}
+                        className={`inline-flex whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold ${acaoBadgeClass(row.acao)}`}
                       >
                         {formatAcao(row.acao)}
                       </span>

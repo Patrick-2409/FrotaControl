@@ -434,6 +434,79 @@ textarea:focus-visible,
   box-shadow: 0 12px 25px rgba(76, 29, 149, 0.2);
 }
 
+/* —— Super Admin: responsividade (layout apenas) —— */
+.fc-theme-superadmin .fc-superadmin-main {
+  box-sizing: border-box;
+}
+
+.fc-theme-superadmin .fc-superadmin-table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pinch-zoom;
+  scrollbar-width: thin;
+}
+
+.fc-theme-superadmin .fc-superadmin-table-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+
+.fc-theme-superadmin .fc-superadmin-table-scroll::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.35);
+  border-radius: 999px;
+}
+
+.fc-theme-superadmin .fc-superadmin-company-form,
+.fc-theme-superadmin .fc-superadmin-company-form.fc-card {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.fc-theme-superadmin .fc-superadmin-company-form .fc-input,
+.fc-theme-superadmin .fc-superadmin-company-form input:not([type="checkbox"]):not([type="radio"]),
+.fc-theme-superadmin .fc-superadmin-company-form select,
+.fc-theme-superadmin .fc-superadmin-company-form textarea {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.fc-theme-superadmin .fc-superadmin-drawer .fc-input,
+.fc-theme-superadmin .fc-superadmin-drawer select,
+.fc-theme-superadmin .fc-superadmin-drawer textarea {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 1024px) {
+  .fc-theme-superadmin .fc-superadmin-nav {
+    row-gap: 0.5rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .fc-theme-superadmin .fc-superadmin-header-inner {
+    row-gap: 0.75rem;
+  }
+
+  .fc-theme-superadmin .fc-superadmin-main {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .fc-theme-superadmin .fc-superadmin-main {
+    padding-left: max(0.75rem, env(safe-area-inset-left, 0px));
+    padding-right: max(0.75rem, env(safe-area-inset-right, 0px));
+  }
+}
+
 .fc-kpi-trend-up {
   color: #4ade80;
 }

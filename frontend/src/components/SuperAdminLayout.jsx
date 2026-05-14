@@ -17,7 +17,7 @@ export default function SuperAdminLayout() {
   return (
     <div className="fc-theme-superadmin min-h-screen bg-slate-950 text-slate-100">
       <header className="border-b border-slate-800 bg-slate-900/80">
-        <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-3 px-6 py-4">
+        <div className="fc-superadmin-header-inner mx-auto flex w-full max-w-[1400px] flex-wrap items-center justify-between gap-3 px-4 py-4 sm:flex-nowrap">
           <div className="flex items-center gap-3">
             <SystemLogo variant="header" className="rounded-xl" />
             <div>
@@ -26,7 +26,9 @@ export default function SuperAdminLayout() {
             </div>
           </div>
           <div className="flex items-center gap-3 text-sm">
-            <span className="hidden text-slate-300 sm:inline">{user?.email}</span>
+            <span className="hidden min-w-0 max-w-[14rem] break-words text-sm text-slate-300 sm:inline md:max-w-xs lg:max-w-md">
+              {user?.email}
+            </span>
             <Avatar imageUrl={user?.profile_image_url} name={user?.nome || user?.email} size="header" />
             <button type="button" onClick={logout} className="fc-btn rounded-lg border border-slate-700 px-3 py-1">
               Sair
@@ -34,8 +36,14 @@ export default function SuperAdminLayout() {
           </div>
         </div>
       </header>
-      <main className="fc-page mx-auto w-full max-w-7xl px-6 py-6" id="conteudo-principal">
-        <nav className="mb-6 flex flex-wrap gap-2 border-b border-slate-800 pb-4" aria-label="Secções do painel super-admin">
+      <main
+        className="fc-page fc-superadmin-main mx-auto w-full min-w-0 max-w-[1400px] p-4"
+        id="conteudo-principal"
+      >
+        <nav
+          className="fc-superadmin-nav mb-6 flex flex-wrap gap-2 border-b border-slate-800 pb-4"
+          aria-label="Secções do painel super-admin"
+        >
           <NavLink to="/super-admin" end className={navTabClass}>
             Painel geral
           </NavLink>

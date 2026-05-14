@@ -537,28 +537,28 @@ export default function AdminPage() {
   }, [editingUser, userEditVehicles]);
 
   return (
-    <div className="space-y-6">
+    <div className="fc-superadmin-page-root min-w-0 w-full space-y-6">
       {loading && <CenteredSpinner label="Salvando empresa..." />}
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+      <section className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
         {kpis.map((kpi) => (
-          <article key={kpi.label} className="fc-card rounded-2xl border border-violet-500/20 p-4">
+          <article key={kpi.label} className="fc-card min-w-0 rounded-2xl border border-violet-500/20 p-4">
             <p className="text-xs text-slate-400">{kpi.label}</p>
             <p className="mt-2 text-2xl font-bold text-white">{kpi.value}</p>
           </article>
         ))}
       </section>
 
-      <section className="fc-card p-5">
-        <div className="grid gap-3 lg:grid-cols-[1fr_220px_220px_220px]">
+      <section className="fc-card min-w-0 p-5">
+        <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <input
-            className={inputClass}
+            className={`${inputClass} min-w-0`}
             placeholder="Buscar em todo o sistema: empresas, pessoas ou veículos"
             value={globalSearch}
             onChange={(e) => setGlobalSearch(e.target.value)}
           />
           <select
-            className={inputClass}
+            className={`${inputClass} min-w-0`}
             value={filters.role}
             onChange={(e) => {
               setUsersPage(1);
@@ -572,7 +572,7 @@ export default function AdminPage() {
             <option value="SUPER_ADMIN">Administrador geral</option>
           </select>
           <select
-            className={inputClass}
+            className={`${inputClass} min-w-0`}
             value={filters.empresa_id}
             onChange={(e) => {
               setUsersPage(1);
@@ -586,7 +586,7 @@ export default function AdminPage() {
             ))}
           </select>
           <select
-            className={inputClass}
+            className={`${inputClass} min-w-0`}
             value={filters.status}
             onChange={(e) => {
               setUsersPage(1);
@@ -600,28 +600,40 @@ export default function AdminPage() {
         </div>
 
         {(searchResults.companies.length > 0 || searchResults.users.length > 0 || searchResults.vehicles.length > 0) && (
-          <div className="mt-3 rounded-xl border border-slate-700 bg-slate-950/50 p-3 text-sm">
+          <div className="mt-3 min-w-0 rounded-xl border border-slate-700 bg-slate-950/50 p-3 text-sm">
             <p className="mb-2 text-xs uppercase tracking-wider text-slate-400">Resultados da busca</p>
-            <div className="grid gap-3 md:grid-cols-3">
-              <div>
+            <div className="grid min-w-0 gap-3 md:grid-cols-3">
+              <div className="min-w-0">
                 <p className="mb-1 text-xs text-slate-400">Empresas</p>
-                {searchResults.companies.map((c) => <p key={`sr-c-${c.id}`} className="truncate text-slate-200">{c.nome}</p>)}
+                {searchResults.companies.map((c) => (
+                  <p key={`sr-c-${c.id}`} className="break-words text-slate-200">
+                    {c.nome}
+                  </p>
+                ))}
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="mb-1 text-xs text-slate-400">Usuários</p>
-                {searchResults.users.map((u) => <p key={`sr-u-${u.id}`} className="truncate text-slate-200">{u.nome} - {u.empresa_nome}</p>)}
+                {searchResults.users.map((u) => (
+                  <p key={`sr-u-${u.id}`} className="break-words text-slate-200">
+                    {u.nome} - {u.empresa_nome}
+                  </p>
+                ))}
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="mb-1 text-xs text-slate-400">Veículos</p>
-                {searchResults.vehicles.map((v) => <p key={`sr-v-${v.id}`} className="truncate text-slate-200">{v.nome} - {v.placa}</p>)}
+                {searchResults.vehicles.map((v) => (
+                  <p key={`sr-v-${v.id}`} className="break-words text-slate-200">
+                    {v.nome} - {v.placa}
+                  </p>
+                ))}
               </div>
             </div>
           </div>
         )}
       </section>
 
-      <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
-        <form onSubmit={onSaveCompany} className="fc-card p-5">
+      <div className="grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
+        <form onSubmit={onSaveCompany} className="fc-superadmin-company-form fc-card min-w-0 w-full p-5">
           <h2 className="mb-1 text-lg font-semibold text-white">
             {companyForm.id ? "Editar empresa" : "Nova empresa"}
           </h2>
@@ -659,19 +671,19 @@ export default function AdminPage() {
           )}
         </form>
 
-        <section className="space-y-4">
-          <article className="fc-card relative overflow-hidden rounded-2xl border-2 border-violet-500/35 bg-gradient-to-b from-violet-950/45 via-slate-950/90 to-slate-950 p-6 shadow-[0_22px_50px_-14px_rgba(124,58,237,0.32)]">
+        <section className="min-w-0 space-y-4">
+          <article className="fc-card relative min-w-0 overflow-hidden rounded-2xl border-2 border-violet-500/35 bg-gradient-to-b from-violet-950/45 via-slate-950/90 to-slate-950 p-6 shadow-[0_22px_50px_-14px_rgba(124,58,237,0.32)]">
             <div
               className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-400/70 via-fuchsia-400/50 to-transparent"
               aria-hidden
             />
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <div>
+            <div className="mb-4 flex min-w-0 flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
                 <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-violet-300/90">Cadastro</p>
                 <h3 className="text-xl font-semibold tracking-tight text-white">Empresas</h3>
               </div>
               <input
-                className={inputClass}
+                className={`${inputClass} min-w-0 w-full sm:max-w-md sm:flex-1`}
                 placeholder="Buscar empresa"
                 value={search}
                 onChange={(e) => {
@@ -680,8 +692,8 @@ export default function AdminPage() {
                 }}
               />
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-sm">
+            <div className="fc-superadmin-table-scroll -mx-1 px-1 sm:mx-0 sm:px-0">
+              <table className="w-full min-w-[800px] text-sm">
                 <thead className="text-left text-xs uppercase tracking-wider text-slate-400">
                   <tr>
                     <th className="pb-2">Logo</th>
@@ -701,12 +713,12 @@ export default function AdminPage() {
                   {!loadingCompanies && companies.map((company) => (
                     <tr key={company.id} className="text-slate-100">
                       <td className="py-2"><CompanyLogo logoUrl={resolveAsset(company.logo_url)} companyName={company.nome} className="h-10 w-10" /></td>
-                      <td className="py-2 font-medium">{company.nome}</td>
+                      <td className="max-w-[14rem] break-words py-2 font-medium sm:max-w-none">{company.nome}</td>
                       <td className="py-2">{company.usuarios_count ?? "-"}</td>
                       <td className="py-2">{company.veiculos_count ?? "-"}</td>
                       <td className="py-2">{new Date(company.created_at).toLocaleDateString("pt-BR")}</td>
                       <td className="py-2 text-right">
-                        <div className="inline-flex flex-wrap gap-2">
+                        <div className="flex max-w-[22rem] flex-wrap justify-end gap-2 sm:ml-auto sm:max-w-none">
                           <button type="button" onClick={() => loadCompanyDetails(company.id)} className={adminBtnVisualizar}>
                             👁️ Visualizar
                           </button>
@@ -747,11 +759,11 @@ export default function AdminPage() {
             />
           </article>
 
-          <article className="fc-card rounded-xl border border-slate-700/50 bg-slate-950/50 p-5 shadow-[0_10px_28px_-12px_rgba(0,0,0,0.45)]">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-base font-semibold text-slate-100">Usuários (todas as empresas)</h3>
+          <article className="fc-card min-w-0 rounded-xl border border-slate-700/50 bg-slate-950/50 p-5 shadow-[0_10px_28px_-12px_rgba(0,0,0,0.45)]">
+            <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-2">
+              <h3 className="w-full min-w-0 text-base font-semibold text-slate-100 sm:w-auto">Usuários (todas as empresas)</h3>
               <input
-                className={`${inputClass} border-slate-700/60 bg-slate-950/60`}
+                className={`${inputClass} min-w-0 w-full border-slate-700/60 bg-slate-950/60 sm:max-w-md sm:flex-1`}
                 placeholder="Buscar por nome ou e-mail"
                 value={searchUsers}
                 onChange={(e) => {
@@ -760,8 +772,8 @@ export default function AdminPage() {
                 }}
               />
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1060px] text-sm">
+            <div className="fc-superadmin-table-scroll -mx-1 px-1 sm:mx-0 sm:px-0">
+              <table className="w-full min-w-[800px] text-sm">
                 <thead className="text-left text-xs uppercase tracking-wider text-slate-500">
                   <tr>
                     <th className="pb-2">Avatar</th>
@@ -785,20 +797,28 @@ export default function AdminPage() {
                       <td className="py-2">
                         <Avatar imageUrl={resolveAsset(u.profile_image_url)} name={u.nome} size="list" />
                       </td>
-                      <td className="py-2 font-medium text-slate-300">{u.nome}</td>
-                      <td className="py-2">{u.email || u.cpf_id}</td>
-                      <td className="py-2">
-                        <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${roleBadge(u.role)}`}>{formatRole(u.role)}</span>
+                      <td className="min-w-0 max-w-[10rem] break-words py-2 font-medium text-slate-300 sm:max-w-[12rem] lg:max-w-none">
+                        {u.nome}
                       </td>
-                      <td className="py-2">{u.empresa_nome || "-"}</td>
-                      <td className="py-2">{u.veiculo_nome || "-"}</td>
+                      <td className="min-w-0 max-w-[11rem] break-words py-2 sm:max-w-[14rem] lg:max-w-none">{u.email || u.cpf_id}</td>
                       <td className="py-2">
-                        <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${contaContaBadgeClass(u.conta_status)}`}>
+                        <span
+                          className={`inline-block whitespace-nowrap rounded-full border px-2 py-1 text-xs font-semibold ${roleBadge(u.role)}`}
+                        >
+                          {formatRole(u.role)}
+                        </span>
+                      </td>
+                      <td className="min-w-0 max-w-[9rem] break-words py-2 sm:max-w-[11rem] lg:max-w-none">{u.empresa_nome || "-"}</td>
+                      <td className="min-w-0 max-w-[9rem] break-words py-2 sm:max-w-[11rem] lg:max-w-none">{u.veiculo_nome || "-"}</td>
+                      <td className="py-2">
+                        <span
+                          className={`inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${contaContaBadgeClass(u.conta_status)}`}
+                        >
                           {u.conta_status === "inativo" ? "Inativo" : "Ativo"}
                         </span>
                       </td>
                       <td className="py-2 text-right">
-                        <div className="inline-flex flex-wrap justify-end gap-2">
+                        <div className="flex max-w-[min(100%,22rem)] flex-wrap justify-end gap-2 sm:ml-auto sm:max-w-none">
                           <button type="button" onClick={() => openUserCompanyDetails(u)} className={adminBtnVisualizar}>
                             👁️ Visualizar
                           </button>
@@ -844,11 +864,11 @@ export default function AdminPage() {
             />
           </article>
 
-          <article className="rounded-xl border border-dashed border-slate-700/45 bg-slate-950/20 p-4 ring-1 ring-slate-800/30">
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-sm font-medium uppercase tracking-wide text-slate-400">Veículos (todas as empresas)</h3>
+          <article className="min-w-0 rounded-xl border border-dashed border-slate-700/45 bg-slate-950/20 p-4 ring-1 ring-slate-800/30">
+            <div className="mb-2 flex min-w-0 flex-wrap items-center justify-between gap-2">
+              <h3 className="w-full min-w-0 text-sm font-medium uppercase tracking-wide text-slate-400 sm:w-auto">Veículos (todas as empresas)</h3>
               <input
-                className={`${inputClass} border-slate-800/50 bg-slate-950/40 text-slate-300 placeholder:text-slate-600`}
+                className={`${inputClass} min-w-0 w-full border-slate-800/50 bg-slate-950/40 text-slate-300 placeholder:text-slate-600 sm:max-w-md sm:flex-1`}
                 placeholder="Buscar veículo"
                 value={searchVehicles}
                 onChange={(e) => {
@@ -857,8 +877,8 @@ export default function AdminPage() {
                 }}
               />
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[840px] text-[13px]">
+            <div className="fc-superadmin-table-scroll -mx-1 px-1 sm:mx-0 sm:px-0">
+              <table className="w-full min-w-[800px] text-[13px]">
                 <thead className="text-left text-[11px] uppercase tracking-wider text-slate-500">
                   <tr>
                     <th className="pb-1.5 font-medium">Nome</th>
@@ -876,12 +896,14 @@ export default function AdminPage() {
                   )}
                   {!loadingVehicles && vehicles.map((v) => (
                     <tr key={`v-${v.id}`} className="text-slate-500">
-                      <td className="py-1.5 font-medium text-slate-400">{v.nome}</td>
+                      <td className="min-w-0 max-w-[10rem] break-words py-1.5 font-medium text-slate-400 sm:max-w-[12rem] lg:max-w-none">
+                        {v.nome}
+                      </td>
                       <td className="py-1.5 tabular-nums text-slate-500">{v.placa}</td>
-                      <td className="py-1.5">{v.empresa_nome || "-"}</td>
-                      <td className="py-1.5">{v.motorista_nome || "-"}</td>
+                      <td className="min-w-0 max-w-[9rem] break-words py-1.5 sm:max-w-[11rem] lg:max-w-none">{v.empresa_nome || "-"}</td>
+                      <td className="min-w-0 max-w-[9rem] break-words py-1.5 sm:max-w-[11rem] lg:max-w-none">{v.motorista_nome || "-"}</td>
                       <td className="py-1.5 text-right">
-                        <div className="inline-flex gap-2">
+                        <div className="flex flex-wrap justify-end gap-2">
                           <button type="button" onClick={() => setEditingVehicle({ ...v, empresa_id: String(v.empresa_id || "") })} className={adminBtnEditarCompact}>
                             ✏️ Editar
                           </button>
@@ -905,8 +927,8 @@ export default function AdminPage() {
         </section>
       </div>
 
-      <section className="grid gap-5">
-        <article className="fc-card p-5">
+      <section className="grid min-w-0 gap-5">
+        <article className="fc-card min-w-0 p-5">
           <h3 className="mb-3 text-lg font-semibold text-white">Visualização detalhada da empresa</h3>
           {loadingDetails && <SkeletonRows rows={4} />}
           {!loadingDetails && !selectedCompany && (
@@ -970,7 +992,7 @@ export default function AdminPage() {
             aria-label="Fechar painel de edição"
             onClick={closeEditDrawer}
           />
-          <aside className="flex h-full max-h-[100dvh] w-[min(100vw,26rem)] flex-col border-l border-slate-700/90 bg-gradient-to-b from-slate-900 via-slate-950 to-slate-950 shadow-[-16px_0_48px_rgba(0,0,0,0.5)] sm:w-[min(100vw,32rem)]">
+          <aside className="fc-superadmin-drawer flex h-full max-h-[100dvh] w-[min(100vw,26rem)] min-w-0 flex-col border-l border-slate-700/90 bg-gradient-to-b from-slate-900 via-slate-950 to-slate-950 shadow-[-16px_0_48px_rgba(0,0,0,0.5)] sm:w-[min(100vw,32rem)]">
             <header className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-800 px-4 py-4 sm:px-5">
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-violet-300/90">Edição</p>
@@ -995,9 +1017,9 @@ export default function AdminPage() {
               </button>
             </header>
 
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5">
+            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5">
               {editingUser && (
-                <div className="grid gap-2 md:grid-cols-2">
+                <div className="grid min-w-0 gap-2 md:grid-cols-2">
                   <div className="md:col-span-2">
                     <FormField label="Nome completo">
                       <input
@@ -1176,7 +1198,7 @@ export default function AdminPage() {
               )}
 
               {editingVehicle && (
-                <div className="grid gap-3">
+                <div className="grid min-w-0 gap-3">
                   <FormField label="Nome do veículo">
                     <input
                       className={inputClass}
@@ -1211,7 +1233,7 @@ export default function AdminPage() {
               )}
             </div>
 
-            <footer className="flex shrink-0 flex-wrap gap-2 border-t border-slate-800 bg-slate-950/95 px-4 py-4 sm:px-5">
+            <footer className="flex min-w-0 shrink-0 flex-wrap gap-2 border-t border-slate-800 bg-slate-950/95 px-4 py-4 sm:px-5">
               {editingUser && (
                 <>
                   <button type="button" onClick={onSaveUserEdit} className="fc-btn flex-1 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold sm:flex-none">
