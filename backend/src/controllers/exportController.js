@@ -18,14 +18,6 @@ const getPuppeteer = () => {
   return puppeteerModule;
 };
 
-const getData = ({ empresa_id, usuario_id = null }, filters = {}) =>
-  listManagerRecords({
-    empresa_id,
-    usuario_id,
-    page: 1,
-    limit: 100000,
-    ...filters,
-  });
 const parseOperationalDate = (value) => {
   if (!value) return null;
   const raw = String(value).trim();
@@ -144,7 +136,12 @@ const parseExportFilters = (query = {}) => {
       data_fim: z.string().optional(),
       mes: z.string().optional(),
       motorista: z.string().optional(),
-      tipo: z.enum(["romaneio", "combustivel", "parte_diaria"]).optional(),
+      tipo: z.preprocess((v) => {
+        const s = String(v ?? "").trim();
+        if (!s) return undefined;
+        if (s === "romaneio" || s === "combustivel" || s === "parte_diaria") return s;
+        return undefined;
+      }, z.enum(["romaneio", "combustivel", "parte_diaria"]).optional()),
       source_id: z.string().min(8).optional(),
       modelo: z.preprocess((v) => {
         const s = String(v ?? "").trim().toLowerCase();
@@ -162,6 +159,7 @@ const parseExportFilters = (query = {}) => {
       source_id: query.source_id ? String(query.source_id).trim() : undefined,
       modelo: query.modelo,
     });
+
   return filter;
 };
 
@@ -195,8 +193,59 @@ const formatExportFiltersSummaryPt = (filter, recordCount = 0) => {
   if (filter.tipo) lines.push(`Filtro — tipo de registo: ${filter.tipo}`);
   if (filter.modelo === "porto") lines.push("Modelo de impressão: Porto (grelhas e resumo de produção quando aplicável).");
   if (filter.source_id) lines.push(`Filtro — registo específico: ${filter.source_id}`);
+  if (filter._autoSevenDays) {
+    lines.push("Período automático: últimos 7 dias (pedido sem data, mês ou intervalo).");
+  }
   if (lines.length === 2) lines.push("Sem filtros adicionais explícitos (âmbito: empresa autenticada).");
   return lines.join("\n");
+};
+
+const EXPORT_RECORD_CAP = 1000;
+const EXPORT_TOO_MANY_MESSAGE = "Período muito grande. Refine o filtro.";
+
+const getYmdInSaoPaulo = (date) =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: REPORT_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+
+const buildDefaultLastSevenDaysRange = () => {
+  const endMs = Date.now();
+  const startMs = endMs - 6 * 24 * 60 * 60 * 1000;
+  return { data_inicio: getYmdInSaoPaulo(new Date(startMs)), data_fim: getYmdInSaoPaulo(new Date(endMs)) };
+};
+
+/** Sem data/mês/intervalo no pedido (e sem registo individual): aplica últimos 7 dias em America/Sao_Paulo. */
+const normalizeExportQueryFilters = (filter) => {
+  const next = { ...filter };
+  if (next.source_id) return next;
+  if (next.data || next.mes) return next;
+  if (next.data_inicio || next.data_fim) return next;
+  const { data_inicio, data_fim } = buildDefaultLastSevenDaysRange();
+  return { ...next, data_inicio, data_fim, _autoSevenDays: true };
+};
+
+const loadExportItems = async (scope, filters) => {
+  const { total } = await listManagerRecords({
+    empresa_id: scope.empresa_id,
+    usuario_id: scope.usuario_id ?? null,
+    page: 1,
+    limit: 1,
+    ...filters,
+  });
+  if (Number(total) > EXPORT_RECORD_CAP) {
+    throw new Error(EXPORT_TOO_MANY_MESSAGE);
+  }
+  const { items } = await listManagerRecords({
+    empresa_id: scope.empresa_id,
+    usuario_id: scope.usuario_id ?? null,
+    page: 1,
+    limit: EXPORT_RECORD_CAP,
+    ...filters,
+  });
+  return items;
 };
 
 const weekdayRows = [
@@ -474,7 +523,8 @@ const buildSheetEntriesFromRecords = (records) => {
     const key = `${ymd}\t${vKey}`;
     if (romSeen.has(key)) continue;
     romSeen.add(key);
-    merged.push(groupMap.get(key));
+    const grouped = groupMap.get(key);
+    if (grouped) merged.push(grouped);
   }
   return merged;
 };
@@ -2064,13 +2114,26 @@ const exportExcel = async (req, res) => {
     });
   }
   const scope = resolveExportScope(req);
+  const filtersEffective = normalizeExportQueryFilters(filters);
+  let data;
+  try {
+    data = await loadExportItems(scope, filtersEffective);
+  } catch (e) {
+    if (e.message === EXPORT_TOO_MANY_MESSAGE) {
+      return res.status(400).json({
+        success: false,
+        error: EXPORT_TOO_MANY_MESSAGE,
+        message: EXPORT_TOO_MANY_MESSAGE,
+      });
+    }
+    throw e;
+  }
   const company = await getCompanyById(scope.empresa_id);
-  const data = (await getData(scope, filters)).items;
   const workbook = new ExcelJS.Workbook();
   const logoAssets = await resolveEmpresaLogoAssets(req, company);
   const excelImage = await toExcelCompatibleImage(logoAssets.htmlSrc, logoAssets.excelImage);
   const logoImageId = await loadLogoImage(workbook, excelImage);
-  const summaryText = formatExportFiltersSummaryPt(filters, data.length);
+  const summaryText = formatExportFiltersSummaryPt(filtersEffective, data.length);
   addExportSummaryWorksheet(workbook, { companyName: company?.nome || "Empresa", summaryText });
 
   if (!data.length) {
@@ -2092,17 +2155,17 @@ const exportExcel = async (req, res) => {
       addSimpleFormWorksheet(workbook, row, logoImageId, index);
     });
     if (
-      filters.modelo === "porto" &&
-      filters.data_inicio &&
-      filters.data_fim &&
-      !filters.source_id &&
+      filtersEffective.modelo === "porto" &&
+      filtersEffective.data_inicio &&
+      filtersEffective.data_fim &&
+      !filtersEffective.source_id &&
       scope.empresa_id
     ) {
       try {
         await addProducaoPortoSheets(workbook, {
           empresaId: scope.empresa_id,
-          dataInicio: filters.data_inicio,
-          dataFim: filters.data_fim,
+          dataInicio: filtersEffective.data_inicio,
+          dataFim: filtersEffective.data_fim,
           logoImageId,
           companyName: company?.nome || "Empresa",
         });
@@ -2132,11 +2195,26 @@ const exportPdf = async (req, res) => {
       message: err.message || "Filtros inválidos para exportação.",
     });
   }
+
+  try {
   const scope = resolveExportScope(req);
+  const filtersEffective = normalizeExportQueryFilters(filters);
+  let data;
+  try {
+    data = await loadExportItems(scope, filtersEffective);
+  } catch (e) {
+    if (e.message === EXPORT_TOO_MANY_MESSAGE) {
+      return res.status(400).json({
+        success: false,
+        error: EXPORT_TOO_MANY_MESSAGE,
+        message: EXPORT_TOO_MANY_MESSAGE,
+      });
+    }
+    throw e;
+  }
   const company = await getCompanyById(scope.empresa_id);
-  const data = (await getData(scope, filters)).items;
   const logoAssets = await resolveEmpresaLogoAssets(req, company);
-  const summaryText = formatExportFiltersSummaryPt(filters, data.length);
+  const summaryText = formatExportFiltersSummaryPt(filtersEffective, data.length);
   const html = buildOfficialHtml({
     companyName: company?.nome || "Empresa",
     logoUrl: logoAssets.htmlSrc,
@@ -2170,24 +2248,54 @@ const exportPdf = async (req, res) => {
       },
     });
   } catch (error) {
-    const rasterForFallback = await toExcelCompatibleImage(logoAssets.htmlSrc, logoAssets.excelImage);
-    const fallbackBuffer = await buildFallbackPdfBuffer({
-      companyName: company?.nome || "Empresa",
-      records: data,
-      logoImage: rasterForFallback,
-      filterSummary: summaryText,
-    });
-    res.setHeader("X-PDF-Fallback", "1");
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", "attachment; filename=registros.pdf");
-    return res.send(fallbackBuffer);
+    console.warn("[exportPdf] render principal:", error?.message || error);
+    try {
+      const rasterForFallback = await toExcelCompatibleImage(logoAssets.htmlSrc, logoAssets.excelImage);
+      const fallbackBuffer = await buildFallbackPdfBuffer({
+        companyName: company?.nome || "Empresa",
+        records: data,
+        logoImage: rasterForFallback,
+        filterSummary: summaryText,
+      });
+      res.setHeader("X-PDF-Fallback", "1");
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", "attachment; filename=registros.pdf");
+      return res.send(fallbackBuffer);
+    } catch (fallbackErr) {
+      console.error("[exportPdf] fallback PDFKit:", fallbackErr?.message || fallbackErr);
+      if (!res.headersSent) {
+        return res.status(500).json({
+          success: false,
+          error: fallbackErr.message || "Não foi possível gerar o PDF.",
+          message: fallbackErr.message || "Não foi possível gerar o PDF.",
+        });
+      }
+      return;
+    }
   } finally {
-    if (browser) await browser.close();
+    if (browser) await browser.close().catch(() => {});
   }
 
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", "attachment; filename=registros.pdf");
   res.send(pdfBuffer);
+  } catch (outerErr) {
+    if (outerErr.message === EXPORT_TOO_MANY_MESSAGE && !res.headersSent) {
+      return res.status(400).json({
+        success: false,
+        error: EXPORT_TOO_MANY_MESSAGE,
+        message: EXPORT_TOO_MANY_MESSAGE,
+      });
+    }
+    console.error("[exportPdf] falha geral:", outerErr?.message || outerErr);
+    if (!res.headersSent) {
+      return res.status(500).json({
+        success: false,
+        error: outerErr.message || "Falha ao gerar o PDF.",
+        message: outerErr.message || "Falha ao gerar o PDF.",
+      });
+    }
+  }
 };
 
 const exportCsv = async (req, res) => {
@@ -2202,8 +2310,21 @@ const exportCsv = async (req, res) => {
     });
   }
   const scope = resolveExportScope(req);
+  const filtersEffective = normalizeExportQueryFilters(filters);
+  let data;
+  try {
+    data = await loadExportItems(scope, filtersEffective);
+  } catch (e) {
+    if (e.message === EXPORT_TOO_MANY_MESSAGE) {
+      return res.status(400).json({
+        success: false,
+        error: EXPORT_TOO_MANY_MESSAGE,
+        message: EXPORT_TOO_MANY_MESSAGE,
+      });
+    }
+    throw e;
+  }
   const company = await getCompanyById(scope.empresa_id);
-  const data = (await getData(scope, filters)).items;
   const csv = buildRegistrosCsvContent(data, company?.nome || "Empresa");
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", "attachment; filename=registros.csv");

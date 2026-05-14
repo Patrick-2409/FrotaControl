@@ -16,9 +16,36 @@ export default function ManagerRecordsFiltersCard({
   typeLabelMap,
   onApplyFilter,
   variant = "default",
+  tipoFirst = false,
 }) {
+  const tipoRow = (
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      {[
+        ["", "Todos"],
+        ["romaneio", "Romaneio"],
+        ["combustivel", "Combustível"],
+        ["parte_diaria", "Parte diária"],
+      ].map(([tipo, label]) => (
+        <button
+          key={`tipo-${tipo || "todos"}`}
+          type="button"
+          onClick={() => {
+            setPage(1);
+            setFiltro((f) => ({ ...f, tipo }));
+          }}
+          className={`fc-btn rounded-lg border px-3 py-2 text-xs ${
+            filtro.tipo === tipo ? "border-blue-500 bg-blue-500/20 text-blue-100" : "border-slate-700 text-slate-300"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div className="fc-card mb-3 space-y-3 p-4">
+      {tipoFirst ? tipoRow : null}
       <div className="grid grid-cols-3 gap-2">
         {[
           ["dia", "Por dia"],
@@ -98,28 +125,7 @@ export default function ManagerRecordsFiltersCard({
             setFiltro((prev) => ({ ...prev, motorista: e.target.value }));
           }}
         />
-        <div className="grid grid-cols-2 gap-2 sm:col-span-2 sm:grid-cols-4">
-          {[
-            ["", "Todos"],
-            ["romaneio", "Romaneio"],
-            ["combustivel", "Combustível"],
-            ["parte_diaria", "Parte diária"],
-          ].map(([tipo, label]) => (
-            <button
-              key={`tipo-${tipo || "todos"}`}
-              type="button"
-              onClick={() => {
-                setPage(1);
-                setFiltro((f) => ({ ...f, tipo }));
-              }}
-              className={`fc-btn rounded-lg border px-3 py-2 text-xs ${
-                filtro.tipo === tipo ? "border-blue-500 bg-blue-500/20 text-blue-100" : "border-slate-700 text-slate-300"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        {!tipoFirst ? tipoRow : null}
         <button type="button" onClick={onApplyFilter} className="fc-btn rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold">
           Filtrar
         </button>

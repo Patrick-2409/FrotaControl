@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import api from "../services/api";
 import useDebouncedValue from "../hooks/useDebouncedValue";
+import { useOperationalExport } from "../hooks/useOperationalExport";
 import PaginationControls from "../components/PaginationControls";
 import SkeletonRows from "../components/SkeletonRows";
 import { emitToast } from "../services/uiEvents";
@@ -11,6 +12,7 @@ import ManagerRecordsFiltersCard from "../components/reports/ManagerRecordsFilte
 import {
   formatDateForFilename,
   formatDayLabel,
+  formatExportPeriodoLinha,
   formatMonthLabel,
   formatOperationalData,
   formatRecordedAt,
@@ -31,18 +33,9 @@ const notifyReportsHubExport = (label) => {
   }
 };
 
-export default function ManagerRecordsPage({
-  layout = "standalone",
-  hubFiltro,
-  hubSetFiltro,
-  hubPage,
-  hubSetPage,
-  applyTick = 0,
-  hubLocalTreeSearch,
-  hubSetLocalTreeSearch,
-} = {}) {
+export default function ManagerRecordsPage() {
   const [rows, setRows] = useState([]);
-  const [internalFiltro, setInternalFiltro] = useState({
+  const [filtro, setFiltro] = useState({
     data: todayAsInput(),
     data_inicio: "",
     data_fim: "",
@@ -53,28 +46,26 @@ export default function ManagerRecordsPage({
   });
   const [openDays, setOpenDays] = useState({});
   const [loading, setLoading] = useState(false);
-  const [exporting, setExporting] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
-  const [internalPage, setInternalPage] = useState(1);
-  const isHub =
-    layout === "hub" &&
-    hubFiltro &&
-    hubSetFiltro &&
-    hubPage != null &&
-    hubSetPage;
-  const [internalLocalTreeSearch, setInternalLocalTreeSearch] = useState("");
-  const localTreeSearch =
-    isHub && hubLocalTreeSearch !== undefined && hubSetLocalTreeSearch ? hubLocalTreeSearch : internalLocalTreeSearch;
-  const setLocalTreeSearch =
-    isHub && hubLocalTreeSearch !== undefined && hubSetLocalTreeSearch ? hubSetLocalTreeSearch : setInternalLocalTreeSearch;
-  const filtro = isHub ? hubFiltro : internalFiltro;
-  const setFiltro = isHub ? hubSetFiltro : setInternalFiltro;
-  const page = isHub ? hubPage : internalPage;
-  const setPage = isHub ? hubSetPage : setInternalPage;
+  const [page, setPage] = useState(1);
+  const [localTreeSearch, setLocalTreeSearch] = useState("");
   const [totalPages, setTotalPages] = useState(1);
+  const [listTotal, setListTotal] = useState(null);
+  const [pendingBulkExport, setPendingBulkExport] = useState(null);
   const debouncedMotorista = useDebouncedValue(filtro.motorista);
+  const { exporting: exportingBulk, download, downloadCsv, buildExportQueryParams } = useOperationalExport(
+    filtro,
+    debouncedMotorista
+  );
+  const [exportingExtra, setExportingExtra] = useState("");
+  const exporting = exportingBulk || exportingExtra;
+  const tipoExportLabel = typeLabelMap[filtro.tipo] || typeLabelMap[""];
+  const periodoExportLabel = useMemo(
+    () => formatExportPeriodoLinha(filtro),
+    [filtro.data, filtro.data_fim, filtro.data_inicio, filtro.mes, filtro.periodo, filtro.tipo]
+  );
   const hasActiveFilters = useMemo(
     () =>
       Boolean(
@@ -97,6 +88,11 @@ export default function ManagerRecordsPage({
     }
     return "Período não definido";
   }, [filtro.data, filtro.data_fim, filtro.data_inicio, filtro.mes, filtro.periodo]);
+
+  useEffect(() => {
+    setPendingBulkExport(null);
+  }, [debouncedMotorista, filtro.data, filtro.data_fim, filtro.data_inicio, filtro.mes, filtro.periodo, filtro.tipo]);
+
   const clearFilters = () => {
     setPage(1);
     setLocalTreeSearch("");
@@ -132,8 +128,10 @@ export default function ManagerRecordsPage({
       });
       setRows(data.items || []);
       setTotalPages(data.totalPages || 1);
+      setListTotal(typeof data.total === "number" ? data.total : null);
     } catch (err) {
       emitToast(err.response?.data?.message || "Falha ao carregar registros.", "error");
+      setListTotal(null);
     } finally {
       setLoading(false);
     }
@@ -143,117 +141,9 @@ export default function ManagerRecordsPage({
     load();
   }, [load]);
 
-  useEffect(() => {
-    if (applyTick === 0) return;
-    load();
-  }, [applyTick, load]);
-
-  const buildExportQueryParams = useCallback(() => {
-    const params = {
-      motorista: debouncedMotorista?.trim() || undefined,
-      modelo: "porto",
-    };
-    if (filtro.periodo === "dia") params.data = filtro.data?.trim() || undefined;
-    if (filtro.periodo === "mes") params.mes = filtro.mes?.trim() || undefined;
-    if (filtro.periodo === "intervalo") {
-      params.data_inicio = filtro.data_inicio?.trim() || undefined;
-      params.data_fim = filtro.data_fim?.trim() || undefined;
-    }
-    return params;
-  }, [debouncedMotorista, filtro.data, filtro.data_fim, filtro.data_inicio, filtro.mes, filtro.periodo]);
-
-  const download = async (tipo) => {
-    setExporting(tipo);
-    try {
-      const params = {
-        ...buildExportQueryParams(),
-        tipo: filtro.tipo?.trim() || undefined,
-      };
-      const { data } = await api.get(`/dashboard/export/${tipo}`, {
-        responseType: "blob",
-        params,
-      });
-      const url = URL.createObjectURL(data);
-      const a = document.createElement("a");
-      a.href = url;
-      const activityTag = (filtro.tipo || "todas-atividades").replaceAll("_", "-");
-      const suffix =
-        filtro.periodo === "dia"
-          ? formatDateForFilename(filtro.data || "")
-          : filtro.periodo === "mes"
-          ? formatDateForFilename(`${filtro.mes || ""}-01`)
-          : `${formatDateForFilename(filtro.data_inicio || "")}_${formatDateForFilename(filtro.data_fim || "")}`;
-      a.download =
-        tipo === "excel"
-          ? `relatorio_${activityTag}_${suffix}.xlsx`
-          : `relatorio_${activityTag}_${suffix}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-      emitToast(`Arquivo ${tipo.toUpperCase()} exportado.`);
-      notifyReportsHubExport(`Fichas ${tipo.toUpperCase()} — ${activityTag}`);
-    } catch (err) {
-      let errorMessage = err.response?.data?.message || `Falha ao gerar ${tipo.toUpperCase()}.`;
-      if (err?.response?.data instanceof Blob) {
-        try {
-          const raw = await err.response.data.text();
-          const parsed = JSON.parse(raw);
-          errorMessage = parsed?.message || parsed?.error || errorMessage;
-        } catch {
-          // fallback padrao
-        }
-      }
-      emitToast(errorMessage, "error");
-    } finally {
-      setExporting("");
-    }
-  };
-
-  const downloadCsv = async () => {
-    setExporting("csv");
-    try {
-      const params = {
-        ...buildExportQueryParams(),
-        tipo: filtro.tipo?.trim() || undefined,
-      };
-      const { data } = await api.get("/dashboard/export/csv", {
-        responseType: "blob",
-        params,
-      });
-      const url = URL.createObjectURL(data);
-      const a = document.createElement("a");
-      a.href = url;
-      const activityTag = (filtro.tipo || "todas-atividades").replaceAll("_", "-");
-      const suffix =
-        filtro.periodo === "dia"
-          ? formatDateForFilename(filtro.data || "")
-          : filtro.periodo === "mes"
-            ? formatDateForFilename(`${filtro.mes || ""}-01`)
-            : `${formatDateForFilename(filtro.data_inicio || "")}_${formatDateForFilename(filtro.data_fim || "")}`;
-      a.download = `relatorio_${activityTag}_${suffix}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-      emitToast("Arquivo CSV exportado.");
-      notifyReportsHubExport(`Fichas CSV — ${activityTag}`);
-    } catch (err) {
-      let errorMessage = err.response?.data?.message || "Falha ao gerar CSV.";
-      if (err?.response?.data instanceof Blob) {
-        try {
-          const raw = await err.response.data.text();
-          const parsed = JSON.parse(raw);
-          errorMessage = parsed?.message || parsed?.error || errorMessage;
-        } catch {
-          // fallback padrao
-        }
-      }
-      emitToast(errorMessage, "error");
-    } finally {
-      setExporting("");
-    }
-  };
-
   const downloadRelatorioPorto = async (preset, format) => {
     const key = `rel-${preset}-${format}`;
-    setExporting(key);
+    setExportingExtra(key);
     try {
       const params = { ...buildExportQueryParams(), format };
       const { data } = await api.get(`/dashboard/relatorios/${preset}`, {
@@ -290,13 +180,13 @@ export default function ManagerRecordsPage({
       }
       emitToast(errorMessage, "error");
     } finally {
-      setExporting("");
+      setExportingExtra("");
     }
   };
 
   const downloadSingle = async (format, row) => {
     const exportingKey = `${format}:${row?.source_id || row?.id}`;
-    setExporting(exportingKey);
+    setExportingExtra(exportingKey);
     try {
       const params = {
         tipo: row?.tipo,
@@ -337,7 +227,7 @@ export default function ManagerRecordsPage({
       }
       emitToast(errorMessage, "error");
     } finally {
-      setExporting("");
+      setExportingExtra("");
     }
   };
 
@@ -725,21 +615,19 @@ export default function ManagerRecordsPage({
 
   return (
     <div className="space-y-4">
-      {!isHub && (
-        <ManagerRecordsFiltersCard
-          filtro={filtro}
-          setFiltro={setFiltro}
-          setPage={setPage}
-          debouncedMotorista={debouncedMotorista}
-          localTreeSearch={localTreeSearch}
-          setLocalTreeSearch={setLocalTreeSearch}
-          hasActiveFilters={hasActiveFilters}
-          clearFilters={clearFilters}
-          activePeriodLabel={activePeriodLabel}
-          typeLabelMap={typeLabelMap}
-          onApplyFilter={load}
-        />
-      )}
+      <ManagerRecordsFiltersCard
+        filtro={filtro}
+        setFiltro={setFiltro}
+        setPage={setPage}
+        debouncedMotorista={debouncedMotorista}
+        localTreeSearch={localTreeSearch}
+        setLocalTreeSearch={setLocalTreeSearch}
+        hasActiveFilters={hasActiveFilters}
+        clearFilters={clearFilters}
+        activePeriodLabel={activePeriodLabel}
+        typeLabelMap={typeLabelMap}
+        onApplyFilter={load}
+      />
 
       <div className="mb-4 rounded-xl border border-slate-600/50 bg-slate-900/40 p-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Relatórios — modelo Porto</p>
@@ -784,30 +672,94 @@ export default function ManagerRecordsPage({
       <div className="mb-4 flex flex-wrap gap-2">
         <button
           type="button"
-          disabled={Boolean(exporting)}
-          onClick={() => download("excel")}
+          disabled={Boolean(exporting) || loading}
+          onClick={() => setPendingBulkExport("excel")}
           className="fc-btn rounded-lg border border-blue-500 px-3 py-2 text-sm text-blue-300 disabled:opacity-50"
         >
-          {exporting === "excel" ? "Gerando..." : "Exportar Excel"}
+          Exportar Excel
         </button>
         <button
           type="button"
-          disabled={Boolean(exporting)}
-          onClick={() => download("pdf")}
+          disabled={Boolean(exporting) || loading}
+          onClick={() => setPendingBulkExport("pdf")}
           className="fc-btn rounded-lg border border-blue-500 px-3 py-2 text-sm text-blue-300 disabled:opacity-50"
         >
-          {exporting === "pdf" ? "Gerando..." : "Exportar PDF"}
+          Exportar PDF
         </button>
         <button
           type="button"
-          disabled={Boolean(exporting)}
-          onClick={() => downloadCsv()}
+          disabled={Boolean(exporting) || loading}
+          onClick={() => setPendingBulkExport("csv")}
           className="fc-btn rounded-lg border border-teal-500/70 px-3 py-2 text-sm text-teal-200 disabled:opacity-50"
         >
-          {exporting === "csv" ? "Gerando..." : "Exportar CSV"}
+          Exportar CSV
         </button>
         {exporting && <InlineSpinner label="Preparando arquivo..." />}
       </div>
+
+      {pendingBulkExport ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print:hidden"
+          role="presentation"
+          onClick={() => !exporting && setPendingBulkExport(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="fc-mgr-export-confirm-title"
+            className="fc-card max-w-md border border-slate-600 bg-slate-950 p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="fc-mgr-export-confirm-title" className="text-base font-semibold text-slate-100">
+              Confirmar exportação
+            </h3>
+            <p className="mt-3 text-sm leading-relaxed text-slate-300">Você está exportando:</p>
+            <div className="mt-3 space-y-1 rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-3 font-medium text-slate-100">
+              <p>{tipoExportLabel}</p>
+              <p className="text-sm font-normal text-slate-300">
+                Período: <span className="text-slate-100">{periodoExportLabel}</span>
+              </p>
+              <p className="text-sm font-normal text-slate-300">
+                Registros:{" "}
+                <span className="text-slate-100">{listTotal != null ? listTotal : loading ? "…" : "—"}</span>
+              </p>
+              <p className="text-sm font-normal text-slate-300">
+                Formato:{" "}
+                <span className="text-slate-100">
+                  {pendingBulkExport === "excel" ? "Excel" : pendingBulkExport === "pdf" ? "PDF" : "CSV"}
+                </span>
+              </p>
+            </div>
+            <p className="mt-3 text-xs text-slate-500">
+              O ficheiro usa os mesmos filtros desta listagem. Exportações acima de 1000 registos são bloqueadas no
+              servidor.
+            </p>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={Boolean(exporting)}
+                onClick={async () => {
+                  const fmt = pendingBulkExport;
+                  setPendingBulkExport(null);
+                  if (fmt === "csv") await downloadCsv();
+                  else if (fmt === "excel" || fmt === "pdf") await download(fmt);
+                }}
+                className="fc-btn rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
+              >
+                Confirmar exportação
+              </button>
+              <button
+                type="button"
+                disabled={Boolean(exporting)}
+                onClick={() => setPendingBulkExport(null)}
+                className="fc-btn rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-900 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {loading && <SkeletonRows rows={6} />}
       {!loading && rowsView.length === 0 && (

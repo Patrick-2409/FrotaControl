@@ -6,6 +6,45 @@ export const todayAsInput = () => {
   return local.toISOString().slice(0, 10);
 };
 
+/** Indica se o utilizador preencheu algum critério de data no UI (dia, mês ou datas de intervalo). Se falso, a exportação no servidor aplica os últimos 7 dias. */
+export const temPeriodoExplicitoNoFiltro = (filtro) => {
+  if (!filtro) return false;
+  if (filtro.periodo === "dia") return Boolean(String(filtro.data || "").trim());
+  if (filtro.periodo === "mes") return Boolean(String(filtro.mes || "").trim());
+  if (filtro.periodo === "intervalo") {
+    return Boolean(String(filtro.data_inicio || "").trim() || String(filtro.data_fim || "").trim());
+  }
+  return false;
+};
+
+/** AAAA-MM-DD → DD/MM/AAAA (rótulos de exportação). */
+export const formatIsoDateToBr = (iso) => {
+  const s = String(iso || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return s || "—";
+  const [y, m, d] = s.split("-");
+  return `${d}/${m}/${y}`;
+};
+
+/** Uma linha legível do período que será enviado ao exportar (alinhado ao backend quando não há datas). */
+export const formatExportPeriodoLinha = (filtro) => {
+  if (!filtro) return "Últimos 7 dias (automático)";
+  if (!temPeriodoExplicitoNoFiltro(filtro)) return "Últimos 7 dias (automático)";
+  if (filtro.periodo === "dia" && filtro.data?.trim()) return formatIsoDateToBr(filtro.data);
+  if (filtro.periodo === "mes" && filtro.mes?.trim()) {
+    const parts = filtro.mes.trim().split("-");
+    if (parts.length === 2) return `${parts[1]}/${parts[0]} (mês completo)`;
+    return filtro.mes;
+  }
+  if (filtro.periodo === "intervalo") {
+    const di = filtro.data_inicio?.trim();
+    const df = filtro.data_fim?.trim();
+    if (di && df) return `${formatIsoDateToBr(di)} a ${formatIsoDateToBr(df)}`;
+    if (di) return `A partir de ${formatIsoDateToBr(di)}`;
+    if (df) return `Até ${formatIsoDateToBr(df)}`;
+  }
+  return "Últimos 7 dias (automático)";
+};
+
 export const formatMonthLabel = (yearMonthKey) => {
   const [year, month] = String(yearMonthKey || "").split("-");
   if (!year || !month) return "Mês não informado";
