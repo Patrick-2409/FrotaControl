@@ -4,6 +4,7 @@ import SkeletonRows from "../../../../components/SkeletonRows";
 import BIDashboardShell from "../../bi/components/BIDashboardShell";
 import BIChartCard from "../../bi/components/BIChartCard";
 import TransportPlannedVsActualBars from "../components/TransportPlannedVsActualBars";
+import TransportPlanExecutadoPizza from "../components/TransportPlanExecutadoPizza";
 import { TransportProvider } from "../../contexts/TransportContext";
 import { useTransportMetrics } from "../../hooks/useTransportMetrics";
 import EmpresaModuleErrorPanel from "../../shared/components/EmpresaModuleErrorPanel";
@@ -229,27 +230,30 @@ function EmpresaTransportePageContent() {
           />
         ) : tr.comparacao ? (
           <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
-            <div className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
-                  <p className="text-xs text-zinc-500">Meta</p>
-                  <p className="mt-1 text-2xl font-bold tabular-nums text-zinc-100">{fmtTon(tr.metaPlanejadaTotal)} t</p>
-                </div>
-                <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
-                  <p className="text-xs text-zinc-500">Executado</p>
-                  <p className="mt-1 text-2xl font-bold tabular-nums text-zinc-100">{fmtTon(tr.executadoTotal)} t</p>
-                </div>
-                <div
-                  className={`rounded-lg border p-3 ${
-                    pctTotal >= 100
-                      ? "border-emerald-500/40 bg-emerald-950/30"
-                      : pctTotal >= 70
-                        ? "border-amber-500/40 bg-amber-950/25"
-                        : "border-rose-500/40 bg-rose-950/25"
-                  }`}
-                >
-                  <p className="text-xs text-zinc-500">Atingimento</p>
-                  <p className={`mt-1 text-2xl font-black tabular-nums ${pctTone(pctTotal)}`}>{fmtPct(pctTotal)}%</p>
+            <div className="space-y-6">
+              <div className="flex flex-col items-stretch gap-6 lg:flex-row lg:items-start lg:gap-8">
+                <TransportPlanExecutadoPizza metaTotal={tr.metaPlanejadaTotal} executadoTotal={tr.executadoTotal} />
+                <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-3">
+                  <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+                    <p className="text-xs text-zinc-500">Meta</p>
+                    <p className="mt-1 text-2xl font-bold tabular-nums text-zinc-100">{fmtTon(tr.metaPlanejadaTotal)} t</p>
+                  </div>
+                  <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+                    <p className="text-xs text-zinc-500">Executado</p>
+                    <p className="mt-1 text-2xl font-bold tabular-nums text-zinc-100">{fmtTon(tr.executadoTotal)} t</p>
+                  </div>
+                  <div
+                    className={`rounded-lg border p-3 ${
+                      pctTotal >= 100
+                        ? "border-emerald-500/40 bg-emerald-950/30"
+                        : pctTotal >= 70
+                          ? "border-amber-500/40 bg-amber-950/25"
+                          : "border-rose-500/40 bg-rose-950/25"
+                    }`}
+                  >
+                    <p className="text-xs text-zinc-500">Atingimento</p>
+                    <p className={`mt-1 text-2xl font-black tabular-nums ${pctTone(pctTotal)}`}>{fmtPct(pctTotal)}%</p>
+                  </div>
                 </div>
               </div>
               <TransportPlannedVsActualBars comparacao={tr.comparacao} />
