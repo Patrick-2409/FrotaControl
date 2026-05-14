@@ -35,14 +35,15 @@ const contaContaBadgeClass = (conta_status) =>
     ? "border-slate-500/50 bg-slate-800/90 text-slate-300"
     : "border-emerald-500/45 bg-emerald-600/15 text-emerald-200";
 
-/** Botões da tabela de utilizadores (super-admin): hierarquia, 36×8px, reset secundário. */
+/** Botões da tabela de utilizadores (super-admin): linha única, 32×10px, 12px, reset só ícone. */
 const userTableActBtnBase =
-  "fc-btn inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-lg px-[10px] text-xs font-semibold transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950";
+  "fc-btn inline-flex h-8 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg px-[10px] text-[12px] font-semibold leading-none transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950";
 const userTableBtnVisualizar = `${userTableActBtnBase} border border-slate-600/75 bg-slate-800/80 text-slate-100 hover:border-slate-500 hover:bg-slate-700/90 hover:text-white focus-visible:ring-slate-500/40`;
 const userTableBtnEditar = `${userTableActBtnBase} border border-blue-500/65 bg-blue-600/32 text-blue-50 hover:border-blue-400 hover:bg-blue-600/50 hover:text-white focus-visible:ring-blue-500/50`;
 const userTableBtnDesativar = `${userTableActBtnBase} border border-red-500/40 bg-red-950/50 text-red-100 hover:border-red-400/55 hover:bg-red-900/45 hover:text-white focus-visible:ring-red-500/35`;
 const userTableBtnReativar = `${userTableActBtnBase} border border-emerald-500/50 bg-emerald-900/28 text-emerald-100 hover:border-emerald-400/60 hover:bg-emerald-800/38 focus-visible:ring-emerald-500/45`;
-const userTableBtnResetSenha = `${userTableActBtnBase} border border-amber-800/35 bg-amber-950/20 text-[11px] font-medium text-amber-200/85 hover:border-amber-700/45 hover:bg-amber-950/35 focus-visible:ring-amber-700/25 disabled:cursor-not-allowed disabled:opacity-40`;
+const userTableBtnResetSenhaIcon =
+  "fc-btn inline-flex h-8 w-8 shrink-0 items-center justify-center whitespace-nowrap rounded-lg border border-amber-800/35 bg-amber-950/20 text-[15px] leading-none text-amber-200/90 transition-colors duration-150 hover:border-amber-700/45 hover:bg-amber-950/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-700/25 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:cursor-not-allowed disabled:opacity-40";
 
 /** Ações Super Admin — cores fixas, hover explícito, ícones nos três tipos pedidos. */
 const adminActionBtnBase =
@@ -875,46 +876,45 @@ export default function AdminPage() {
                           {u.conta_status === "inativo" ? "Inativo" : "Ativo"}
                         </span>
                       </td>
-                      <td className="py-2 text-right align-top">
-                        <div className="fc-superadmin-user-actions ml-auto flex w-full min-w-0 max-w-[min(100%,20rem)] flex-col gap-1.5 md:max-w-[22rem]">
-                          <div className="grid w-full grid-cols-2 gap-2 max-md:max-w-full md:flex md:w-auto md:flex-wrap md:justify-end">
-                            <button type="button" onClick={() => handleViewUser(u)} className={userTableBtnVisualizar}>
-                              👁️ Visualizar
-                            </button>
-                            <button type="button" onClick={() => setEditingUser(toEditUserState(u))} className={userTableBtnEditar}>
-                              ✏️ Editar
-                            </button>
-                            {u.conta_status !== "inativo" ? (
-                              <button
-                                type="button"
-                                disabled={authUser?.id != null && Number(authUser.id) === Number(u.id)}
-                                title={authUser?.id != null && Number(authUser.id) === Number(u.id) ? "Não pode desativar a sua própria conta" : undefined}
-                                onClick={() => onDeactivateUser(u.id)}
-                                className={`max-md:col-span-2 ${userTableBtnDesativar} disabled:cursor-not-allowed disabled:opacity-40`}
-                              >
-                                Desativar
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => onReactivateUser(u.id)}
-                                className={`max-md:col-span-2 ${userTableBtnReativar}`}
-                              >
-                                Reativar
-                              </button>
-                            )}
-                          </div>
-                          <div className="w-full max-md:grid max-md:grid-cols-2 md:flex md:justify-end">
+                      <td className="py-2 text-right align-middle">
+                        <div className="fc-superadmin-user-actions ml-auto flex min-w-0 flex-wrap items-center justify-end gap-[8px]">
+                          <button type="button" onClick={() => handleViewUser(u)} className={userTableBtnVisualizar} title="Visualizar">
+                            👁️ Visualizar
+                          </button>
+                          <button type="button" onClick={() => setEditingUser(toEditUserState(u))} className={userTableBtnEditar} title="Editar">
+                            ✏️ Editar
+                          </button>
+                          {u.conta_status !== "inativo" ? (
                             <button
                               type="button"
-                              disabled={u.conta_status === "inativo"}
-                              onClick={() => onResetPassword(u.id)}
-                              className={`max-md:col-span-2 ${userTableBtnResetSenha}`}
-                              title={u.conta_status === "inativo" ? "Reative a conta para alterar a senha" : undefined}
+                              disabled={authUser?.id != null && Number(authUser.id) === Number(u.id)}
+                              title={
+                                authUser?.id != null && Number(authUser.id) === Number(u.id)
+                                  ? "Não pode desativar a sua própria conta"
+                                  : "Desativar"
+                              }
+                              onClick={() => onDeactivateUser(u.id)}
+                              className={`${userTableBtnDesativar} disabled:cursor-not-allowed disabled:opacity-40`}
                             >
-                              🔑 Resetar senha
+                              🔒 Desativar
                             </button>
-                          </div>
+                          ) : (
+                            <button type="button" onClick={() => onReactivateUser(u.id)} className={userTableBtnReativar} title="Reativar">
+                              ↩️ Reativar
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            disabled={u.conta_status === "inativo"}
+                            onClick={() => onResetPassword(u.id)}
+                            className={userTableBtnResetSenhaIcon}
+                            title={
+                              u.conta_status === "inativo" ? "Reative a conta para alterar a senha" : "Resetar senha"
+                            }
+                            aria-label="Resetar senha"
+                          >
+                            🔑
+                          </button>
                         </div>
                       </td>
                     </tr>
