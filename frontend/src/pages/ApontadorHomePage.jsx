@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../services/auth";
 import ApontadorHeader from "../components/ApontadorHeader";
 import api from "../services/api";
-import { markAsSynced, getPendingViagens, saveOfflineViagem, syncPendentes } from "../services/offlineViagens";
+import { markAsSynced, getPendingViagens, saveOfflineViagem, syncPendentes, deleteViagemLocal, clearLocalViagensForSpTodayMatchingVehicles } from "../services/offlineViagens";
 import { emitToast } from "../services/uiEvents";
 import { mapVeiculoApi, storageKeyVeiculo } from "../utils/apontadorHome";
 import {
@@ -16,11 +16,13 @@ export default function ApontadorHomePage() {
   const { user } = useAuth();
   const [veiculos, setVeiculos] = useState([]);
   const [veiculoId, setVeiculoId] = useState("");
-  const [hojeContagem, setHojeContagem] = useState({ esteril: 0, rocha: 0 });
+  const [hojeContagem, setHojeContagem] = useState({ esteril: 0, rocha: 0, tonTotal: 0 });
   const [loadingVeiculos, setLoadingVeiculos] = useState(true);
-  const [registradoFlash, setRegistradoFlash] = useState({ open: false, in: false });
+  const [registradoFlash, setRegistradoFlash] = useState({ open: false, in: false, label: "" });
   const [online, setOnline] = useState(navigator.onLine);
   const [pendentesCount, setPendentesCount] = useState(0);
+  const [limparDiaModalOpen, setLimparDiaModalOpen] = useState(false);
+  const [limparDiaEmCurso, setLimparDiaEmCurso] = useState(false);
   const flashTimeoutsRef = useRef([]);
 
   const clearFlashTimeouts = useCallback(() => {
@@ -39,24 +41,45 @@ export default function ApontadorHomePage() {
     }
   }, []);
 
+  const refreshContagemHoje = useCallback(async () => {
+    try {
+      const { data } = await api.get("/apontador/viagens/contagem-hoje");
+      const h = data?.hoje;
+      const ton =
+        h?.ton_total != null
+          ? Number(h.ton_total)
+          : (Number(h?.ton_esteril) || 0) + (Number(h?.ton_rocha) || 0);
+      setHojeContagem({
+        esteril: Number(h?.esteril) || 0,
+        rocha: Number(h?.rocha) || 0,
+        tonTotal: Number.isFinite(ton) ? ton : 0,
+      });
+    } catch {
+      /* mantém valores atuais */
+    }
+  }, []);
+
   const onSyncManual = useCallback(async () => {
     await syncPendentes();
     await refreshPendentesCount();
+    await refreshContagemHoje();
     emitToast("Sincronizado com sucesso");
-  }, [refreshPendentesCount]);
+  }, [refreshPendentesCount, refreshContagemHoje]);
 
   useEffect(() => {
     void refreshPendentesCount();
     void syncPendentes().finally(() => {
       void refreshPendentesCount();
+      void refreshContagemHoje();
     });
-  }, [refreshPendentesCount]);
+  }, [refreshPendentesCount, refreshContagemHoje]);
 
   useEffect(() => {
     const onOnline = () => {
       setOnline(true);
       void syncPendentes().finally(() => {
         void refreshPendentesCount();
+        void refreshContagemHoje();
       });
     };
     const onOffline = () => {
@@ -69,40 +92,47 @@ export default function ApontadorHomePage() {
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
     };
-  }, [refreshPendentesCount]);
+  }, [refreshPendentesCount, refreshContagemHoje]);
 
   useEffect(() => {
     const id = setInterval(() => {
       void refreshPendentesCount();
-    }, 10000);
+      void refreshContagemHoje();
+    }, 3000);
     return () => clearInterval(id);
-  }, [refreshPendentesCount]);
+  }, [refreshPendentesCount, refreshContagemHoje]);
 
   useEffect(() => {
     const onVis = () => {
-      if (document.visibilityState === "visible") void refreshPendentesCount();
+      if (document.visibilityState === "visible") {
+        void refreshPendentesCount();
+        void refreshContagemHoje();
+      }
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
-  }, [refreshPendentesCount]);
+  }, [refreshPendentesCount, refreshContagemHoje]);
 
-  const showRegistradoOk = useCallback(() => {
+  useEffect(() => {
+    const onFocus = () => {
+      void refreshContagemHoje();
+      void refreshPendentesCount();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refreshContagemHoje, refreshPendentesCount]);
+
+  const showRegistradoOk = useCallback((tipo) => {
     clearFlashTimeouts();
-    try {
-      if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
-        navigator.vibrate(50);
-      }
-    } catch {
-      // ignorar ambientes sem vibração
-    }
-    setRegistradoFlash({ open: true, in: false });
+    const label = tipo === "esteril" ? "+1 Estéril ✔" : "+1 Rocha ✔";
+    setRegistradoFlash({ open: true, in: false, label });
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => setRegistradoFlash({ open: true, in: true }));
+      requestAnimationFrame(() => setRegistradoFlash((prev) => ({ ...prev, open: true, in: true })));
     });
     flashTimeoutsRef.current.push(
-      setTimeout(() => setRegistradoFlash({ open: true, in: false }), 850),
+      setTimeout(() => setRegistradoFlash((prev) => ({ ...prev, open: true, in: false })), 850),
       setTimeout(() => {
-        setRegistradoFlash({ open: false, in: false });
+        setRegistradoFlash({ open: false, in: false, label: "" });
         clearFlashTimeouts();
       }, 1000)
     );
@@ -134,25 +164,8 @@ export default function ApontadorHomePage() {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    const loadHoje = async () => {
-      try {
-        const { data } = await api.get("/apontador/viagens/contagem-hoje");
-        const h = data?.hoje;
-        if (cancelled) return;
-        setHojeContagem({
-          esteril: Number(h?.esteril) || 0,
-          rocha: Number(h?.rocha) || 0,
-        });
-      } catch {
-        // Mantém baseline 0; contagem local ainda sobe a cada registo bem-sucedido.
-      }
-    };
-    void loadHoje();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    void refreshContagemHoje();
+  }, [refreshContagemHoje]);
 
   const persistVeiculoId = useCallback(
     (id) => {
@@ -189,9 +202,61 @@ export default function ApontadorHomePage() {
     [veiculos, veiculoId]
   );
 
+  const idsVeiculosEmpresa = useMemo(
+    () => veiculos.map((v) => Number(v.id)).filter((n) => Number.isFinite(n) && n > 0),
+    [veiculos]
+  );
+
+  const executarLimparDia = useCallback(async () => {
+    setLimparDiaEmCurso(true);
+    try {
+      const loc = await clearLocalViagensForSpTodayMatchingVehicles(idsVeiculosEmpresa);
+      let avisoServidor = null;
+      try {
+        await api.post("/apontador/viagens/reset-dia", {});
+      } catch (err) {
+        avisoServidor = err?.response?.data?.message || "Não foi possível limpar no servidor.";
+      }
+      await refreshContagemHoje();
+      void refreshPendentesCount();
+      setLimparDiaModalOpen(false);
+      if (avisoServidor) {
+        emitToast(avisoServidor, "warning");
+      } else {
+        emitToast(loc > 0 ? `Dia reiniciado (${loc} registo(s) local).` : "Dia reiniciado.", "success");
+      }
+    } catch {
+      emitToast("Não foi possível limpar os dados locais.", "error");
+    } finally {
+      setLimparDiaEmCurso(false);
+    }
+  }, [idsVeiculosEmpresa, refreshContagemHoje, refreshPendentesCount]);
+
+  const removerViagemNoServidor = useCallback(async (ctx) => {
+    const payload = {
+      veiculo_id: ctx.viagem.veiculo_id,
+      motorista_id: ctx.viagem.motorista_id,
+      tipo: ctx.viagem.tipo,
+      timestamp: ctx.viagem.timestamp,
+      viagem_id: ctx.serverViagemId ?? undefined,
+    };
+    try {
+      await api.delete("/apontador/viagens", { data: payload, skipGlobalErrorToast: true });
+    } catch {
+      /* offline ou já removido */
+    }
+  }, []);
+
   const registrar = useCallback(
     async (tipo) => {
       if (!veiculoSelecionado?.motorista?.id) return;
+      try {
+        if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+          navigator.vibrate(50);
+        }
+      } catch {
+        /* ambientes sem vibração */
+      }
       const ts = Date.now();
       const chaveTipo = tipo === "esteril" ? "esteril" : "rocha";
       const viagem = {
@@ -209,21 +274,60 @@ export default function ApontadorHomePage() {
         return;
       }
       setHojeContagem((prev) => ({ ...prev, [chaveTipo]: prev[chaveTipo] + 1 }));
-      showRegistradoOk();
+      showRegistradoOk(tipo);
+
+      const ctx = {
+        viagem,
+        chaveTipo,
+        id_local,
+        undone: false,
+        serverViagemId: null,
+      };
+
+      const mensagem = tipo === "esteril" ? "+1 Estéril ✔" : "+1 Rocha ✔";
+      emitToast(mensagem, "success", {
+        durationMs: 5000,
+        actionLabel: "Desfazer",
+        onAction: () => {
+          if (ctx.undone) return;
+          ctx.undone = true;
+          void deleteViagemLocal(ctx.id_local).catch(() => {});
+          setHojeContagem((prev) => ({
+            ...prev,
+            [ctx.chaveTipo]: Math.max(0, prev[ctx.chaveTipo] - 1),
+          }));
+          void removerViagemNoServidor(ctx);
+          void refreshPendentesCount();
+          void refreshContagemHoje();
+        },
+      });
+
       try {
-        await api.post("/apontador/viagens", {
-          veiculo_id: viagem.veiculo_id,
-          motorista_id: viagem.motorista_id,
-          tipo: viagem.tipo,
-          timestamp: viagem.timestamp,
-        });
+        const { data } = await api.post(
+          "/apontador/viagens",
+          {
+            veiculo_id: viagem.veiculo_id,
+            motorista_id: viagem.motorista_id,
+            tipo: viagem.tipo,
+            timestamp: viagem.timestamp,
+          },
+          { skipGlobalErrorToast: true }
+        );
+        ctx.serverViagemId = data?.viagem?.id ?? null;
+        if (ctx.undone) {
+          await removerViagemNoServidor(ctx);
+          void refreshPendentesCount();
+          void refreshContagemHoje();
+          return;
+        }
         await markAsSynced(id_local);
       } catch {
         /* mantém pendente no IndexedDB; contador já atualizado */
       }
       void refreshPendentesCount();
+      void refreshContagemHoje();
     },
-    [veiculoSelecionado, showRegistradoOk, refreshPendentesCount]
+    [veiculoSelecionado, showRegistradoOk, refreshPendentesCount, refreshContagemHoje, removerViagemNoServidor]
   );
 
   useEffect(() => {
@@ -258,7 +362,7 @@ export default function ApontadorHomePage() {
     <div className="relative flex min-h-[100dvh] min-h-screen flex-col bg-slate-950 text-slate-100">
       <ApontadorHeader online={online} textoPendentes={textoPendentes} onSyncManual={onSyncManual} />
 
-      <ApontadorRegistradoFlash open={registradoFlash.open} visibleIn={registradoFlash.in} />
+      <ApontadorRegistradoFlash open={registradoFlash.open} visibleIn={registradoFlash.in} message={registradoFlash.label} />
 
       <h1 className="sr-only">Apontador — registo de viagens</h1>
 
@@ -293,9 +397,58 @@ export default function ApontadorHomePage() {
             }}
           />
 
-          <ApontadorHojeResumo esteril={hojeContagem.esteril} rocha={hojeContagem.rocha} />
+          <ApontadorHojeResumo
+            esteril={hojeContagem.esteril}
+            rocha={hojeContagem.rocha}
+            tonTotal={hojeContagem.tonTotal}
+            onLimparDia={() => setLimparDiaModalOpen(true)}
+          />
         </div>
       </main>
+
+      {limparDiaModalOpen ? (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/75 p-4"
+          role="presentation"
+          onClick={() => !limparDiaEmCurso && setLimparDiaModalOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="fc-apontador-limpar-dia-titulo"
+            className="w-full max-w-md rounded-2xl border border-slate-600 bg-slate-950 p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="fc-apontador-limpar-dia-titulo" className="text-lg font-semibold text-slate-100">
+              Limpar registo do dia?
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-slate-300">
+              Isto apaga no <strong className="text-slate-100">dispositivo</strong> as viagens de hoje (fuso São Paulo)
+              dos veículos desta lista, e no <strong className="text-slate-100">servidor</strong> todas as viagens de
+              hoje da empresa. A ação fica registada em auditoria.
+            </p>
+            <p className="mt-2 text-xs text-amber-200/90">Não pode ser desfeita automaticamente.</p>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={limparDiaEmCurso}
+                onClick={() => void executarLimparDia()}
+                className="fc-btn rounded-lg bg-amber-700 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-50"
+              >
+                {limparDiaEmCurso ? "A limpar…" : "Confirmar limpeza"}
+              </button>
+              <button
+                type="button"
+                disabled={limparDiaEmCurso}
+                onClick={() => setLimparDiaModalOpen(false)}
+                className="fc-btn rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-900 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

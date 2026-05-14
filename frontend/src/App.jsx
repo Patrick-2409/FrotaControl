@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes } from "react-router-dom";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useAuth } from "./services/auth";
 import MotoristaLayout from "./components/MotoristaLayout";
 import EmpresaLayout from "./components/EmpresaLayout";
@@ -81,6 +81,7 @@ function App() {
   const [lastSyncAt, setLastSyncAt] = useState(null);
   const [toasts, setToasts] = useState([]);
   const [sessionExpiredNotice, setSessionExpiredNotice] = useState("");
+  const toastTimersRef = useRef(new Map());
 
   const refreshPending = async () => setPendingCount(await countPending());
 
@@ -139,10 +140,22 @@ function App() {
     };
     const onToast = (ev) => {
       const id = generateId();
-      setToasts((prev) => [...prev, { id, ...ev.detail }]);
-      setTimeout(() => {
+      const detail = ev.detail && typeof ev.detail === "object" ? ev.detail : {};
+      const { message, type, durationMs, actionLabel, onAction, ...rest } = detail;
+      const resolvedType = type || "success";
+      const hasAction = typeof onAction === "function" && typeof actionLabel === "string" && actionLabel.trim();
+      const ms =
+        typeof durationMs === "number" && durationMs > 0
+          ? durationMs
+          : hasAction
+            ? 5000
+            : 4000;
+      setToasts((prev) => [...prev, { id, message, type: resolvedType, durationMs: ms, actionLabel, onAction, ...rest }]);
+      const tid = setTimeout(() => {
+        toastTimersRef.current.delete(id);
         setToasts((prev) => prev.filter((x) => x.id !== id));
-      }, 4000);
+      }, ms);
+      toastTimersRef.current.set(id, tid);
     };
     const onAuthExpired = () => {
       setSessionExpiredNotice("Sessão expirada. Faça login novamente.");
@@ -165,6 +178,10 @@ function App() {
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       clearInterval(interval);
+      for (const tid of toastTimersRef.current.values()) {
+        clearTimeout(tid);
+      }
+      toastTimersRef.current.clear();
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
       window.removeEventListener("fc:sync-state", onSyncState);
@@ -175,6 +192,13 @@ function App() {
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [user?.role]);
+
+  const dismissToast = (id) => {
+    const tid = toastTimersRef.current.get(id);
+    if (tid) clearTimeout(tid);
+    toastTimersRef.current.delete(id);
+    setToasts((prev) => prev.filter((x) => x.id !== id));
+  };
 
   const manualSync = async () => {
     setSyncStatus("enviando");
@@ -200,7 +224,7 @@ function App() {
           {sessionExpiredNotice}
         </div>
       )}
-      <ToastHost toasts={toasts} onClose={(id) => setToasts((prev) => prev.filter((x) => x.id !== id))} />
+      <ToastHost toasts={toasts} onClose={dismissToast} />
       <Routes>
         <Route
           path="/"

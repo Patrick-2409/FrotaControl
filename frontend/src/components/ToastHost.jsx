@@ -22,10 +22,27 @@ function ToastHost({ toasts, onClose }) {
           role={toast.type === "error" ? "alert" : "status"}
         >
           <div className="flex items-start justify-between gap-3">
-            <p className="max-w-[220px]">{toast.message}</p>
-            <button onClick={() => onClose(toast.id)} className="text-xs underline opacity-90 hover:opacity-100">
-              fechar
-            </button>
+            <p className="min-w-0 flex-1">{toast.message}</p>
+            <div className="flex shrink-0 flex-col items-end gap-1.5">
+              {toast.actionLabel && typeof toast.onAction === "function" ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    try {
+                      toast.onAction();
+                    } finally {
+                      onClose(toast.id);
+                    }
+                  }}
+                  className="text-xs font-semibold uppercase tracking-wide underline decoration-current/70 underline-offset-2 opacity-95 hover:opacity-100"
+                >
+                  {toast.actionLabel}
+                </button>
+              ) : null}
+              <button type="button" onClick={() => onClose(toast.id)} className="text-xs underline opacity-90 hover:opacity-100">
+                fechar
+              </button>
+            </div>
           </div>
         </div>
       ))}

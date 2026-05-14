@@ -63,6 +63,26 @@ body {
   transform: scale(0.98);
 }
 
+/* Apontador: feedback de toque com animação própria (evita conflito com :active). */
+.fc-btn.fc-apontador-tipo-btn:active {
+  transform: none;
+}
+
+/* Apontador: select com mais respiro e foco mais visível (só onde a classe é aplicada). */
+select.fc-apontador-select {
+  padding: 1rem 1.25rem;
+  min-height: 3.75rem;
+  font-size: 1.0625rem;
+}
+
+select.fc-apontador-select:focus,
+select.fc-apontador-select:focus-visible {
+  border-color: rgba(56, 189, 248, 0.92);
+  box-shadow:
+    0 0 0 3px rgba(34, 211, 238, 0.32),
+    0 0 22px rgba(34, 211, 238, 0.14);
+}
+
 a:focus-visible,
 button:focus-visible,
 input:focus-visible,

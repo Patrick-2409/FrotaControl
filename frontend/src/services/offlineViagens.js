@@ -157,6 +157,74 @@ export async function markAsSynced(id_local) {
   });
 }
 
+/**
+ * Remove um registo local (pendente ou já marcado como sincronizado).
+ * @param {string} id_local
+ * @returns {Promise<void>}
+ */
+export async function deleteViagemLocal(id_local) {
+  if (typeof id_local !== "string" || !id_local.trim()) {
+    throw new Error("deleteViagemLocal: id_local inválido.");
+  }
+  if (!hasIndexedDB()) return;
+
+  const db = await openDatabase();
+  const key = id_local.trim();
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    const store = tx.objectStore(STORE);
+    const req = store.delete(key);
+    req.onerror = () => reject(req.error ?? new Error("Falha ao remover registo offline."));
+    req.onsuccess = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error("Transação IndexedDB falhou."));
+  });
+}
+
+/**
+ * Remove viagens offline cuja data civil (America/Sao_Paulo) é hoje e o veículo está na lista.
+ * @param {number[]} veiculoIds
+ * @returns {Promise<number>}
+ */
+export async function clearLocalViagensForSpTodayMatchingVehicles(veiculoIds) {
+  const ids = Array.isArray(veiculoIds)
+    ? [...new Set(veiculoIds.map((n) => Number(n)).filter((n) => Number.isFinite(n) && n > 0))]
+    : [];
+  if (!hasIndexedDB() || ids.length === 0) return 0;
+
+  const alvo = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
+  const permitidos = new Set(ids);
+  const db = await openDatabase();
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    const store = tx.objectStore(STORE);
+    const req = store.openCursor();
+    let removidos = 0;
+    req.onerror = () => reject(req.error ?? new Error("Falha ao percorrer viagens offline."));
+    req.onsuccess = (event) => {
+      const cursor = event.target.result;
+      if (!cursor) {
+        resolve(removidos);
+        return;
+      }
+      const row = cursor.value;
+      const vid = Number(row?.veiculo_id);
+      if (permitidos.has(vid)) {
+        const ymd = new Date(Number(row.timestamp)).toLocaleDateString("sv-SE", {
+          timeZone: "America/Sao_Paulo",
+        });
+        if (ymd === alvo) {
+          cursor.delete();
+          removidos += 1;
+        }
+      }
+      cursor.continue();
+    };
+    tx.onerror = () => reject(tx.error ?? new Error("Transação IndexedDB falhou."));
+  });
+}
+
 /** Fila global: evita dois syncs em paralelo (mesmo registo enviado duas vezes). */
 let syncTail = Promise.resolve();
 

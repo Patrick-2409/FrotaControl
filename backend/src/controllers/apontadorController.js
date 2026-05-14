@@ -1,13 +1,28 @@
 const { listVehicles } = require("../models/vehicleModel");
-const { insertViagem, countViagensHojeEmpresaSaoPaulo } = require("../models/viagemModel");
+const {
+  insertViagem,
+  countViagensHojeEmpresaSaoPaulo,
+  deleteViagemApontadorMatch,
+  deleteViagensEmpresaDiaAtualSaoPaulo,
+} = require("../models/viagemModel");
 const { pool } = require("../db");
 const { z } = require("zod");
+const { logAudit } = require("../services/auditService");
+const { logInfo } = require("../services/loggerService");
 
 const viagemCreateSchema = z.object({
   veiculo_id: z.coerce.number().int().positive(),
   motorista_id: z.coerce.number().int().positive(),
   tipo: z.enum(["esteril", "rocha"]),
   timestamp: z.union([z.coerce.number(), z.string().trim().min(1)]),
+});
+
+const viagemUndoSchema = z.object({
+  veiculo_id: z.coerce.number().int().positive(),
+  motorista_id: z.coerce.number().int().positive(),
+  tipo: z.enum(["esteril", "rocha"]),
+  timestamp: z.union([z.coerce.number(), z.string().trim().min(1)]),
+  viagem_id: z.coerce.number().int().positive().optional().nullable(),
 });
 
 const parseMarcacao = (timestamp) => {
@@ -17,6 +32,39 @@ const parseMarcacao = (timestamp) => {
   }
   const d = new Date(timestamp);
   return Number.isNaN(d.getTime()) ? null : d;
+};
+
+const assertVeiculoMotoristaTransporte = async (empresaId, veiculo_id, motorista_id) => {
+  const { rows: validRows } = await pool.query(
+    `SELECT COALESCE(v.usa_para_transporte, false) AS usa_para_transporte
+     FROM veiculos v
+     INNER JOIN usuarios u ON u.id = $3
+       AND u.empresa_id = v.empresa_id
+       AND u.role = 'MOTORISTA'
+       AND u.veiculo_id = v.id
+     WHERE v.id = $2
+       AND v.empresa_id = $1
+     LIMIT 1`,
+    [empresaId, veiculo_id, motorista_id]
+  );
+
+  if (!validRows.length) {
+    return {
+      ok: false,
+      status: 400,
+      message: "Veículo ou motorista inválido para esta empresa.",
+    };
+  }
+
+  if (!validRows[0].usa_para_transporte) {
+    return {
+      ok: false,
+      status: 400,
+      message: "Veículo não autorizado para transporte",
+    };
+  }
+
+  return { ok: true };
 };
 
 /** Lista veículos aptos ao apontamento: usa_para_transporte e capacidade_ton > 0. */
@@ -60,7 +108,13 @@ const getContagemHojeApontador = async (req, res) => {
   const counts = await countViagensHojeEmpresaSaoPaulo(empresaId);
   return res.json({
     success: true,
-    hoje: counts,
+    hoje: {
+      esteril: counts.esteril,
+      rocha: counts.rocha,
+      ton_esteril: counts.ton_esteril,
+      ton_rocha: counts.ton_rocha,
+      ton_total: counts.ton_total,
+    },
   });
 };
 
@@ -84,32 +138,12 @@ const createViagemApontador = async (req, res) => {
     });
   }
 
-  const { rows: validRows } = await pool.query(
-    `SELECT COALESCE(v.usa_para_transporte, false) AS usa_para_transporte
-     FROM veiculos v
-     INNER JOIN usuarios u ON u.id = $3
-       AND u.empresa_id = v.empresa_id
-       AND u.role = 'MOTORISTA'
-       AND u.veiculo_id = v.id
-     WHERE v.id = $2
-       AND v.empresa_id = $1
-     LIMIT 1`,
-    [empresaId, body.veiculo_id, body.motorista_id]
-  );
-
-  if (!validRows.length) {
-    return res.status(400).json({
+  const gate = await assertVeiculoMotoristaTransporte(empresaId, body.veiculo_id, body.motorista_id);
+  if (!gate.ok) {
+    return res.status(gate.status).json({
       success: false,
-      error: "Veículo ou motorista inválido para esta empresa.",
-      message: "Veículo ou motorista inválido para esta empresa.",
-    });
-  }
-
-  if (!validRows[0].usa_para_transporte) {
-    return res.status(400).json({
-      success: false,
-      error: "Veículo não autorizado para transporte",
-      message: "Veículo não autorizado para transporte",
+      error: gate.message,
+      message: gate.message,
     });
   }
 
@@ -137,8 +171,97 @@ const createViagemApontador = async (req, res) => {
   });
 };
 
+/** Desfaz o último registo do apontador (mesmo dia, mesma marcação ou id devolvido no POST). */
+const deleteViagemApontadorUndo = async (req, res) => {
+  const empresaId = req.user?.empresa_id;
+  if (!empresaId) {
+    return res.status(403).json({
+      success: false,
+      error: "Empresa não associada ao usuário.",
+      message: "Empresa não associada ao usuário.",
+    });
+  }
+
+  const body = viagemUndoSchema.parse(req.body);
+  const gate = await assertVeiculoMotoristaTransporte(empresaId, body.veiculo_id, body.motorista_id);
+  if (!gate.ok) {
+    return res.status(gate.status).json({
+      success: false,
+      error: gate.message,
+      message: gate.message,
+    });
+  }
+
+  const tsMs =
+    typeof body.timestamp === "number"
+      ? body.timestamp
+      : new Date(body.timestamp).getTime();
+  if (!Number.isFinite(tsMs)) {
+    return res.status(400).json({
+      success: false,
+      error: "Timestamp inválido.",
+      message: "Timestamp inválido.",
+    });
+  }
+
+  const deleted = await deleteViagemApontadorMatch({
+    empresa_id: empresaId,
+    veiculo_id: body.veiculo_id,
+    motorista_id: body.motorista_id,
+    tipo: body.tipo,
+    timestamp_ms: tsMs,
+    viagem_id: body.viagem_id ?? null,
+  });
+
+  if (!deleted) {
+    return res.status(404).json({
+      success: false,
+      error: "Registo não encontrado.",
+      message: "Registo não encontrado ou já não pode ser desfeito.",
+    });
+  }
+
+  return res.json({
+    success: true,
+    id: deleted.id,
+  });
+};
+
+/** Limpa viagens de hoje (fuso São Paulo) para toda a empresa — uso controlado no apontador. */
+const resetViagensDiaApontador = async (req, res) => {
+  const empresaId = req.user?.empresa_id;
+  if (!empresaId) {
+    return res.status(403).json({
+      success: false,
+      error: "Empresa não associada ao usuário.",
+      message: "Empresa não associada ao usuário.",
+    });
+  }
+
+  const removidos = await deleteViagensEmpresaDiaAtualSaoPaulo(empresaId);
+  const registroId = `e${empresaId}|n${removidos}|t${Date.now()}`;
+  await logAudit({
+    usuario_id: req.user.sub,
+    acao: "reset_viagens_dia",
+    tabela: "viagens",
+    registro_id: registroId.slice(0, 120),
+  });
+  logInfo("apontador_reset_viagens_dia", {
+    empresa_id: empresaId,
+    usuario_id: req.user.sub,
+    removidos_servidor: removidos,
+  });
+
+  return res.json({
+    success: true,
+    removidos_servidor: removidos,
+  });
+};
+
 module.exports = {
   listVehiclesApontador,
   getContagemHojeApontador,
   createViagemApontador,
+  deleteViagemApontadorUndo,
+  resetViagensDiaApontador,
 };

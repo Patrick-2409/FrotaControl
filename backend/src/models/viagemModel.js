@@ -55,22 +55,48 @@ const getViagensResumoProducao = async (empresa_id, bounds = {}, db = pool) => {
   return rows[0];
 };
 
-/** Contagem de viagens do dia corrente no fuso America/Sao_Paulo (campo). */
+/** Contagem de viagens do dia corrente no fuso America/Sao_Paulo, com toneladas aproximadas (capacidade × viagens). */
 const countViagensHojeEmpresaSaoPaulo = async (empresa_id, db = pool) => {
   const { rows } = await db.query(
     `SELECT
-      COALESCE(COUNT(*) FILTER (WHERE tipo = 'esteril'), 0)::int AS esteril,
-      COALESCE(COUNT(*) FILTER (WHERE tipo = 'rocha'), 0)::int AS rocha
-     FROM viagens
-     WHERE empresa_id = $1
-       AND (marcacao AT TIME ZONE 'America/Sao_Paulo')::date
+      COALESCE(COUNT(*) FILTER (WHERE vi.tipo = 'esteril'), 0)::int AS esteril,
+      COALESCE(COUNT(*) FILTER (WHERE vi.tipo = 'rocha'), 0)::int AS rocha,
+      COALESCE(
+        SUM(
+          CASE
+            WHEN vi.tipo = 'esteril' AND COALESCE(v.usa_para_transporte, false) = true
+            THEN COALESCE(v.capacidade_ton, 0)
+            ELSE 0
+          END
+        ),
+        0
+      )::double precision AS ton_esteril,
+      COALESCE(
+        SUM(
+          CASE
+            WHEN vi.tipo = 'rocha' AND COALESCE(v.usa_para_transporte, false) = true
+            THEN COALESCE(v.capacidade_ton, 0)
+            ELSE 0
+          END
+        ),
+        0
+      )::double precision AS ton_rocha
+     FROM viagens vi
+     INNER JOIN veiculos v ON v.id = vi.veiculo_id AND v.empresa_id = vi.empresa_id
+     WHERE vi.empresa_id = $1
+       AND (vi.marcacao AT TIME ZONE 'America/Sao_Paulo')::date
          = (CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')::date`,
     [empresa_id]
   );
   const row = rows[0];
+  const te = Number(row?.ton_esteril) || 0;
+  const tr = Number(row?.ton_rocha) || 0;
   return {
     esteril: row?.esteril ?? 0,
     rocha: row?.rocha ?? 0,
+    ton_esteril: te,
+    ton_rocha: tr,
+    ton_total: te + tr,
   };
 };
 
@@ -116,10 +142,66 @@ const listViagensByVehicleDay = async (empresa_id, startIso, endIso, db = pool) 
   return rows;
 };
 
+const todaySaoPauloClause = `(marcacao AT TIME ZONE 'America/Sao_Paulo')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')::date`;
+
+/**
+ * Remove uma viagem do apontador: por id (se fornecido) ou a mais recente do dia
+ * que coincida com veículo, motorista, tipo e marcação temporal (~15s).
+ * @param {{ empresa_id: number, veiculo_id: number, motorista_id: number, tipo: string, timestamp_ms: number, viagem_id?: number|null }} p
+ */
+const deleteViagemApontadorMatch = async (
+  { empresa_id, veiculo_id, motorista_id, tipo, timestamp_ms, viagem_id },
+  db = pool
+) => {
+  if (viagem_id != null && Number.isFinite(Number(viagem_id))) {
+    const { rows } = await db.query(
+      `DELETE FROM viagens
+       WHERE id = $1 AND empresa_id = $2 AND veiculo_id = $3 AND motorista_id = $4 AND tipo = $5
+         AND ${todaySaoPauloClause}
+       RETURNING id`,
+      [viagem_id, empresa_id, veiculo_id, motorista_id, tipo]
+    );
+    return rows[0] || null;
+  }
+
+  const { rows } = await db.query(
+    `DELETE FROM viagens
+     WHERE id = (
+       SELECT v.id
+       FROM viagens v
+       WHERE v.empresa_id = $1
+         AND v.veiculo_id = $2
+         AND v.motorista_id = $3
+         AND v.tipo = $4
+         AND ${todaySaoPauloClause.replace(/marcacao/g, "v.marcacao")}
+         AND ABS(EXTRACT(EPOCH FROM v.marcacao) * 1000 - $5::double precision) <= 15000
+       ORDER BY ABS(EXTRACT(EPOCH FROM v.marcacao) * 1000 - $5::double precision) ASC, v.marcacao DESC
+       LIMIT 1
+     )
+     RETURNING id`,
+    [empresa_id, veiculo_id, motorista_id, tipo, timestamp_ms]
+  );
+  return rows[0] || null;
+};
+
+/** Apaga todas as viagens da empresa com data civil «hoje» em America/Sao_Paulo. */
+const deleteViagensEmpresaDiaAtualSaoPaulo = async (empresa_id, db = pool) => {
+  const r = await db.query(
+    `DELETE FROM viagens
+     WHERE empresa_id = $1
+       AND (marcacao AT TIME ZONE 'America/Sao_Paulo')::date
+         = (CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')::date`,
+    [empresa_id]
+  );
+  return r.rowCount ?? 0;
+};
+
 module.exports = {
   insertViagem,
   getViagensResumoProducao,
   countViagensHojeEmpresaSaoPaulo,
   utcBoundsFromDateRangeYmd,
   listViagensByVehicleDay,
+  deleteViagemApontadorMatch,
+  deleteViagensEmpresaDiaAtualSaoPaulo,
 };
