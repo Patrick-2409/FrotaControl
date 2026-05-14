@@ -227,7 +227,10 @@ function EmpresaTransportePageContent() {
           <div className="flex flex-col gap-8">
             <div className="flex flex-col items-center gap-8 lg:flex-row lg:items-center lg:justify-center lg:gap-12 xl:gap-16">
               <div className="flex shrink-0 justify-center lg:flex-1 lg:justify-center">
-                <TransportPlanExecutadoPizza metaTotal={tr.metaPlanejadaTotal} executadoTotal={tr.executadoTotal} />
+                <TransportPlanExecutadoPizza
+                  totalToneladasEsteril={Number(tr.viagensResumo?.total_toneladas_esteril ?? 0)}
+                  totalToneladasRocha={Number(tr.viagensResumo?.total_toneladas_rocha ?? 0)}
+                />
               </div>
               <div className="flex w-full min-w-0 flex-col justify-center gap-5 sm:max-w-md lg:max-w-none lg:flex-1">
                 <div>
