@@ -434,6 +434,21 @@ const updateOwnProfileData = async (id, data) => {
   return rows[0];
 };
 
+/** Uma linha de utilizador para SUPER_ADMIN (mesmo formato base que a listagem). */
+const getUserByIdForSuperAdmin = async (id) => {
+  const { rows } = await pool.query(
+    `SELECT u.*,
+        e.nome AS empresa_nome,
+        v.nome AS veiculo_nome, v.placa
+     FROM usuarios u
+     LEFT JOIN empresas e ON e.id = u.empresa_id
+     LEFT JOIN veiculos v ON v.id = u.veiculo_id
+     WHERE u.id = $1 AND u.role IN ('MOTORISTA', 'ADMIN_EMPRESA', 'APONTADOR', 'SUPER_ADMIN')`,
+    [id]
+  );
+  return rows[0] || null;
+};
+
 module.exports = {
   createUser,
   getMotoristaByLogin,
@@ -443,6 +458,7 @@ module.exports = {
   getAdminEmpresaByEmail,
   getSuperAdminByEmail,
   getUserById,
+  getUserByIdForSuperAdmin,
   listUsersByCompany,
   updateUser,
   updateUserAsSuperAdmin,

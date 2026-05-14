@@ -20,6 +20,7 @@ const {
   getOverviewCtrl,
   companyDetailsCtrl,
   globalSearchCtrl,
+  getSuperAdminUserCtrl,
   resetUserPasswordCtrl,
 } = require("../controllers/adminController");
 
@@ -68,6 +69,7 @@ router.get("/audit-logs", asyncHandler(listAdminAuditLogsCtrl));
 router.get("/search", asyncHandler(globalSearchCtrl));
 
 router.get("/users", asyncHandler(listUsersCtrl));
+router.get("/users/:id", asyncHandler(getSuperAdminUserCtrl));
 router.post("/users", asyncHandler(createUserCtrl));
 router.put("/users/:id", asyncHandler(updateUserCtrl));
 router.patch("/users/:id/conta-status", asyncHandler(patchUserContaStatusCtrl));

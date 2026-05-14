@@ -10,6 +10,7 @@ import { CenteredSpinner } from "../components/LoadingState";
 import EmptyState from "../components/EmptyState";
 import Avatar from "../components/Avatar";
 import CompanyLogo from "../components/CompanyLogo";
+import UserDetailsModal from "../components/UserDetailsModal";
 
 const resolveAsset = (value) => {
   return resolveBackendAssetUrl(value);
@@ -33,6 +34,15 @@ const contaContaBadgeClass = (conta_status) =>
   conta_status === "inativo"
     ? "border-slate-500/50 bg-slate-800/90 text-slate-300"
     : "border-emerald-500/45 bg-emerald-600/15 text-emerald-200";
+
+/** Botões da tabela de utilizadores (super-admin): hierarquia, 36×8px, reset secundário. */
+const userTableActBtnBase =
+  "fc-btn inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-lg px-[10px] text-xs font-semibold transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950";
+const userTableBtnVisualizar = `${userTableActBtnBase} border border-slate-600/75 bg-slate-800/80 text-slate-100 hover:border-slate-500 hover:bg-slate-700/90 hover:text-white focus-visible:ring-slate-500/40`;
+const userTableBtnEditar = `${userTableActBtnBase} border border-blue-500/65 bg-blue-600/32 text-blue-50 hover:border-blue-400 hover:bg-blue-600/50 hover:text-white focus-visible:ring-blue-500/50`;
+const userTableBtnDesativar = `${userTableActBtnBase} border border-red-500/40 bg-red-950/50 text-red-100 hover:border-red-400/55 hover:bg-red-900/45 hover:text-white focus-visible:ring-red-500/35`;
+const userTableBtnReativar = `${userTableActBtnBase} border border-emerald-500/50 bg-emerald-900/28 text-emerald-100 hover:border-emerald-400/60 hover:bg-emerald-800/38 focus-visible:ring-emerald-500/45`;
+const userTableBtnResetSenha = `${userTableActBtnBase} border border-amber-800/35 bg-amber-950/20 text-[11px] font-medium text-amber-200/85 hover:border-amber-700/45 hover:bg-amber-950/35 focus-visible:ring-amber-700/25 disabled:cursor-not-allowed disabled:opacity-40`;
 
 /** Ações Super Admin — cores fixas, hover explícito, ícones nos três tipos pedidos. */
 const adminActionBtnBase =
@@ -88,6 +98,17 @@ const hasFullName = (value) => {
   return normalized.split(" ").filter(Boolean).length >= 2;
 };
 
+/** Indica se a linha da tabela pode estar incompleta e convém GET /super-admin/users/:id. */
+const userViewNeedsApiRefresh = (u) => {
+  if (!u?.id) return false;
+  if (!u.role) return true;
+  if (!String(u.nome ?? "").trim()) return true;
+  const eid = u.empresa_id;
+  if (eid != null && eid !== "" && Number(eid) > 0 && !u.empresa_nome && u.role !== "SUPER_ADMIN") return true;
+  if (u.role === "MOTORISTA" && u.veiculo_id && !u.veiculo_nome) return true;
+  return false;
+};
+
 export default function AdminPage() {
   const { user: authUser } = useAuth();
   const submitLockRef = useRef(false);
@@ -121,6 +142,9 @@ export default function AdminPage() {
   const [editingUser, setEditingUser] = useState(null);
   const [userEditVehicles, setUserEditVehicles] = useState([]);
   const [editingVehicle, setEditingVehicle] = useState(null);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [open, setOpen] = useState(false);
+  const [userDetailLoading, setUserDetailLoading] = useState(false);
   const [companyForm, setCompanyForm] = useState({
     id: null,
     nome: "",
@@ -207,16 +231,50 @@ export default function AdminPage() {
     }
   }, []);
 
-  const openUserCompanyDetails = useCallback(
-    (u) => {
-      const eid = u.empresa_id;
-      if (!eid) {
-        emitToast("Este usuário não está associado a uma empresa.", "warning");
-        return;
+  const closeUserDetailsModal = useCallback(() => {
+    setOpen(false);
+    setSelectedUser(null);
+    setUserDetailLoading(false);
+  }, []);
+
+  const handleViewUser = useCallback(
+    async (user) => {
+      if (!user?.id) return;
+      setSelectedUser(user);
+      setOpen(true);
+      if (!userViewNeedsApiRefresh(user)) return;
+      setUserDetailLoading(true);
+      try {
+        const { data } = await api.get(`/super-admin/users/${user.id}`);
+        setSelectedUser(data);
+      } catch (err) {
+        const eid = user.empresa_id;
+        if (eid != null && eid !== "" && Number(eid) > 0) {
+          try {
+            const { data } = await api.get(`/super-admin/companies/${Number(eid)}/details`);
+            const combined = [
+              ...(data.users || []),
+              ...(data.admins || []),
+              ...(data.motoristas || []),
+              ...(data.apontadores || []),
+            ];
+            const found = combined.find((x) => Number(x.id) === Number(user.id));
+            if (found) {
+              setSelectedUser((prev) => ({ ...prev, ...found }));
+            } else {
+              emitToast(extractApiErrorMessage(err) || "Não foi possível carregar todos os detalhes.", "warning");
+            }
+          } catch {
+            emitToast(extractApiErrorMessage(err) || "Não foi possível carregar todos os detalhes.", "warning");
+          }
+        } else {
+          emitToast(extractApiErrorMessage(err) || "Não foi possível carregar todos os detalhes.", "warning");
+        }
+      } finally {
+        setUserDetailLoading(false);
       }
-      loadCompanyDetails(Number(eid));
     },
-    [loadCompanyDetails]
+    []
   );
 
   useEffect(() => {
@@ -817,38 +875,46 @@ export default function AdminPage() {
                           {u.conta_status === "inativo" ? "Inativo" : "Ativo"}
                         </span>
                       </td>
-                      <td className="py-2 text-right">
-                        <div className="flex max-w-[min(100%,22rem)] flex-wrap justify-end gap-2 sm:ml-auto sm:max-w-none">
-                          <button type="button" onClick={() => openUserCompanyDetails(u)} className={adminBtnVisualizar}>
-                            👁️ Visualizar
-                          </button>
-                          <button type="button" onClick={() => setEditingUser(toEditUserState(u))} className={adminBtnEditar}>
-                            ✏️ Editar
-                          </button>
-                          {u.conta_status !== "inativo" ? (
+                      <td className="py-2 text-right align-top">
+                        <div className="fc-superadmin-user-actions ml-auto flex w-full min-w-0 max-w-[min(100%,20rem)] flex-col gap-1.5 md:max-w-[22rem]">
+                          <div className="grid w-full grid-cols-2 gap-2 max-md:max-w-full md:flex md:w-auto md:flex-wrap md:justify-end">
+                            <button type="button" onClick={() => handleViewUser(u)} className={userTableBtnVisualizar}>
+                              👁️ Visualizar
+                            </button>
+                            <button type="button" onClick={() => setEditingUser(toEditUserState(u))} className={userTableBtnEditar}>
+                              ✏️ Editar
+                            </button>
+                            {u.conta_status !== "inativo" ? (
+                              <button
+                                type="button"
+                                disabled={authUser?.id != null && Number(authUser.id) === Number(u.id)}
+                                title={authUser?.id != null && Number(authUser.id) === Number(u.id) ? "Não pode desativar a sua própria conta" : undefined}
+                                onClick={() => onDeactivateUser(u.id)}
+                                className={`max-md:col-span-2 ${userTableBtnDesativar} disabled:cursor-not-allowed disabled:opacity-40`}
+                              >
+                                Desativar
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => onReactivateUser(u.id)}
+                                className={`max-md:col-span-2 ${userTableBtnReativar}`}
+                              >
+                                Reativar
+                              </button>
+                            )}
+                          </div>
+                          <div className="w-full max-md:grid max-md:grid-cols-2 md:flex md:justify-end">
                             <button
                               type="button"
-                              disabled={authUser?.id != null && Number(authUser.id) === Number(u.id)}
-                              title={authUser?.id != null && Number(authUser.id) === Number(u.id) ? "Não pode desativar a sua própria conta" : undefined}
-                              onClick={() => onDeactivateUser(u.id)}
-                              className={`${adminBtnDesativar} disabled:cursor-not-allowed disabled:opacity-40`}
+                              disabled={u.conta_status === "inativo"}
+                              onClick={() => onResetPassword(u.id)}
+                              className={`max-md:col-span-2 ${userTableBtnResetSenha}`}
+                              title={u.conta_status === "inativo" ? "Reative a conta para alterar a senha" : undefined}
                             >
-                              Desativar
+                              🔑 Resetar senha
                             </button>
-                          ) : (
-                            <button type="button" onClick={() => onReactivateUser(u.id)} className={adminBtnReativar}>
-                              Reativar
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            disabled={u.conta_status === "inativo"}
-                            onClick={() => onResetPassword(u.id)}
-                            className={`${adminBtnResetSenha} disabled:cursor-not-allowed disabled:opacity-40`}
-                            title={u.conta_status === "inativo" ? "Reative a conta para alterar a senha" : undefined}
-                          >
-                            🔑 Resetar senha
-                          </button>
+                          </div>
                         </div>
                       </td>
                     </tr>
@@ -1266,6 +1332,8 @@ export default function AdminPage() {
           </aside>
         </div>
       )}
+
+      <UserDetailsModal open={open} onClose={closeUserDetailsModal} user={selectedUser} loading={userDetailLoading} />
 
     </div>
   );

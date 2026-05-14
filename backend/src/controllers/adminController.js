@@ -10,6 +10,7 @@ const { pool } = require("../db");
 const {
   createUser,
   listUsersByCompany,
+  getUserByIdForSuperAdmin,
   updateUser,
   updateUserAsSuperAdmin,
   updateUserPassword,
@@ -497,6 +498,32 @@ const listUsersCtrl = async (req, res) => {
     page,
     totalPages: Math.max(1, Math.ceil(result.total / limit)),
   });
+};
+
+/** Detalhe de um utilizador (SUPER_ADMIN). Mesma forma de linha que a listagem; sem senha_hash. */
+const getSuperAdminUserCtrl = async (req, res) => {
+  if (req.user.role !== "SUPER_ADMIN") {
+    return res.status(403).json({
+      success: false,
+      message: "Acesso negado.",
+    });
+  }
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id < 1) {
+    return res.status(400).json({
+      success: false,
+      message: "ID inválido.",
+    });
+  }
+  const row = await getUserByIdForSuperAdmin(id);
+  if (!row) {
+    return res.status(404).json({
+      success: false,
+      message: "Utilizador não encontrado.",
+    });
+  }
+  const { senha_hash: _omit, ...safe } = row;
+  return res.json(safe);
 };
 
 const updateUserCtrl = async (req, res) => {
@@ -1038,6 +1065,7 @@ module.exports = {
   deleteCompanyCtrl,
   createUserCtrl,
   listUsersCtrl,
+  getSuperAdminUserCtrl,
   updateUserCtrl,
   deleteUserCtrl,
   patchUserContaStatusCtrl,
