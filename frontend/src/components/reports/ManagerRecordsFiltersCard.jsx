@@ -15,6 +15,7 @@ export default function ManagerRecordsFiltersCard({
   activePeriodLabel,
   typeLabelMap,
   onApplyFilter,
+  variant = "default",
 }) {
   return (
     <div className="fc-card mb-3 space-y-3 p-4">
@@ -123,23 +124,25 @@ export default function ManagerRecordsFiltersCard({
           Filtrar
         </button>
       </div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
-        <input
-          placeholder="Busca local na árvore (motorista, placa, destino...)"
-          className={inputClass}
-          value={localTreeSearch}
-          onChange={(e) => setLocalTreeSearch(e.target.value)}
-        />
-        {localTreeSearch.trim() ? (
-          <button
-            type="button"
-            onClick={() => setLocalTreeSearch("")}
-            className="fc-btn rounded-lg border border-slate-600 px-3 py-2 text-xs text-slate-200"
-          >
-            Limpar busca local
-          </button>
-        ) : null}
-      </div>
+      {variant !== "hubMinimal" ? (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
+          <input
+            placeholder="Busca local na árvore (motorista, placa, destino...)"
+            className={inputClass}
+            value={localTreeSearch}
+            onChange={(e) => setLocalTreeSearch(e.target.value)}
+          />
+          {localTreeSearch.trim() ? (
+            <button
+              type="button"
+              onClick={() => setLocalTreeSearch("")}
+              className="fc-btn rounded-lg border border-slate-600 px-3 py-2 text-xs text-slate-200"
+            >
+              Limpar busca local
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         <article className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-3">
           <p className="text-[11px] uppercase tracking-wide text-blue-200/90">Período ativo</p>

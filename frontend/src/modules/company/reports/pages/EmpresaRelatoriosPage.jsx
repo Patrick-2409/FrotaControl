@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../../../services/auth";
+import api from "../../../../services/api";
 import ManagerRecordsFiltersCard from "../../../../components/reports/ManagerRecordsFiltersCard";
 import ManagerRecordsPage from "../../../../pages/ManagerRecordsPage";
 import EmptyState from "../../../../components/EmptyState";
@@ -8,6 +9,7 @@ import { typeLabelMap, todayAsInput } from "../../../../utils/managerRecordsOper
 import useDebouncedValue from "../../../../hooks/useDebouncedValue";
 import { REPORT_HUB_CATEGORIES } from "../reportsHubCategories";
 import { useReportsHubPersistence } from "../useReportsHubPersistence";
+import OperationalFichaPreview from "../components/OperationalFichaPreview";
 
 const defaultFiltro = () => ({
   data: todayAsInput(),
@@ -29,6 +31,36 @@ export default function EmpresaRelatoriosPage() {
   const [expandedCat, setExpandedCat] = useState(REPORT_HUB_CATEGORIES[0]?.id || "");
   const [previewMode, setPreviewMode] = useState(false);
   const debouncedMotorista = useDebouncedValue(filtro.motorista);
+  const [previewRows, setPreviewRows] = useState([]);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  useEffect(() => {
+    if (!previewMode) return undefined;
+    let cancelled = false;
+    (async () => {
+      setPreviewLoading(true);
+      try {
+        const params = { page: 1, limit: 15 };
+        if (filtro.periodo === "dia" && filtro.data?.trim()) params.data = filtro.data.trim();
+        if (filtro.periodo === "mes" && filtro.mes?.trim()) params.mes = filtro.mes.trim();
+        if (filtro.periodo === "intervalo") {
+          if (filtro.data_inicio?.trim()) params.data_inicio = filtro.data_inicio.trim();
+          if (filtro.data_fim?.trim()) params.data_fim = filtro.data_fim.trim();
+        }
+        if (debouncedMotorista?.trim()) params.motorista = debouncedMotorista.trim();
+        if (filtro.tipo?.trim()) params.tipo = filtro.tipo.trim();
+        const { data } = await api.get("/dashboard/registros", { params });
+        if (!cancelled) setPreviewRows(data.items || []);
+      } catch {
+        if (!cancelled) setPreviewRows([]);
+      } finally {
+        if (!cancelled) setPreviewLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [previewMode, applyTick, debouncedMotorista, filtro.data, filtro.data_fim, filtro.data_inicio, filtro.mes, filtro.periodo, filtro.tipo]);
 
   const { favorites, recent, exportHistory, pushRecent, toggleFavorite, logExport } = useReportsHubPersistence();
 
@@ -98,8 +130,7 @@ export default function EmpresaRelatoriosPage() {
           <div>
             <h1 className="text-xl font-semibold tracking-tight text-zinc-50 sm:text-2xl">Central de relatórios</h1>
             <p className="mt-1 max-w-3xl text-sm text-zinc-400">
-              Filtros globais, categorias e exportações (Excel, PDF e CSV) sobre os mesmos dados da listagem paginada.
-              O escopo da empresa segue o seu perfil de acesso.
+              Tipo de relatório, período e motorista (opcional). Exportações Excel/PDF no modelo de ficha do porto.
             </p>
           </div>
           <div className="flex flex-wrap gap-2 print:hidden">
@@ -239,8 +270,7 @@ export default function EmpresaRelatoriosPage() {
           <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3 text-[11px] text-zinc-500">
             <p className="font-semibold text-zinc-400">Exportações</p>
             <p className="mt-1">
-              Modelo Porto: Excel e PDF. Fichas reunidas: Excel, PDF e CSV (abre bem no Excel). A listagem
-              mostra 15 itens de cada vez para a navegação ficar leve.
+              Modelo Porto: cada registo numa ficha (Excel/PDF). CSV continua disponível na listagem.
             </p>
           </div>
         </aside>
@@ -248,9 +278,7 @@ export default function EmpresaRelatoriosPage() {
         <div className="min-w-0 space-y-4">
           <section className="fc-card border-zinc-800/90 p-4 print:hidden">
             <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Filtros gerais</p>
-            <p className="mt-1 text-xs text-zinc-500">
-              Período, motorista e tipo de atividade aplicam-se à pré-visualização e às exportações em conjunto.
-            </p>
+            <p className="mt-1 text-xs text-zinc-500">Período, tipo de relatório e motorista (opcional).</p>
             <div className="mt-3">
               <ManagerRecordsFiltersCard
                 filtro={filtro}
@@ -264,53 +292,33 @@ export default function EmpresaRelatoriosPage() {
                 activePeriodLabel={activePeriodLabel}
                 typeLabelMap={typeLabelMap}
                 onApplyFilter={() => setApplyTick((t) => t + 1)}
+                variant="hubMinimal"
               />
             </div>
           </section>
 
-          {previewMode ? (
-            <section
-              className="fc-card border-dashed border-zinc-600/80 bg-zinc-950/30 p-4 print:block print:border-solid"
-              aria-label="Pré-visualização do resumo"
-            >
-              <h2 className="text-sm font-semibold text-zinc-200 print:text-black">Resumo para conferência</h2>
-              <dl className="mt-3 grid gap-2 text-sm text-zinc-300 print:text-black sm:grid-cols-2">
-                <div>
-                  <dt className="text-xs uppercase text-zinc-500 print:text-zinc-700">Período</dt>
-                  <dd className="font-medium">{activePeriodLabel}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs uppercase text-zinc-500 print:text-zinc-700">Atividade</dt>
-                  <dd className="font-medium">{typeLabelMap[filtro.tipo] || "Todas"}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs uppercase text-zinc-500 print:text-zinc-700">Motorista</dt>
-                  <dd className="font-medium">{debouncedMotorista?.trim() || "Todos"}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs uppercase text-zinc-500 print:text-zinc-700">Empresa</dt>
-                  <dd className="font-medium">{user?.empresa_nome || "—"}</dd>
-                </div>
-              </dl>
-              <p className="mt-3 text-xs text-zinc-500 print:text-zinc-800">
-                A listagem detalhada e as exportações usam exatamente estes critérios. Use &quot;Imprimir resumo&quot; para
-                uma página limpa em impressão.
-              </p>
-            </section>
-          ) : null}
-
           <section className="fc-card border-zinc-800/90 p-3 print:border-0 print:shadow-none sm:p-4">
-            <h2 className="mb-3 text-sm font-semibold text-zinc-200 print:hidden">Pré-visualização operacional</h2>
-            <ManagerRecordsPage
-              layout="hub"
-              hubFiltro={filtro}
-              hubSetFiltro={setFiltro}
-              hubPage={page}
-              hubSetPage={setPage}
-              applyTick={applyTick}
-              hubLocalTreeSearch={localTreeSearch}
-              hubSetLocalTreeSearch={setLocalTreeSearch}
-            />
+            <h2 className="mb-3 text-sm font-semibold text-zinc-200 print:hidden">
+              {previewMode ? "Pré-visualização em ficha" : "Listagem operacional"}
+            </h2>
+            {previewMode ? (
+              previewLoading ? (
+                <p className="py-10 text-center text-sm text-zinc-500">A carregar fichas…</p>
+              ) : (
+                <OperationalFichaPreview rows={previewRows} tipoFiltro={filtro.tipo} />
+              )
+            ) : (
+              <ManagerRecordsPage
+                layout="hub"
+                hubFiltro={filtro}
+                hubSetFiltro={setFiltro}
+                hubPage={page}
+                hubSetPage={setPage}
+                applyTick={applyTick}
+                hubLocalTreeSearch={localTreeSearch}
+                hubSetLocalTreeSearch={setLocalTreeSearch}
+              />
+            )}
           </section>
         </div>
       </div>

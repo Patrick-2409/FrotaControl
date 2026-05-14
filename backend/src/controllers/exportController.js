@@ -403,6 +403,82 @@ const resolveEmpresaLogoAssets = async (req, company) => {
 };
 
 const marker = (checked) => (checked ? "&#10005;" : "&nbsp;");
+
+/** Data operacional em YYYY-MM-DD (America/Sao_Paulo) para agrupar romaneios por dia + veículo. */
+const asYmdSp = (value) => {
+  const parsed = getDateFromValue(value);
+  if (!parsed) return "";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: REPORT_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(parsed);
+};
+
+const classifyRomaneioTransport = (tipoTransporte) => {
+  const s = String(tipoTransporte || "").toLowerCase();
+  if (s.includes("estéril") || s.includes("esteril")) return "e";
+  if (s.includes("amarração") || s.includes("amarracao")) return "ra";
+  if (s.includes("pulmão") || s.includes("pulmao")) return "rp";
+  return "";
+};
+
+/**
+ * Romaneio: uma ficha por combinação (dia local + veículo + placa), com até 10 viagens (colunas 1–10).
+ * Mantém ordem de aparição dos grupos igual à listagem (data DESC).
+ */
+const buildSheetEntriesFromRecords = (records) => {
+  const groupMap = new Map();
+  for (const row of records) {
+    if (row.tipo !== "romaneio") continue;
+    const ymd = asYmdSp(getEffectiveDateValue(row)) || "_";
+    const vKey = `${String(row.veiculo || "").trim()}|${String(row.placa || "").trim()}`;
+    const key = `${ymd}\t${vKey}`;
+    if (!groupMap.has(key)) {
+      groupMap.set(key, {
+        kind: "romaneio_group",
+        ymd,
+        veiculo: row.veiculo,
+        placa: row.placa,
+        motorista: "",
+        trips: [],
+      });
+    }
+    const g = groupMap.get(key);
+    g.trips.push(row);
+    const m = row.motorista ? String(row.motorista).trim() : "";
+    if (m) {
+      if (!g.motorista) g.motorista = m;
+      else if (!String(g.motorista).includes(m)) g.motorista = `${g.motorista} · ${m}`;
+    }
+  }
+  const parseTs = (row) => {
+    const raw = getEffectiveDateValue(row);
+    const normalized = raw && !String(raw).includes("T") ? String(raw).replace(" ", "T") : raw;
+    const p = parseOperationalDate(normalized);
+    return p && !Number.isNaN(p.getTime()) ? p.getTime() : 0;
+  };
+  for (const g of groupMap.values()) {
+    g.trips.sort((a, b) => parseTs(a) - parseTs(b));
+  }
+  const merged = [];
+  const romSeen = new Set();
+  for (const row of records) {
+    if (row.tipo !== "romaneio") {
+      merged.push({ kind: "single", row });
+      continue;
+    }
+    const ymd = asYmdSp(getEffectiveDateValue(row)) || "_";
+    const vKey = `${String(row.veiculo || "").trim()}|${String(row.placa || "").trim()}`;
+    const key = `${ymd}\t${vKey}`;
+    if (romSeen.has(key)) continue;
+    romSeen.add(key);
+    merged.push(groupMap.get(key));
+  }
+  return merged;
+};
+
 const getActivityName = (tipo) => {
   if (tipo === "parte_diaria") return "PARTE DIÁRIA";
   if (tipo === "combustivel") return "COMBUSTÍVEL";
@@ -459,7 +535,8 @@ const renderParteDiariaSheet = (row, companyName, logoUrl) => {
       <table class="form-table">
         <tr><td>CONTRATADO:</td><td>${escapeHtml(row.contratado || companyName)}</td><td>DATA:</td><td>${asDate(reportDate)}</td></tr>
         <tr><td>OPERADOR:</td><td>${escapeHtml(row.operador || row.motorista)}</td><td>EQUIPAMENTO:</td><td>${escapeHtml(row.equipamento || row.veiculo || "-")}</td></tr>
-        <tr><td>MARCA/MODELO:</td><td>${escapeHtml(row.marca_modelo || "-")}</td><td>LOCAL DE OPERAÇÃO:</td><td>${escapeHtml(row.local || "-")}</td></tr>
+        <tr><td>PLACA:</td><td>${escapeHtml(row.placa || "-")}</td><td>MARCA/MODELO:</td><td>${escapeHtml(row.marca_modelo || "-")}</td></tr>
+        <tr><td>LOCAL DE OPERAÇÃO:</td><td colspan="3">${escapeHtml(row.local || "-")}</td></tr>
         <tr><td>EXPEDIENTE:</td><td colspan="3">${escapeHtml(row.expediente || row.periodo || "-")}</td></tr>
       </table>
 
@@ -503,38 +580,54 @@ const renderParteDiariaSheet = (row, companyName, logoUrl) => {
   `;
 };
 
+const fmtMoneyBr = (n) => {
+  if (n === undefined || n === null || n === "") return "—";
+  const x = Number(n);
+  if (Number.isNaN(x)) return "—";
+  return x.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+const fmtLitrosBr = (n) => {
+  if (n === undefined || n === null || n === "") return "—";
+  const x = Number(n);
+  if (Number.isNaN(x)) return "—";
+  return x.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+};
+
 const renderCombustivelSheet = (row, companyName, logoUrl) => {
   const reportDate = getEffectiveDateValue(row);
-  const weekdayIndex = getWeekdayIndex(reportDate);
-  const weekRowsHtml = weekdayRows
-    .map((day) => {
-      const isRow = weekdayIndex === day.key;
-      const weekend = day.key === 6 || day.key === 0 ? " weekend" : "";
-      return `<tr class="${weekend.trim()}">
-        <td>${day.label}</td>
-        <td>${isRow ? asDate(reportDate) : ""}</td>
-        <td>${isRow ? escapeHtml(row.litros ?? "") : ""}</td>
-        <td>${isRow ? escapeHtml(row.tipo_combustivel || "") : ""}</td>
-        <td>${isRow ? escapeHtml(row.horimetro ?? "") : ""}</td>
-        <td>${isRow ? escapeHtml(row.hodometro ?? "") : ""}</td>
-      </tr>`;
-    })
-    .join("");
+  const preco = row.preco_por_litro ?? row.preco_litro;
   return `
     <section class="sheet">
       <div class="header-row">
         <div class="logo-box"><img src="${escapeHtml(logoUrl)}" alt="Logótipo" style="height:60px;"/></div>
         <div class="title-bar-wrap">
-          <div class="title-bar fuel-title">CONTROLE DE COMBUSTÍVEL SEMANAL</div>
+          <div class="title-bar fuel-title">FICHA DE ABASTECIMENTO</div>
+          <div class="subtitle">Controle operacional — ${asDate(reportDate)}</div>
         </div>
       </div>
       <table class="form-table">
-        <tr><td>MOTORISTA / OPERADOR:</td><td>${escapeHtml(row.motorista || "-")}</td></tr>
-        <tr><td>EQUIPAMENTO:</td><td>${escapeHtml(row.veiculo || companyName || "-")}</td></tr>
+        <tr><td class="bold">DATA</td><td>${asDate(reportDate)}</td><td class="bold">HORÁRIO</td><td>${asDateTime(reportDate)}</td></tr>
+        <tr><td class="bold">MOTORISTA / OPERADOR</td><td colspan="3">${escapeHtml(row.motorista || "-")}</td></tr>
+        <tr><td class="bold">EQUIPAMENTO</td><td colspan="3">${escapeHtml(row.veiculo || companyName || "-")}</td></tr>
+        <tr><td class="bold">PLACA</td><td>${escapeHtml(row.placa || "-")}</td><td class="bold">COMBUSTÍVEL</td><td>${escapeHtml(row.tipo_combustivel || "-")}</td></tr>
       </table>
+      <h4>VALORES DO LANÇAMENTO</h4>
       <table class="grid-table">
-        <tr><th>Dia</th><th>Data</th><th>Quantidade (L)</th><th>Combustível</th><th>Horímetro</th><th>Hodômetro</th></tr>
-        ${weekRowsHtml}
+        <tr>
+          <th>Litros (L)</th>
+          <th>Valor total (R$)</th>
+          <th>Preço / litro (R$)</th>
+          <th>Horímetro</th>
+          <th>Hodômetro</th>
+        </tr>
+        <tr>
+          <td class="center">${escapeHtml(fmtLitrosBr(row.litros))}</td>
+          <td class="center">${escapeHtml(fmtMoneyBr(row.valor_total))}</td>
+          <td class="center">${escapeHtml(fmtMoneyBr(preco))}</td>
+          <td class="center">${escapeHtml(row.horimetro ?? "—")}</td>
+          <td class="center">${escapeHtml(row.hodometro ?? "—")}</td>
+        </tr>
       </table>
       <div class="assinaturas-bar">ASSINATURAS</div>
       <div class="signatures">
@@ -545,15 +638,30 @@ const renderCombustivelSheet = (row, companyName, logoUrl) => {
   `;
 };
 
-const renderRomaneioSheet = (row, logoUrl) => {
-  const reportDate = getEffectiveDateValue(row);
-  const tt = String(row.tipo_transporte || "").toLowerCase();
-  const markE = tt.includes("estéril") || tt.includes("esteril");
-  const markRa = tt.includes("amarração") || tt.includes("amarracao");
-  const markRp = tt.includes("pulmão") || tt.includes("pulmao");
-  const tallyMark = (on) => (on ? "&#10005;" : "");
+const renderRomaneioGroupSheet = (group, logoUrl) => {
+  const first = group.trips[0];
+  const reportDate = getEffectiveDateValue(first);
   const nums = Array.from({ length: 10 }, (_, i) => `<th class="small center">${i + 1}</th>`).join("");
-  const emptyTally = Array.from({ length: 9 }, () => "<td></td>").join("");
+  const tallyMark = (on) => (on ? "&#10005;" : "");
+  const colMarks = (code) => {
+    let html = "";
+    for (let j = 0; j < 10; j += 1) {
+      const trip = group.trips[j];
+      const cls = classifyRomaneioTransport(trip?.tipo_transporte);
+      const on = Boolean(trip && cls === code);
+      html += `<td class="center">${tallyMark(on)}</td>`;
+    }
+    return html;
+  };
+  const destinos = [
+    ...new Set(group.trips.map((t) => String(t.destino || "").trim()).filter(Boolean)),
+  ].join(" · ");
+  const obsExtras = group.trips.length > 10 ? ` Nota: ${group.trips.length} viagens no dia; colunas 1–10.` : "";
+  const obsCombined = [
+    ...new Set(group.trips.map((t) => String(t.observacao || "").trim()).filter(Boolean)),
+  ].join(" | ");
+  const obsFinal = [obsCombined, obsExtras].filter(Boolean).join("") || "-";
+
   return `
   <section class="sheet">
     <div class="header-row">
@@ -573,7 +681,7 @@ const renderRomaneioSheet = (row, logoUrl) => {
           <th rowspan="2">Equipamento</th>
           <th rowspan="2">Placa</th>
           <th rowspan="2">Motorista</th>
-          <th colspan="11" class="center">Transporte</th>
+          <th colspan="11" class="center">Transporte (1 viagem por coluna)</th>
         </tr>
         <tr>
           <th class="small narrow"></th>
@@ -582,30 +690,27 @@ const renderRomaneioSheet = (row, logoUrl) => {
       </thead>
       <tbody>
         <tr>
-          <td rowspan="4">${escapeHtml(row.veiculo || "-")}</td>
-          <td rowspan="4">${escapeHtml(row.placa || "-")}</td>
-          <td rowspan="4">${escapeHtml(row.motorista || "-")}</td>
+          <td rowspan="4">${escapeHtml(group.veiculo || "-")}</td>
+          <td rowspan="4">${escapeHtml(group.placa || "-")}</td>
+          <td rowspan="4">${escapeHtml(group.motorista || "-")}</td>
           <td class="narrow bold">Estéril</td>
-          <td class="center">${tallyMark(markE)}</td>
-          ${emptyTally}
+          ${colMarks("e")}
         </tr>
         <tr>
           <td class="narrow bold">Rocha (amarração)</td>
-          <td class="center">${tallyMark(markRa)}</td>
-          ${emptyTally}
+          ${colMarks("ra")}
         </tr>
         <tr>
           <td class="narrow bold">Rocha (pulmão)</td>
-          <td class="center">${tallyMark(markRp)}</td>
-          ${emptyTally}
+          ${colMarks("rp")}
         </tr>
         <tr>
           <td class="narrow bold">Destinação</td>
-          <td colspan="10" class="left">${escapeHtml(row.destino || "-")}</td>
+          <td colspan="10" class="left">${escapeHtml(destinos || "-")}</td>
         </tr>
       </tbody>
     </table>
-    <table class="form-table"><tr><td class="bold">Observação</td><td colspan="3">${escapeHtml(row.observacao || "-")}</td></tr></table>
+    <table class="form-table"><tr><td class="bold">Observação</td><td colspan="3">${escapeHtml(obsFinal)}</td></tr></table>
     <p class="legend">Legenda: Site (ST) / Depósito de Rochas (DP) / Vias de Acesso (VA)</p>
     <div class="assinaturas-bar">ASSINATURAS</div>
     <div class="signatures">
@@ -615,6 +720,19 @@ const renderRomaneioSheet = (row, logoUrl) => {
   </section>
 `;
 };
+
+const renderRomaneioSheet = (row, logoUrl) =>
+  renderRomaneioGroupSheet(
+    {
+      kind: "romaneio_group",
+      ymd: asYmdSp(getEffectiveDateValue(row)),
+      veiculo: row.veiculo,
+      placa: row.placa,
+      motorista: row.motorista,
+      trips: [row],
+    },
+    logoUrl
+  );
 
 const buildExportCoverSection = ({ companyName, logoUrl, summaryText }) => {
   const safeSummary = escapeHtml(summaryText).replaceAll("\n", "<br/>");
@@ -634,8 +752,11 @@ const buildExportCoverSection = ({ companyName, logoUrl, summaryText }) => {
 
 const buildOfficialHtml = ({ companyName, logoUrl, records, summaryText }) => {
   const cover = buildExportCoverSection({ companyName, logoUrl, summaryText });
-  const sheets = records
-    .map((row) => {
+  const sheetEntries = buildSheetEntriesFromRecords(records);
+  const sheets = sheetEntries
+    .map((entry) => {
+      if (entry.kind === "romaneio_group") return renderRomaneioGroupSheet(entry, logoUrl);
+      const row = entry.row;
       if (row.tipo === "parte_diaria") return renderParteDiariaSheet(row, companyName, logoUrl);
       if (row.tipo === "combustivel") return renderCombustivelSheet(row, companyName, logoUrl);
       return renderRomaneioSheet(row, logoUrl);
@@ -979,37 +1100,40 @@ const buildFallbackPdfBuffer = async ({ companyName, records, logoImage, filterS
     };
 
     const drawCombustivel = (row, startY) => {
-      let y = drawRecordHeader(startY, row, "CONTROLE DE COMBUSTIVEL SEMANAL");
-      y = drawCells(y, 28, [
-        { width: pageWidth * 0.3, text: "MOTORISTA / OPERADOR:", bold: true },
-        { width: pageWidth * 0.7, text: asDisplayValue(row.motorista) },
+      const preco = row.preco_por_litro ?? row.preco_litro;
+      let y = drawRecordHeader(startY, row, "FICHA DE ABASTECIMENTO");
+      y = drawCells(y, 26, [
+        { width: pageWidth * 0.35, text: "MOTORISTA:", bold: true },
+        { width: pageWidth * 0.65, text: asDisplayValue(row.motorista) },
       ]);
-      y = drawCells(y, 28, [
-        { width: pageWidth * 0.3, text: "EQUIPAMENTO:", bold: true },
-        { width: pageWidth * 0.7, text: asDisplayValue(row.veiculo || companyName) },
+      y = drawCells(y, 26, [
+        { width: pageWidth * 0.35, text: "EQUIPAMENTO:", bold: true },
+        { width: pageWidth * 0.65, text: asDisplayValue(row.veiculo || companyName) },
       ]);
-      const dayW = pageWidth * 0.2;
-      const colW = (pageWidth - dayW) / 5;
-      y = drawCells(y, 24, [
-        { width: dayW, text: "Dia", bold: true, align: "center" },
-        { width: colW, text: "Data", bold: true, align: "center" },
-        { width: colW, text: "Quantidade (L)", bold: true, align: "center" },
-        { width: colW, text: "Combustivel", bold: true, align: "center" },
-        { width: colW, text: "Horimetro", bold: true, align: "center" },
-        { width: colW, text: "Hodometro", bold: true, align: "center" },
+      y = drawCells(y, 26, [
+        { width: pageWidth * 0.35, text: "Litros (L):", bold: true },
+        { width: pageWidth * 0.65, text: asDisplayValue(row.litros) },
       ]);
-      const weekIdx = getWeekdayIndex(getEffectiveDateValue(row));
-      weekdayRows.forEach((day) => {
-        const selected = day.key === weekIdx;
-        y = drawCells(y, 24, [
-          { width: dayW, text: day.label },
-          { width: colW, text: selected ? asDate(getEffectiveDateValue(row)) : "" },
-          { width: colW, text: selected ? asDisplayValue(row.litros) : "" },
-          { width: colW, text: selected ? asDisplayValue(row.tipo_combustivel) : "" },
-          { width: colW, text: selected ? asDisplayValue(row.horimetro) : "" },
-          { width: colW, text: selected ? asDisplayValue(row.hodometro) : "" },
-        ]);
-      });
+      y = drawCells(y, 26, [
+        { width: pageWidth * 0.35, text: "Valor total (R$):", bold: true },
+        { width: pageWidth * 0.65, text: asDisplayValue(row.valor_total) },
+      ]);
+      y = drawCells(y, 26, [
+        { width: pageWidth * 0.35, text: "Preço / litro (R$):", bold: true },
+        { width: pageWidth * 0.65, text: asDisplayValue(preco) },
+      ]);
+      y = drawCells(y, 26, [
+        { width: pageWidth * 0.35, text: "Horímetro:", bold: true },
+        { width: pageWidth * 0.65, text: asDisplayValue(row.horimetro) },
+      ]);
+      y = drawCells(y, 26, [
+        { width: pageWidth * 0.35, text: "Hodômetro:", bold: true },
+        { width: pageWidth * 0.65, text: asDisplayValue(row.hodometro) },
+      ]);
+      y = drawCells(y, 26, [
+        { width: pageWidth * 0.35, text: "Combustível:", bold: true },
+        { width: pageWidth * 0.65, text: asDisplayValue(row.tipo_combustivel) },
+      ]);
       y = drawCells(y, 26, [
         { width: pageWidth / 2, text: "Operador: ________________________________" },
         { width: pageWidth / 2, text: "Responsavel: ________________________________" },
@@ -1017,52 +1141,75 @@ const buildFallbackPdfBuffer = async ({ companyName, records, logoImage, filterS
       return y;
     };
 
-    const drawRomaneio = (row, startY) => {
-      let y = drawRecordHeader(startY, row, "CONTROLE DIARIO DE TRANSPORTE");
+    const drawRomaneioGroup = (group, startY) => {
+      const first = group.trips[0];
+      let y = drawRecordHeader(startY, first, "CONTROLE DIARIO DE TRANSPORTE");
       y = drawCells(y, 28, [
         { width: pageWidth * 0.2, text: "DATA:", bold: true },
-        { width: pageWidth * 0.8, text: asDate(getEffectiveDateValue(row)) },
+        { width: pageWidth * 0.8, text: asDate(getEffectiveDateValue(first)) },
       ]);
-      const c4 = pageWidth / 4;
-      y = drawCells(y, 24, [
-        { width: c4, text: "Equipamento", bold: true, align: "center" },
-        { width: c4, text: "Placa", bold: true, align: "center" },
-        { width: c4, text: "Motorista", bold: true, align: "center" },
-        { width: c4, text: "Transporte", bold: true, align: "center" },
+      y = drawCells(y, 26, [
+        { width: pageWidth * 0.22, text: "Equipamento:", bold: true },
+        { width: pageWidth * 0.28, text: asDisplayValue(group.veiculo) },
+        { width: pageWidth * 0.2, text: "Placa:", bold: true },
+        { width: pageWidth * 0.3, text: asDisplayValue(group.placa) },
       ]);
-      y = drawCells(y, 24, [
-        { width: c4, text: asDisplayValue(row.veiculo) },
-        { width: c4, text: asDisplayValue(row.placa) },
-        { width: c4, text: asDisplayValue(row.motorista) },
-        { width: c4, text: asDisplayValue(row.tipo_transporte) },
+      y = drawCells(y, 26, [
+        { width: pageWidth * 0.22, text: "Motorista:", bold: true },
+        { width: pageWidth * 0.78, text: asDisplayValue(group.motorista) },
       ]);
-      y = drawCells(y, 24, [
-        { width: pageWidth * 0.75, text: "Esteril" },
-        { width: pageWidth * 0.25, text: String(row.tipo_transporte || "").toLowerCase().includes("estéril") ? "X" : "", align: "center", bold: true },
+      const labW = pageWidth * 0.16;
+      const colW = (pageWidth - labW) / 10;
+      const headCells = [{ width: labW, text: "Transporte", bold: true }];
+      for (let i = 1; i <= 10; i += 1) {
+        headCells.push({ width: colW, text: String(i), bold: true, align: "center" });
+      }
+      y = drawCells(y, 22, headCells);
+      const typeRows = [
+        ["Estéril", "e"],
+        ["Rocha (amarracao)", "ra"],
+        ["Rocha (pulmao)", "rp"],
+      ];
+      typeRows.forEach(([label, code]) => {
+        const cells = [{ width: labW, text: label, bold: true }];
+        for (let j = 0; j < 10; j += 1) {
+          const trip = group.trips[j];
+          const cls = classifyRomaneioTransport(trip?.tipo_transporte);
+          const mark = trip && cls === code ? "X" : "";
+          cells.push({ width: colW, text: mark, align: "center", bold: true });
+        }
+        y = drawCells(y, 22, cells);
+      });
+      const destinos = [
+        ...new Set(group.trips.map((t) => String(t.destino || "").trim()).filter(Boolean)),
+      ].join(" | ");
+      y = drawCells(y, 26, [
+        { width: pageWidth * 0.22, text: "Destinacao:", bold: true },
+        { width: pageWidth * 0.78, text: destinos || "-" },
       ]);
-      y = drawCells(y, 24, [
-        { width: pageWidth * 0.75, text: "Rocha (amarracao)" },
-        { width: pageWidth * 0.25, text: String(row.tipo_transporte || "").toLowerCase().includes("amarração") ? "X" : "", align: "center", bold: true },
-      ]);
-      y = drawCells(y, 24, [
-        { width: pageWidth * 0.75, text: "Rocha (pulmao)" },
-        { width: pageWidth * 0.25, text: String(row.tipo_transporte || "").toLowerCase().includes("pulmão") ? "X" : "", align: "center", bold: true },
-      ]);
-      y = drawCells(y, 24, [
-        { width: pageWidth * 0.75, text: "Destinacao", bold: true },
-        { width: pageWidth * 0.25, text: asDisplayValue(row.destino) },
-      ]);
-      y = drawCells(y, 36, [
-        { width: pageWidth * 0.2, text: "Observacao", bold: true },
-        { width: pageWidth * 0.8, text: asDisplayValue(row.observacao) },
-      ]);
-      y = drawCells(y, 24, [{ width: pageWidth, text: "Legenda: Site (ST) / Deposito de Rochas (DP) / Vias de Acesso (VA)" }], { fontSize: 8 });
+      const obsParts = [
+        ...new Set(group.trips.map((t) => String(t.observacao || "").trim()).filter(Boolean)),
+      ];
+      if (group.trips.length > 10) obsParts.push(`Nota: ${group.trips.length} viagens; ficha PDF mostra colunas 1-10.`);
+      y = drawFlowingBlock(y, "Observacao", obsParts.length ? obsParts.join(" | ") : "-", { withTitle: true });
       y = drawCells(y, 26, [
         { width: pageWidth / 2, text: "Apontador: ________________________________" },
         { width: pageWidth / 2, text: "Responsavel: ________________________________" },
       ]);
       return y;
     };
+
+    const drawRomaneio = (row, startY) =>
+      drawRomaneioGroup(
+        {
+          kind: "romaneio_group",
+          veiculo: row.veiculo,
+          placa: row.placa,
+          motorista: row.motorista,
+          trips: [row],
+        },
+        startY
+      );
 
     if (!records.length) {
       drawCells(contentStartY, 28, [{ width: pageWidth, text: `Empresa: ${asDisplayValue(companyName)} | Sem registros para exportacao.` }], {
@@ -1072,9 +1219,15 @@ const buildFallbackPdfBuffer = async ({ companyName, records, logoImage, filterS
       return;
     }
 
-    records.forEach((row, index) => {
+    const sheetEntries = buildSheetEntriesFromRecords(records);
+    sheetEntries.forEach((entry, index) => {
       if (index > 0) doc.addPage();
       const startY = index === 0 ? contentStartY : margin;
+      if (entry.kind === "romaneio_group") {
+        drawRomaneioGroup(entry, startY);
+        return;
+      }
+      const row = entry.row;
       if (row.tipo === "parte_diaria") {
         drawParteDiaria(row, startY);
       } else if (row.tipo === "combustivel") {
@@ -1464,8 +1617,9 @@ const fmtDiaCurtoPtUtc = (ymd) => {
 
 const ROM_COL_LAST = 14;
 
-const addRomaneioPortoWorksheet = (workbook, row, logoImageId, index) => {
-  const reportDate = getEffectiveDateValue(row);
+const addRomaneioPortoGroupWorksheet = (workbook, group, logoImageId, index) => {
+  const first = group.trips[0];
+  const reportDate = getEffectiveDateValue(first);
   const ws = workbook.addWorksheet(`Romaneio-${index + 1}`);
   ws.pageSetup = {
     paperSize: 9,
@@ -1483,7 +1637,7 @@ const addRomaneioPortoWorksheet = (workbook, row, logoImageId, index) => {
 
   ws.mergeCells("A1:B3");
   ws.mergeCells("C1:N3");
-  ws.getCell("C1").value = `CONTROLE DIÁRIO DE TRANSPORTE\nAtividade: ${getActivityName(row.tipo)} · Data: ${asDate(
+  ws.getCell("C1").value = `CONTROLE DIÁRIO DE TRANSPORTE\nAtividade: ${getActivityName("romaneio")} · Data: ${asDate(
     reportDate
   )}`;
   ws.getCell("C1").font = { name: "Arial", size: 14, bold: true };
@@ -1512,7 +1666,7 @@ const addRomaneioPortoWorksheet = (workbook, row, logoImageId, index) => {
   ws.getCell(`B${hdr}`).value = "Placa";
   ws.getCell(`C${hdr}`).value = "Motorista";
   ws.mergeCells(`D${hdr}:N${hdr}`);
-  ws.getCell(`D${hdr}`).value = "TRANSPORTE";
+  ws.getCell(`D${hdr}`).value = "TRANSPORTE (1 viagem por coluna)";
   ["A", "B", "C", "D"].forEach((col) => {
     ws.getCell(`${col}${hdr}`).font = { name: "Arial", size: 10, bold: true };
     ws.getCell(`${col}${hdr}`).alignment = { vertical: "middle", horizontal: "center", wrapText: true };
@@ -1536,39 +1690,49 @@ const addRomaneioPortoWorksheet = (workbook, row, logoImageId, index) => {
   ws.mergeCells(`A${r0}:A${r0 + 3}`);
   ws.mergeCells(`B${r0}:B${r0 + 3}`);
   ws.mergeCells(`C${r0}:C${r0 + 3}`);
-  ws.getCell(`A${r0}`).value = asDisplayValue(row.veiculo);
-  ws.getCell(`B${r0}`).value = asDisplayValue(row.placa);
-  ws.getCell(`C${r0}`).value = asDisplayValue(row.motorista);
+  ws.getCell(`A${r0}`).value = asDisplayValue(group.veiculo);
+  ws.getCell(`B${r0}`).value = asDisplayValue(group.placa);
+  ws.getCell(`C${r0}`).value = asDisplayValue(group.motorista);
   ["A", "B", "C"].forEach((col) => {
     ws.getCell(`${col}${r0}`).alignment = { vertical: "middle", horizontal: "center", wrapText: true };
   });
 
-  const tt = String(row.tipo_transporte || "").toLowerCase();
-  const mark = (cond) => (cond ? "X" : "");
-  const labels = [
-    ["Estéril", mark(tt.includes("estéril") || tt.includes("esteril"))],
-    ["Rocha (amarração)", mark(tt.includes("amarração") || tt.includes("amarracao"))],
-    ["Rocha (pulmão)", mark(tt.includes("pulmão") || tt.includes("pulmao"))],
+  const typeRows = [
+    ["Estéril", "e"],
+    ["Rocha (amarração)", "ra"],
+    ["Rocha (pulmão)", "rp"],
   ];
-  labels.forEach(([label, cellMark], i) => {
+  typeRows.forEach(([label, code], i) => {
     const r = r0 + i;
     ws.getCell(`D${r}`).value = label;
     ws.getCell(`D${r}`).font = { name: "Arial", size: 9, bold: true };
-    ws.getCell(`E${r}`).value = cellMark;
-    ws.getCell(`E${r}`).alignment = { vertical: "middle", horizontal: "center" };
-    ws.mergeCells(`F${r}:N${r}`);
+    for (let j = 0; j < 10; j += 1) {
+      const colL = getColumnLetter(5 + j);
+      const trip = group.trips[j];
+      const cls = classifyRomaneioTransport(trip?.tipo_transporte);
+      ws.getCell(`${colL}${r}`).value = trip && cls === code ? "X" : "";
+      ws.getCell(`${colL}${r}`).alignment = { vertical: "middle", horizontal: "center" };
+    }
   });
+
   const rDest = r0 + 3;
   ws.getCell(`D${rDest}`).value = "Destinação";
   ws.getCell(`D${rDest}`).font = { name: "Arial", size: 9, bold: true };
   ws.mergeCells(`E${rDest}:N${rDest}`);
-  ws.getCell(`E${rDest}`).value = asDisplayValue(row.destino);
+  const destinos = [
+    ...new Set(group.trips.map((t) => String(t.destino || "").trim()).filter(Boolean)),
+  ].join(" · ");
+  ws.getCell(`E${rDest}`).value = destinos || "-";
   ws.getCell(`E${rDest}`).alignment = { vertical: "middle", horizontal: "left", wrapText: true };
   applyBorderAndFont(ws, r0, r0 + 3, 1, ROM_COL_LAST);
 
+  const obsParts = [
+    ...new Set(group.trips.map((t) => String(t.observacao || "").trim()).filter(Boolean)),
+  ];
+  if (group.trips.length > 10) obsParts.push(`Nota: ${group.trips.length} viagens no dia; colunas 1–10.`);
   const orow = r0 + 4;
   ws.mergeCells(`A${orow}:N${orow}`);
-  ws.getCell(`A${orow}`).value = `Observação: ${asDisplayValue(row.observacao)}`;
+  ws.getCell(`A${orow}`).value = `Observação: ${obsParts.length ? obsParts.join(" | ") : "-"}`;
   applyBorderAndFont(ws, orow, orow, 1, ROM_COL_LAST);
 
   const lrow = orow + 1;
@@ -1592,6 +1756,21 @@ const addRomaneioPortoWorksheet = (workbook, row, logoImageId, index) => {
   ws.getCell(`H${sig}`).value = "Responsável: ________________________________";
   applyBorderAndFont(ws, sig, sig, 1, ROM_COL_LAST);
 };
+
+const addRomaneioPortoWorksheet = (workbook, row, logoImageId, index) =>
+  addRomaneioPortoGroupWorksheet(
+    workbook,
+    {
+      kind: "romaneio_group",
+      ymd: asYmdSp(getEffectiveDateValue(row)) || "_",
+      veiculo: row.veiculo,
+      placa: row.placa,
+      motorista: row.motorista,
+      trips: [row],
+    },
+    logoImageId,
+    index
+  );
 
 const PROD_HDR_FILL = "FF404040";
 const PROD_HDR_FONT = "FFFFFFFF";
@@ -1779,15 +1958,13 @@ const addSimpleFormWorksheet = (workbook, row, logoImageId, index) => {
   }
 
   const reportDate = getEffectiveDateValue(row);
+  const preco = row.preco_por_litro ?? row.preco_litro;
   const worksheet = workbook.addWorksheet(`Combustivel-${index + 1}`);
   applyBaseStyle(worksheet);
 
   worksheet.mergeCells("A1:B3");
   worksheet.mergeCells("C1:H3");
-  const title = "CONTROLE DE COMBUSTÍVEL SEMANAL";
-  worksheet.getCell("C1").value = `${title}\nAtividade principal: ${getActivityName(
-    row.tipo
-  )} | Data executada: ${asDate(reportDate)}`;
+  worksheet.getCell("C1").value = `FICHA DE ABASTECIMENTO\nData: ${asDate(reportDate)}`;
   worksheet.getCell("C1").font = { name: "Arial", size: 14, bold: true };
   worksheet.getCell("C1").alignment = { vertical: "middle", horizontal: "center", wrapText: true };
   applyBorderAndFont(worksheet, 1, 3, 1, 8);
@@ -1806,64 +1983,55 @@ const addSimpleFormWorksheet = (workbook, row, logoImageId, index) => {
 
   putLabelValue(worksheet, 4, "A4:B4", "C4:D4", "DATA:", asDate(reportDate));
   putLabelValue(worksheet, 4, "E4:F4", "G4:H4", "EMISSÃO:", asDateTime(new Date()));
-  putLabelValue(worksheet, 5, "A5:B5", "C5:D5", "MOTORISTA:", row.motorista);
-  putLabelValue(worksheet, 5, "E5:F5", "G5:H5", "VEÍCULO:", row.veiculo);
+  putLabelValue(worksheet, 5, "A5:B5", "C5:H5", "MOTORISTA / OPERADOR:", row.motorista);
+  putLabelValue(worksheet, 6, "A6:B6", "C6:H6", "EQUIPAMENTO:", row.veiculo);
+  putLabelValue(worksheet, 7, "A7:B7", "C7:D7", "PLACA:", row.placa);
+  putLabelValue(worksheet, 8, "A8:B8", "C8:H8", "TIPO COMBUSTÍVEL:", row.tipo_combustivel);
 
-  worksheet.mergeCells("A6:H6");
-  worksheet.getCell("A6").value = "CONTROLE SEMANAL";
-  worksheet.getCell("A6").font = { name: "Arial", size: 11, bold: true };
-  applyBorderAndFont(worksheet, 6, 6, 1, 8);
+  worksheet.mergeCells("A9:H9");
+  worksheet.getCell("A9").value = "VALORES DO LANÇAMENTO";
+  worksheet.getCell("A9").font = { name: "Arial", size: 11, bold: true };
+  applyBorderAndFont(worksheet, 9, 9, 1, 8);
 
-  worksheet.getCell("A7").value = "Dia";
-  worksheet.mergeCells("B7:C7");
-  worksheet.getCell("B7").value = "Data";
-  worksheet.getCell("D7").value = "Quantidade (L)";
-  worksheet.getCell("E7").value = "Combustível";
-  worksheet.getCell("F7").value = "Horímetro";
-  worksheet.mergeCells("G7:H7");
-  worksheet.getCell("G7").value = "Hodômetro";
-  applyBorderAndFont(worksheet, 7, 7, 1, 8);
-  ["A7", "B7", "D7", "E7", "F7", "G7"].forEach((addr) => {
+  worksheet.getCell("A10").value = "Litros (L)";
+  worksheet.getCell("B10").value = "Valor total (R$)";
+  worksheet.mergeCells("C10:D10");
+  worksheet.getCell("C10").value = "Preço / litro (R$)";
+  worksheet.getCell("E10").value = "Horímetro";
+  worksheet.mergeCells("F10:H10");
+  worksheet.getCell("F10").value = "Hodômetro";
+  ["A10", "B10", "C10", "E10", "F10"].forEach((addr) => {
     worksheet.getCell(addr).font = { name: "Arial", size: 10, bold: true };
     worksheet.getCell(addr).alignment = { vertical: "middle", horizontal: "center", wrapText: true };
   });
+  applyBorderAndFont(worksheet, 10, 10, 1, 8);
 
-  const weekdayIndex = getWeekdayIndex(reportDate);
-  let currentRow = 8;
-  weekdayRows.forEach((day) => {
-    const isRow = weekdayIndex === day.key;
-    const weekend = day.key === 6 || day.key === 0;
-    worksheet.getCell(`A${currentRow}`).value = day.label;
-    worksheet.mergeCells(`B${currentRow}:C${currentRow}`);
-    worksheet.getCell(`B${currentRow}`).value = isRow ? asDate(reportDate) : "";
-    worksheet.getCell(`D${currentRow}`).value = isRow ? asDisplayValue(row.litros) : "";
-    worksheet.getCell(`E${currentRow}`).value = isRow ? asDisplayValue(row.tipo_combustivel) : "";
-    worksheet.getCell(`F${currentRow}`).value = isRow ? asDisplayValue(row.horimetro) : "";
-    worksheet.mergeCells(`G${currentRow}:H${currentRow}`);
-    worksheet.getCell(`G${currentRow}`).value = isRow ? asDisplayValue(row.hodometro) : "";
-    applyBorderAndFont(worksheet, currentRow, currentRow, 1, 8);
-    ["A", "B", "D", "E", "F", "G"].forEach((col) => {
-      const cell = worksheet.getCell(`${col}${currentRow}`);
-      cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
-      if (weekend && col === "A") {
-        cell.font = { name: "Arial", size: 10, color: { argb: "FFB91C1C" }, bold: true };
-      }
-    });
-    currentRow += 1;
+  worksheet.getCell("A11").value = row.litros != null ? Number(row.litros) : "";
+  worksheet.getCell("B11").value = row.valor_total != null ? Number(row.valor_total) : "";
+  worksheet.getCell("B11").numFmt = '"R$" #,##0.00';
+  worksheet.mergeCells("C11:D11");
+  worksheet.getCell("C11").value = preco != null ? Number(preco) : "";
+  worksheet.getCell("C11").numFmt = '"R$" #,##0.00';
+  worksheet.getCell("E11").value = asDisplayValue(row.horimetro);
+  worksheet.mergeCells("F11:H11");
+  worksheet.getCell("F11").value = asDisplayValue(row.hodometro);
+  applyBorderAndFont(worksheet, 11, 11, 1, 8);
+  ["A11", "B11", "C11", "E11", "F11"].forEach((addr) => {
+    worksheet.getCell(addr).alignment = { vertical: "middle", horizontal: "center", wrapText: true };
   });
 
-  worksheet.mergeCells("A15:H15");
-  worksheet.getCell("A15").value = "ASSINATURAS";
-  worksheet.getCell("A15").font = { name: "Arial", size: 11, bold: true };
-  worksheet.getCell("A15").alignment = { horizontal: "center", vertical: "middle" };
-  worksheet.getCell("A15").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF3F4F6" } };
-  applyBorderAndFont(worksheet, 15, 15, 1, 8);
+  worksheet.mergeCells("A12:H12");
+  worksheet.getCell("A12").value = "ASSINATURAS";
+  worksheet.getCell("A12").font = { name: "Arial", size: 11, bold: true };
+  worksheet.getCell("A12").alignment = { horizontal: "center", vertical: "middle" };
+  worksheet.getCell("A12").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF3F4F6" } };
+  applyBorderAndFont(worksheet, 12, 12, 1, 8);
 
-  worksheet.mergeCells("A16:D16");
-  worksheet.mergeCells("E16:H16");
-  worksheet.getCell("A16").value = "Operador: ________________________________";
-  worksheet.getCell("E16").value = "Responsável: ________________________________";
-  applyBorderAndFont(worksheet, 16, 16, 1, 8);
+  worksheet.mergeCells("A13:D13");
+  worksheet.mergeCells("E13:H13");
+  worksheet.getCell("A13").value = "Operador: ________________________________";
+  worksheet.getCell("E13").value = "Responsável: ________________________________";
+  applyBorderAndFont(worksheet, 13, 13, 1, 8);
 };
 
 const addExportSummaryWorksheet = (workbook, { companyName, summaryText }) => {
@@ -1910,7 +2078,13 @@ const exportExcel = async (req, res) => {
     empty.getCell("A1").value = `Sem registros para exportação (${company?.nome || "Empresa"})`;
     empty.getCell("A1").font = { name: "Arial", size: 12, bold: true };
   } else {
-    data.forEach((row, index) => {
+    const sheetEntries = buildSheetEntriesFromRecords(data);
+    sheetEntries.forEach((entry, index) => {
+      if (entry.kind === "romaneio_group") {
+        addRomaneioPortoGroupWorksheet(workbook, entry, logoImageId, index);
+        return;
+      }
+      const row = entry.row;
       if (row.tipo === "parte_diaria") {
         addParteDiariaWorksheet(workbook, row, company?.nome || "Empresa", logoImageId, index);
         return;
