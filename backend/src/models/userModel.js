@@ -43,6 +43,13 @@ const normalizeStatusPessoa = (v) => {
   return STATUS_PESSOA.has(s) ? s : "ativo";
 };
 
+/** Conta de acesso: ativo (pode autenticar) | inativo (bloqueado). */
+const normalizeContaStatus = (v) => {
+  const s = trimOrNull(v);
+  if (s === "inativo") return "inativo";
+  return "ativo";
+};
+
 const mergeUserRow = (existing, data) => {
   const treinamentos =
     data.treinamentos !== undefined ? normalizeTreinamentos(data.treinamentos) : normalizeTreinamentos(existing.treinamentos);
@@ -68,6 +75,10 @@ const mergeUserRow = (existing, data) => {
       data.status_operacional !== undefined
         ? normalizeStatusPessoa(data.status_operacional)
         : normalizeStatusPessoa(existing.status_operacional),
+    conta_status:
+      data.conta_status !== undefined
+        ? normalizeContaStatus(data.conta_status)
+        : normalizeContaStatus(existing.conta_status),
     treinamentos,
   };
 };
@@ -91,18 +102,20 @@ const createUser = async (
     equipamento_vinculo = null,
     operacao_escopo = null,
     status_operacional = "ativo",
+    conta_status = "ativo",
   },
   db = pool
 ) => {
   const tr = JSON.stringify(normalizeTreinamentos(treinamentos));
   const st = normalizeStatusPessoa(status_operacional);
+  const cs = normalizeContaStatus(conta_status);
   const { rows } = await db.query(
     `INSERT INTO usuarios (
        empresa_id, nome, email, cpf_id, senha_hash, role, veiculo_id, profile_image_url,
        funcao, cnh_categoria, cnh_numero, cnh_validade, treinamentos, observacoes,
-       equipamento_vinculo, operacao_escopo, status_operacional
+       equipamento_vinculo, operacao_escopo, status_operacional, conta_status
      )
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,$15,$16,$17)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,$15,$16,$17,$18)
      RETURNING *`,
     [
       empresa_id,
@@ -122,6 +135,7 @@ const createUser = async (
       trimOrNull(equipamento_vinculo),
       trimOrNull(operacao_escopo),
       st,
+      cs,
     ]
   );
   return rows[0];
@@ -134,7 +148,8 @@ const getMotoristaByLogin = async (login) => {
      JOIN empresas e ON e.id = u.empresa_id
      LEFT JOIN veiculos v ON v.id = u.veiculo_id
      WHERE u.role = 'MOTORISTA'
-       AND u.cpf_id = $1`,
+       AND u.cpf_id = $1
+       AND COALESCE(u.conta_status, 'ativo') = 'ativo'`,
     [login]
   );
   return rows;
@@ -148,6 +163,7 @@ const getAdminsEmpresaByEmail = async (email) => {
      LEFT JOIN veiculos v ON v.id = u.veiculo_id
      WHERE LOWER(COALESCE(u.email, '')) = LOWER($1)
       AND u.role = 'ADMIN_EMPRESA'
+      AND COALESCE(u.conta_status, 'ativo') = 'ativo'
      ORDER BY u.created_at DESC, u.id DESC`,
     [email]
   );
@@ -162,6 +178,7 @@ const getApontadorByEmail = async (email) => {
      LEFT JOIN veiculos v ON v.id = u.veiculo_id
      WHERE LOWER(COALESCE(u.email, '')) = LOWER($1)
        AND u.role = 'APONTADOR'
+       AND COALESCE(u.conta_status, 'ativo') = 'ativo'
      ORDER BY u.created_at DESC, u.id DESC`,
     [email]
   );
@@ -174,6 +191,7 @@ const getSuperAdminsByEmail = async (email) => {
      FROM usuarios u
      WHERE LOWER(COALESCE(u.email, '')) = LOWER($1)
       AND u.role = 'SUPER_ADMIN'
+      AND COALESCE(u.conta_status, 'ativo') = 'ativo'
      ORDER BY u.created_at DESC, u.id DESC`,
     [email]
   );
@@ -290,7 +308,8 @@ const updateUser = async (id, empresa_id, data) => {
          observacoes = $14,
          equipamento_vinculo = $15,
          operacao_escopo = $16,
-         status_operacional = $17
+         status_operacional = $17,
+         conta_status = $18
      WHERE id = $1 AND empresa_id = $2
      RETURNING *`,
     [
@@ -311,6 +330,7 @@ const updateUser = async (id, empresa_id, data) => {
       m.equipamento_vinculo,
       m.operacao_escopo,
       m.status_operacional,
+      m.conta_status,
     ]
   );
   return rows[0];
@@ -346,7 +366,8 @@ const updateUserAsSuperAdmin = async (id, data) => {
          observacoes = $14,
          equipamento_vinculo = $15,
          operacao_escopo = $16,
-         status_operacional = $17
+         status_operacional = $17,
+         conta_status = $18
      WHERE id = $1 AND role IN ('MOTORISTA', 'ADMIN_EMPRESA', 'APONTADOR', 'SUPER_ADMIN')
      RETURNING *`,
     [
@@ -367,6 +388,7 @@ const updateUserAsSuperAdmin = async (id, data) => {
       m.equipamento_vinculo,
       m.operacao_escopo,
       m.status_operacional,
+      m.conta_status,
     ]
   );
   return rows[0];
@@ -379,10 +401,6 @@ const updateUserPassword = async (id, empresa_id, senha_hash) => {
      WHERE id = $1 AND empresa_id = $2`,
     [id, empresa_id, senha_hash]
   );
-};
-
-const deleteUser = async (id, empresa_id) => {
-  await pool.query("DELETE FROM usuarios WHERE id = $1 AND empresa_id = $2", [id, empresa_id]);
 };
 
 const updateOwnUserPassword = async (id, senha_hash) => {
@@ -429,7 +447,6 @@ module.exports = {
   updateUser,
   updateUserAsSuperAdmin,
   updateUserPassword,
-  deleteUser,
   updateOwnUserPassword,
   updateOwnProfileImage,
   updateOwnProfileData,

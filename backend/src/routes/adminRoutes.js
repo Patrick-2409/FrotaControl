@@ -11,10 +11,12 @@ const {
   listUsersCtrl,
   updateUserCtrl,
   deleteUserCtrl,
+  patchUserContaStatusCtrl,
   createVehicleCtrl,
   listVehiclesCtrl,
   updateVehicleCtrl,
   deleteVehicleCtrl,
+  listAdminAuditLogsCtrl,
   getOverviewCtrl,
   companyDetailsCtrl,
   globalSearchCtrl,
@@ -62,11 +64,13 @@ router.put("/companies/:id", upload.single("logo"), asyncHandler(async (req, res
 }));
 router.delete("/companies/:id", asyncHandler(deleteCompanyCtrl));
 router.get("/overview", asyncHandler(getOverviewCtrl));
+router.get("/audit-logs", asyncHandler(listAdminAuditLogsCtrl));
 router.get("/search", asyncHandler(globalSearchCtrl));
 
 router.get("/users", asyncHandler(listUsersCtrl));
 router.post("/users", asyncHandler(createUserCtrl));
 router.put("/users/:id", asyncHandler(updateUserCtrl));
+router.patch("/users/:id/conta-status", asyncHandler(patchUserContaStatusCtrl));
 router.delete("/users/:id", asyncHandler(deleteUserCtrl));
 router.post("/users/:id/reset-password", asyncHandler(resetUserPasswordCtrl));
 

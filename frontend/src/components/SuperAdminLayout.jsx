@@ -1,8 +1,17 @@
+import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../services/auth";
 import SystemLogo from "./SystemLogo";
 import Avatar from "./Avatar";
+import RouteTransition from "./RouteTransition";
 
-export default function SuperAdminLayout({ children }) {
+const navTabClass = ({ isActive }) =>
+  `rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+    isActive
+      ? "bg-violet-600/35 text-white ring-1 ring-violet-500/45 shadow-[0_0_20px_-8px_rgba(139,92,246,0.45)]"
+      : "text-slate-400 hover:bg-slate-800/70 hover:text-slate-100"
+  }`;
+
+export default function SuperAdminLayout() {
   const { user, logout } = useAuth();
 
   return (
@@ -12,20 +21,32 @@ export default function SuperAdminLayout({ children }) {
           <div className="flex items-center gap-3">
             <SystemLogo variant="header" className="rounded-xl" />
             <div>
-            <p className="text-xs uppercase tracking-wider text-violet-300">Administração da plataforma</p>
-            <h1 className="text-xl font-semibold text-white">Painel geral</h1>
+              <p className="text-xs uppercase tracking-wider text-violet-300">Administração da plataforma</p>
+              <h1 className="text-xl font-semibold text-white">Painel geral</h1>
             </div>
           </div>
           <div className="flex items-center gap-3 text-sm">
             <span className="hidden text-slate-300 sm:inline">{user?.email}</span>
             <Avatar imageUrl={user?.profile_image_url} name={user?.nome || user?.email} size="header" />
-            <button onClick={logout} className="fc-btn rounded-lg border border-slate-700 px-3 py-1">
+            <button type="button" onClick={logout} className="fc-btn rounded-lg border border-slate-700 px-3 py-1">
               Sair
             </button>
           </div>
         </div>
       </header>
-      <main className="fc-page mx-auto w-full max-w-7xl px-6 py-6" id="conteudo-principal">{children}</main>
+      <main className="fc-page mx-auto w-full max-w-7xl px-6 py-6" id="conteudo-principal">
+        <nav className="mb-6 flex flex-wrap gap-2 border-b border-slate-800 pb-4" aria-label="Secções do painel super-admin">
+          <NavLink to="/super-admin" end className={navTabClass}>
+            Painel geral
+          </NavLink>
+          <NavLink to="/super-admin/historico" className={navTabClass}>
+            Histórico administrativo
+          </NavLink>
+        </nav>
+        <RouteTransition>
+          <Outlet />
+        </RouteTransition>
+      </main>
     </div>
   );
 }

@@ -155,6 +155,14 @@ const motoristaLogin = async (req, res) => {
     return res.status(401).json({ success: false, error: "Credenciais inválidas", message: "Credenciais inválidas" });
   }
 
+  if (user.conta_status === "inativo") {
+    return res.status(403).json({
+      success: false,
+      error: "Conta desativada",
+      message: "Esta conta foi desativada. Contacte o administrador.",
+    });
+  }
+
   const token = buildToken(user);
   return res.json({ token, user: buildUserResponse(user) });
 };
@@ -189,6 +197,14 @@ const adminEmpresaLogin = async (req, res) => {
   }
   if (!senhaValida) {
     return res.status(401).json({ success: false, error: "Credenciais inválidas", message: "Credenciais inválidas" });
+  }
+
+  if (user.conta_status === "inativo") {
+    return res.status(403).json({
+      success: false,
+      error: "Conta desativada",
+      message: "Esta conta foi desativada. Contacte o administrador.",
+    });
   }
 
   const token = buildToken(user);
@@ -230,6 +246,14 @@ const apontadorLogin = async (req, res) => {
     return res.status(401).json({ success: false, error: "Credenciais inválidas", message: "Credenciais inválidas" });
   }
 
+  if (user.conta_status === "inativo") {
+    return res.status(403).json({
+      success: false,
+      error: "Conta desativada",
+      message: "Esta conta foi desativada. Contacte o administrador.",
+    });
+  }
+
   const token = buildToken(user);
   return res.json({
     token,
@@ -268,6 +292,15 @@ const superAdminLogin = async (req, res) => {
   if (!senhaValida) {
     return res.status(401).json({ success: false, error: "Credenciais inválidas", message: "Credenciais inválidas" });
   }
+
+  if (user.conta_status === "inativo") {
+    return res.status(403).json({
+      success: false,
+      error: "Conta desativada",
+      message: "Esta conta foi desativada. Contacte o administrador.",
+    });
+  }
+
   const token = buildToken(user);
   return res.json({
     token,
@@ -280,19 +313,33 @@ const me = async (req, res) => {
   if (!user) {
     return res.status(404).json({ success: false, error: "Usuário não encontrado", message: "Usuário não encontrado" });
   }
+  if (user.conta_status === "inativo") {
+    return res.status(403).json({
+      success: false,
+      error: "Conta desativada",
+      message: "Esta conta foi desativada.",
+    });
+  }
   return res.json(user);
 };
 
 const alterarSenha = async (req, res) => {
   const data = alterarSenhaSchema.parse(req.body);
   const result = await pool.query(
-    "SELECT id, senha_hash FROM usuarios WHERE id = $1",
+    "SELECT id, senha_hash, COALESCE(conta_status, 'ativo') AS conta_status FROM usuarios WHERE id = $1",
     [req.user.sub]
   );
   if (!result.rowCount) {
     return res.status(404).json({ success: false, error: "Usuário não encontrado", message: "Usuário não encontrado" });
   }
   const user = result.rows[0];
+  if (user.conta_status === "inativo") {
+    return res.status(403).json({
+      success: false,
+      error: "Conta desativada",
+      message: "Esta conta foi desativada.",
+    });
+  }
 
   const resultadoSenhaAtual = await compararSenhaComHash(data.senhaAtual, user.senha_hash);
   if (resultadoSenhaAtual.erroHashInvalido) {

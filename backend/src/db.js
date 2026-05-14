@@ -381,6 +381,21 @@ const initDb = async () => {
     ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS equipamento_vinculo VARCHAR(200);
     ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS operacao_escopo VARCHAR(200);
     ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS status_operacional VARCHAR(20) NOT NULL DEFAULT 'ativo';
+    ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS conta_status VARCHAR(20) NOT NULL DEFAULT 'ativo';
+  `);
+
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'usuarios_conta_status_chk'
+      ) THEN
+        ALTER TABLE usuarios
+          ADD CONSTRAINT usuarios_conta_status_chk
+          CHECK (conta_status IN ('ativo', 'inativo'));
+      END IF;
+    END
+    $$;
   `);
 
   await pool.query(`

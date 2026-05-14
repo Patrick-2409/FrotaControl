@@ -17,6 +17,7 @@ const userProfileRoutes = require("./routes/userProfileRoutes");
 const apontadorRoutes = require("./routes/apontadorRoutes");
 const devRoutes = require("./routes/devRoutes");
 const { authMiddleware, requireRole } = require("./middleware/authMiddleware");
+const { requireAccountActive } = require("./middleware/accountActiveMiddleware");
 const { errorMiddleware } = require("./middleware/errorMiddleware");
 const path = require("path");
 const { requestLogMiddleware } = require("./middleware/requestLogMiddleware");
@@ -166,64 +167,74 @@ if (!isProduction) {
 app.use(
   "/api/app",
   authMiddleware,
+  requireAccountActive,
   requireRole("MOTORISTA"),
   recordRoutes
 );
 app.use(
   "/api/app/export",
   authMiddleware,
+  requireAccountActive,
   requireRole("MOTORISTA"),
   exportRoutes
 );
 app.use(
   "/api/dashboard",
   authMiddleware,
+  requireAccountActive,
   requireRole("ADMIN_EMPRESA", "SUPER_ADMIN"),
   dashboardRoutes
 );
 app.use(
   "/api/dashboard/export",
   authMiddleware,
+  requireAccountActive,
   requireRole("ADMIN_EMPRESA", "SUPER_ADMIN"),
   exportRoutes
 );
 app.use(
   "/api/dashboard/vehicles",
   authMiddleware,
+  requireAccountActive,
   requireRole("ADMIN_EMPRESA"),
   vehicleRoutes
 );
 app.use(
   "/api/dashboard/manage",
   authMiddleware,
+  requireAccountActive,
   requireRole("ADMIN_EMPRESA"),
   companyAdminRoutes
 );
 app.use(
   "/api/dashboard/fleet",
   authMiddleware,
+  requireAccountActive,
   requireRole("ADMIN_EMPRESA", "SUPER_ADMIN"),
   fleetRoutes
 );
 app.use(
   "/api/dashboard/people",
   authMiddleware,
+  requireAccountActive,
   requireRole("ADMIN_EMPRESA", "SUPER_ADMIN"),
   peopleRoutes
 );
 app.use(
   "/api/apontador",
   authMiddleware,
+  requireAccountActive,
   requireRole("APONTADOR"),
   apontadorRoutes
 );
 app.use(
   "/api/super-admin",
   authMiddleware,
+  requireAccountActive,
   requireRole("SUPER_ADMIN"),
   adminRoutes
 );
-app.use("/api/users", authMiddleware, userProfileRoutes);
+app.use("/api/users", authMiddleware, requireAccountActive, userProfileRoutes);
 
 app.use((req, res) => {
   if (res.headersSent) return;

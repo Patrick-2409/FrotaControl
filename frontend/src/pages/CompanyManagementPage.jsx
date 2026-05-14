@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import api, { resolveBackendAssetUrl } from "../services/api";
+import api, { extractApiErrorMessage, resolveBackendAssetUrl } from "../services/api";
+import { useAuth } from "../services/auth";
 import { inputClass } from "../components/FormField";
 import PaginationControls from "../components/PaginationControls";
 import SkeletonRows from "../components/SkeletonRows";
@@ -20,6 +21,10 @@ const roleBadgeClass = (role) => {
   if (role === "APONTADOR") return "border-cyan-400/35 bg-cyan-500/15 text-cyan-100";
   return "border-blue-400/40 bg-blue-500/15 text-blue-100";
 };
+const contaBadgeClass = (conta_status) =>
+  conta_status === "inativo"
+    ? "border-slate-500/50 bg-slate-800/90 text-slate-300"
+    : "border-emerald-500/45 bg-emerald-600/15 text-emerald-200";
 const dedupeById = (items = []) => {
   const map = new Map();
   for (const item of items) {
@@ -34,6 +39,7 @@ const hasFullName = (value) => {
 };
 
 export default function CompanyManagementPage() {
+  const { user: authUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(false);
@@ -200,13 +206,28 @@ export default function CompanyManagementPage() {
     }
   };
 
+  const onPatchUserContaStatus = async (id, conta_status) => {
+    if (conta_status === "inativo") {
+      if (!window.confirm("Desativar este utilizador? Não poderá iniciar sessão até ser reativado.")) return;
+    }
+    setLoading(true);
+    try {
+      await api.patch(`/dashboard/manage/users/${id}/conta-status`, { conta_status });
+      emitToast(conta_status === "inativo" ? "Utilizador desativado." : "Utilizador reativado.");
+      await loadUsers();
+    } catch (err) {
+      emitToast(extractApiErrorMessage(err) || "Erro ao atualizar conta.", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const onDelete = async (kind, id) => {
     if (!window.confirm("Confirma exclusão?")) return;
     setLoading(true);
     try {
       await api.delete(`/dashboard/manage/${kind}/${id}`);
       emitToast("Registro excluído com sucesso.");
-      if (kind === "users") await loadUsers();
       if (kind === "vehicles") await loadVehicles();
     } catch (err) {
       emitToast(err.response?.data?.message || "Erro ao excluir.", "error");
@@ -344,6 +365,9 @@ export default function CompanyManagementPage() {
                           <span className={`rounded-full border px-2 py-0.5 font-semibold ${roleBadgeClass(u.role)}`}>
                             {roleLabel(u.role)}
                           </span>
+                          <span className={`rounded-full border px-2 py-0.5 font-semibold ${contaBadgeClass(u.conta_status)}`}>
+                            Conta: {u.conta_status === "inativo" ? "inativa" : "ativa"}
+                          </span>
                           <span className="text-slate-400">
                             Veículo: <span className="text-slate-300">{u.veiculo_nome || "Sem vínculo"}</span>
                           </span>
@@ -368,13 +392,25 @@ export default function CompanyManagementPage() {
                       >
                         Editar
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => onDelete("users", u.id)}
-                        className="fc-btn rounded-lg border border-red-400/35 bg-red-500/10 px-3 py-1.5 text-xs text-red-200"
-                      >
-                        Excluir
-                      </button>
+                      {u.conta_status !== "inativo" ? (
+                        <button
+                          type="button"
+                          disabled={authUser?.id != null && Number(authUser.id) === Number(u.id)}
+                          title={authUser?.id != null && Number(authUser.id) === Number(u.id) ? "Não pode desativar a sua própria conta" : undefined}
+                          onClick={() => onPatchUserContaStatus(u.id, "inativo")}
+                          className="fc-btn rounded-lg border border-amber-500/40 bg-amber-900/25 px-3 py-1.5 text-xs text-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          Desativar
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => onPatchUserContaStatus(u.id, "ativo")}
+                          className="fc-btn rounded-lg border border-emerald-500/40 bg-emerald-800/25 px-3 py-1.5 text-xs text-emerald-100"
+                        >
+                          Reativar
+                        </button>
+                      )}
                     </div>
                   </div>
                 </article>

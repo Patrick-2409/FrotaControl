@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import api, { resolveBackendAssetUrl } from "../services/api";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import api, { extractApiErrorMessage, resolveBackendAssetUrl } from "../services/api";
+import { useAuth } from "../services/auth";
 import FormField, { inputClass } from "../components/FormField";
 import useDebouncedValue from "../hooks/useDebouncedValue";
 import PaginationControls from "../components/PaginationControls";
@@ -16,6 +17,7 @@ const resolveAsset = (value) => {
 const formatRole = (role) => {
   if (role === "SUPER_ADMIN") return "Administrador geral";
   if (role === "ADMIN_EMPRESA") return "Administrador da empresa";
+  if (role === "APONTADOR") return "Apontador";
   return "Motorista";
 };
 const roleBadge = (role) =>
@@ -23,7 +25,56 @@ const roleBadge = (role) =>
     ? "border-amber-500/40 bg-amber-500/15 text-amber-200"
     : role === "ADMIN_EMPRESA"
       ? "border-violet-500/40 bg-violet-500/15 text-violet-200"
-      : "border-blue-500/40 bg-blue-500/15 text-blue-200";
+      : role === "APONTADOR"
+        ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-200"
+        : "border-blue-500/40 bg-blue-500/15 text-blue-200";
+
+const contaContaBadgeClass = (conta_status) =>
+  conta_status === "inativo"
+    ? "border-slate-500/50 bg-slate-800/90 text-slate-300"
+    : "border-emerald-500/45 bg-emerald-600/15 text-emerald-200";
+
+/** Ações Super Admin — cores fixas, hover explícito, ícones nos três tipos pedidos. */
+const adminActionBtnBase =
+  "fc-btn inline-flex items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950";
+const adminBtnVisualizar = `${adminActionBtnBase} border border-slate-500/55 bg-slate-800/60 text-slate-100 hover:bg-slate-700/80 hover:text-white focus-visible:ring-slate-400/40`;
+const adminBtnEditar = `${adminActionBtnBase} border border-blue-500/65 bg-blue-600/35 text-blue-50 hover:border-blue-400 hover:bg-blue-600/55 hover:text-white hover:shadow-[0_0_20px_-4px_rgba(59,130,246,0.6)] focus-visible:ring-blue-500/55`;
+const adminBtnExcluir = `${adminActionBtnBase} border border-red-600/90 bg-red-700/45 text-red-50 hover:border-red-400 hover:bg-red-600/65 hover:text-white hover:shadow-[0_6px_22px_-2px_rgba(248,113,113,0.55)] hover:brightness-110 focus-visible:ring-red-500/60`;
+const adminBtnResetSenha = `${adminActionBtnBase} border border-amber-500/70 bg-amber-600/38 text-amber-50 hover:border-orange-400 hover:bg-orange-600/48 hover:text-white hover:shadow-[0_0_18px_-3px_rgba(251,146,60,0.5)] focus-visible:ring-amber-500/50`;
+const adminBtnDesativar = `${adminActionBtnBase} border border-amber-600/75 bg-amber-900/25 text-amber-100 hover:border-amber-400 hover:bg-amber-800/40 hover:text-white focus-visible:ring-amber-500/45`;
+const adminBtnReativar = `${adminActionBtnBase} border border-emerald-500/60 bg-emerald-700/25 text-emerald-100 hover:border-emerald-400 hover:bg-emerald-700/45 hover:text-white focus-visible:ring-emerald-500/45`;
+
+const adminActionBtnBaseCompact =
+  "fc-btn inline-flex items-center justify-center gap-0.5 rounded-md px-2 py-1 text-[11px] font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-950";
+const adminBtnEditarCompact = `${adminActionBtnBaseCompact} border border-blue-500/60 bg-blue-600/32 text-blue-50 hover:border-blue-400 hover:bg-blue-600/52 hover:text-white hover:shadow-[0_0_14px_-3px_rgba(59,130,246,0.5)] focus-visible:ring-blue-500/50`;
+const adminBtnExcluirCompact = `${adminActionBtnBaseCompact} border border-red-600/90 bg-red-700/42 text-red-50 hover:border-red-400 hover:bg-red-600/62 hover:text-white hover:shadow-[0_4px_16px_-2px_rgba(248,113,113,0.5)] hover:brightness-110 focus-visible:ring-red-500/55`;
+
+/** Monta estado do formulário de edição a partir da linha da listagem (sem dados sensíveis). */
+const toEditUserState = (u) => {
+  const { senha_hash: _omit, ...rest } = u;
+  const raw = rest.cnh_validade;
+  let cnhInput = "";
+  if (raw) {
+    const s = typeof raw === "string" ? raw : new Date(raw).toISOString();
+    cnhInput = String(s).slice(0, 10);
+  }
+  return {
+    ...rest,
+    empresa_id: String(rest.empresa_id ?? ""),
+    veiculo_id: String(rest.veiculo_id ?? ""),
+    email: rest.email ?? "",
+    cnh_validade: cnhInput,
+    funcao: rest.funcao ?? "",
+    cnh_categoria: rest.cnh_categoria ?? "",
+    cnh_numero: rest.cnh_numero ?? "",
+    observacoes: rest.observacoes ?? "",
+    equipamento_vinculo: rest.equipamento_vinculo ?? "",
+    operacao_escopo: rest.operacao_escopo ?? "",
+    status_operacional: rest.status_operacional ?? "ativo",
+    profile_image_url: rest.profile_image_url ?? "",
+    conta_status: rest.conta_status === "inativo" ? "inativo" : "ativo",
+  };
+};
 const dedupeById = (items = []) => {
   const map = new Map();
   for (const item of items) {
@@ -38,6 +89,7 @@ const hasFullName = (value) => {
 };
 
 export default function AdminPage() {
+  const { user: authUser } = useAuth();
   const submitLockRef = useRef(false);
   const [overview, setOverview] = useState(null);
   const [companies, setCompanies] = useState([]);
@@ -67,6 +119,7 @@ export default function AdminPage() {
     status: "ALL",
   });
   const [editingUser, setEditingUser] = useState(null);
+  const [userEditVehicles, setUserEditVehicles] = useState([]);
   const [editingVehicle, setEditingVehicle] = useState(null);
   const [companyForm, setCompanyForm] = useState({
     id: null,
@@ -154,6 +207,39 @@ export default function AdminPage() {
     }
   }, []);
 
+  const openUserCompanyDetails = useCallback(
+    (u) => {
+      const eid = u.empresa_id;
+      if (!eid) {
+        emitToast("Este usuário não está associado a uma empresa.", "warning");
+        return;
+      }
+      loadCompanyDetails(Number(eid));
+    },
+    [loadCompanyDetails]
+  );
+
+  useEffect(() => {
+    if (!editingUser || editingUser.role !== "MOTORISTA" || !editingUser.empresa_id) {
+      setUserEditVehicles([]);
+      return;
+    }
+    let cancelled = false;
+    api
+      .get("/super-admin/vehicles", {
+        params: { page: 1, limit: 200, empresa_id: Number(editingUser.empresa_id) },
+      })
+      .then(({ data }) => {
+        if (!cancelled) setUserEditVehicles(dedupeById(data.items || []));
+      })
+      .catch(() => {
+        if (!cancelled) setUserEditVehicles([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editingUser?.id, editingUser?.role, editingUser?.empresa_id]);
+
   useEffect(() => {
     Promise.all([loadOverview(), loadCompanyOptions()]).catch(() => {
       emitToast("Não foi possível carregar o resumo inicial.", "error");
@@ -171,6 +257,30 @@ export default function AdminPage() {
   useEffect(() => {
     loadVehicles().catch(() => emitToast("Falha ao carregar veículos.", "error"));
   }, [loadVehicles]);
+
+  const closeEditDrawer = useCallback(() => {
+    setEditingUser(null);
+    setUserEditVehicles([]);
+    setEditingVehicle(null);
+  }, []);
+
+  useEffect(() => {
+    if (!editingUser && !editingVehicle) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") closeEditDrawer();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editingUser, editingVehicle, closeEditDrawer]);
+
+  useEffect(() => {
+    if (!editingUser && !editingVehicle) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [editingUser, editingVehicle]);
 
   useEffect(() => {
     if (!debouncedGlobalSearch.trim()) {
@@ -264,14 +374,34 @@ export default function AdminPage() {
     }
   };
 
-  const onDeleteUser = async (id) => {
-    if (!window.confirm("Excluir usuário?")) return;
+  const onDeactivateUser = async (id) => {
+    if (!window.confirm("Desativar este utilizador? Não poderá iniciar sessão até ser reativado.")) return;
     try {
-      await api.delete(`/super-admin/users/${id}`);
-      emitToast("Usuário excluído.");
-      await Promise.all([loadOverview(), loadUsers(), selectedCompany ? loadCompanyDetails(selectedCompany.company.id) : Promise.resolve()]);
+      const { data } = await api.patch(`/super-admin/users/${id}/conta-status`, { conta_status: "inativo" });
+      setUsers((prev) => prev.map((x) => (x.id === id ? { ...x, ...data } : x)));
+      emitToast("Utilizador desativado.", "success");
+      await Promise.all([
+        loadOverview(),
+        loadUsers(),
+        selectedCompany ? loadCompanyDetails(selectedCompany.company.id) : Promise.resolve(),
+      ]);
     } catch (err) {
-      emitToast(err.response?.data?.message || "Falha ao excluir usuário.", "error");
+      emitToast(extractApiErrorMessage(err) || "Falha ao desativar utilizador.", "error");
+    }
+  };
+
+  const onReactivateUser = async (id) => {
+    try {
+      const { data } = await api.patch(`/super-admin/users/${id}/conta-status`, { conta_status: "ativo" });
+      setUsers((prev) => prev.map((x) => (x.id === id ? { ...x, ...data } : x)));
+      emitToast("Utilizador reativado.", "success");
+      await Promise.all([
+        loadOverview(),
+        loadUsers(),
+        selectedCompany ? loadCompanyDetails(selectedCompany.company.id) : Promise.resolve(),
+      ]);
+    } catch (err) {
+      emitToast(extractApiErrorMessage(err) || "Falha ao reativar utilizador.", "error");
     }
   };
 
@@ -305,27 +435,54 @@ export default function AdminPage() {
 
   const onSaveUserEdit = async () => {
     if (!editingUser) return;
+    if (submitLockRef.current) return;
+    const emailTrim = String(editingUser.email || "").trim();
+    if (editingUser.role === "MOTORISTA" && !String(editingUser.veiculo_id || "").trim()) {
+      emitToast("Motorista deve ter veículo vinculado.", "error");
+      return;
+    }
+    if (editingUser.role !== "MOTORISTA" && !emailTrim) {
+      emitToast("E-mail é obrigatório para este tipo de utilizador.", "error");
+      return;
+    }
+    submitLockRef.current = true;
     try {
-      await api.put(`/super-admin/users/${editingUser.id}`, {
-        nome: editingUser.nome,
-        email: editingUser.email,
-        cpf_id: editingUser.cpf_id,
+      const empresaIdNum =
+        editingUser.role === "SUPER_ADMIN" ? null : (editingUser.empresa_id ? Number(editingUser.empresa_id) : null);
+      const payload = {
+        nome: String(editingUser.nome || "").trim(),
+        cpf_id: String(editingUser.cpf_id || "").trim(),
         role: editingUser.role,
-        empresa_id:
-          editingUser.role === "SUPER_ADMIN"
-            ? null
-            : (editingUser.empresa_id ? Number(editingUser.empresa_id) : null),
+        empresa_id: empresaIdNum,
         veiculo_id:
           editingUser.role === "MOTORISTA" && editingUser.veiculo_id
             ? Number(editingUser.veiculo_id)
             : null,
-        senha: "",
-      });
-      emitToast("Usuário atualizado com sucesso.");
-      setEditingUser(null);
+        funcao: String(editingUser.funcao || "").trim() || null,
+        cnh_categoria: String(editingUser.cnh_categoria || "").trim() || null,
+        cnh_numero: String(editingUser.cnh_numero || "").trim() || null,
+        cnh_validade: String(editingUser.cnh_validade || "").trim() || null,
+        observacoes: String(editingUser.observacoes || "").trim() || null,
+        equipamento_vinculo: String(editingUser.equipamento_vinculo || "").trim() || null,
+        operacao_escopo: String(editingUser.operacao_escopo || "").trim() || null,
+        status_operacional: editingUser.status_operacional || "ativo",
+        conta_status: editingUser.conta_status === "inativo" ? "inativo" : "ativo",
+      };
+      const profileUrl = String(editingUser.profile_image_url || "").trim();
+      if (profileUrl) payload.profile_image_url = profileUrl;
+      if (editingUser.role === "MOTORISTA") {
+        if (emailTrim) payload.email = emailTrim.toLowerCase();
+      } else {
+        payload.email = emailTrim.toLowerCase();
+      }
+      await api.put(`/super-admin/users/${editingUser.id}`, payload);
+      emitToast("Atualizado com sucesso", "success");
+      closeEditDrawer();
       await Promise.all([loadUsers(), loadOverview(), selectedCompany ? loadCompanyDetails(selectedCompany.company.id) : Promise.resolve()]);
     } catch (err) {
-      emitToast(err.response?.data?.message || "Falha ao atualizar usuário.", "error");
+      emitToast(extractApiErrorMessage(err) || "Falha ao atualizar usuário.", "error");
+    } finally {
+      submitLockRef.current = false;
     }
   };
 
@@ -349,7 +506,7 @@ export default function AdminPage() {
         empresa_id: Number(editingVehicle.empresa_id),
       });
       emitToast("Veículo atualizado com sucesso.");
-      setEditingVehicle(null);
+      closeEditDrawer();
       await Promise.all([loadVehicles(), loadOverview(), selectedCompany ? loadCompanyDetails(selectedCompany.company.id) : Promise.resolve()]);
     } catch (err) {
       emitToast(err.response?.data?.message || "Falha ao atualizar veículo.", "error");
@@ -364,6 +521,20 @@ export default function AdminPage() {
     { label: "Total de veículos", value: overview?.total_veiculos ?? 0 },
     { label: "Total de registros", value: overview?.total_registros ?? 0 },
   ];
+
+  const motoristaVehicleSelectOptions = useMemo(() => {
+    if (!editingUser || editingUser.role !== "MOTORISTA") return [];
+    const list = [...userEditVehicles];
+    const vid = String(editingUser.veiculo_id || "");
+    if (vid && !list.some((v) => String(v.id) === vid)) {
+      list.unshift({
+        id: Number(vid),
+        nome: editingUser.veiculo_nome || `Veículo ${vid}`,
+        placa: editingUser.placa || "—",
+      });
+    }
+    return list;
+  }, [editingUser, userEditVehicles]);
 
   return (
     <div className="space-y-6">
@@ -397,6 +568,7 @@ export default function AdminPage() {
             <option value="ALL">Tipo de usuário (todos)</option>
             <option value="MOTORISTA">Motorista</option>
             <option value="ADMIN_EMPRESA">Administrador da empresa</option>
+            <option value="APONTADOR">Apontador</option>
             <option value="SUPER_ADMIN">Administrador geral</option>
           </select>
           <select
@@ -487,10 +659,17 @@ export default function AdminPage() {
           )}
         </form>
 
-        <section className="space-y-5">
-          <article className="fc-card p-5">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-lg font-semibold text-white">Empresas</h3>
+        <section className="space-y-4">
+          <article className="fc-card relative overflow-hidden rounded-2xl border-2 border-violet-500/35 bg-gradient-to-b from-violet-950/45 via-slate-950/90 to-slate-950 p-6 shadow-[0_22px_50px_-14px_rgba(124,58,237,0.32)]">
+            <div
+              className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-400/70 via-fuchsia-400/50 to-transparent"
+              aria-hidden
+            />
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-violet-300/90">Cadastro</p>
+                <h3 className="text-xl font-semibold tracking-tight text-white">Empresas</h3>
+              </div>
               <input
                 className={inputClass}
                 placeholder="Buscar empresa"
@@ -513,22 +692,24 @@ export default function AdminPage() {
                     <th className="pb-2 text-right">Ações</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800">
+                <tbody className="divide-y divide-slate-800/80">
                   {loadingCompanies && (
                     <tr>
                       <td colSpan={6}><SkeletonRows rows={3} /></td>
                     </tr>
                   )}
                   {!loadingCompanies && companies.map((company) => (
-                    <tr key={company.id} className="text-slate-200">
+                    <tr key={company.id} className="text-slate-100">
                       <td className="py-2"><CompanyLogo logoUrl={resolveAsset(company.logo_url)} companyName={company.nome} className="h-10 w-10" /></td>
                       <td className="py-2 font-medium">{company.nome}</td>
                       <td className="py-2">{company.usuarios_count ?? "-"}</td>
                       <td className="py-2">{company.veiculos_count ?? "-"}</td>
                       <td className="py-2">{new Date(company.created_at).toLocaleDateString("pt-BR")}</td>
                       <td className="py-2 text-right">
-                        <div className="inline-flex gap-2">
-                          <button type="button" onClick={() => loadCompanyDetails(company.id)} className="fc-btn rounded-lg border border-blue-400/35 bg-blue-500/15 px-2 py-1 text-xs text-blue-100">Visualizar</button>
+                        <div className="inline-flex flex-wrap gap-2">
+                          <button type="button" onClick={() => loadCompanyDetails(company.id)} className={adminBtnVisualizar}>
+                            👁️ Visualizar
+                          </button>
                           <button
                             type="button"
                             onClick={() =>
@@ -541,11 +722,13 @@ export default function AdminPage() {
                                 admin_senha: "",
                               })
                             }
-                            className="fc-btn rounded-lg border border-violet-400/35 bg-violet-500/15 px-2 py-1 text-xs text-violet-100"
+                            className={adminBtnEditar}
                           >
-                            Editar
+                            ✏️ Editar
                           </button>
-                          <button type="button" onClick={() => onDeleteCompany(company.id)} className="fc-btn rounded-lg border border-red-400/35 bg-red-500/10 px-2 py-1 text-xs text-red-200">Excluir</button>
+                          <button type="button" onClick={() => onDeleteCompany(company.id)} className={adminBtnExcluir}>
+                            🗑️ Excluir
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -564,11 +747,11 @@ export default function AdminPage() {
             />
           </article>
 
-          <article className="fc-card p-5">
+          <article className="fc-card rounded-xl border border-slate-700/50 bg-slate-950/50 p-5 shadow-[0_10px_28px_-12px_rgba(0,0,0,0.45)]">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-lg font-semibold text-white">Usuários (todas as empresas)</h3>
+              <h3 className="text-base font-semibold text-slate-100">Usuários (todas as empresas)</h3>
               <input
-                className={inputClass}
+                className={`${inputClass} border-slate-700/60 bg-slate-950/60`}
                 placeholder="Buscar por nome ou e-mail"
                 value={searchUsers}
                 onChange={(e) => {
@@ -578,8 +761,8 @@ export default function AdminPage() {
               />
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[980px] text-sm">
-                <thead className="text-left text-xs uppercase tracking-wider text-slate-400">
+              <table className="w-full min-w-[1060px] text-sm">
+                <thead className="text-left text-xs uppercase tracking-wider text-slate-500">
                   <tr>
                     <th className="pb-2">Avatar</th>
                     <th className="pb-2">Nome</th>
@@ -587,32 +770,65 @@ export default function AdminPage() {
                     <th className="pb-2">Tipo</th>
                     <th className="pb-2">Empresa</th>
                     <th className="pb-2">Veículo</th>
+                    <th className="pb-2">Conta</th>
                     <th className="pb-2 text-right">Ações</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800">
+                <tbody className="divide-y divide-slate-800/55">
                   {loadingUsers && (
                     <tr>
-                      <td colSpan={7}><SkeletonRows rows={3} /></td>
+                      <td colSpan={8}><SkeletonRows rows={3} /></td>
                     </tr>
                   )}
                   {!loadingUsers && users.map((u) => (
-                    <tr key={`u-${u.id}`} className="text-slate-200">
+                    <tr key={`u-${u.id}`} className="text-slate-400">
                       <td className="py-2">
                         <Avatar imageUrl={resolveAsset(u.profile_image_url)} name={u.nome} size="list" />
                       </td>
-                      <td className="py-2 font-medium">{u.nome}</td>
+                      <td className="py-2 font-medium text-slate-300">{u.nome}</td>
                       <td className="py-2">{u.email || u.cpf_id}</td>
                       <td className="py-2">
                         <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${roleBadge(u.role)}`}>{formatRole(u.role)}</span>
                       </td>
                       <td className="py-2">{u.empresa_nome || "-"}</td>
                       <td className="py-2">{u.veiculo_nome || "-"}</td>
+                      <td className="py-2">
+                        <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${contaContaBadgeClass(u.conta_status)}`}>
+                          {u.conta_status === "inativo" ? "Inativo" : "Ativo"}
+                        </span>
+                      </td>
                       <td className="py-2 text-right">
-                        <div className="inline-flex gap-2">
-                          <button type="button" onClick={() => setEditingUser({ ...u, empresa_id: String(u.empresa_id || ""), veiculo_id: String(u.veiculo_id || "") })} className="fc-btn rounded-lg border border-blue-400/35 bg-blue-500/15 px-2 py-1 text-xs text-blue-100">Editar</button>
-                          <button type="button" onClick={() => onDeleteUser(u.id)} className="fc-btn rounded-lg border border-red-400/35 bg-red-500/10 px-2 py-1 text-xs text-red-200">Excluir</button>
-                          <button type="button" onClick={() => onResetPassword(u.id)} className="fc-btn rounded-lg border border-amber-400/35 bg-amber-500/10 px-2 py-1 text-xs text-amber-200">Resetar senha</button>
+                        <div className="inline-flex flex-wrap justify-end gap-2">
+                          <button type="button" onClick={() => openUserCompanyDetails(u)} className={adminBtnVisualizar}>
+                            👁️ Visualizar
+                          </button>
+                          <button type="button" onClick={() => setEditingUser(toEditUserState(u))} className={adminBtnEditar}>
+                            ✏️ Editar
+                          </button>
+                          {u.conta_status !== "inativo" ? (
+                            <button
+                              type="button"
+                              disabled={authUser?.id != null && Number(authUser.id) === Number(u.id)}
+                              title={authUser?.id != null && Number(authUser.id) === Number(u.id) ? "Não pode desativar a sua própria conta" : undefined}
+                              onClick={() => onDeactivateUser(u.id)}
+                              className={`${adminBtnDesativar} disabled:cursor-not-allowed disabled:opacity-40`}
+                            >
+                              Desativar
+                            </button>
+                          ) : (
+                            <button type="button" onClick={() => onReactivateUser(u.id)} className={adminBtnReativar}>
+                              Reativar
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            disabled={u.conta_status === "inativo"}
+                            onClick={() => onResetPassword(u.id)}
+                            className={`${adminBtnResetSenha} disabled:cursor-not-allowed disabled:opacity-40`}
+                            title={u.conta_status === "inativo" ? "Reative a conta para alterar a senha" : undefined}
+                          >
+                            🔑 Resetar senha
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -628,11 +844,11 @@ export default function AdminPage() {
             />
           </article>
 
-          <article className="fc-card p-5">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-lg font-semibold text-white">Veículos (todas as empresas)</h3>
+          <article className="rounded-xl border border-dashed border-slate-700/45 bg-slate-950/20 p-4 ring-1 ring-slate-800/30">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-medium uppercase tracking-wide text-slate-400">Veículos (todas as empresas)</h3>
               <input
-                className={inputClass}
+                className={`${inputClass} border-slate-800/50 bg-slate-950/40 text-slate-300 placeholder:text-slate-600`}
                 placeholder="Buscar veículo"
                 value={searchVehicles}
                 onChange={(e) => {
@@ -642,32 +858,36 @@ export default function AdminPage() {
               />
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[840px] text-sm">
-                <thead className="text-left text-xs uppercase tracking-wider text-slate-400">
+              <table className="w-full min-w-[840px] text-[13px]">
+                <thead className="text-left text-[11px] uppercase tracking-wider text-slate-500">
                   <tr>
-                    <th className="pb-2">Nome</th>
-                    <th className="pb-2">Placa</th>
-                    <th className="pb-2">Empresa</th>
-                    <th className="pb-2">Motorista vinculado</th>
-                    <th className="pb-2 text-right">Ações</th>
+                    <th className="pb-1.5 font-medium">Nome</th>
+                    <th className="pb-1.5 font-medium">Placa</th>
+                    <th className="pb-1.5 font-medium">Empresa</th>
+                    <th className="pb-1.5 font-medium">Motorista vinculado</th>
+                    <th className="pb-1.5 text-right font-medium">Ações</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800">
+                <tbody className="divide-y divide-slate-800/40">
                   {loadingVehicles && (
                     <tr>
                       <td colSpan={5}><SkeletonRows rows={3} /></td>
                     </tr>
                   )}
                   {!loadingVehicles && vehicles.map((v) => (
-                    <tr key={`v-${v.id}`} className="text-slate-200">
-                      <td className="py-2 font-medium">{v.nome}</td>
-                      <td className="py-2">{v.placa}</td>
-                      <td className="py-2">{v.empresa_nome || "-"}</td>
-                      <td className="py-2">{v.motorista_nome || "-"}</td>
-                      <td className="py-2 text-right">
+                    <tr key={`v-${v.id}`} className="text-slate-500">
+                      <td className="py-1.5 font-medium text-slate-400">{v.nome}</td>
+                      <td className="py-1.5 tabular-nums text-slate-500">{v.placa}</td>
+                      <td className="py-1.5">{v.empresa_nome || "-"}</td>
+                      <td className="py-1.5">{v.motorista_nome || "-"}</td>
+                      <td className="py-1.5 text-right">
                         <div className="inline-flex gap-2">
-                          <button type="button" onClick={() => setEditingVehicle({ ...v, empresa_id: String(v.empresa_id || "") })} className="fc-btn rounded-lg border border-blue-400/35 bg-blue-500/15 px-2 py-1 text-xs text-blue-100">Editar</button>
-                          <button type="button" onClick={() => onDeleteVehicle(v.id)} className="fc-btn rounded-lg border border-red-400/35 bg-red-500/10 px-2 py-1 text-xs text-red-200">Excluir</button>
+                          <button type="button" onClick={() => setEditingVehicle({ ...v, empresa_id: String(v.empresa_id || "") })} className={adminBtnEditarCompact}>
+                            ✏️ Editar
+                          </button>
+                          <button type="button" onClick={() => onDeleteVehicle(v.id)} className={adminBtnExcluirCompact}>
+                            🗑️ Excluir
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -685,12 +905,12 @@ export default function AdminPage() {
         </section>
       </div>
 
-      <section className="grid gap-5 xl:grid-cols-2">
+      <section className="grid gap-5">
         <article className="fc-card p-5">
           <h3 className="mb-3 text-lg font-semibold text-white">Visualização detalhada da empresa</h3>
           {loadingDetails && <SkeletonRows rows={4} />}
           {!loadingDetails && !selectedCompany && (
-            <p className="text-sm text-slate-400">Clique em "Visualizar" na tabela de empresas para abrir os detalhes.</p>
+            <p className="text-sm text-slate-400">Clique em &quot;Visualizar&quot; na tabela de empresas ou de usuários (com empresa) para abrir os detalhes.</p>
           )}
           {!loadingDetails && selectedCompany && (
             <div className="space-y-3 text-sm">
@@ -701,7 +921,30 @@ export default function AdminPage() {
                   <p className="text-xs text-slate-400">Criada em {new Date(selectedCompany.company.created_at).toLocaleDateString("pt-BR")}</p>
                 </div>
               </div>
-              <p className="text-slate-300">Motoristas: {selectedCompany.motoristas.length} | Admins: {selectedCompany.admins.length} | Veículos: {selectedCompany.vehicles.length}</p>
+              <div className="rounded-xl border border-slate-700 bg-slate-900/50 p-3 text-slate-200">
+                <p className="text-xs uppercase tracking-wider text-slate-400">Resumo</p>
+                <p className="mt-2 font-medium">
+                  Usuários na empresa:{" "}
+                  <span className="text-white">{selectedCompany.company.usuarios_count ?? selectedCompany.users?.length ?? 0}</span>
+                </p>
+                <p className="mt-1 font-medium">
+                  Veículos vinculados:{" "}
+                  <span className="text-white">{selectedCompany.company.veiculos_count ?? selectedCompany.vehicles?.length ?? 0}</span>
+                </p>
+              </div>
+              <p className="text-slate-300">
+                Motoristas: {selectedCompany.motoristas.length} | Administradores: {selectedCompany.admins.length} | Apontadores:{" "}
+                {(selectedCompany.apontadores || []).length}
+              </p>
+              <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+                <p className="mb-2 text-xs uppercase tracking-wider text-slate-400">Apontadores</p>
+                {(selectedCompany.apontadores || []).length === 0 && <p className="text-slate-500">Nenhum apontador cadastrado.</p>}
+                {(selectedCompany.apontadores || []).map((u) => (
+                  <p key={`ap-${u.id}`} className="text-slate-200">
+                    {u.nome} - {u.email || u.cpf_id}
+                  </p>
+                ))}
+              </div>
               <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
                 <p className="mb-2 text-xs uppercase tracking-wider text-slate-400">Administradores</p>
                 {selectedCompany.admins.map((u) => <p key={`ad-${u.id}`} className="text-slate-200">{u.nome} - {u.email || u.cpf_id}</p>)}
@@ -717,63 +960,290 @@ export default function AdminPage() {
             </div>
           )}
         </article>
-
-        <article className="space-y-4">
-          {editingUser && (
-            <div className="fc-card p-5">
-              <h4 className="mb-3 text-base font-semibold text-white">Editar usuário</h4>
-              <div className="grid gap-2 md:grid-cols-2">
-                <input className={inputClass} value={editingUser.nome} onChange={(e) => setEditingUser((u) => ({ ...u, nome: e.target.value }))} placeholder="Nome" />
-                <input className={inputClass} value={editingUser.email || ""} onChange={(e) => setEditingUser((u) => ({ ...u, email: e.target.value }))} placeholder="E-mail" />
-                <input className={inputClass} value={editingUser.cpf_id || ""} onChange={(e) => setEditingUser((u) => ({ ...u, cpf_id: e.target.value }))} placeholder="CPF/ID" />
-                <select className={inputClass} value={editingUser.role} onChange={(e) => setEditingUser((u) => ({ ...u, role: e.target.value }))}>
-                  <option value="MOTORISTA">Motorista</option>
-                  <option value="ADMIN_EMPRESA">Administrador da empresa</option>
-                  <option value="SUPER_ADMIN">Administrador geral</option>
-                </select>
-                <select
-                  className={inputClass}
-                  value={editingUser.empresa_id}
-                  onChange={(e) => setEditingUser((u) => ({ ...u, empresa_id: e.target.value }))}
-                  disabled={editingUser.role === "SUPER_ADMIN"}
-                >
-                  <option value="">Empresa</option>
-                  {companyOptions.map((c) => <option key={`ec-${c.id}`} value={c.id}>{c.nome}</option>)}
-                </select>
-                <input
-                  className={inputClass}
-                  value={editingUser.veiculo_id || ""}
-                  onChange={(e) => setEditingUser((u) => ({ ...u, veiculo_id: e.target.value }))}
-                  placeholder="Código do veículo no cadastro (opcional)"
-                  disabled={editingUser.role !== "MOTORISTA"}
-                />
-              </div>
-              <div className="mt-3 flex gap-2">
-                <button type="button" onClick={onSaveUserEdit} className="fc-btn rounded-lg bg-blue-600 px-4 py-2 text-sm">Salvar</button>
-                <button type="button" onClick={() => setEditingUser(null)} className="fc-btn rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300">Cancelar</button>
-              </div>
-            </div>
-          )}
-
-          {editingVehicle && (
-            <div className="fc-card p-5">
-              <h4 className="mb-3 text-base font-semibold text-white">Editar veículo</h4>
-              <div className="grid gap-2 md:grid-cols-2">
-                <input className={inputClass} value={editingVehicle.nome} onChange={(e) => setEditingVehicle((v) => ({ ...v, nome: e.target.value }))} placeholder="Nome do veículo" />
-                <input className={inputClass} value={editingVehicle.placa} onChange={(e) => setEditingVehicle((v) => ({ ...v, placa: e.target.value }))} placeholder="Placa" />
-                <select className={inputClass} value={editingVehicle.empresa_id} onChange={(e) => setEditingVehicle((v) => ({ ...v, empresa_id: e.target.value }))}>
-                  <option value="">Empresa</option>
-                  {companyOptions.map((c) => <option key={`ev-${c.id}`} value={c.id}>{c.nome}</option>)}
-                </select>
-              </div>
-              <div className="mt-3 flex gap-2">
-                <button type="button" onClick={onSaveVehicleEdit} className="fc-btn rounded-lg bg-blue-600 px-4 py-2 text-sm">Salvar</button>
-                <button type="button" onClick={() => setEditingVehicle(null)} className="fc-btn rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300">Cancelar</button>
-              </div>
-            </div>
-          )}
-        </article>
       </section>
+
+      {(editingUser || editingVehicle) && (
+        <div className="fixed inset-0 z-[100] flex" role="dialog" aria-modal="true" aria-labelledby="fc-admin-edit-drawer-title">
+          <button
+            type="button"
+            className="min-h-0 flex-1 cursor-default bg-slate-950/70 backdrop-blur-[2px] transition-opacity"
+            aria-label="Fechar painel de edição"
+            onClick={closeEditDrawer}
+          />
+          <aside className="flex h-full max-h-[100dvh] w-[min(100vw,26rem)] flex-col border-l border-slate-700/90 bg-gradient-to-b from-slate-900 via-slate-950 to-slate-950 shadow-[-16px_0_48px_rgba(0,0,0,0.5)] sm:w-[min(100vw,32rem)]">
+            <header className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-800 px-4 py-4 sm:px-5">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-violet-300/90">Edição</p>
+                <h4 id="fc-admin-edit-drawer-title" className="truncate text-lg font-semibold text-white">
+                  {editingUser ? "Editar usuário" : "Editar veículo"}
+                </h4>
+                {editingUser && (
+                  <p className="mt-1 truncate text-sm text-slate-400">{editingUser.nome}</p>
+                )}
+                {editingVehicle && (
+                  <p className="mt-1 truncate text-sm text-slate-400">
+                    {editingVehicle.nome} — {editingVehicle.placa}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={closeEditDrawer}
+                className="fc-btn shrink-0 rounded-lg border border-slate-600 bg-slate-800/80 px-3 py-2 text-sm text-slate-200 hover:bg-slate-700"
+              >
+                Fechar
+              </button>
+            </header>
+
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5">
+              {editingUser && (
+                <div className="grid gap-2 md:grid-cols-2">
+                  <div className="md:col-span-2">
+                    <FormField label="Nome completo">
+                      <input
+                        className={inputClass}
+                        value={editingUser.nome}
+                        onChange={(e) => setEditingUser((u) => ({ ...u, nome: e.target.value }))}
+                        placeholder="Nome e sobrenome"
+                      />
+                    </FormField>
+                  </div>
+                  <FormField label="E-mail">
+                    <input
+                      className={inputClass}
+                      value={editingUser.email || ""}
+                      onChange={(e) => setEditingUser((u) => ({ ...u, email: e.target.value }))}
+                      placeholder={editingUser.role === "MOTORISTA" ? "Opcional para motorista" : "Obrigatório"}
+                    />
+                  </FormField>
+                  <FormField label="CPF / identificador">
+                    <input
+                      className={inputClass}
+                      value={editingUser.cpf_id || ""}
+                      onChange={(e) => setEditingUser((u) => ({ ...u, cpf_id: e.target.value }))}
+                      placeholder="CPF ou ID"
+                    />
+                  </FormField>
+                  <FormField label="Tipo de usuário">
+                    <select
+                      className={inputClass}
+                      value={editingUser.role}
+                      onChange={(e) => {
+                        const role = e.target.value;
+                        setEditingUser((u) => ({
+                          ...u,
+                          role,
+                          empresa_id: role === "SUPER_ADMIN" ? "" : u.empresa_id,
+                          veiculo_id: role === "MOTORISTA" ? u.veiculo_id : "",
+                        }));
+                      }}
+                    >
+                      <option value="MOTORISTA">Motorista</option>
+                      <option value="ADMIN_EMPRESA">Administrador da empresa</option>
+                      <option value="APONTADOR">Apontador</option>
+                      <option value="SUPER_ADMIN">Administrador geral</option>
+                    </select>
+                  </FormField>
+                  <FormField label="Status operacional (pessoa)">
+                    <select
+                      className={inputClass}
+                      value={editingUser.status_operacional || "ativo"}
+                      onChange={(e) => setEditingUser((u) => ({ ...u, status_operacional: e.target.value }))}
+                    >
+                      <option value="ativo">Ativo</option>
+                      <option value="afastado">Afastado</option>
+                      <option value="suspenso">Suspenso</option>
+                    </select>
+                  </FormField>
+                  <FormField label="Conta (acesso ao sistema)">
+                    <select
+                      className={inputClass}
+                      value={editingUser.conta_status === "inativo" ? "inativo" : "ativo"}
+                      onChange={(e) => setEditingUser((u) => ({ ...u, conta_status: e.target.value }))}
+                    >
+                      <option value="ativo">Ativo — pode iniciar sessão</option>
+                      <option value="inativo">Inativo — bloqueado</option>
+                    </select>
+                  </FormField>
+                  <div className="md:col-span-2">
+                    <FormField label="Empresa">
+                      <select
+                        className={inputClass}
+                        value={editingUser.empresa_id}
+                        onChange={(e) => setEditingUser((u) => ({ ...u, empresa_id: e.target.value, veiculo_id: "" }))}
+                        disabled={editingUser.role === "SUPER_ADMIN"}
+                      >
+                        <option value="">Selecione a empresa</option>
+                        {companyOptions.map((c) => (
+                          <option key={`ec-${c.id}`} value={c.id}>
+                            {c.nome}
+                          </option>
+                        ))}
+                      </select>
+                    </FormField>
+                  </div>
+                  <div className="md:col-span-2">
+                    <FormField label="Veículo vinculado (motorista)">
+                      {editingUser.role === "MOTORISTA" ? (
+                        <select
+                          className={inputClass}
+                          value={editingUser.veiculo_id || ""}
+                          onChange={(e) => setEditingUser((u) => ({ ...u, veiculo_id: e.target.value }))}
+                          disabled={!editingUser.empresa_id}
+                        >
+                          <option value="">{editingUser.empresa_id ? "Selecione o veículo" : "Escolha primeiro a empresa"}</option>
+                          {motoristaVehicleSelectOptions.map((v) => (
+                            <option key={`uv-${v.id}`} value={v.id}>
+                              {v.nome} — {v.placa}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <p className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm text-slate-500">
+                          Apenas motoristas têm veículo vinculado.
+                        </p>
+                      )}
+                    </FormField>
+                  </div>
+                  <FormField label="Função / cargo">
+                    <input
+                      className={inputClass}
+                      value={editingUser.funcao || ""}
+                      onChange={(e) => setEditingUser((u) => ({ ...u, funcao: e.target.value }))}
+                      placeholder="Ex.: Operador de caçamba"
+                    />
+                  </FormField>
+                  <FormField label="URL da foto de perfil">
+                    <input
+                      className={inputClass}
+                      value={editingUser.profile_image_url || ""}
+                      onChange={(e) => setEditingUser((u) => ({ ...u, profile_image_url: e.target.value }))}
+                      placeholder="Caminho ou URL (opcional)"
+                    />
+                  </FormField>
+                  <FormField label="CNH categoria">
+                    <input
+                      className={inputClass}
+                      value={editingUser.cnh_categoria || ""}
+                      onChange={(e) => setEditingUser((u) => ({ ...u, cnh_categoria: e.target.value }))}
+                      placeholder="Ex.: D"
+                    />
+                  </FormField>
+                  <FormField label="CNH número">
+                    <input
+                      className={inputClass}
+                      value={editingUser.cnh_numero || ""}
+                      onChange={(e) => setEditingUser((u) => ({ ...u, cnh_numero: e.target.value }))}
+                    />
+                  </FormField>
+                  <FormField label="CNH validade">
+                    <input
+                      type="date"
+                      className={inputClass}
+                      value={editingUser.cnh_validade || ""}
+                      onChange={(e) => setEditingUser((u) => ({ ...u, cnh_validade: e.target.value }))}
+                    />
+                  </FormField>
+                  <div className="md:col-span-2">
+                    <FormField label="Equipamento vínculo">
+                      <input
+                        className={inputClass}
+                        value={editingUser.equipamento_vinculo || ""}
+                        onChange={(e) => setEditingUser((u) => ({ ...u, equipamento_vinculo: e.target.value }))}
+                      />
+                    </FormField>
+                  </div>
+                  <div className="md:col-span-2">
+                    <FormField label="Escopo operação">
+                      <input
+                        className={inputClass}
+                        value={editingUser.operacao_escopo || ""}
+                        onChange={(e) => setEditingUser((u) => ({ ...u, operacao_escopo: e.target.value }))}
+                      />
+                    </FormField>
+                  </div>
+                  <div className="md:col-span-2">
+                    <FormField label="Observações">
+                      <textarea
+                        className={inputClass}
+                        rows={3}
+                        value={editingUser.observacoes || ""}
+                        onChange={(e) => setEditingUser((u) => ({ ...u, observacoes: e.target.value }))}
+                      />
+                    </FormField>
+                  </div>
+                </div>
+              )}
+
+              {editingVehicle && (
+                <div className="grid gap-3">
+                  <FormField label="Nome do veículo">
+                    <input
+                      className={inputClass}
+                      value={editingVehicle.nome}
+                      onChange={(e) => setEditingVehicle((v) => ({ ...v, nome: e.target.value }))}
+                      placeholder="Nome do veículo"
+                    />
+                  </FormField>
+                  <FormField label="Placa">
+                    <input
+                      className={inputClass}
+                      value={editingVehicle.placa}
+                      onChange={(e) => setEditingVehicle((v) => ({ ...v, placa: e.target.value }))}
+                      placeholder="Placa"
+                    />
+                  </FormField>
+                  <FormField label="Empresa">
+                    <select
+                      className={inputClass}
+                      value={editingVehicle.empresa_id}
+                      onChange={(e) => setEditingVehicle((v) => ({ ...v, empresa_id: e.target.value }))}
+                    >
+                      <option value="">Empresa</option>
+                      {companyOptions.map((c) => (
+                        <option key={`ev-${c.id}`} value={c.id}>
+                          {c.nome}
+                        </option>
+                      ))}
+                    </select>
+                  </FormField>
+                </div>
+              )}
+            </div>
+
+            <footer className="flex shrink-0 flex-wrap gap-2 border-t border-slate-800 bg-slate-950/95 px-4 py-4 sm:px-5">
+              {editingUser && (
+                <>
+                  <button type="button" onClick={onSaveUserEdit} className="fc-btn flex-1 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold sm:flex-none">
+                    Salvar alterações
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closeEditDrawer}
+                    className="fc-btn rounded-lg border border-slate-600 px-4 py-2.5 text-sm text-slate-200 hover:bg-slate-800"
+                  >
+                    Cancelar
+                  </button>
+                </>
+              )}
+              {editingVehicle && (
+                <>
+                  <button type="button" onClick={onSaveVehicleEdit} className="fc-btn flex-1 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold sm:flex-none">
+                    Salvar alterações
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closeEditDrawer}
+                    className="fc-btn rounded-lg border border-slate-600 px-4 py-2.5 text-sm text-slate-200 hover:bg-slate-800"
+                  >
+                    Cancelar
+                  </button>
+                </>
+              )}
+            </footer>
+          </aside>
+        </div>
+      )}
 
     </div>
   );

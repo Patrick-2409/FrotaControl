@@ -21,6 +21,7 @@ const LandingPage = lazy(() => import("./pages/LandingPage"));
 const LoginPage = lazy(() => import("./pages/LoginPage"));
 const CompanyManagementPage = lazy(() => import("./pages/CompanyManagementPage"));
 const AdminPage = lazy(() => import("./pages/AdminPage"));
+const AdminHistoricoPage = lazy(() => import("./pages/AdminHistoricoPage"));
 const AdminLoginPage = lazy(() => import("./pages/AdminLoginPage"));
 const SuperAdminLoginPage = lazy(() => import("./pages/SuperAdminLoginPage"));
 const ApontadorLoginPage = lazy(() => import("./pages/ApontadorLoginPage"));
@@ -342,21 +343,18 @@ function App() {
         />
 
         <Route
-          path="/super-admin/*"
+          path="/super-admin"
           element={
             <Protected>
               <ProtectedSuperAdmin>
-                <SuperAdminLayout>
-                  <RouteTransition>
-                    <Routes>
-                      <Route path="/" element={<AdminPage />} />
-                    </Routes>
-                  </RouteTransition>
-                </SuperAdminLayout>
+                <SuperAdminLayout />
               </ProtectedSuperAdmin>
             </Protected>
           }
-        />
+        >
+          <Route index element={<AdminPage />} />
+          <Route path="historico" element={<AdminHistoricoPage />} />
+        </Route>
 
         <Route
           path="/apontador"

@@ -5,6 +5,7 @@ const {
   listUsersCtrl,
   updateUserCtrl,
   deleteUserCtrl,
+  patchUserContaStatusCtrl,
   createVehicleCtrl,
   listVehiclesCtrl,
   updateVehicleCtrl,
@@ -16,6 +17,7 @@ const router = express.Router();
 router.get("/users", asyncHandler(listUsersCtrl));
 router.post("/users", asyncHandler(createUserCtrl));
 router.put("/users/:id", asyncHandler(updateUserCtrl));
+router.patch("/users/:id/conta-status", asyncHandler(patchUserContaStatusCtrl));
 router.delete("/users/:id", asyncHandler(deleteUserCtrl));
 
 router.get("/vehicles", asyncHandler(listVehiclesCtrl));

@@ -9,7 +9,6 @@ const {
 const { pool } = require("../db");
 const {
   createUser,
-  deleteUser,
   listUsersByCompany,
   updateUser,
   updateUserAsSuperAdmin,
@@ -22,7 +21,7 @@ const {
   updateVehicle,
   getVehicleById,
 } = require("../models/vehicleModel");
-const { logAudit } = require("../services/auditService");
+const { logAudit, listPlatformAdminAuditLogs } = require("../services/auditService");
 
 const hasFullName = (value) => {
   const normalized = String(value || "").trim().replace(/\s+/g, " ");
@@ -95,6 +94,7 @@ const userSchema = z.object({
   equipamento_vinculo: z.string().trim().max(200).optional().nullable(),
   operacao_escopo: z.string().trim().max(200).optional().nullable(),
   status_operacional: z.enum(["ativo", "afastado", "suspenso"]).optional(),
+  conta_status: z.enum(["ativo", "inativo"]).optional(),
 }).superRefine((val, ctx) => {
   if (!hasFullName(val.nome)) {
     ctx.addIssue({
@@ -584,40 +584,96 @@ const updateUserCtrl = async (req, res) => {
   return res.json(row);
 };
 
-const deleteUserCtrl = async (req, res) => {
-  const id = Number(req.params.id);
-  if (req.user.role === "SUPER_ADMIN") {
-    if (id === Number(req.user?.sub)) {
-      return res.status(400).json({
+/** Atualiza conta_status (ativo/inativo) com auditoria; usado por PATCH e pelo DELETE legado (desativar). */
+const setUsuarioContaStatus = async (req, idRaw, nextStatus) => {
+  const id = Number(idRaw);
+  if (!Number.isFinite(id)) {
+    return { ok: false, status: 400, body: { success: false, message: "ID inválido." } };
+  }
+  if (nextStatus === "inativo" && id === Number(req.user?.sub)) {
+    return {
+      ok: false,
+      status: 400,
+      body: {
         success: false,
-        error: "Você não pode excluir seu próprio usuário.",
-        message: "Você não pode excluir seu próprio usuário.",
-      });
+        error: "Operação não permitida",
+        message: "Não pode desativar a sua própria conta.",
+      },
+    };
+  }
+
+  const pre = await pool.query(`SELECT id, conta_status, empresa_id, role FROM usuarios WHERE id = $1`, [id]);
+  if (!pre.rowCount) {
+    return { ok: false, status: 404, body: { success: false, message: "Utilizador não encontrado." } };
+  }
+  const rowPre = pre.rows[0];
+  const antes = rowPre.conta_status === "inativo" ? "inativo" : "ativo";
+
+  if (req.user.role === "ADMIN_EMPRESA") {
+    const empresa_id = getCompanyId(req);
+    if (!empresa_id || Number(rowPre.empresa_id) !== Number(empresa_id)) {
+      return { ok: false, status: 403, body: { success: false, message: "Acesso negado." } };
     }
-    await pool.query("DELETE FROM usuarios WHERE id = $1 AND role IN ('MOTORISTA','ADMIN_EMPRESA','APONTADOR','SUPER_ADMIN')", [id]);
+    if (rowPre.role === "SUPER_ADMIN") {
+      return { ok: false, status: 403, body: { success: false, message: "Acesso negado." } };
+    }
+  }
+
+  let upd;
+  if (req.user.role === "SUPER_ADMIN") {
+    upd = await pool.query(
+      `UPDATE usuarios
+       SET conta_status = $1
+       WHERE id = $2 AND role IN ('MOTORISTA','ADMIN_EMPRESA','APONTADOR','SUPER_ADMIN')
+       RETURNING *`,
+      [nextStatus, id]
+    );
+  } else {
+    const empresa_id = getCompanyId(req);
+    upd = await pool.query(
+      `UPDATE usuarios SET conta_status = $1 WHERE id = $2 AND empresa_id = $3 RETURNING *`,
+      [nextStatus, id, empresa_id]
+    );
+  }
+
+  if (!upd.rowCount) {
+    return { ok: false, status: 404, body: { success: false, message: "Utilizador não encontrado." } };
+  }
+
+  if (antes !== "inativo" && nextStatus === "inativo") {
     await logAudit({
       usuario_id: req.user?.sub,
-      acao: "excluiu",
+      acao: "desativou",
       tabela: "usuarios",
       registro_id: id,
     });
-    return res.status(204).send();
-  }
-  const empresa_id = getCompanyId(req);
-  if (!empresa_id) {
-    return res.status(400).json({
-      success: false,
-      error: "empresa_id é obrigatório",
-      message: "empresa_id é obrigatório",
+  } else if (antes === "inativo" && nextStatus === "ativo") {
+    await logAudit({
+      usuario_id: req.user?.sub,
+      acao: "reativou",
+      tabela: "usuarios",
+      registro_id: id,
     });
   }
-  await deleteUser(id, empresa_id);
-  await logAudit({
-    usuario_id: req.user?.sub,
-    acao: "excluiu",
-    tabela: "usuarios",
-    registro_id: id,
-  });
+
+  return { ok: true, row: upd.rows[0] };
+};
+
+const patchUserContaStatusCtrl = async (req, res) => {
+  const bodySchema = z.object({ conta_status: z.enum(["ativo", "inativo"]) });
+  const { conta_status } = bodySchema.parse(req.body || {});
+  const result = await setUsuarioContaStatus(req, req.params.id, conta_status);
+  if (!result.ok) {
+    return res.status(result.status).json(result.body);
+  }
+  return res.json(result.row);
+};
+
+const deleteUserCtrl = async (req, res) => {
+  const result = await setUsuarioContaStatus(req, req.params.id, "inativo");
+  if (!result.ok) {
+    return res.status(result.status).json(result.body);
+  }
   return res.status(204).send();
 };
 
@@ -807,6 +863,13 @@ const deleteVehicleCtrl = async (req, res) => {
   return res.status(204).send();
 };
 
+const listAdminAuditLogsCtrl = async (req, res) => {
+  const page = Number(req.query.page || 1);
+  const limit = Number(req.query.limit || 25);
+  const data = await listPlatformAdminAuditLogs({ page, limit });
+  return res.json(data);
+};
+
 const getOverviewCtrl = async (req, res) => {
   const [companies, users, vehicles, records] = await Promise.all([
     pool.query("SELECT COUNT(*)::int AS total FROM empresas"),
@@ -956,7 +1019,7 @@ const resetUserPasswordCtrl = async (req, res) => {
   }
   await logAudit({
     usuario_id: req.user?.sub,
-    acao: "editou",
+    acao: "redefiniu_senha",
     tabela: "usuarios",
     registro_id: req.params.id,
   });
@@ -977,10 +1040,12 @@ module.exports = {
   listUsersCtrl,
   updateUserCtrl,
   deleteUserCtrl,
+  patchUserContaStatusCtrl,
   createVehicleCtrl,
   listVehiclesCtrl,
   updateVehicleCtrl,
   deleteVehicleCtrl,
+  listAdminAuditLogsCtrl,
   getOverviewCtrl,
   companyDetailsCtrl,
   globalSearchCtrl,
