@@ -672,7 +672,7 @@ export default function ManagerRecordsPage() {
       <div className="mb-4 flex flex-wrap gap-2">
         <button
           type="button"
-          disabled={Boolean(exporting) || loading}
+          disabled={Boolean(exporting)}
           onClick={() => setPendingBulkExport("excel")}
           className="fc-btn rounded-lg border border-blue-500 px-3 py-2 text-sm text-blue-300 disabled:opacity-50"
         >
@@ -680,7 +680,7 @@ export default function ManagerRecordsPage() {
         </button>
         <button
           type="button"
-          disabled={Boolean(exporting) || loading}
+          disabled={Boolean(exporting)}
           onClick={() => setPendingBulkExport("pdf")}
           className="fc-btn rounded-lg border border-blue-500 px-3 py-2 text-sm text-blue-300 disabled:opacity-50"
         >
@@ -688,7 +688,7 @@ export default function ManagerRecordsPage() {
         </button>
         <button
           type="button"
-          disabled={Boolean(exporting) || loading}
+          disabled={Boolean(exporting)}
           onClick={() => setPendingBulkExport("csv")}
           className="fc-btn rounded-lg border border-teal-500/70 px-3 py-2 text-sm text-teal-200 disabled:opacity-50"
         >
@@ -721,7 +721,7 @@ export default function ManagerRecordsPage() {
               </p>
               <p className="text-sm font-normal text-slate-300">
                 Registros:{" "}
-                <span className="text-slate-100">{listTotal != null ? listTotal : loading ? "…" : "—"}</span>
+                <span className="text-slate-100">{listTotal != null ? listTotal : "—"}</span>
               </p>
               <p className="text-sm font-normal text-slate-300">
                 Formato:{" "}

@@ -17,6 +17,9 @@ import { REPORT_HUB_CATEGORIES } from "../reportsHubCategories";
 import { useReportsHubPersistence } from "../useReportsHubPersistence";
 import OperationalFichaPreview from "../components/OperationalFichaPreview";
 
+/** Pré-visualização na hub: no máximo estes registos no DOM (exportação continua completa no servidor). */
+const PREVIEW_RECORD_LIMIT = 100;
+
 const defaultFiltro = () => ({
   data: todayAsInput(),
   data_inicio: "",
@@ -56,7 +59,7 @@ export default function EmpresaRelatoriosPage() {
       setPreviewLoading(true);
       setPreviewError("");
       try {
-        const params = { page: 1, limit: 300 };
+        const params = { page: 1, limit: PREVIEW_RECORD_LIMIT };
         if (filtro.periodo === "dia" && filtro.data?.trim()) params.data = filtro.data.trim();
         if (filtro.periodo === "mes" && filtro.mes?.trim()) params.mes = filtro.mes.trim();
         if (filtro.periodo === "intervalo") {
@@ -67,7 +70,8 @@ export default function EmpresaRelatoriosPage() {
         if (filtro.tipo?.trim()) params.tipo = filtro.tipo.trim();
         const { data } = await api.get("/dashboard/registros", { params });
         if (!cancelled) {
-          setPreviewRows(data.items || []);
+          const items = data.items || [];
+          setPreviewRows(items.slice(0, PREVIEW_RECORD_LIMIT));
           setPreviewTotal(typeof data.total === "number" ? data.total : null);
         }
       } catch (err) {
@@ -314,7 +318,17 @@ export default function EmpresaRelatoriosPage() {
                 <InlineSpinner label="A carregar fichas…" />
               </div>
             ) : (
-              <OperationalFichaPreview rows={previewRows} tipoFiltro={filtro.tipo} companyName={user?.empresa_nome || ""} />
+              <>
+                {previewTotal != null && previewTotal > PREVIEW_RECORD_LIMIT ? (
+                  <p
+                    className="mb-3 rounded-lg border border-amber-700/50 bg-amber-950/35 px-3 py-2 text-xs text-amber-100 print:hidden"
+                    role="status"
+                  >
+                    Mostrando {PREVIEW_RECORD_LIMIT} de {previewTotal} registros
+                  </p>
+                ) : null}
+                <OperationalFichaPreview rows={previewRows} tipoFiltro={filtro.tipo} companyName={user?.empresa_nome || ""} />
+              </>
             )}
           </section>
 
@@ -330,7 +344,7 @@ export default function EmpresaRelatoriosPage() {
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                disabled={Boolean(exporting) || previewLoading || Boolean(previewError)}
+                disabled={Boolean(exporting)}
                 onClick={() => setPendingExport("excel")}
                 className="fc-btn rounded-lg border border-blue-500 px-3 py-2 text-sm text-blue-300 disabled:opacity-40"
               >
@@ -338,7 +352,7 @@ export default function EmpresaRelatoriosPage() {
               </button>
               <button
                 type="button"
-                disabled={Boolean(exporting) || previewLoading || Boolean(previewError)}
+                disabled={Boolean(exporting)}
                 onClick={() => setPendingExport("pdf")}
                 className="fc-btn rounded-lg border border-blue-500 px-3 py-2 text-sm text-blue-300 disabled:opacity-40"
               >
@@ -346,7 +360,7 @@ export default function EmpresaRelatoriosPage() {
               </button>
               <button
                 type="button"
-                disabled={Boolean(exporting) || previewLoading || Boolean(previewError)}
+                disabled={Boolean(exporting)}
                 onClick={() => setPendingExport("csv")}
                 className="fc-btn rounded-lg border border-teal-500/70 px-3 py-2 text-sm text-teal-200 disabled:opacity-40"
               >
@@ -379,10 +393,7 @@ export default function EmpresaRelatoriosPage() {
                     Período: <span className="text-zinc-100">{periodoExportLabel}</span>
                   </p>
                   <p className="text-sm font-normal text-zinc-300">
-                    Registros:{" "}
-                    <span className="text-zinc-100">
-                      {previewTotal != null ? previewTotal : previewLoading ? "…" : "—"}
-                    </span>
+                    Registros: <span className="text-zinc-100">{previewTotal != null ? previewTotal : "—"}</span>
                   </p>
                   <p className="text-sm font-normal text-zinc-300">
                     Formato:{" "}
@@ -392,8 +403,8 @@ export default function EmpresaRelatoriosPage() {
                   </p>
                 </div>
                 <p className="mt-3 text-xs text-zinc-500">
-                  O ficheiro usa os mesmos filtros da pré-visualização. Exportações acima de 1000 registos são bloqueadas
-                  no servidor.
+                  O ficheiro usa os mesmos filtros de tipo e período (Passo 1). Exportações acima de 1000 registos são
+                  bloqueadas no servidor.
                 </p>
                 <div className="mt-5 flex flex-wrap gap-2">
                   <button

@@ -220,7 +220,7 @@ const list = async (req, res) => {
       motorista: z.string().optional(),
       tipo: z.enum(["romaneio", "combustivel", "parte_diaria"]).optional(),
       page: z.coerce.number().int().positive().optional(),
-      limit: z.coerce.number().int().positive().max(100).optional(),
+      limit: z.coerce.number().int().positive().max(1_000_000).optional(),
     })
     .parse(normalizedQuery);
 

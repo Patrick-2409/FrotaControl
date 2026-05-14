@@ -1,7 +1,7 @@
 const { z } = require("zod");
 
-/** Limite máximo de itens por página nas listagens administrativas (proteção contra abuso / OOM). */
-const MAX_LIST_LIMIT = 100;
+/** Limite máximo de itens por página nas listagens (proteção contra valores absurdos; não restringir volumes operacionais legítimos). */
+const MAX_LIST_LIMIT = 1_000_000;
 
 const paginationQuerySchema = z.object({
   page: z.coerce.number().int().positive().max(1_000_000).optional(),
