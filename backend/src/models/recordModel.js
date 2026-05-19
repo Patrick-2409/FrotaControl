@@ -410,6 +410,15 @@ const dashboardStats = async ({ empresa_id = null } = {}) => {
         ${companyWhere}
       ) AS veiculos_ativos,
       (SELECT json_agg(x) FROM (SELECT tipo, COUNT(*)::int AS total FROM base GROUP BY tipo) x) AS por_tipo,
+      (
+        SELECT json_agg(x)
+        FROM (
+          SELECT tipo, COUNT(*)::int AS total
+          FROM base, ref
+          WHERE dia >= ref.hoje - INTERVAL '6 days'
+          GROUP BY tipo
+        ) x
+      ) AS por_tipo_semana,
       (SELECT json_agg(y) FROM (
         SELECT u.nome AS motorista, COUNT(*)::int AS total
         FROM base b

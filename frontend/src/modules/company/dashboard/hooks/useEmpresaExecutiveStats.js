@@ -1,36 +1,96 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import api from "../../../../services/api";
 import { emitToast } from "../../../../services/uiEvents";
 
+const PERIODO_EXECUTIVO = "semana";
+
+function countTipo(rows, tipo) {
+  if (!Array.isArray(rows)) return 0;
+  const hit = rows.find((r) => r?.tipo === tipo);
+  return Number(hit?.total || 0);
+}
+
+/**
+ * Indicadores consolidados do painel executivo (período fixo: semana).
+ */
 export function useEmpresaExecutiveStats() {
   const [stats, setStats] = useState(null);
-  const [comparacao, setComparacao] = useState(null);
+  const [combustivel, setCombustivel] = useState(null);
+  const [viagens, setViagens] = useState(null);
+  const [planejamento, setPlanejamento] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    Promise.allSettled([api.get("/dashboard/stats"), api.get("/dashboard/viagens/comparacao")]).then((results) => {
+
+    const periodoParams = { periodo: PERIODO_EXECUTIVO };
+
+    Promise.allSettled([
+      api.get("/dashboard/stats"),
+      api.get("/dashboard/combustiveis/resumo", { params: periodoParams }),
+      api.get("/dashboard/viagens/resumo", { params: periodoParams }),
+      api.get("/dashboard/planejamento/atual"),
+    ]).then((results) => {
       if (cancelled) return;
-      const [s, c] = results;
-      if (s.status === "fulfilled") {
-        setStats(s.value.data);
-      } else {
+      const [s, c, v, p] = results;
+
+      if (s.status === "fulfilled") setStats(s.value.data);
+      else {
         setStats(null);
-        emitToast("Não foi possível carregar o painel executivo.", "warning");
+        emitToast("Não foi possível carregar o resumo operacional.", "warning");
       }
-      if (c.status === "fulfilled") {
-        setComparacao(c.value.data);
-      } else {
-        setComparacao(null);
-      }
+
+      if (c.status === "fulfilled") setCombustivel(c.value.data);
+      else setCombustivel(null);
+
+      if (v.status === "fulfilled") setViagens(v.value.data);
+      else setViagens(null);
+
+      if (p.status === "fulfilled") setPlanejamento(p.value.data?.planejamento ?? null);
+      else setPlanejamento(null);
     }).finally(() => {
       if (!cancelled) setLoading(false);
     });
+
     return () => {
       cancelled = true;
     };
   }, []);
 
-  return { stats, comparacao, loading };
+  const summary = useMemo(() => {
+    const porTipoSemana = stats?.por_tipo_semana ?? stats?.por_tipo;
+    const tonEsteril = Number(viagens?.total_toneladas_esteril || 0);
+    const tonRocha = Number(viagens?.total_toneladas_rocha || 0);
+    const toneladas = tonEsteril + tonRocha;
+    const metaEsteril = Number(planejamento?.meta_esteril_ton || 0);
+    const metaRocha = Number(planejamento?.meta_rocha_ton || 0);
+    const metaTotal = metaEsteril + metaRocha;
+    const atingimento = metaTotal > 0 ? (toneladas / metaTotal) * 100 : null;
+
+    return {
+      periodo: PERIODO_EXECUTIVO,
+      transporte: {
+        toneladas,
+        atingimento,
+        metaTotal,
+      },
+      combustivel: {
+        valor: Number(combustivel?.total_valor || 0),
+        litros: Number(combustivel?.total_litros || 0),
+        media: combustivel?.preco_medio_litro != null ? Number(combustivel.preco_medio_litro) : null,
+      },
+      parteDiaria: {
+        registros: countTipo(porTipoSemana, "parte_diaria"),
+      },
+      frota: {
+        veiculosAtivos: Number(stats?.veiculos_ativos || 0),
+      },
+      pessoas: {
+        motoristasAtivos: Number(stats?.motoristas_ativos || 0),
+      },
+    };
+  }, [stats, combustivel, viagens, planejamento]);
+
+  return { stats, summary, loading, periodo: PERIODO_EXECUTIVO };
 }
