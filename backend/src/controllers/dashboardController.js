@@ -18,9 +18,20 @@ const planejamentoBodySchema = z
     message: "data_inicio deve ser anterior ou igual a data_fim.",
   });
 
+const dashboardPeriodoSchema = z.enum(["dia", "semana", "mes", "ano"]).optional();
+
 const dashboard = async (req, res) => {
   const empresa_id = resolveEmpresaScope(req);
-  const stats = await dailyOps.dashboardStats({ empresa_id });
+  const rawPeriodo = req.query.periodo != null ? String(req.query.periodo).trim().toLowerCase() : "";
+  const periodoParsed = dashboardPeriodoSchema.safeParse(rawPeriodo === "" ? undefined : rawPeriodo);
+  if (!periodoParsed.success) {
+    return res.status(400).json({
+      success: false,
+      error: "Período inválido.",
+      message: "Use periodo=dia, periodo=semana, periodo=mes ou periodo=ano.",
+    });
+  }
+  const stats = await dailyOps.dashboardStats({ empresa_id, periodo: periodoParsed.data ?? null });
   return res.json(stats);
 };
 
@@ -159,6 +170,7 @@ const resolveViagensPeriodBounds = (periodo, dataAnchorYmd) => {
   if (periodo === "dia") return utcDayBoundsFromYmd(ymd);
   if (periodo === "semana") return utcIsoWeekBoundsFromYmd(ymd);
   if (periodo === "mes") return utcMonthBoundsFromYmd(ymd);
+  if (periodo === "ano") return utcYearBoundsFromYmd(ymd);
   return null;
 };
 
@@ -306,15 +318,12 @@ const viagensResumo = async (req, res) => {
   }
 
   const rawPeriodo = req.query.periodo != null ? String(req.query.periodo).trim().toLowerCase() : "";
-  const periodoParsed = z
-    .enum(["dia", "semana", "mes"])
-    .optional()
-    .safeParse(rawPeriodo === "" ? undefined : rawPeriodo);
+  const periodoParsed = dashboardPeriodoSchema.safeParse(rawPeriodo === "" ? undefined : rawPeriodo);
   if (!periodoParsed.success) {
     return res.status(400).json({
       success: false,
       error: "Período inválido.",
-      message: "Use periodo=dia, periodo=semana ou periodo=mes. Opcional: data=YYYY-MM-DD.",
+      message: "Use periodo=dia, periodo=semana, periodo=mes ou periodo=ano. Opcional: data=YYYY-MM-DD.",
     });
   }
   const periodo = periodoParsed.data;

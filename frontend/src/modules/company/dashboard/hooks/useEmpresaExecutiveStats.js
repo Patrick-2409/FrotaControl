@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import api from "../../../../services/api";
 import { emitToast } from "../../../../services/uiEvents";
-
-const PERIODO_EXECUTIVO = "semana";
+import {
+  readExecutivePeriodo,
+  writeExecutivePeriodo,
+} from "../lib/executivePeriodStorage";
 
 function countTipo(rows, tipo) {
   if (!Array.isArray(rows)) return 0;
@@ -11,23 +13,29 @@ function countTipo(rows, tipo) {
 }
 
 /**
- * Indicadores consolidados do painel executivo (período fixo: semana).
+ * Indicadores consolidados do painel executivo com filtro global de período.
  */
 export function useEmpresaExecutiveStats() {
+  const [periodo, setPeriodoState] = useState(readExecutivePeriodo);
   const [stats, setStats] = useState(null);
   const [combustivel, setCombustivel] = useState(null);
   const [viagens, setViagens] = useState(null);
   const [planejamento, setPlanejamento] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const setPeriodo = useCallback((next) => {
+    setPeriodoState(next);
+    writeExecutivePeriodo(next);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
 
-    const periodoParams = { periodo: PERIODO_EXECUTIVO };
+    const periodoParams = { periodo };
 
     Promise.allSettled([
-      api.get("/dashboard/stats"),
+      api.get("/dashboard/stats", { params: periodoParams }),
       api.get("/dashboard/combustiveis/resumo", { params: periodoParams }),
       api.get("/dashboard/viagens/resumo", { params: periodoParams }),
       api.get("/dashboard/planejamento/atual"),
@@ -56,24 +64,25 @@ export function useEmpresaExecutiveStats() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [periodo]);
 
   const summary = useMemo(() => {
-    const porTipoSemana = stats?.por_tipo_semana ?? stats?.por_tipo;
+    const porTipoPeriodo = stats?.por_tipo_semana ?? stats?.por_tipo;
     const tonEsteril = Number(viagens?.total_toneladas_esteril || 0);
     const tonRocha = Number(viagens?.total_toneladas_rocha || 0);
     const toneladas = tonEsteril + tonRocha;
     const metaEsteril = Number(planejamento?.meta_esteril_ton || 0);
     const metaRocha = Number(planejamento?.meta_rocha_ton || 0);
     const metaTotal = metaEsteril + metaRocha;
-    const atingimento = metaTotal > 0 ? (toneladas / metaTotal) * 100 : null;
+    const atingimento =
+      periodo === "semana" && metaTotal > 0 ? (toneladas / metaTotal) * 100 : null;
 
     return {
-      periodo: PERIODO_EXECUTIVO,
+      periodo,
       transporte: {
         toneladas,
         atingimento,
-        metaTotal,
+        metaTotal: periodo === "semana" ? metaTotal : 0,
       },
       combustivel: {
         valor: Number(combustivel?.total_valor || 0),
@@ -81,7 +90,7 @@ export function useEmpresaExecutiveStats() {
         media: combustivel?.preco_medio_litro != null ? Number(combustivel.preco_medio_litro) : null,
       },
       parteDiaria: {
-        registros: countTipo(porTipoSemana, "parte_diaria"),
+        registros: countTipo(porTipoPeriodo, "parte_diaria"),
       },
       frota: {
         veiculosAtivos: Number(stats?.veiculos_ativos || 0),
@@ -90,7 +99,7 @@ export function useEmpresaExecutiveStats() {
         motoristasAtivos: Number(stats?.motoristas_ativos || 0),
       },
     };
-  }, [stats, combustivel, viagens, planejamento]);
+  }, [stats, combustivel, viagens, planejamento, periodo]);
 
-  return { stats, summary, loading, periodo: PERIODO_EXECUTIVO };
+  return { stats, summary, loading, periodo, setPeriodo };
 }

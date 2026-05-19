@@ -373,12 +373,28 @@ const listManagerRecords = async ({
   return { items: rows, total: countResult.rows[0].total };
 };
 
-const dashboardStats = async ({ empresa_id = null } = {}) => {
+const EXECUTIVO_PERIODOS = new Set(["dia", "semana", "mes", "ano"]);
+
+const dashboardStats = async ({ empresa_id = null, periodo = null } = {}) => {
   const values = [];
-  const companyWhere = empresa_id != null ? `WHERE empresa_id = $1` : "";
+  let paramIdx = 1;
+  const companyWhere = empresa_id != null ? `WHERE empresa_id = $${paramIdx++}` : "";
   if (empresa_id != null) {
     values.push(empresa_id);
   }
+  const periodoAtivo = periodo && EXECUTIVO_PERIODOS.has(periodo) ? periodo : null;
+  const periodoParam = periodoAtivo ? `$${paramIdx++}` : "NULL::text";
+  if (periodoAtivo) {
+    values.push(periodoAtivo);
+  }
+  const periodFilter = (alias) => `
+        AND (
+          ${periodoParam} IS NULL
+          OR (${periodoParam} = 'dia' AND ${alias}.dia = ref.hoje)
+          OR (${periodoParam} = 'semana' AND ${alias}.dia >= ref.hoje - INTERVAL '6 days')
+          OR (${periodoParam} = 'mes' AND ${alias}.dia >= date_trunc('month', ref.hoje)::date)
+          OR (${periodoParam} = 'ano' AND ${alias}.dia >= date_trunc('year', ref.hoje)::date)
+        )`;
   const { rows } = await pool.query(
     `WITH ref AS (
       SELECT (timezone('America/Sao_Paulo', now()))::date AS hoje
@@ -395,27 +411,48 @@ const dashboardStats = async ({ empresa_id = null } = {}) => {
       SELECT DATE(COALESCE(recorded_at_client, data)) AS dia, usuario_id, 'parte_diaria' AS tipo
       FROM parte_diaria
       ${companyWhere}
+    ),
+    base_veiculos AS (
+      SELECT DATE(COALESCE(recorded_at_client, data)) AS dia, veiculo_id
+      FROM romaneios
+      ${companyWhere}${companyWhere ? " AND" : "WHERE"} veiculo_id IS NOT NULL
+      UNION ALL
+      SELECT DATE(COALESCE(recorded_at_client, data)) AS dia, veiculo_id
+      FROM combustiveis
+      ${companyWhere}${companyWhere ? " AND" : "WHERE"} veiculo_id IS NOT NULL
+      UNION ALL
+      SELECT DATE(COALESCE(recorded_at_client, data)) AS dia, veiculo_id
+      FROM parte_diaria
+      ${companyWhere}${companyWhere ? " AND" : "WHERE"} veiculo_id IS NOT NULL
     )
     SELECT
       (SELECT COUNT(*) FROM base, ref WHERE dia = ref.hoje) AS total_hoje,
       (SELECT COUNT(*)::int FROM base, ref WHERE dia >= ref.hoje - INTERVAL '6 days') AS total_semanal,
       (
         SELECT COUNT(DISTINCT usuario_id)::int
-        FROM base, ref
-        WHERE dia >= ref.hoje - INTERVAL '6 days'
+        FROM base b, ref
+        WHERE usuario_id IS NOT NULL
+        ${periodoAtivo ? periodFilter("b") : "AND b.dia >= ref.hoje - INTERVAL '6 days'"}
       ) AS motoristas_ativos,
       (
-        SELECT COUNT(*)::int
+        ${
+          periodoAtivo
+            ? `SELECT COUNT(DISTINCT bv.veiculo_id)::int
+        FROM base_veiculos bv, ref
+        WHERE bv.veiculo_id IS NOT NULL${periodFilter("bv")}`
+            : `SELECT COUNT(*)::int
         FROM veiculos
-        ${companyWhere}
+        ${companyWhere}`
+        }
       ) AS veiculos_ativos,
       (SELECT json_agg(x) FROM (SELECT tipo, COUNT(*)::int AS total FROM base GROUP BY tipo) x) AS por_tipo,
       (
         SELECT json_agg(x)
         FROM (
           SELECT tipo, COUNT(*)::int AS total
-          FROM base, ref
-          WHERE dia >= ref.hoje - INTERVAL '6 days'
+          FROM base b, ref
+          WHERE true
+          ${periodoAtivo ? periodFilter("b") : "AND b.dia >= ref.hoje - INTERVAL '6 days'"}
           GROUP BY tipo
         ) x
       ) AS por_tipo_semana,
