@@ -187,6 +187,7 @@ const initDb = async () => {
     ALTER TABLE combustiveis ADD COLUMN IF NOT EXISTS recorded_at_client TIMESTAMP;
     ALTER TABLE combustiveis ADD COLUMN IF NOT EXISTS valor_total NUMERIC(14, 2);
     ALTER TABLE combustiveis ADD COLUMN IF NOT EXISTS preco_por_litro NUMERIC(14, 6);
+    ALTER TABLE parte_diaria ADD COLUMN IF NOT EXISTS veiculo_id INTEGER REFERENCES veiculos(id) ON DELETE SET NULL;
     ALTER TABLE parte_diaria ADD COLUMN IF NOT EXISTS version_of VARCHAR(80);
     ALTER TABLE parte_diaria ADD COLUMN IF NOT EXISTS recorded_at_client TIMESTAMP;
     ALTER TABLE parte_diaria ADD COLUMN IF NOT EXISTS expediente VARCHAR(120);

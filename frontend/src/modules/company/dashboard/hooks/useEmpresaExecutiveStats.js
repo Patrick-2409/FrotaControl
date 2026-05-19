@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import api from "../../../../services/api";
+import api, { extractApiErrorMessage } from "../../../../services/api";
 import { emitToast } from "../../../../services/uiEvents";
 import {
   readExecutivePeriodo,
@@ -22,6 +22,7 @@ export function useEmpresaExecutiveStats() {
   const [viagens, setViagens] = useState(null);
   const [planejamento, setPlanejamento] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [statsError, setStatsError] = useState(null);
 
   const setPeriodo = useCallback((next) => {
     setPeriodoState(next);
@@ -31,6 +32,7 @@ export function useEmpresaExecutiveStats() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setStatsError(null);
 
     const periodoParams = { periodo };
 
@@ -46,7 +48,11 @@ export function useEmpresaExecutiveStats() {
       if (s.status === "fulfilled") setStats(s.value.data);
       else {
         setStats(null);
-        emitToast("Não foi possível carregar o resumo operacional.", "warning");
+        const msg =
+          extractApiErrorMessage(s.reason) ||
+          "Não foi possível carregar o resumo operacional.";
+        setStatsError(msg);
+        emitToast(msg, "warning");
       }
 
       if (c.status === "fulfilled") setCombustivel(c.value.data);
@@ -101,5 +107,5 @@ export function useEmpresaExecutiveStats() {
     };
   }, [stats, combustivel, viagens, planejamento, periodo]);
 
-  return { stats, summary, loading, periodo, setPeriodo };
+  return { stats, summary, loading, periodo, setPeriodo, statsError };
 }

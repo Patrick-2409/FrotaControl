@@ -31,7 +31,10 @@ const dashboard = async (req, res) => {
       message: "Use periodo=dia, periodo=semana, periodo=mes ou periodo=ano.",
     });
   }
-  const stats = await dailyOps.dashboardStats({ empresa_id, periodo: periodoParsed.data ?? null });
+  const stats = await dailyOps.dashboardStats({
+    empresa_id: empresa_id != null ? Number(empresa_id) : null,
+    periodo: periodoParsed.data ?? null,
+  });
   return res.json(stats);
 };
 

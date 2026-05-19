@@ -38,7 +38,7 @@ function PeriodoHeader({ periodo, setPeriodo }) {
 }
 
 export default function EmpresaExecutiveDashboardPage() {
-  const { summary, loading, periodo, setPeriodo } = useEmpresaExecutiveStats();
+  const { summary, loading, periodo, setPeriodo, statsError } = useEmpresaExecutiveStats();
 
   if (loading) {
     return (
@@ -71,6 +71,12 @@ export default function EmpresaExecutiveDashboardPage() {
       showRoadmap={false}
     >
       <PeriodoHeader periodo={periodo} setPeriodo={setPeriodo} />
+
+      {statsError ? (
+        <p className="mb-4 text-sm text-amber-400/90" role="status">
+          {statsError} Os demais indicadores podem estar incompletos.
+        </p>
+      ) : null}
 
       <section
         className="grid gap-4"

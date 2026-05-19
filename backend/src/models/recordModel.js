@@ -375,26 +375,57 @@ const listManagerRecords = async ({
 
 const EXECUTIVO_PERIODOS = new Set(["dia", "semana", "mes", "ano"]);
 
+const saoPauloTodayYmd = () =>
+  new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+
+const addDaysYmd = (ymd, days) => {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+};
+
+/** Intervalo inclusivo de datas (America/Sao_Paulo) para KPIs do painel executivo. */
+const resolveStatsDiaBounds = (periodo) => {
+  if (!periodo || !EXECUTIVO_PERIODOS.has(periodo)) return null;
+  const fim = saoPauloTodayYmd();
+  const [y, mo] = fim.split("-").map(Number);
+  if (periodo === "dia") return { inicio: fim, fim };
+  if (periodo === "semana") return { inicio: addDaysYmd(fim, -6), fim };
+  if (periodo === "mes") return { inicio: `${y}-${String(mo).padStart(2, "0")}-01`, fim };
+  if (periodo === "ano") return { inicio: `${y}-01-01`, fim };
+  return null;
+};
+
 const dashboardStats = async ({ empresa_id = null, periodo = null } = {}) => {
+  const bounds = resolveStatsDiaBounds(periodo);
   const values = [];
   let paramIdx = 1;
   const companyWhere = empresa_id != null ? `WHERE empresa_id = $${paramIdx++}` : "";
   if (empresa_id != null) {
-    values.push(empresa_id);
+    values.push(Number(empresa_id));
   }
-  const periodoAtivo = periodo && EXECUTIVO_PERIODOS.has(periodo) ? periodo : null;
-  const periodoParam = periodoAtivo ? `$${paramIdx++}` : "NULL::text";
-  if (periodoAtivo) {
-    values.push(periodoAtivo);
+  const inicioParam = bounds ? `$${paramIdx++}` : null;
+  const fimParam = bounds ? `$${paramIdx++}` : null;
+  if (bounds) {
+    values.push(bounds.inicio, bounds.fim);
   }
-  const periodFilter = (alias) => `
-        AND (
-          ${periodoParam} IS NULL
-          OR (${periodoParam} = 'dia' AND ${alias}.dia = ref.hoje)
-          OR (${periodoParam} = 'semana' AND ${alias}.dia >= ref.hoje - INTERVAL '6 days')
-          OR (${periodoParam} = 'mes' AND ${alias}.dia >= date_trunc('month', ref.hoje)::date)
-          OR (${periodoParam} = 'ano' AND ${alias}.dia >= date_trunc('year', ref.hoje)::date)
-        )`;
+  const dateRangeFilter = (alias) =>
+    bounds ? `AND ${alias}.dia >= ${inicioParam}::date AND ${alias}.dia <= ${fimParam}::date` : "";
+  const veiculoWhereTail = companyWhere ? " AND veiculo_id IS NOT NULL" : "WHERE veiculo_id IS NOT NULL";
+  const veiculosAtivosSql = bounds
+    ? `SELECT COUNT(DISTINCT bv.vid)::int
+        FROM (
+          SELECT veiculo_id AS vid, DATE(COALESCE(recorded_at_client, data)) AS dia
+          FROM romaneios
+          ${companyWhere}${veiculoWhereTail}
+          UNION ALL
+          SELECT veiculo_id AS vid, DATE(COALESCE(recorded_at_client, data)) AS dia
+          FROM combustiveis
+          ${companyWhere}${veiculoWhereTail}
+        ) bv
+        WHERE bv.vid IS NOT NULL ${dateRangeFilter("bv")}`
+    : `SELECT COUNT(*)::int FROM veiculos ${companyWhere}`;
   const { rows } = await pool.query(
     `WITH ref AS (
       SELECT (timezone('America/Sao_Paulo', now()))::date AS hoje
@@ -411,48 +442,27 @@ const dashboardStats = async ({ empresa_id = null, periodo = null } = {}) => {
       SELECT DATE(COALESCE(recorded_at_client, data)) AS dia, usuario_id, 'parte_diaria' AS tipo
       FROM parte_diaria
       ${companyWhere}
-    ),
-    base_veiculos AS (
-      SELECT DATE(COALESCE(recorded_at_client, data)) AS dia, veiculo_id
-      FROM romaneios
-      ${companyWhere}${companyWhere ? " AND" : "WHERE"} veiculo_id IS NOT NULL
-      UNION ALL
-      SELECT DATE(COALESCE(recorded_at_client, data)) AS dia, veiculo_id
-      FROM combustiveis
-      ${companyWhere}${companyWhere ? " AND" : "WHERE"} veiculo_id IS NOT NULL
-      UNION ALL
-      SELECT DATE(COALESCE(recorded_at_client, data)) AS dia, veiculo_id
-      FROM parte_diaria
-      ${companyWhere}${companyWhere ? " AND" : "WHERE"} veiculo_id IS NOT NULL
     )
     SELECT
       (SELECT COUNT(*) FROM base, ref WHERE dia = ref.hoje) AS total_hoje,
       (SELECT COUNT(*)::int FROM base, ref WHERE dia >= ref.hoje - INTERVAL '6 days') AS total_semanal,
       (
-        SELECT COUNT(DISTINCT usuario_id)::int
-        FROM base b, ref
-        WHERE usuario_id IS NOT NULL
-        ${periodoAtivo ? periodFilter("b") : "AND b.dia >= ref.hoje - INTERVAL '6 days'"}
+        SELECT COUNT(DISTINCT b.usuario_id)::int
+        FROM base b
+        ${bounds ? "" : ", ref"}
+        WHERE b.usuario_id IS NOT NULL
+        ${bounds ? dateRangeFilter("b") : "AND b.dia >= ref.hoje - INTERVAL '6 days'"}
       ) AS motoristas_ativos,
-      (
-        ${
-          periodoAtivo
-            ? `SELECT COUNT(DISTINCT bv.veiculo_id)::int
-        FROM base_veiculos bv, ref
-        WHERE bv.veiculo_id IS NOT NULL${periodFilter("bv")}`
-            : `SELECT COUNT(*)::int
-        FROM veiculos
-        ${companyWhere}`
-        }
-      ) AS veiculos_ativos,
+      (${veiculosAtivosSql}) AS veiculos_ativos,
       (SELECT json_agg(x) FROM (SELECT tipo, COUNT(*)::int AS total FROM base GROUP BY tipo) x) AS por_tipo,
       (
         SELECT json_agg(x)
         FROM (
           SELECT tipo, COUNT(*)::int AS total
-          FROM base b, ref
+          FROM base b
+          ${bounds ? "" : ", ref"}
           WHERE true
-          ${periodoAtivo ? periodFilter("b") : "AND b.dia >= ref.hoje - INTERVAL '6 days'"}
+          ${bounds ? dateRangeFilter("b") : "AND b.dia >= ref.hoje - INTERVAL '6 days'"}
           GROUP BY tipo
         ) x
       ) AS por_tipo_semana,
