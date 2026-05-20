@@ -16,8 +16,20 @@ const notificationsFeed = async (req, res) => {
     });
   }
   const bypassCache = String(req.query.refresh || "").trim() === "1";
-  const payload = await notificationSvc.getOperationalFeed(empresa_id, req.user.sub, { bypassCache });
-  return res.json(payload);
+  try {
+    const payload = await notificationSvc.getOperationalFeed(empresa_id, req.user.sub, { bypassCache });
+    return res.json(payload);
+  } catch (e) {
+    return res.json({
+      success: true,
+      items: [],
+      unread_count: 0,
+      etag: "w/0-error",
+      generated_at: new Date().toISOString(),
+      cached: false,
+      future_channels: notificationSvc.futureChannels,
+    });
+  }
 };
 
 const notificationsHistory = async (req, res) => {

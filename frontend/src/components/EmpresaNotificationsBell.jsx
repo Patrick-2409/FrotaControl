@@ -12,14 +12,21 @@ function useOperationalNotifications() {
   const [error, setError] = useState(null);
 
   const fetchFeed = useCallback(async (refresh = false) => {
-    setError(null);
+    if (refresh) setError(null);
     try {
       const { data: payload } = await api.get("/dashboard/notifications/feed", {
         params: refresh ? { refresh: 1 } : {},
+        timeout: 12_000,
       });
-      setData(payload);
-    } catch (e) {
-      setError(e?.response?.data?.message || "Falha ao carregar alertas.");
+      setData({
+        items: payload?.items ?? [],
+        unread_count: payload?.unread_count ?? 0,
+        etag: payload?.etag,
+        cached: payload?.cached,
+      });
+    } catch {
+      setData({ items: [], unread_count: 0 });
+      setError(null);
     } finally {
       setLoading(false);
     }

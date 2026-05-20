@@ -32,19 +32,19 @@ export default function EmpresaAlertasPage() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     setHistLoading(true);
-    try {
-      const [f, h] = await Promise.all([
-        api.get("/dashboard/notifications/feed", { params: { refresh: 1 } }),
-        api.get("/dashboard/notifications/history", { params: { limit: 60 } }),
-      ]);
-      setFeed(f.data);
-      setHistory(h.data?.items || []);
-    } catch (e) {
-      emitToast(e?.response?.data?.message || "Falha ao carregar alertas.", "error");
-    } finally {
-      setLoading(false);
-      setHistLoading(false);
-    }
+    const feedPromise = api
+      .get("/dashboard/notifications/feed", { params: { refresh: 1 }, timeout: 15_000 })
+      .then((r) => r.data)
+      .catch(() => ({ items: [], unread_count: 0 }));
+    const histPromise = api
+      .get("/dashboard/notifications/history", { params: { limit: 40 }, timeout: 12_000 })
+      .then((r) => r.data?.items || [])
+      .catch(() => []);
+    const [feedData, histItems] = await Promise.all([feedPromise, histPromise]);
+    setFeed(feedData);
+    setHistory(histItems);
+    setLoading(false);
+    setHistLoading(false);
   }, []);
 
   useEffect(() => {
