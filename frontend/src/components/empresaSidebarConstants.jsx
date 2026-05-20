@@ -122,6 +122,9 @@ export function EmpresaMenuIcon({ type }) {
   );
 }
 
+/** Gestão clássica de veículos (legado) — rota mantida, oculta no menu. */
+export const VEICULOS_LEGACY_PATH = "/dashboard/gestao?secao=veiculos";
+
 /** Navegação única do painel empresa — usada em /empresa e /dashboard (legado). */
 export const EMPRESA_SIDEBAR_SECTIONS = [
   {
@@ -150,7 +153,6 @@ export const EMPRESA_SIDEBAR_SECTIONS = [
     title: "Frota",
     items: [
       { to: "/empresa/frota", label: "Painel frota", icon: "fleet", exact: false },
-      { to: "/dashboard/gestao?secao=veiculos", label: "Veículos (clássico)", icon: "fleet", exact: false },
       { to: "/empresa/pessoas", label: "Pessoas", icon: "people", exact: false },
       { to: "/dashboard/gestao?secao=motoristas", label: "Motoristas", icon: "wheel", exact: false },
     ],
