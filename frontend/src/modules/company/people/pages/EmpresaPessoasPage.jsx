@@ -21,28 +21,35 @@ function statusPessoaClass(s) {
   return "bg-zinc-700/50 text-zinc-200 ring-1 ring-zinc-600/40";
 }
 
-function RiscoStatusLine({ ok, warnText, okText }) {
+function RiscoStatusLine({ tone, text }) {
+  const toneClass =
+    tone === "critical"
+      ? "text-rose-100"
+      : tone === "warning"
+        ? "text-amber-100"
+        : "text-emerald-200/95";
+  const icon = tone === "critical" ? "🔴" : tone === "warning" ? "🟡" : "✔";
   return (
-    <p
-      className={`flex items-start gap-2 text-sm font-medium leading-snug ${
-        ok ? "text-emerald-200/95" : "text-rose-100"
-      }`}
-    >
+    <p className={`flex items-start gap-2 text-sm font-medium leading-snug ${toneClass}`}>
       <span className="shrink-0 text-base leading-none" aria-hidden>
-        {ok ? "✔" : "⚠️"}
+        {icon}
       </span>
-      <span className="min-w-0 break-words">{ok ? okText : warnText}</span>
+      <span className="min-w-0 break-words">{text}</span>
     </p>
   );
 }
 
 const RISCO_TOOLTIP =
-  "Indica motoristas sem lançamentos ou com baixa atividade no período selecionado.";
+  "Sem registros (7 dias) é o nível mais crítico. Baixa produtividade considera apenas motoristas que já lançaram romaneios no período.";
 
 export default function EmpresaPessoasPage() {
   const p = useEmpresaPeople();
-  const semRomaneio = Number(p.summary?.motoristas_sem_romaneio_7d ?? 0);
-  const baixaAtividade = Number(p.summary?.motoristas_baixa_atividade ?? 0);
+  const semRomaneio = Number(p.riscoDisplay?.semRomaneio ?? p.summary?.motoristas_sem_romaneio_7d ?? 0);
+  const baixaProdutividade = Number(
+    p.riscoDisplay?.baixaProdutividade ??
+      (semRomaneio > 0 ? 0 : p.summary?.motoristas_baixa_atividade ?? 0)
+  );
+  const temRisco = semRomaneio > 0 || baixaProdutividade > 0;
 
   const headerAside = (
     <>
@@ -124,19 +131,28 @@ export default function EmpresaPessoasPage() {
             }
             valueNode={
               <div className="space-y-2.5">
-                <RiscoStatusLine
-                  ok={semRomaneio === 0}
-                  warnText={`${p.fmtInt(semRomaneio)} motorista(s) sem registros de transporte no período`}
-                  okText="Todos os motoristas possuem registros no período"
-                />
-                <RiscoStatusLine
-                  ok={baixaAtividade === 0}
-                  warnText={`${p.fmtInt(baixaAtividade)} motorista(s) com baixa produtividade`}
-                  okText="Nenhum motorista com baixa produtividade"
-                />
+                {semRomaneio > 0 ? (
+                  <RiscoStatusLine
+                    tone="critical"
+                    text={`${p.fmtInt(semRomaneio)} motorista(s) sem registros no período`}
+                  />
+                ) : (
+                  <RiscoStatusLine
+                    tone="ok"
+                    text="Todos os motoristas possuem registros no período"
+                  />
+                )}
+                {baixaProdutividade > 0 ? (
+                  <RiscoStatusLine
+                    tone="warning"
+                    text={`${p.fmtInt(baixaProdutividade)} motorista(s) com baixa produtividade`}
+                  />
+                ) : (
+                  <RiscoStatusLine tone="ok" text="Nenhum motorista com baixa produtividade" />
+                )}
                 <button
                   type="button"
-                  disabled={p.riscoFilterLoading || (semRomaneio === 0 && baixaAtividade === 0)}
+                  disabled={p.riscoFilterLoading || !temRisco}
                   onClick={() => p.applyRiscoOperacionalFilter()}
                   className="mt-1 w-full rounded-lg border border-zinc-600/90 bg-zinc-900/90 px-3 py-2 text-xs font-semibold text-zinc-200 transition hover:border-amber-500/50 hover:text-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
                 >
@@ -144,7 +160,11 @@ export default function EmpresaPessoasPage() {
                 </button>
               </div>
             }
-            hint="Período de 7 dias, alinhado ao feed de alertas."
+            hint={
+              semRomaneio > 0
+                ? "Prioridade: motoristas sem registros (7 dias). Baixa produtividade só entre quem já lançou."
+                : "Período de 7 dias, alinhado ao feed de alertas."
+            }
           />
         </section>
       )}

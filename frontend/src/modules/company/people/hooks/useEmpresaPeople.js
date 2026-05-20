@@ -1,25 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import api, { extractApiErrorMessage, getFriendlyApiErrorMessage } from "../../../../services/api";
-
-const RISCO_ALERT_PREFIXES = ["pessoas.motorista_sem_romaneio:", "pessoas.motorista_baixa_atividade:"];
-
-function extractRiscoMotoristaIds(feedItems = []) {
-  const ids = new Set();
-  for (const item of feedItems) {
-    const key = String(item?.alert_key || "");
-    if (!RISCO_ALERT_PREFIXES.some((p) => key.startsWith(p))) continue;
-    const fromPayload = Number(item?.payload?.usuario_id);
-    if (Number.isFinite(fromPayload) && fromPayload > 0) {
-      ids.add(fromPayload);
-      continue;
-    }
-    const tail = key.split(":").pop();
-    const fromKey = Number(tail);
-    if (Number.isFinite(fromKey) && fromKey > 0) ids.add(fromKey);
-  }
-  return ids;
-}
+import { computeRiscoDisplayMetrics } from "../../../../utils/riscoOperacional";
 
 const fmtInt = (n) => Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 
@@ -155,6 +137,7 @@ export function useEmpresaPeople() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
 
+  const [riscoDisplay, setRiscoDisplay] = useState(null);
   const [riscoListFilter, setRiscoListFilter] = useState(false);
   const [riscoMotoristaIds, setRiscoMotoristaIds] = useState(() => new Set());
   const [riscoFilterLoading, setRiscoFilterLoading] = useState(false);
@@ -164,19 +147,40 @@ export function useEmpresaPeople() {
     return () => clearTimeout(t);
   }, [search]);
 
+  const refreshRiscoDisplay = useCallback(async (summaryData) => {
+    if (!summaryData) {
+      setRiscoDisplay(null);
+      return;
+    }
+    try {
+      const [prodRes, feedRes] = await Promise.all([
+        api.get("/dashboard/people/productivity", { params: { days: 7, limit: 100 } }),
+        api.get("/dashboard/notifications/feed").catch(() => ({ data: { items: [] } })),
+      ]);
+      setRiscoDisplay(
+        computeRiscoDisplayMetrics(summaryData, prodRes.data?.items ?? [], feedRes.data?.items ?? [])
+      );
+    } catch {
+      setRiscoDisplay(computeRiscoDisplayMetrics(summaryData, [], []));
+    }
+  }, []);
+
   const loadSummary = useCallback(async () => {
     setSummaryLoading(true);
     setSummaryError(null);
     try {
       const { data } = await api.get("/dashboard/people/summary");
-      setSummary(data?.summary ?? null);
+      const summaryData = data?.summary ?? null;
+      setSummary(summaryData);
+      await refreshRiscoDisplay(summaryData);
     } catch (e) {
       setSummaryError(getFriendlyApiErrorMessage(e) || extractApiErrorMessage(e));
       setSummary(null);
+      setRiscoDisplay(null);
     } finally {
       setSummaryLoading(false);
     }
-  }, []);
+  }, [refreshRiscoDisplay]);
 
   const loadProductivity = useCallback(async () => {
     setProdLoading(true);
@@ -279,9 +283,16 @@ export function useEmpresaPeople() {
   const applyRiscoOperacionalFilter = useCallback(async () => {
     setRiscoFilterLoading(true);
     try {
-      const { data } = await api.get("/dashboard/notifications/feed", { params: { refresh: 1 } });
-      const ids = extractRiscoMotoristaIds(data?.items || []);
-      setRiscoMotoristaIds(ids);
+      let ids = riscoDisplay?.riscoMotoristaIds;
+      if (!ids?.size) {
+        const [prodRes, feedRes] = await Promise.all([
+          api.get("/dashboard/people/productivity", { params: { days: 7, limit: 100 } }),
+          api.get("/dashboard/notifications/feed", { params: { refresh: 1 } }).catch(() => ({ data: { items: [] } })),
+        ]);
+        ids = computeRiscoDisplayMetrics(summary, prodRes.data?.items ?? [], feedRes.data?.items ?? [])
+          .riscoMotoristaIds;
+      }
+      setRiscoMotoristaIds(new Set(ids));
       setRiscoListFilter(true);
       setRoleFilter("MOTORISTA");
       setPage(1);
@@ -300,7 +311,7 @@ export function useEmpresaPeople() {
     } finally {
       setRiscoFilterLoading(false);
     }
-  }, [setSearchParams]);
+  }, [setSearchParams, riscoDisplay, summary]);
 
   const clearRiscoListFilter = useCallback(() => {
     setRiscoListFilter(false);
@@ -328,6 +339,7 @@ export function useEmpresaPeople() {
     ROLE_OPTS,
     STATUS_OPTS,
     summary,
+    riscoDisplay,
     summaryLoading,
     summaryError,
     refetchSummary: loadSummary,
