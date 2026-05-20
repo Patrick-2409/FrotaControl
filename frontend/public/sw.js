@@ -1,5 +1,9 @@
-const CACHE = "frotacontrol-v9";
-const SHELL = ["/", "/manifest.json", "/icon.png"];
+/** Bump ao publicar UI crítica — invalida caches antigos no activate. */
+const CACHE = "frotacontrol-v10";
+const SHELL = ["/manifest.json", "/icon.png"];
+
+const isHashedAsset = (pathname) =>
+  pathname.startsWith("/assets/") || /\.(js|css|mjs)(\?|$)/i.test(pathname);
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));
@@ -34,23 +38,33 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  if (isHashedAsset(url.pathname)) {
+    event.respondWith(
+      fetch(event.request).catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
   const isHtmlNavigation =
     event.request.mode === "navigate" ||
     (event.request.headers.get("accept") || "").includes("text/html");
+
   if (isHtmlNavigation) {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE).then((cache) => cache.put("/", copy));
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE).then((cache) => cache.put(event.request, copy));
+          }
           return response;
         })
-        .catch(() => caches.match("/") || caches.match(event.request))
+        .catch(() => caches.match(event.request) || caches.match("/"))
     );
     return;
   }
 
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
+    fetch(event.request).catch(() => caches.match(event.request))
   );
 });

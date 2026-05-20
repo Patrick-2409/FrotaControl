@@ -125,8 +125,20 @@ export function EmpresaMenuIcon({ type }) {
 /** Gestão clássica de veículos (legado) — rota mantida, oculta no menu. */
 export const VEICULOS_LEGACY_PATH = "/dashboard/gestao?secao=veiculos";
 
+const SIDEBAR_HIDDEN_TO = new Set([VEICULOS_LEGACY_PATH]);
+
+/** Remove itens legados/ocultos antes de renderizar a sidebar. */
+export function filterEmpresaSidebarSections(sections) {
+  return (sections || [])
+    .map((section) => ({
+      ...section,
+      items: (section.items || []).filter((tab) => !tab.hidden && !SIDEBAR_HIDDEN_TO.has(tab.to)),
+    }))
+    .filter((section) => section.items.length > 0);
+}
+
 /** Navegação única do painel empresa — usada em /empresa e /dashboard (legado). */
-export const EMPRESA_SIDEBAR_SECTIONS = [
+export const EMPRESA_SIDEBAR_SECTIONS = filterEmpresaSidebarSections([
   {
     id: "dash",
     title: null,
@@ -167,7 +179,7 @@ export const EMPRESA_SIDEBAR_SECTIONS = [
     title: null,
     items: [{ to: "/dashboard/gestao", label: "Administração", icon: "management", match: "gestao-root" }],
   },
-];
+]);
 
 export const EMPRESA_SIDEBAR_FOOTER = [{ to: "/dashboard/perfil", label: "Meu Perfil", icon: "profile", exact: false }];
 
