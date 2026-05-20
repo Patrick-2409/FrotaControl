@@ -1,5 +1,25 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import api, { extractApiErrorMessage, getFriendlyApiErrorMessage } from "../../../../services/api";
+
+const RISCO_ALERT_PREFIXES = ["pessoas.motorista_sem_romaneio:", "pessoas.motorista_baixa_atividade:"];
+
+function extractRiscoMotoristaIds(feedItems = []) {
+  const ids = new Set();
+  for (const item of feedItems) {
+    const key = String(item?.alert_key || "");
+    if (!RISCO_ALERT_PREFIXES.some((p) => key.startsWith(p))) continue;
+    const fromPayload = Number(item?.payload?.usuario_id);
+    if (Number.isFinite(fromPayload) && fromPayload > 0) {
+      ids.add(fromPayload);
+      continue;
+    }
+    const tail = key.split(":").pop();
+    const fromKey = Number(tail);
+    if (Number.isFinite(fromKey) && fromKey > 0) ids.add(fromKey);
+  }
+  return ids;
+}
 
 const fmtInt = (n) => Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 
@@ -107,6 +127,7 @@ function formToPayload(form, { includePassword } = {}) {
 }
 
 export function useEmpresaPeople() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [summary, setSummary] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryError, setSummaryError] = useState(null);
@@ -133,6 +154,10 @@ export function useEmpresaPeople() {
   const [form, setForm] = useState(emptyPersonForm());
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
+
+  const [riscoListFilter, setRiscoListFilter] = useState(false);
+  const [riscoMotoristaIds, setRiscoMotoristaIds] = useState(() => new Set());
+  const [riscoFilterLoading, setRiscoFilterLoading] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 320);
@@ -251,6 +276,53 @@ export function useEmpresaPeople() {
     }));
   }, []);
 
+  const applyRiscoOperacionalFilter = useCallback(async () => {
+    setRiscoFilterLoading(true);
+    try {
+      const { data } = await api.get("/dashboard/notifications/feed", { params: { refresh: 1 } });
+      const ids = extractRiscoMotoristaIds(data?.items || []);
+      setRiscoMotoristaIds(ids);
+      setRiscoListFilter(true);
+      setRoleFilter("MOTORISTA");
+      setPage(1);
+      setSearchParams({ risco: "1" }, { replace: true });
+      requestAnimationFrame(() => {
+        document.getElementById("lista-pessoas")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    } catch {
+      setRiscoListFilter(true);
+      setRoleFilter("MOTORISTA");
+      setPage(1);
+      setSearchParams({ risco: "1" }, { replace: true });
+      requestAnimationFrame(() => {
+        document.getElementById("lista-pessoas")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    } finally {
+      setRiscoFilterLoading(false);
+    }
+  }, [setSearchParams]);
+
+  const clearRiscoListFilter = useCallback(() => {
+    setRiscoListFilter(false);
+    setRiscoMotoristaIds(new Set());
+    if (searchParams.get("risco")) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("risco");
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (searchParams.get("risco") !== "1" || riscoListFilter) return;
+    applyRiscoOperacionalFilter();
+  }, [searchParams, riscoListFilter, applyRiscoOperacionalFilter]);
+
+  const displayUsers = useMemo(() => {
+    if (!riscoListFilter) return users;
+    if (riscoMotoristaIds.size === 0) return [];
+    return users.filter((u) => riscoMotoristaIds.has(Number(u.id)));
+  }, [users, riscoListFilter, riscoMotoristaIds]);
+
   return {
     fmtInt,
     ROLE_OPTS,
@@ -264,6 +336,11 @@ export function useEmpresaPeople() {
     prodError,
     refetchProd: loadProductivity,
     users,
+    displayUsers,
+    riscoListFilter,
+    riscoFilterLoading,
+    applyRiscoOperacionalFilter,
+    clearRiscoListFilter,
     total,
     page,
     setPage,

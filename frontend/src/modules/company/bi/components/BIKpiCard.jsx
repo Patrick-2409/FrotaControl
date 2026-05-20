@@ -13,6 +13,7 @@ function trendClass(dir) {
  */
 function BIKpiCard({
   label,
+  labelNode,
   value,
   valueNode,
   hint,
@@ -34,7 +35,7 @@ function BIKpiCard({
     <article className={`fc-bi-kpi-card fc-card fc-erp-kpi-card border-zinc-800/90 p-4 sm:p-5 ${className}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="fc-erp-eyebrow">{label}</p>
+          {labelNode ?? (label ? <p className="fc-erp-eyebrow">{label}</p> : null)}
           <div className="mt-2 text-2xl font-semibold tabular-nums tracking-tight text-zinc-50 sm:text-3xl">
             {valueNode != null ? valueNode : value}
           </div>

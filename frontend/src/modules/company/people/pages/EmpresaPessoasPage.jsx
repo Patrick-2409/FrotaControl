@@ -21,8 +21,28 @@ function statusPessoaClass(s) {
   return "bg-zinc-700/50 text-zinc-200 ring-1 ring-zinc-600/40";
 }
 
+function RiscoStatusLine({ ok, warnText, okText }) {
+  return (
+    <p
+      className={`flex items-start gap-2 text-sm font-medium leading-snug ${
+        ok ? "text-emerald-200/95" : "text-rose-100"
+      }`}
+    >
+      <span className="shrink-0 text-base leading-none" aria-hidden>
+        {ok ? "✔" : "⚠️"}
+      </span>
+      <span className="min-w-0 break-words">{ok ? okText : warnText}</span>
+    </p>
+  );
+}
+
+const RISCO_TOOLTIP =
+  "Indica motoristas sem lançamentos ou com baixa atividade no período selecionado.";
+
 export default function EmpresaPessoasPage() {
   const p = useEmpresaPeople();
+  const semRomaneio = Number(p.summary?.motoristas_sem_romaneio_7d ?? 0);
+  const baixaAtividade = Number(p.summary?.motoristas_baixa_atividade ?? 0);
 
   const headerAside = (
     <>
@@ -89,15 +109,42 @@ export default function EmpresaPessoasPage() {
             hint="Validade superior a 60 dias."
           />
           <BIKpiCard
-            label="Risco operacional"
-            valueNode={
-              <span className="text-lg font-semibold leading-snug text-zinc-100">
-                Sem romaneio: {p.fmtInt(p.summary?.motoristas_sem_romaneio_7d)}
-                <br />
-                Baixa atividade: {p.fmtInt(p.summary?.motoristas_baixa_atividade)}
-              </span>
+            labelNode={
+              <p className="fc-erp-eyebrow inline-flex max-w-full flex-wrap items-center gap-1.5">
+                <span>Risco operacional</span>
+                <button
+                  type="button"
+                  className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-zinc-600/80 bg-zinc-800/80 text-[10px] font-bold leading-none text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+                  title={RISCO_TOOLTIP}
+                  aria-label={RISCO_TOOLTIP}
+                >
+                  ?
+                </button>
+              </p>
             }
-            hint="Sincronizado com regras do feed de alertas."
+            valueNode={
+              <div className="space-y-2.5">
+                <RiscoStatusLine
+                  ok={semRomaneio === 0}
+                  warnText={`${p.fmtInt(semRomaneio)} motorista(s) sem registros de transporte no período`}
+                  okText="Todos os motoristas possuem registros no período"
+                />
+                <RiscoStatusLine
+                  ok={baixaAtividade === 0}
+                  warnText={`${p.fmtInt(baixaAtividade)} motorista(s) com baixa produtividade`}
+                  okText="Nenhum motorista com baixa produtividade"
+                />
+                <button
+                  type="button"
+                  disabled={p.riscoFilterLoading || (semRomaneio === 0 && baixaAtividade === 0)}
+                  onClick={() => p.applyRiscoOperacionalFilter()}
+                  className="mt-1 w-full rounded-lg border border-zinc-600/90 bg-zinc-900/90 px-3 py-2 text-xs font-semibold text-zinc-200 transition hover:border-amber-500/50 hover:text-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {p.riscoFilterLoading ? "A carregar…" : "Ver motoristas"}
+                </button>
+              </div>
+            }
+            hint="Período de 7 dias, alinhado ao feed de alertas."
           />
         </section>
       )}
@@ -184,7 +231,7 @@ export default function EmpresaPessoasPage() {
         )}
       </section>
 
-      <section className="mt-10" aria-label="Lista de utilizadores">
+      <section id="lista-pessoas" className="mt-10 scroll-mt-6" aria-label="Lista de utilizadores">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <h2 className="text-lg font-semibold text-zinc-100">Cadastro e perfil</h2>
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
@@ -203,6 +250,7 @@ export default function EmpresaPessoasPage() {
               onChange={(e) => {
                 p.setRoleFilter(e.target.value);
                 p.setPage(1);
+                if (p.riscoListFilter) p.clearRiscoListFilter();
               }}
               className="rounded-lg border border-zinc-700 bg-zinc-900/80 px-3 py-2 text-sm text-zinc-100"
             >
@@ -229,6 +277,21 @@ export default function EmpresaPessoasPage() {
           </div>
         </div>
 
+        {p.riscoListFilter ? (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-700/40 bg-amber-950/25 px-3 py-2 text-xs text-amber-100">
+            <span className="min-w-0 break-words">
+              Filtro ativo: motoristas sem registros recentes ou com baixa produtividade (7 dias).
+            </span>
+            <button
+              type="button"
+              onClick={() => p.clearRiscoListFilter()}
+              className="shrink-0 rounded-md border border-amber-600/50 px-2 py-1 font-semibold text-amber-50 hover:bg-amber-900/40"
+            >
+              Limpar filtro
+            </button>
+          </div>
+        ) : null}
+
         {p.listError ? (
           <div className="mt-4">
             <EmpresaModuleErrorPanel title="Lista indisponível" description={p.listError} onRetry={p.refetchUsers} />
@@ -253,14 +316,16 @@ export default function EmpresaPessoasPage() {
                       <SkeletonRows rows={4} />
                     </td>
                   </tr>
-                ) : p.users.length === 0 ? (
+                ) : p.displayUsers.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-3 py-8 text-center text-zinc-500">
-                      Nenhum registo encontrado.
+                      {p.riscoListFilter
+                        ? "Nenhum motorista em risco nesta página. Tente outra página ou limpe o filtro."
+                        : "Nenhum registo encontrado."}
                     </td>
                   </tr>
                 ) : (
-                  p.users.map((u) => (
+                  p.displayUsers.map((u) => (
                     <tr key={u.id} className="border-b border-zinc-800/80 hover:bg-zinc-900/40">
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-2">
