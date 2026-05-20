@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import Avatar from "../../../../components/Avatar";
 import PaginationControls from "../../../../components/PaginationControls";
@@ -8,6 +9,7 @@ import EmpresaModuleErrorPanel from "../../shared/components/EmpresaModuleErrorP
 import { resolveBackendAssetUrl } from "../../../../services/api";
 import { useEmpresaPeople } from "../hooks/useEmpresaPeople";
 import { CNH_CATEGORIAS, cnhBadgeClass, cnhStatusLabel, getCnhStatus } from "../../../../utils/cnhStatus";
+import { foraRankingMotivo, splitTransportRanking } from "../../../../utils/peopleRanking";
 
 function roleLabel(r) {
   const m = { MOTORISTA: "Motorista", APONTADOR: "Apontador", ADMIN_EMPRESA: "Administrador" };
@@ -44,8 +46,71 @@ function RiscoStatusLine({ tone, text }) {
 const RISCO_TOOLTIP =
   "Indica motoristas sem lançamentos ou com baixa atividade no período selecionado.";
 
+function RankingTable({ rows, p, showMotivo = false, emptyMessage }) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-zinc-800/90">
+      <table className="min-w-[640px] w-full border-collapse text-left text-sm">
+        <thead>
+          <tr className="border-b border-zinc-800 bg-zinc-900/60 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+            <th className="px-3 py-3">Pessoa</th>
+            <th className="px-3 py-3">Papel</th>
+            <th className="px-3 py-3">Vínculos</th>
+            {showMotivo ? <th className="px-3 py-3">Motivo</th> : null}
+            <th className="px-3 py-3 text-right">Romaneios</th>
+            <th className="px-3 py-3 text-right">Parte diária</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={showMotivo ? 6 : 5} className="px-3 py-6 text-center text-zinc-500">
+                {emptyMessage}
+              </td>
+            </tr>
+          ) : (
+            rows.map((row) => (
+              <tr key={row.id} className="border-b border-zinc-800/80 hover:bg-zinc-900/40">
+                <td className="px-3 py-3">
+                  <div className="flex items-center gap-2">
+                    <Avatar imageUrl={resolveBackendAssetUrl(row.profile_image_url)} name={row.nome} size="list" />
+                    <div>
+                      <p className="font-medium text-zinc-100">{row.nome}</p>
+                      {row.funcao ? <p className="text-xs text-zinc-500">{row.funcao}</p> : null}
+                    </div>
+                  </div>
+                </td>
+                <td className="px-3 py-3 text-zinc-400">{roleLabel(row.role)}</td>
+                <td className="px-3 py-3 text-xs text-zinc-400">
+                  {row.role === "MOTORISTA" && (row.veiculo_placa || row.veiculo_nome) ? (
+                    <span>
+                      Veículo: {row.veiculo_placa || row.veiculo_nome}
+                      {row.tipo_operacao ? (
+                        <span className="text-zinc-500"> · {row.tipo_operacao}</span>
+                      ) : null}
+                    </span>
+                  ) : null}
+                  {row.role === "APONTADOR" ? <span>Coordenação de campo</span> : null}
+                  {row.role === "MOTORISTA" && !row.veiculo_placa && !row.veiculo_nome ? (
+                    <span className="text-zinc-500">Sem veículo</span>
+                  ) : null}
+                </td>
+                {showMotivo ? (
+                  <td className="px-3 py-3 text-xs text-zinc-400">{foraRankingMotivo(row)}</td>
+                ) : null}
+                <td className="px-3 py-3 text-right tabular-nums text-zinc-200">{p.fmtInt(row.romaneios)}</td>
+                <td className="px-3 py-3 text-right tabular-nums text-zinc-200">{p.fmtInt(row.partes_diaria)}</td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function EmpresaPessoasPage() {
   const p = useEmpresaPeople();
+  const { rankingTransporte, foraRanking } = useMemo(() => splitTransportRanking(p.prod), [p.prod]);
   const totalMotoristas = Number(p.summary?.motoristas ?? 0);
   const semRomaneio = Number(p.riscoDisplay?.semRomaneio ?? p.summary?.motoristas_sem_romaneio_7d ?? 0);
   const baixaAtividade = Number(
@@ -187,72 +252,70 @@ export default function EmpresaPessoasPage() {
         </section>
       )}
 
-      <section className="mt-10" aria-label="Ranking de produtividade">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-zinc-100">Ranking e participação (30 dias)</h2>
-        </div>
+      <section className="mt-10 space-y-8" aria-label="Ranking de transporte">
         {p.prodError ? (
-          <div className="mt-3">
-            <EmpresaModuleErrorPanel
-              title="Ranking indisponível"
-              description={p.prodError}
-              onRetry={p.refetchProd}
-            />
-          </div>
+          <EmpresaModuleErrorPanel
+            title="Ranking indisponível"
+            description={p.prodError}
+            onRetry={p.refetchProd}
+          />
         ) : (
-        <div className="mt-3 overflow-x-auto rounded-xl border border-zinc-800/90">
-          <table className="min-w-[640px] w-full border-collapse text-left text-sm">
-            <thead>
-              <tr className="border-b border-zinc-800 bg-zinc-900/60 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-                <th className="px-3 py-3">Pessoa</th>
-                <th className="px-3 py-3">Papel</th>
-                <th className="px-3 py-3">Vínculos</th>
-                <th className="px-3 py-3 text-right">Romaneios</th>
-                <th className="px-3 py-3 text-right">Parte diária</th>
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            <div>
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <div>
+                  <h2 className="text-lg font-semibold text-zinc-100">Ranking de transporte</h2>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    Apenas motoristas com veículo de transporte de material (30 dias).
+                  </p>
+                </div>
+                <span className="rounded-md bg-zinc-800/80 px-2 py-1 text-xs tabular-nums text-zinc-400">
+                  {p.fmtInt(rankingTransporte.length)} no ranking
+                </span>
+              </div>
               {p.prodLoading ? (
-                <tr>
-                  <td colSpan={5} className="px-3 py-6">
-                    <SkeletonRows rows={3} />
-                  </td>
-                </tr>
-              ) : p.prod.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-3 py-6 text-center text-zinc-500">
-                    Sem dados de produtividade.
-                  </td>
-                </tr>
+                <div className="mt-3 fc-card p-4">
+                  <SkeletonRows rows={3} />
+                </div>
               ) : (
-                p.prod.map((row) => (
-                  <tr key={row.id} className="border-b border-zinc-800/80 hover:bg-zinc-900/40">
-                    <td className="px-3 py-3">
-                      <div className="flex items-center gap-2">
-                        <Avatar imageUrl={resolveBackendAssetUrl(row.profile_image_url)} name={row.nome} size="list" />
-                        <div>
-                          <p className="font-medium text-zinc-100">{row.nome}</p>
-                          {row.funcao ? <p className="text-xs text-zinc-500">{row.funcao}</p> : null}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3 text-zinc-400">{roleLabel(row.role)}</td>
-                    <td className="px-3 py-3 text-xs text-zinc-400">
-                      {row.role === "MOTORISTA" && (row.veiculo_placa || row.veiculo_nome) ? (
-                        <span>
-                          Veículo: {row.veiculo_placa || row.veiculo_nome}
-                        </span>
-                      ) : null}
-                      {row.role === "APONTADOR" ? <span>Coordenação de campo</span> : null}
-                    </td>
-                    <td className="px-3 py-3 text-right tabular-nums text-zinc-200">{p.fmtInt(row.romaneios)}</td>
-                    <td className="px-3 py-3 text-right tabular-nums text-zinc-200">{p.fmtInt(row.partes_diaria)}</td>
-                  </tr>
-                ))
+                <div className="mt-3">
+                  <RankingTable
+                    rows={rankingTransporte}
+                    p={p}
+                    emptyMessage="Nenhum motorista com veículo de transporte no período."
+                  />
+                </div>
               )}
-            </tbody>
-          </table>
-        </div>
+            </div>
+
+            <div>
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <div>
+                  <h2 className="text-lg font-semibold text-zinc-100">Fora do ranking (apoio)</h2>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    Apontadores, veículos de apoio e motoristas sem vínculo de transporte.
+                  </p>
+                </div>
+                <span className="rounded-md bg-zinc-800/80 px-2 py-1 text-xs tabular-nums text-zinc-400">
+                  {p.fmtInt(foraRanking.length)} fora
+                </span>
+              </div>
+              {p.prodLoading ? (
+                <div className="mt-3 fc-card p-4">
+                  <SkeletonRows rows={2} />
+                </div>
+              ) : (
+                <div className="mt-3">
+                  <RankingTable
+                    rows={foraRanking}
+                    p={p}
+                    showMotivo
+                    emptyMessage="Ninguém fora do ranking de transporte."
+                  />
+                </div>
+              )}
+            </div>
+          </>
         )}
       </section>
 

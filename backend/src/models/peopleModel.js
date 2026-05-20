@@ -129,6 +129,10 @@ async function getPeopleProductivity(empresa_id, { days = 30, limit = 40 } = {})
   const { rows } = await pool.query(
     `SELECT u.id, u.nome, u.role, u.profile_image_url, u.funcao, u.veiculo_id,
        v.placa AS veiculo_placa, v.nome AS veiculo_nome,
+       COALESCE(
+         NULLIF(TRIM(v.tipo_operacao), ''),
+         CASE WHEN COALESCE(v.usa_para_transporte, false) THEN 'transporte' ELSE 'apoio' END
+       ) AS tipo_operacao,
        (SELECT COUNT(*)::int FROM romaneios r
          WHERE r.usuario_id = u.id AND r.empresa_id = u.empresa_id
            AND r.data >= NOW() - ($2::int * INTERVAL '1 day')) AS romaneios,

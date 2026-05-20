@@ -181,6 +181,7 @@ const initDb = async () => {
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS modelo VARCHAR(120);
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS capacidade_ton NUMERIC(10, 2);
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS usa_para_transporte BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS tipo_operacao VARCHAR(20) NOT NULL DEFAULT 'apoio';
     ALTER TABLE romaneios ADD COLUMN IF NOT EXISTS version_of VARCHAR(80);
     ALTER TABLE romaneios ADD COLUMN IF NOT EXISTS recorded_at_client TIMESTAMP;
     ALTER TABLE combustiveis ADD COLUMN IF NOT EXISTS version_of VARCHAR(80);
@@ -214,6 +215,9 @@ const initDb = async () => {
       AND logo_url <> ''
       AND logo_url !~* '^https?://'
       AND logo_url NOT LIKE '/%';
+
+    UPDATE veiculos
+    SET tipo_operacao = CASE WHEN COALESCE(usa_para_transporte, false) THEN 'transporte' ELSE 'apoio' END;
   `);
 
   await pool.query(`

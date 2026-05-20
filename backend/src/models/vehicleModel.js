@@ -61,6 +61,7 @@ const createVehicle = async ({
   modelo = null,
   capacidade_ton = null,
   usa_para_transporte = false,
+  tipo_operacao = "apoio",
   tipo = null,
   categoria = null,
   ano = null,
@@ -78,19 +79,25 @@ const createVehicle = async ({
   manutencao_agendar_ate = null,
   fleet_telemetry_meta = {},
 }) => {
-  const usa = Boolean(usa_para_transporte);
+  const tipoOperacao =
+    tipo_operacao === "transporte" || tipo_operacao === "apoio"
+      ? tipo_operacao
+      : Boolean(usa_para_transporte)
+        ? "transporte"
+        : "apoio";
+  const usa = tipoOperacao === "transporte";
   const cap = normalizeCapacidade(usa, capacidade_ton);
   const meta = normalizeTelemetryMeta(fleet_telemetry_meta);
   const st = normalizeStatus(status_operacional);
   const { rows } = await pool.query(
     `INSERT INTO veiculos (
-       empresa_id, nome, placa, marca, modelo, capacidade_ton, usa_para_transporte,
+       empresa_id, nome, placa, marca, modelo, capacidade_ton, usa_para_transporte, tipo_operacao,
        tipo, categoria, ano, renavam, chassi, combustivel_principal, capacidade_litros,
        horimetro_atual, hodometro_atual, status_operacional,
        doc_revisao_validade, doc_licenciamento_validade, doc_seguro_validade, doc_inspecao_validade,
        manutencao_agendar_ate, fleet_telemetry_meta
      )
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23::jsonb)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24::jsonb)
      RETURNING *`,
     [
       empresa_id,
@@ -100,6 +107,7 @@ const createVehicle = async ({
       trimOrNull(modelo),
       cap,
       usa,
+      tipoOperacao,
       trimOrNull(tipo),
       trimOrNull(categoria),
       normalizeIntAno(ano),
@@ -203,9 +211,19 @@ const updateVehicle = async (id, empresa_id, data) => {
   const existing = await getVehicleById(id, empresa_id);
   if (!existing) return null;
 
-  const usa = Object.prototype.hasOwnProperty.call(data, "usa_para_transporte")
-    ? Boolean(data.usa_para_transporte)
-    : Boolean(existing.usa_para_transporte);
+  let tipoOperacao =
+    data.tipo_operacao === "transporte" || data.tipo_operacao === "apoio"
+      ? data.tipo_operacao
+      : existing.tipo_operacao === "transporte" || existing.tipo_operacao === "apoio"
+        ? existing.tipo_operacao
+        : null;
+  if (!tipoOperacao) {
+    const usaLegacy = Object.prototype.hasOwnProperty.call(data, "usa_para_transporte")
+      ? Boolean(data.usa_para_transporte)
+      : Boolean(existing.usa_para_transporte);
+    tipoOperacao = usaLegacy ? "transporte" : "apoio";
+  }
+  const usa = tipoOperacao === "transporte";
 
   let capacidade_ton = existing.capacidade_ton;
   if (!usa) {
@@ -218,7 +236,7 @@ const updateVehicle = async (id, empresa_id, data) => {
   const placa = data.placa ?? existing.placa;
   const marca = mergeField(data, existing, "marca", (v, ex) => (v === undefined ? ex.marca : trimOrNull(v)));
   const modelo = mergeField(data, existing, "modelo", (v, ex) => (v === undefined ? ex.modelo : trimOrNull(v)));
-  const tipo = mergeField(data, existing, "tipo", (v, ex) => (v === undefined ? ex.tipo : trimOrNull(v)));
+  const tipoVeiculo = mergeField(data, existing, "tipo", (v, ex) => (v === undefined ? ex.tipo : trimOrNull(v)));
   const categoria = mergeField(data, existing, "categoria", (v, ex) => (v === undefined ? ex.categoria : trimOrNull(v)));
   const ano = mergeField(data, existing, "ano", (v, ex) =>
     v === undefined ? ex.ano : normalizeIntAno(v)
@@ -272,22 +290,23 @@ const updateVehicle = async (id, empresa_id, data) => {
          modelo = $6,
          capacidade_ton = $7,
          usa_para_transporte = $8,
-         tipo = $9,
-         categoria = $10,
-         ano = $11,
-         renavam = $12,
-         chassi = $13,
-         combustivel_principal = $14,
-         capacidade_litros = $15,
-         horimetro_atual = $16,
-         hodometro_atual = $17,
-         status_operacional = $18,
-         doc_revisao_validade = $19,
-         doc_licenciamento_validade = $20,
-         doc_seguro_validade = $21,
-         doc_inspecao_validade = $22,
-         manutencao_agendar_ate = $23,
-         fleet_telemetry_meta = $24::jsonb
+         tipo_operacao = $9,
+         tipo = $10,
+         categoria = $11,
+         ano = $12,
+         renavam = $13,
+         chassi = $14,
+         combustivel_principal = $15,
+         capacidade_litros = $16,
+         horimetro_atual = $17,
+         hodometro_atual = $18,
+         status_operacional = $19,
+         doc_revisao_validade = $20,
+         doc_licenciamento_validade = $21,
+         doc_seguro_validade = $22,
+         doc_inspecao_validade = $23,
+         manutencao_agendar_ate = $24,
+         fleet_telemetry_meta = $25::jsonb
      WHERE id = $1 AND empresa_id = $2
      RETURNING *`,
     [
@@ -299,7 +318,8 @@ const updateVehicle = async (id, empresa_id, data) => {
       modelo,
       capacidade_ton,
       usa,
-      tipo,
+      tipoOperacao,
+      tipoVeiculo,
       categoria,
       ano,
       renavam,

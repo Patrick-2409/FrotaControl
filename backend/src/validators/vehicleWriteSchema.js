@@ -9,6 +9,7 @@ const vehicleBodySchema = z.object({
   modelo: z.string().trim().optional().nullable(),
   capacidade_ton: z.coerce.number().positive().optional().nullable(),
   usa_para_transporte: z.coerce.boolean().optional().default(false),
+  tipo_operacao: z.enum(["transporte", "apoio"]).optional(),
   tipo: z.string().trim().max(80).optional().nullable(),
   categoria: z.string().trim().max(80).optional().nullable(),
   ano: z.coerce.number().int().min(1970).max(2100).optional().nullable(),
@@ -42,11 +43,18 @@ const normalizeDate = (v) => {
 };
 
 const toVehicleWritePayload = (parsed) => {
-  const usa = Boolean(parsed.usa_para_transporte);
+  const tipo =
+    parsed.tipo_operacao === "transporte" || parsed.tipo_operacao === "apoio"
+      ? parsed.tipo_operacao
+      : Boolean(parsed.usa_para_transporte)
+        ? "transporte"
+        : "apoio";
+  const usa = tipo === "transporte";
   const out = {
     nome: parsed.nome,
     placa: parsed.placa,
     usa_para_transporte: usa,
+    tipo_operacao: tipo,
     capacidade_ton: usa ? parsed.capacidade_ton ?? null : null,
   };
   if (parsed.marca !== undefined) out.marca = trimOrNull(parsed.marca);
