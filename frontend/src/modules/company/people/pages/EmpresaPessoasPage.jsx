@@ -22,34 +22,45 @@ function statusPessoaClass(s) {
 }
 
 function RiscoStatusLine({ tone, text }) {
-  const toneClass =
-    tone === "critical"
-      ? "text-rose-100"
-      : tone === "warning"
-        ? "text-amber-100"
-        : "text-emerald-200/95";
-  const icon = tone === "critical" ? "🔴" : tone === "warning" ? "🟡" : "✔";
+  const isCritical = tone === "critical";
+  const isWarning = tone === "warning";
+  const toneClass = isCritical
+    ? "text-rose-100"
+    : isWarning
+      ? "text-amber-100/95"
+      : "text-emerald-200/75";
+  const sizeClass = isCritical ? "text-[15px] sm:text-base font-semibold" : "text-sm font-medium";
+  const icon = isCritical ? "🔴" : isWarning ? "🟡" : "✔";
   return (
-    <p className={`flex items-start gap-2 text-sm font-medium leading-snug ${toneClass}`}>
-      <span className="shrink-0 text-base leading-none" aria-hidden>
+    <p className={`flex items-start gap-2.5 leading-snug ${sizeClass} ${toneClass}`}>
+      <span className={`shrink-0 leading-none ${isCritical ? "text-lg" : "text-base"}`} aria-hidden>
         {icon}
       </span>
-      <span className="min-w-0 break-words">{text}</span>
+      <span className="min-w-0 flex-1 break-words">{text}</span>
     </p>
   );
 }
 
 const RISCO_TOOLTIP =
-  "Sem registros (7 dias) é o nível mais crítico. Baixa produtividade considera apenas motoristas que já lançaram romaneios no período.";
+  "Indica motoristas sem lançamentos ou com baixa atividade no período selecionado.";
 
 export default function EmpresaPessoasPage() {
   const p = useEmpresaPeople();
+  const totalMotoristas = Number(p.summary?.motoristas ?? 0);
   const semRomaneio = Number(p.riscoDisplay?.semRomaneio ?? p.summary?.motoristas_sem_romaneio_7d ?? 0);
-  const baixaProdutividade = Number(
+  const baixaAtividade = Number(
     p.riscoDisplay?.baixaProdutividade ??
       (semRomaneio > 0 ? 0 : p.summary?.motoristas_baixa_atividade ?? 0)
   );
-  const temRisco = semRomaneio > 0 || baixaProdutividade > 0;
+  const temRisco = semRomaneio > 0 || baixaAtividade > 0;
+  const riscoCardClass =
+    semRomaneio > 0
+      ? "border-rose-500/30 shadow-[0_0_20px_-8px_rgba(244,63,94,0.35)]"
+      : "";
+  const semRomaneioText =
+    totalMotoristas > 0
+      ? `${p.fmtInt(semRomaneio)} de ${p.fmtInt(totalMotoristas)} motoristas sem lançamentos de transporte nos últimos 7 dias`
+      : `${p.fmtInt(semRomaneio)} motorista(s) sem lançamentos de transporte nos últimos 7 dias`;
 
   const headerAside = (
     <>
@@ -116,6 +127,7 @@ export default function EmpresaPessoasPage() {
             hint="Validade superior a 60 dias."
           />
           <BIKpiCard
+            className={riscoCardClass}
             labelNode={
               <p className="fc-erp-eyebrow inline-flex max-w-full flex-wrap items-center gap-1.5">
                 <span>Risco operacional</span>
@@ -130,41 +142,34 @@ export default function EmpresaPessoasPage() {
               </p>
             }
             valueNode={
-              <div className="space-y-2.5">
+              <div className="mt-1 max-w-full space-y-3">
                 {semRomaneio > 0 ? (
-                  <RiscoStatusLine
-                    tone="critical"
-                    text={`${p.fmtInt(semRomaneio)} motorista(s) sem registros no período`}
-                  />
+                  <RiscoStatusLine tone="critical" text={semRomaneioText} />
                 ) : (
                   <RiscoStatusLine
                     tone="ok"
-                    text="Todos os motoristas possuem registros no período"
+                    text="Todos os motoristas possuem lançamentos nos últimos 7 dias"
                   />
                 )}
-                {baixaProdutividade > 0 ? (
+                {baixaAtividade > 0 ? (
                   <RiscoStatusLine
                     tone="warning"
-                    text={`${p.fmtInt(baixaProdutividade)} motorista(s) com baixa produtividade`}
+                    text={`${p.fmtInt(baixaAtividade)} motorista(s) com baixa atividade`}
                   />
                 ) : (
-                  <RiscoStatusLine tone="ok" text="Nenhum motorista com baixa produtividade" />
+                  <RiscoStatusLine tone="ok" text="Nenhum motorista com baixa atividade" />
                 )}
                 <button
                   type="button"
                   disabled={p.riscoFilterLoading || !temRisco}
                   onClick={() => p.applyRiscoOperacionalFilter()}
-                  className="mt-1 w-full rounded-lg border border-zinc-600/90 bg-zinc-900/90 px-3 py-2 text-xs font-semibold text-zinc-200 transition hover:border-amber-500/50 hover:text-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="mt-0.5 w-full min-w-0 rounded-lg border border-zinc-600/90 bg-zinc-900/90 px-3 py-2.5 text-xs font-semibold text-zinc-200 transition hover:border-amber-500/50 hover:text-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  {p.riscoFilterLoading ? "A carregar…" : "Ver motoristas"}
+                  {p.riscoFilterLoading ? "A carregar…" : "Ver motoristas afetados"}
                 </button>
               </div>
             }
-            hint={
-              semRomaneio > 0
-                ? "Prioridade: motoristas sem registros (7 dias). Baixa produtividade só entre quem já lançou."
-                : "Período de 7 dias, alinhado ao feed de alertas."
-            }
+            hint="Atividade = lançamentos de transporte (romaneios). Período: 7 dias."
           />
         </section>
       )}
@@ -300,7 +305,7 @@ export default function EmpresaPessoasPage() {
         {p.riscoListFilter ? (
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-700/40 bg-amber-950/25 px-3 py-2 text-xs text-amber-100">
             <span className="min-w-0 break-words">
-              Filtro ativo: motoristas sem registros recentes ou com baixa produtividade (7 dias).
+              Filtro ativo: motoristas sem lançamentos recentes ou com baixa atividade (7 dias).
             </span>
             <button
               type="button"
