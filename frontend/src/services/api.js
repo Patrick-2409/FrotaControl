@@ -172,7 +172,8 @@ api.interceptors.response.use(
     const durationMs =
       start != null && typeof performance !== "undefined" ? Math.round(performance.now() - start) : null;
 
-    if (!isExpectedAuth401) {
+    const skipErrorLog = Boolean(cfg.skipErrorLog);
+    if (!isExpectedAuth401 && !skipErrorLog) {
       httpLogger.error("api_request_failed", {
         url: requestUrl,
         method: cfg?.method,

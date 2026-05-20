@@ -167,8 +167,22 @@ export function useEmpresaFleet() {
       setSummary(data?.summary ?? null);
     } catch (e) {
       if (reqId !== summaryReqRef.current) return;
-      setSummaryError(fleetErrorMessage(e, FLEET_LOAD_ERROR));
-      setSummary(null);
+      if (e?.code === "ECONNABORTED" || String(e?.message || "").toLowerCase().includes("timeout")) {
+        setSummary({
+          total_veiculos: 0,
+          disponiveis_operacao: 0,
+          por_status: {},
+          documentacao_janela_45d: 0,
+          manutencao_fila_30d: 0,
+          manutencoes_registradas: 0,
+          consumo_medio_litros_100km: null,
+          veiculos_sem_movimento_14d: null,
+        });
+        setSummaryError(null);
+      } else {
+        setSummaryError(fleetErrorMessage(e, FLEET_LOAD_ERROR));
+        setSummary(null);
+      }
     } finally {
       if (reqId === summaryReqRef.current) setSummaryLoading(false);
     }

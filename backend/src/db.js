@@ -10,6 +10,9 @@ const useSsl =
 
 const pool = new Pool({
   connectionString,
+  max: Math.min(50, Math.max(10, Number(process.env.PG_POOL_MAX || 25))),
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 10_000,
   ...(useSsl ? { ssl: { rejectUnauthorized: false } } : {}),
 });
 

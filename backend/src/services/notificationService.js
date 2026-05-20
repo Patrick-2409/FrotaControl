@@ -11,8 +11,6 @@ const { logWarn } = require("./loggerService");
 
 const FEED_LIMIT = Math.min(50, Math.max(5, Number(process.env.NOTIFICATIONS_FEED_LIMIT || 20)));
 const CACHE_TTL_MS = Math.min(120_000, Math.max(15_000, Number(process.env.NOTIFICATIONS_CACHE_MS || 60_000)));
-const BACKGROUND_REFRESH_MS = Math.min(600_000, Math.max(60_000, Number(process.env.NOTIFICATIONS_BG_REFRESH_MS || 300_000)));
-
 const feedCache = new Map();
 const refreshInFlight = new Set();
 
@@ -54,26 +52,23 @@ function mapDbRowToFeedItem(row) {
   };
 }
 
-async function fetchReadKeys(usuarioId) {
+async function loadFeedWithReadState(empresaId, usuarioId, limit = FEED_LIMIT) {
   const { rows } = await queryTimed(
-    `SELECT alert_key FROM operational_alert_reads WHERE usuario_id = $1`,
-    [usuarioId],
-    { label: "feed-read-keys", timeoutMs: 3000 }
+    `SELECT e.alert_key, e.severity, e.category, e.title, e.body, e.payload, e.first_seen_at, e.last_seen_at,
+            (r.alert_key IS NOT NULL) AS read
+     FROM operational_alert_events e
+     LEFT JOIN operational_alert_reads r
+       ON r.usuario_id = $2 AND r.alert_key = e.alert_key
+     WHERE e.empresa_id = $1 AND e.is_active = true
+     ORDER BY e.last_seen_at DESC
+     LIMIT $3`,
+    [empresaId, usuarioId, limit],
+    { label: "feed-load-enriched", timeoutMs: 4000 }
   );
-  return new Set(rows.map((r) => r.alert_key));
-}
-
-async function loadActiveAlertsFromDb(empresaId, limit = FEED_LIMIT) {
-  const { rows } = await queryTimed(
-    `SELECT alert_key, severity, category, title, body, payload, first_seen_at, last_seen_at
-     FROM operational_alert_events
-     WHERE empresa_id = $1 AND is_active = true
-     ORDER BY last_seen_at DESC
-     LIMIT $2`,
-    [empresaId, limit],
-    { label: "feed-load-db", timeoutMs: 5000 }
-  );
-  return rows.map(mapDbRowToFeedItem);
+  return rows.map((row) => ({
+    ...mapDbRowToFeedItem(row),
+    read: Boolean(row.read),
+  }));
 }
 
 /**
@@ -275,18 +270,16 @@ async function refreshFeedLite(empresaId) {
   return items;
 }
 
-function scheduleBackgroundRefresh(empresaId) {
+function scheduleAsyncRefresh(empresaId) {
   if (refreshInFlight.has(empresaId)) return;
-  const hit = feedCache.get(empresaId);
-  if (hit && Date.now() - hit.t < BACKGROUND_REFRESH_MS) return;
   refreshInFlight.add(empresaId);
   setImmediate(async () => {
     try {
       const items = await refreshFeedLite(empresaId);
-      const etag = `w/${items.length}-${crypto.createHash("sha1").update(items.map((i) => i.alert_key).join("|")).digest("hex").slice(0, 24)}`;
+      const etag = buildEtag(items);
       feedCache.set(empresaId, { t: Date.now(), items, etag });
     } catch (e) {
-      logWarn("feed_background_refresh_failed", { empresaId, message: e?.message });
+      logWarn("feed_async_refresh_failed", { empresaId, message: e?.message });
     } finally {
       refreshInFlight.delete(empresaId);
     }
@@ -298,18 +291,13 @@ function buildEtag(items) {
   return `w/${items.length}-${crypto.createHash("sha1").update(baseKeys).digest("hex").slice(0, 24)}`;
 }
 
-async function enrichWithReadState(items, usuarioId) {
-  const readKeys = await fetchReadKeys(usuarioId);
-  return items.map((it) => ({ ...it, read: readKeys.has(it.alert_key) }));
-}
-
 async function getOperationalFeed(empresaId, usuarioId, { bypassCache = false } = {}) {
   const now = Date.now();
   try {
     if (!bypassCache) {
       const hit = feedCache.get(empresaId);
       if (hit && now - hit.t < CACHE_TTL_MS) {
-        const enriched = await enrichWithReadState(hit.items, usuarioId);
+        const enriched = await loadFeedWithReadState(empresaId, usuarioId, FEED_LIMIT);
         return {
           success: true,
           items: enriched,
@@ -322,25 +310,18 @@ async function getOperationalFeed(empresaId, usuarioId, { bypassCache = false } 
       }
     }
 
-    let items = await loadActiveAlertsFromDb(empresaId, FEED_LIMIT);
+    const enriched = await loadFeedWithReadState(empresaId, usuarioId, FEED_LIMIT);
+    const itemsForCache = enriched.map(({ read, ...rest }) => rest);
 
     if (bypassCache) {
-      try {
-        await refreshFeedLite(empresaId);
-        items = await loadActiveAlertsFromDb(empresaId, FEED_LIMIT);
-      } catch (e) {
-        logWarn("feed_sync_refresh_failed", { empresaId, message: e?.message });
-      }
-    } else {
-      scheduleBackgroundRefresh(empresaId);
+      scheduleAsyncRefresh(empresaId);
     }
 
-    const etag = buildEtag(items);
-    feedCache.set(empresaId, { t: now, items: items.map((i) => ({ ...i })), etag });
-    const enriched = await enrichWithReadState(items, usuarioId);
+    const etag = buildEtag(itemsForCache);
+    feedCache.set(empresaId, { t: now, items: itemsForCache, etag });
 
     if (process.env.NODE_ENV !== "production") {
-      console.log(`[getOperationalFeed] empresa=${empresaId} items=${enriched.length} cached=false`);
+      console.log(`[getOperationalFeed] empresa=${empresaId} items=${enriched.length} refresh_async=${bypassCache}`);
     }
 
     return {

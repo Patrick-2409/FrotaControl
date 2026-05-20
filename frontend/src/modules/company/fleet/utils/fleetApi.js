@@ -12,6 +12,8 @@ export async function fleetGet(url, { params, label = "fleet-request" } = {}) {
     return await api.get(url, {
       params,
       timeout: FLEET_FETCH_TIMEOUT_MS,
+      skipErrorLog: url.includes("/summary"),
+      skipGlobalErrorToast: url.includes("/summary"),
     });
   } finally {
     if (import.meta.env.DEV) console.timeEnd(label);

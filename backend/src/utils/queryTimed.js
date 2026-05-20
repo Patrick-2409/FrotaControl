@@ -6,17 +6,25 @@ const DEFAULT_TIMEOUT_MS = Math.min(
 );
 
 /**
- * Executa SQL com statement_timeout (PostgreSQL) e log opcional em dev.
+ * Executa SQL via pool.query (sem pool.connect por consulta) com timeout em JS.
+ * Evita esgotar o pool quando várias rotas disparam queries em paralelo.
  */
 async function queryTimed(text, params, { label, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
-  const client = await pool.connect();
   const started = Date.now();
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      const err = new Error("A consulta excedeu o tempo limite. Tente novamente.");
+      err.code = "QUERY_TIMEOUT";
+      err.status = 503;
+      reject(err);
+    }, timeoutMs);
+  });
+
   try {
-    await client.query(`SET statement_timeout = ${Math.floor(timeoutMs)}`);
-    const result = await client.query(text, params);
+    const result = await Promise.race([pool.query(text, params), timeoutPromise]);
     if (label && process.env.NODE_ENV !== "production") {
-      const ms = Date.now() - started;
-      console.log(`[query] ${label}: ${ms}ms`);
+      console.log(`[query] ${label}: ${Date.now() - started}ms`);
     }
     return result;
   } catch (e) {
@@ -28,7 +36,7 @@ async function queryTimed(text, params, { label, timeoutMs = DEFAULT_TIMEOUT_MS 
     }
     throw e;
   } finally {
-    client.release();
+    clearTimeout(timeoutId);
   }
 }
 

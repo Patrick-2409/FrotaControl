@@ -16,7 +16,9 @@ function useOperationalNotifications() {
     try {
       const { data: payload } = await api.get("/dashboard/notifications/feed", {
         params: refresh ? { refresh: 1 } : {},
-        timeout: 12_000,
+        timeout: 8_000,
+        skipErrorLog: true,
+        skipGlobalErrorToast: true,
       });
       setData({
         items: payload?.items ?? [],
@@ -96,7 +98,7 @@ export default function EmpresaNotificationsBell() {
         aria-label="Notificações operacionais"
         onClick={() => {
           setOpen((v) => !v);
-          if (!open) fetchFeed(true);
+          if (!open) fetchFeed(false);
         }}
         className="relative flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-700/90 bg-zinc-900/80 text-zinc-300 transition hover:border-zinc-500 hover:bg-zinc-800 hover:text-zinc-100"
       >

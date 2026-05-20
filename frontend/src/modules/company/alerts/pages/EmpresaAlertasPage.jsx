@@ -33,7 +33,12 @@ export default function EmpresaAlertasPage() {
     setLoading(true);
     setHistLoading(true);
     const feedPromise = api
-      .get("/dashboard/notifications/feed", { params: { refresh: 1 }, timeout: 15_000 })
+      .get("/dashboard/notifications/feed", {
+        params: { refresh: 1 },
+        timeout: 10_000,
+        skipErrorLog: true,
+        skipGlobalErrorToast: true,
+      })
       .then((r) => r.data)
       .catch(() => ({ items: [], unread_count: 0 }));
     const histPromise = api
