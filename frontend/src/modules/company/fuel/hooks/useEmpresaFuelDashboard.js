@@ -3,6 +3,9 @@ import api, { extractApiErrorMessage, getFriendlyApiErrorMessage } from "../../.
 import useDebouncedValue from "../../../../hooks/useDebouncedValue";
 import { readSessionJson, writeSessionJson } from "../../shared/sessionFilters";
 import { buildConsumoPorVeiculoPie } from "../charts/fuelPie";
+import { buildRegistrosParamsFromFuelPeriod } from "../services/fuelFormatters";
+
+const ABASTECIMENTOS_LIMIT = 200;
 
 const PERIODOS_API_COMBUSTIVEL = new Set(["dia", "semana", "mes", "ano"]);
 
@@ -33,6 +36,8 @@ export function useEmpresaFuelDashboard(options = {}) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [totalGeralAno, setTotalGeralAno] = useState(null);
+  const [abastecimentos, setAbastecimentos] = useState([]);
+  const [abastecimentosLoading, setAbastecimentosLoading] = useState(false);
   const resumoCacheRef = useRef(new Map());
 
   const debouncedVeiculoId = useDebouncedValue(filtroVeiculoId, 320);
@@ -122,6 +127,62 @@ export function useEmpresaFuelDashboard(options = {}) {
   useEffect(() => {
     void loadResumo();
   }, [loadResumo]);
+
+  const loadAbastecimentos = useCallback(async () => {
+    if (!enabled) {
+      setAbastecimentos([]);
+      setAbastecimentosLoading(false);
+      return;
+    }
+    setAbastecimentosLoading(true);
+    try {
+      const periodoApi = normalizePeriodoCombustivel(periodo);
+      const periodParams = buildRegistrosParamsFromFuelPeriod(periodoApi);
+      const { data } = await api.get("/dashboard/registros", {
+        params: {
+          page: 1,
+          limit: ABASTECIMENTOS_LIMIT,
+          tipo: "combustivel",
+          ...periodParams,
+        },
+        timeout: 12_000,
+        skipErrorLog: true,
+        skipGlobalErrorToast: true,
+      });
+      let items = Array.isArray(data?.items) ? data.items : [];
+      const vid = debouncedVeiculoId === "" ? null : Number(debouncedVeiculoId);
+      if (Number.isFinite(vid) && vid > 0) {
+        const v = veiculosOpt.find((x) => Number(x.id) === vid);
+        const nome = String(v?.nome ?? "").trim().toLowerCase();
+        const placa = String(v?.placa ?? "").trim().toLowerCase();
+        items = items.filter((row) => {
+          const rn = String(row?.veiculo ?? "").trim().toLowerCase();
+          const rp = String(row?.placa ?? "").trim().toLowerCase();
+          if (nome && placa) return rn === nome && rp === placa;
+          if (placa) return rp === placa;
+          if (nome) return rn === nome;
+          return true;
+        });
+      }
+      const mid = debouncedMotoristaId === "" ? null : Number(debouncedMotoristaId);
+      if (Number.isFinite(mid) && mid > 0) {
+        const m = motoristasOpt.find((x) => Number(x.id) === mid);
+        const mn = String(m?.nome ?? "").trim().toLowerCase();
+        if (mn) {
+          items = items.filter((row) => String(row?.motorista ?? "").trim().toLowerCase() === mn);
+        }
+      }
+      setAbastecimentos(items);
+    } catch {
+      setAbastecimentos([]);
+    } finally {
+      setAbastecimentosLoading(false);
+    }
+  }, [enabled, periodo, debouncedVeiculoId, debouncedMotoristaId, veiculosOpt, motoristasOpt]);
+
+  useEffect(() => {
+    void loadAbastecimentos();
+  }, [loadAbastecimentos]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -214,6 +275,9 @@ export function useEmpresaFuelDashboard(options = {}) {
       loadError,
       clearLoadError,
       refetch: loadResumo,
+      abastecimentos,
+      abastecimentosLoading,
+      refetchAbastecimentos: loadAbastecimentos,
       totalGeralAno,
       clearFiltrosVeiculoMotorista,
       mediaPorVeiculo,
@@ -232,6 +296,9 @@ export function useEmpresaFuelDashboard(options = {}) {
       loadError,
       clearLoadError,
       loadResumo,
+      abastecimentos,
+      abastecimentosLoading,
+      loadAbastecimentos,
       totalGeralAno,
       clearFiltrosVeiculoMotorista,
       mediaPorVeiculo,

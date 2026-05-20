@@ -11,6 +11,7 @@ import FuelCharts from "../components/FuelCharts";
 import FuelFilters from "../components/FuelFilters";
 import FuelMetricsCards from "../components/FuelMetricsCards";
 import FuelVehicleTable from "../components/FuelVehicleTable";
+import FuelAbastecimentosList from "../components/FuelAbastecimentosList";
 
 function FuelDashboardContent() {
   const fuel = useFuelMetrics();
@@ -131,6 +132,7 @@ function FuelDashboardContent() {
               </BIChartCard>
               <FuelVehicleTable rows={fuel.resumo.por_veiculo} />
             </div>
+
           </>
         ) : (
           <div className="mt-6">
@@ -155,6 +157,12 @@ function FuelDashboardContent() {
           </div>
         )}
       </section>
+
+      {!fuel.loading ? (
+        <div className="mt-8">
+          <FuelAbastecimentosList rows={fuel.abastecimentos} loading={fuel.abastecimentosLoading} />
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap gap-3 border-t border-zinc-800 pt-8">
         <Link
