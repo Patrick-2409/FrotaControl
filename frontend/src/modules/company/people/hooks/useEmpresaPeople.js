@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import api, { extractApiErrorMessage, getFriendlyApiErrorMessage } from "../../../../services/api";
-import { computeRiscoDisplayMetrics } from "../../../../utils/riscoOperacional";
+import { computeRiscoDisplayMetrics, splitRiscoCadastroLists } from "../../../../utils/riscoOperacional";
 
 const fmtInt = (n) => Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 
@@ -138,6 +138,7 @@ export function useEmpresaPeople() {
   const [saveError, setSaveError] = useState(null);
 
   const [riscoDisplay, setRiscoDisplay] = useState(null);
+  const [prod7d, setProd7d] = useState([]);
   const [riscoListFilter, setRiscoListFilter] = useState(false);
   const [riscoMotoristaIds, setRiscoMotoristaIds] = useState(() => new Set());
   const [riscoFilterLoading, setRiscoFilterLoading] = useState(false);
@@ -157,10 +158,11 @@ export function useEmpresaPeople() {
         api.get("/dashboard/people/productivity", { params: { days: 7, limit: 100 } }),
         api.get("/dashboard/notifications/feed").catch(() => ({ data: { items: [] } })),
       ]);
-      setRiscoDisplay(
-        computeRiscoDisplayMetrics(summaryData, prodRes.data?.items ?? [], feedRes.data?.items ?? [])
-      );
+      const items7d = prodRes.data?.items ?? [];
+      setProd7d(items7d);
+      setRiscoDisplay(computeRiscoDisplayMetrics(summaryData, items7d, feedRes.data?.items ?? []));
     } catch {
+      setProd7d([]);
       setRiscoDisplay(computeRiscoDisplayMetrics(summaryData, [], []));
     }
   }, []);
@@ -177,6 +179,7 @@ export function useEmpresaPeople() {
       setSummaryError(getFriendlyApiErrorMessage(e) || extractApiErrorMessage(e));
       setSummary(null);
       setRiscoDisplay(null);
+      setProd7d([]);
     } finally {
       setSummaryLoading(false);
     }
@@ -284,17 +287,20 @@ export function useEmpresaPeople() {
     setRiscoFilterLoading(true);
     try {
       let ids = riscoDisplay?.riscoMotoristaIds;
-      if (!ids?.size) {
+      let items7d = prod7d;
+      if (!ids?.size || !items7d.length) {
         const [prodRes, feedRes] = await Promise.all([
           api.get("/dashboard/people/productivity", { params: { days: 7, limit: 100 } }),
           api.get("/dashboard/notifications/feed", { params: { refresh: 1 } }).catch(() => ({ data: { items: [] } })),
         ]);
-        ids = computeRiscoDisplayMetrics(summary, prodRes.data?.items ?? [], feedRes.data?.items ?? [])
-          .riscoMotoristaIds;
+        items7d = prodRes.data?.items ?? [];
+        const metrics = computeRiscoDisplayMetrics(summary, items7d, feedRes.data?.items ?? []);
+        ids = metrics.riscoMotoristaIds;
+        setProd7d(items7d);
+        setRiscoDisplay(metrics);
       }
       setRiscoMotoristaIds(new Set(ids));
       setRiscoListFilter(true);
-      setRoleFilter("MOTORISTA");
       setPage(1);
       setSearchParams({ risco: "1" }, { replace: true });
       requestAnimationFrame(() => {
@@ -302,7 +308,6 @@ export function useEmpresaPeople() {
       });
     } catch {
       setRiscoListFilter(true);
-      setRoleFilter("MOTORISTA");
       setPage(1);
       setSearchParams({ risco: "1" }, { replace: true });
       requestAnimationFrame(() => {
@@ -311,7 +316,7 @@ export function useEmpresaPeople() {
     } finally {
       setRiscoFilterLoading(false);
     }
-  }, [setSearchParams, riscoDisplay, summary]);
+  }, [setSearchParams, riscoDisplay, summary, prod7d]);
 
   const clearRiscoListFilter = useCallback(() => {
     setRiscoListFilter(false);
@@ -330,9 +335,13 @@ export function useEmpresaPeople() {
 
   const displayUsers = useMemo(() => {
     if (!riscoListFilter) return users;
-    if (riscoMotoristaIds.size === 0) return [];
-    return users.filter((u) => riscoMotoristaIds.has(Number(u.id)));
-  }, [users, riscoListFilter, riscoMotoristaIds]);
+    return users;
+  }, [users, riscoListFilter]);
+
+  const riscoCadastroLists = useMemo(() => {
+    if (!riscoListFilter) return null;
+    return splitRiscoCadastroLists(prod7d, riscoMotoristaIds);
+  }, [riscoListFilter, prod7d, riscoMotoristaIds]);
 
   return {
     fmtInt,
@@ -349,6 +358,8 @@ export function useEmpresaPeople() {
     refetchProd: loadProductivity,
     users,
     displayUsers,
+    riscoCadastroLists,
+    prod7d,
     riscoListFilter,
     riscoFilterLoading,
     applyRiscoOperacionalFilter,

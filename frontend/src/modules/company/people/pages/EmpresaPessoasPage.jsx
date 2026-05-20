@@ -10,6 +10,7 @@ import { resolveBackendAssetUrl } from "../../../../services/api";
 import { useEmpresaPeople } from "../hooks/useEmpresaPeople";
 import { CNH_CATEGORIAS, cnhBadgeClass, cnhStatusLabel, getCnhStatus } from "../../../../utils/cnhStatus";
 import { foraRankingMotivo, splitTransportRanking } from "../../../../utils/peopleRanking";
+import { foraControleProducaoLabel } from "../../../../utils/riscoOperacional";
 
 function roleLabel(r) {
   const m = { MOTORISTA: "Motorista", APONTADOR: "Apontador", ADMIN_EMPRESA: "Administrador" };
@@ -44,9 +45,9 @@ function RiscoStatusLine({ tone, text }) {
 }
 
 const RISCO_TOOLTIP =
-  "Indica motoristas sem lançamentos ou com baixa atividade no período selecionado.";
+  "Avalia apenas motoristas com veículo de transporte. Apoio e apontadores ficam fora deste indicador.";
 
-function RankingTable({ rows, p, showMotivo = false, emptyMessage }) {
+function RankingTable({ rows, p, showMotivo = false, showNaoAplicavel = false, emptyMessage, onEditRow }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-zinc-800/90">
       <table className="min-w-[640px] w-full border-collapse text-left text-sm">
@@ -56,14 +57,16 @@ function RankingTable({ rows, p, showMotivo = false, emptyMessage }) {
             <th className="px-3 py-3">Papel</th>
             <th className="px-3 py-3">Vínculos</th>
             {showMotivo ? <th className="px-3 py-3">Motivo</th> : null}
+            {showNaoAplicavel ? <th className="px-3 py-3">Controlo</th> : null}
             <th className="px-3 py-3 text-right">Romaneios</th>
             <th className="px-3 py-3 text-right">Parte diária</th>
+            {onEditRow ? <th className="px-3 py-3 text-right">Ações</th> : null}
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={showMotivo ? 6 : 5} className="px-3 py-6 text-center text-zinc-500">
+              <td colSpan={5 + (showMotivo ? 1 : 0) + (showNaoAplicavel ? 1 : 0) + (onEditRow ? 1 : 0)} className="px-3 py-6 text-center text-zinc-500">
                 {emptyMessage}
               </td>
             </tr>
@@ -97,8 +100,22 @@ function RankingTable({ rows, p, showMotivo = false, emptyMessage }) {
                 {showMotivo ? (
                   <td className="px-3 py-3 text-xs text-zinc-400">{foraRankingMotivo(row)}</td>
                 ) : null}
+                {showNaoAplicavel ? (
+                  <td className="px-3 py-3 text-xs text-zinc-500">{foraControleProducaoLabel()}</td>
+                ) : null}
                 <td className="px-3 py-3 text-right tabular-nums text-zinc-200">{p.fmtInt(row.romaneios)}</td>
                 <td className="px-3 py-3 text-right tabular-nums text-zinc-200">{p.fmtInt(row.partes_diaria)}</td>
+                {onEditRow ? (
+                  <td className="px-3 py-3 text-right">
+                    <button
+                      type="button"
+                      onClick={() => onEditRow(row)}
+                      className="rounded-md border border-zinc-600 px-2 py-1 text-xs font-medium text-zinc-200 hover:border-zinc-500"
+                    >
+                      Editar perfil
+                    </button>
+                  </td>
+                ) : null}
               </tr>
             ))
           )}
@@ -111,21 +128,23 @@ function RankingTable({ rows, p, showMotivo = false, emptyMessage }) {
 export default function EmpresaPessoasPage() {
   const p = useEmpresaPeople();
   const { rankingTransporte, foraRanking } = useMemo(() => splitTransportRanking(p.prod), [p.prod]);
-  const totalMotoristas = Number(p.summary?.motoristas ?? 0);
-  const semRomaneio = Number(p.riscoDisplay?.semRomaneio ?? p.summary?.motoristas_sem_romaneio_7d ?? 0);
-  const baixaAtividade = Number(
-    p.riscoDisplay?.baixaProdutividade ??
-      (semRomaneio > 0 ? 0 : p.summary?.motoristas_baixa_atividade ?? 0)
-  );
+  const totalTransporte = Number(p.riscoDisplay?.totalTransporte ?? 0);
+  const semRomaneio = Number(p.riscoDisplay?.semRomaneio ?? 0);
+  const baixaAtividade = Number(p.riscoDisplay?.baixaAtividade ?? 0);
   const temRisco = semRomaneio > 0 || baixaAtividade > 0;
   const riscoCardClass =
     semRomaneio > 0
       ? "border-rose-500/30 shadow-[0_0_20px_-8px_rgba(244,63,94,0.35)]"
       : "";
   const semRomaneioText =
-    totalMotoristas > 0
-      ? `${p.fmtInt(semRomaneio)} de ${p.fmtInt(totalMotoristas)} motoristas sem lançamentos de transporte nos últimos 7 dias`
+    totalTransporte > 0
+      ? `${p.fmtInt(semRomaneio)} de ${p.fmtInt(totalTransporte)} motoristas sem lançamentos de transporte nos últimos 7 dias`
       : `${p.fmtInt(semRomaneio)} motorista(s) sem lançamentos de transporte nos últimos 7 dias`;
+
+  const handleEditFromRow = (row) => {
+    const found = p.users.find((u) => Number(u.id) === Number(row.id));
+    p.openEdit(found || { ...row, cpf_id: row.cpf_id || "", email: row.email || "" });
+  };
 
   const headerAside = (
     <>
@@ -234,7 +253,7 @@ export default function EmpresaPessoasPage() {
                 </button>
               </div>
             }
-            hint="Atividade = lançamentos de transporte (romaneios). Período: 7 dias."
+            hint="Apenas motoristas com veículo de transporte (7 dias)."
           />
         </section>
       )}
@@ -368,7 +387,8 @@ export default function EmpresaPessoasPage() {
         {p.riscoListFilter ? (
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-700/40 bg-amber-950/25 px-3 py-2 text-xs text-amber-100">
             <span className="min-w-0 break-words">
-              Filtro ativo: motoristas sem lançamentos recentes ou com baixa atividade (7 dias).
+              Motoristas de transporte sem registros de romaneio nos últimos 7 dias
+              {baixaAtividade > 0 ? ` · ${p.fmtInt(baixaAtividade)} com baixa atividade` : ""}.
             </span>
             <button
               type="button"
@@ -384,108 +404,157 @@ export default function EmpresaPessoasPage() {
           <div className="mt-4">
             <EmpresaModuleErrorPanel title="Lista indisponível" description={p.listError} onRetry={p.refetchUsers} />
           </div>
+        ) : p.riscoListFilter ? (
+          <div className="mt-4 space-y-8">
+            <div className="rounded-xl border border-rose-500/25 bg-rose-950/15 p-4 sm:p-5">
+              <h3 className="flex flex-wrap items-center gap-2 text-base font-semibold text-rose-100">
+                <span aria-hidden>🔴</span>
+                Motoristas de transporte em atenção (7 dias)
+              </h3>
+              <p className="mt-1 text-xs text-zinc-500">
+                Apenas quem deve registar romaneios de transporte de material.
+              </p>
+              {p.riscoFilterLoading || p.listLoading ? (
+                <div className="mt-3">
+                  <SkeletonRows rows={3} />
+                </div>
+              ) : (
+                <div className="mt-3">
+                  <RankingTable
+                    rows={p.riscoCadastroLists?.transporteRisco ?? []}
+                    p={p}
+                    emptyMessage="Nenhum motorista de transporte em situação de risco no período."
+                    onEditRow={handleEditFromRow}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-zinc-800/90 bg-zinc-900/20 p-4 sm:p-5">
+              <h3 className="flex flex-wrap items-center gap-2 text-base font-semibold text-zinc-300">
+                <span aria-hidden>⚪</span>
+                Fora do controle de produção
+              </h3>
+              <p className="mt-1 text-xs text-zinc-500">Veículos de apoio, apontadores e outros perfis.</p>
+              {p.riscoFilterLoading || p.listLoading ? (
+                <div className="mt-3">
+                  <SkeletonRows rows={2} />
+                </div>
+              ) : (
+                <div className="mt-3">
+                  <RankingTable
+                    rows={p.riscoCadastroLists?.foraControle ?? []}
+                    p={p}
+                    showNaoAplicavel
+                    emptyMessage="Ninguém fora do controle de produção."
+                    onEditRow={handleEditFromRow}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
         ) : (
-          <div className="mt-4 overflow-x-auto rounded-xl border border-zinc-800/90">
-            <table className="min-w-[760px] w-full border-collapse text-left text-sm">
-              <thead>
-                <tr className="border-b border-zinc-800 bg-zinc-900/60 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-                  <th className="px-3 py-3">Pessoa</th>
-                  <th className="px-3 py-3">Papel</th>
-                  <th className="px-3 py-3 hidden md:table-cell">Vínculo</th>
-                  <th className="px-3 py-3">Status</th>
-                  <th className="px-3 py-3 hidden lg:table-cell">CNH</th>
-                  <th className="px-3 py-3 text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {p.listLoading ? (
-                  <tr>
-                    <td colSpan={6} className="px-3 py-6">
-                      <SkeletonRows rows={4} />
-                    </td>
+          <>
+            <div className="mt-4 overflow-x-auto rounded-xl border border-zinc-800/90">
+              <table className="min-w-[760px] w-full border-collapse text-left text-sm">
+                <thead>
+                  <tr className="border-b border-zinc-800 bg-zinc-900/60 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                    <th className="px-3 py-3">Pessoa</th>
+                    <th className="px-3 py-3">Papel</th>
+                    <th className="px-3 py-3 hidden md:table-cell">Vínculo</th>
+                    <th className="px-3 py-3">Status</th>
+                    <th className="px-3 py-3 hidden lg:table-cell">CNH</th>
+                    <th className="px-3 py-3 text-right">Ações</th>
                   </tr>
-                ) : p.displayUsers.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-3 py-8 text-center text-zinc-500">
-                      {p.riscoListFilter
-                        ? "Nenhum motorista em risco nesta página. Tente outra página ou limpe o filtro."
-                        : "Nenhum registo encontrado."}
-                    </td>
-                  </tr>
-                ) : (
-                  p.displayUsers.map((u) => (
-                    <tr key={u.id} className="border-b border-zinc-800/80 hover:bg-zinc-900/40">
-                      <td className="px-3 py-3">
-                        <div className="flex items-center gap-2">
-                          <Avatar imageUrl={resolveBackendAssetUrl(u.profile_image_url)} name={u.nome} size="list" />
-                          <div>
-                            <p className="font-medium text-zinc-100">{u.nome}</p>
-                            <p className="text-xs text-zinc-500">{u.email || u.cpf_id}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-3 py-3 text-zinc-400">{roleLabel(u.role)}</td>
-                      <td className="px-3 py-3 text-xs text-zinc-400 hidden md:table-cell">
-                        {u.role === "MOTORISTA" && (u.veiculo_placa || u.veiculo_nome) ? (
-                          <span>
-                            {u.veiculo_placa} {u.veiculo_nome ? `· ${u.veiculo_nome}` : ""}
-                          </span>
-                        ) : u.equipamento_vinculo ? (
-                          <span>Equip.: {u.equipamento_vinculo}</span>
-                        ) : u.operacao_escopo ? (
-                          <span>Operação: {u.operacao_escopo}</span>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td className="px-3 py-3">
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${statusPessoaClass(
-                            u.status_operacional || "ativo"
-                          )}`}
-                        >
-                          {u.status_operacional || "ativo"}
-                        </span>
-                      </td>
-                      <td className="px-3 py-3 hidden lg:table-cell">
-                        {u.role === "MOTORISTA" ? (
-                          (() => {
-                            const st = getCnhStatus(u.cnh_validade);
-                            return (
-                              <span
-                                className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${cnhBadgeClass(st)}`}
-                              >
-                                {cnhStatusLabel(st)}
-                              </span>
-                            );
-                          })()
-                        ) : (
-                          <span className="text-xs text-zinc-600">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => p.openEdit(u)}
-                          className="rounded-md border border-zinc-600 px-2 py-1 text-xs font-medium text-zinc-200 hover:border-zinc-500"
-                        >
-                          Editar perfil
-                        </button>
+                </thead>
+                <tbody>
+                  {p.listLoading ? (
+                    <tr>
+                      <td colSpan={6} className="px-3 py-6">
+                        <SkeletonRows rows={4} />
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
+                  ) : p.displayUsers.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-3 py-8 text-center text-zinc-500">
+                        Nenhum registo encontrado.
+                      </td>
+                    </tr>
+                  ) : (
+                    p.displayUsers.map((u) => (
+                      <tr key={u.id} className="border-b border-zinc-800/80 hover:bg-zinc-900/40">
+                        <td className="px-3 py-3">
+                          <div className="flex items-center gap-2">
+                            <Avatar imageUrl={resolveBackendAssetUrl(u.profile_image_url)} name={u.nome} size="list" />
+                            <div>
+                              <p className="font-medium text-zinc-100">{u.nome}</p>
+                              <p className="text-xs text-zinc-500">{u.email || u.cpf_id}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 text-zinc-400">{roleLabel(u.role)}</td>
+                        <td className="px-3 py-3 text-xs text-zinc-400 hidden md:table-cell">
+                          {u.role === "MOTORISTA" && (u.veiculo_placa || u.veiculo_nome) ? (
+                            <span>
+                              {u.veiculo_placa} {u.veiculo_nome ? `· ${u.veiculo_nome}` : ""}
+                            </span>
+                          ) : u.equipamento_vinculo ? (
+                            <span>Equip.: {u.equipamento_vinculo}</span>
+                          ) : u.operacao_escopo ? (
+                            <span>Operação: {u.operacao_escopo}</span>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        <td className="px-3 py-3">
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${statusPessoaClass(
+                              u.status_operacional || "ativo"
+                            )}`}
+                          >
+                            {u.status_operacional || "ativo"}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 hidden lg:table-cell">
+                          {u.role === "MOTORISTA" ? (
+                            (() => {
+                              const st = getCnhStatus(u.cnh_validade);
+                              return (
+                                <span
+                                  className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${cnhBadgeClass(st)}`}
+                                >
+                                  {cnhStatusLabel(st)}
+                                </span>
+                              );
+                            })()
+                          ) : (
+                            <span className="text-xs text-zinc-600">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => p.openEdit(u)}
+                            className="rounded-md border border-zinc-600 px-2 py-1 text-xs font-medium text-zinc-200 hover:border-zinc-500"
+                          >
+                            Editar perfil
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
 
-        <PaginationControls
-          page={p.page}
-          totalPages={p.totalPages}
-          onPrev={() => p.setPage((x) => Math.max(1, x - 1))}
-          onNext={() => p.setPage((x) => Math.min(p.totalPages, x + 1))}
-        />
+            <PaginationControls
+              page={p.page}
+              totalPages={p.totalPages}
+              onPrev={() => p.setPage((x) => Math.max(1, x - 1))}
+              onNext={() => p.setPage((x) => Math.min(p.totalPages, x + 1))}
+            />
+          </>
+        )}
       </section>
 
       {p.panelOpen && p.selected ? (
