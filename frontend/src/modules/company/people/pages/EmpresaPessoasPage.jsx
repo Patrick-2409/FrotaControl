@@ -488,14 +488,19 @@ export default function EmpresaPessoasPage() {
                       </select>
                     </label>
                     <label className="block text-xs font-medium text-zinc-400">
-                      Validade CNH
+                      Validade da CNH (vencimento)
                       <input
                         type="date"
                         required
+                        placeholder="Ex: 12/08/2026"
+                        title="Ex: 12/08/2026"
                         className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
                         value={p.form.cnh_validade}
                         onChange={(e) => p.setForm((f) => ({ ...f, cnh_validade: e.target.value }))}
                       />
+                      <span className="mt-1 block text-[11px] font-normal text-zinc-500">
+                        Data de vencimento da carteira de habilitação
+                      </span>
                     </label>
                     {p.form.cnh_validade ? (
                       <p className="sm:col-span-2">

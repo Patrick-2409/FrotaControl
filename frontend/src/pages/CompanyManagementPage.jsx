@@ -380,13 +380,20 @@ export default function CompanyManagementPage() {
                         </option>
                       ))}
                     </select>
-                    <input
-                      className={inputClass}
-                      type="date"
-                      value={userForm.cnh_validade}
-                      onChange={(e) => setUserForm((f) => ({ ...f, cnh_validade: e.target.value }))}
-                      aria-label="Validade CNH"
-                    />
+                    <div>
+                      <span className="mb-1 block text-sm text-slate-300">Validade da CNH (vencimento)</span>
+                      <input
+                        className={inputClass}
+                        type="date"
+                        placeholder="Ex: 12/08/2026"
+                        title="Ex: 12/08/2026"
+                        value={userForm.cnh_validade}
+                        onChange={(e) => setUserForm((f) => ({ ...f, cnh_validade: e.target.value }))}
+                      />
+                      <p className="mt-1 text-xs text-slate-500">
+                        Data de vencimento da carteira de habilitação
+                      </p>
+                    </div>
                   </>
                 ) : null}
               </div>
