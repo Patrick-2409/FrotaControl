@@ -297,7 +297,12 @@ async function gatherSignals(empresaId) {
     }
   }
 
-  const cnh_proximas = cnhRows.rows.map((r) => ({ id: r.id, nome: r.nome, dias: Number(r.dias) }));
+  const cnh_vencidas = cnhRows.rows
+    .filter((r) => Number(r.dias) < 0)
+    .map((r) => ({ id: r.id, nome: r.nome, dias: Number(r.dias) }));
+  const cnh_vencendo = cnhRows.rows
+    .filter((r) => Number(r.dias) >= 0)
+    .map((r) => ({ id: r.id, nome: r.nome, dias: Number(r.dias) }));
   const docs_proximos = docRevisaoRows.rows.map((r) => ({ id: r.id, nome: r.nome, placa: r.placa, dias: Number(r.dias) }));
   const doc_licenciamento_proximos = [];
   const doc_seguro_proximos = [];
@@ -321,7 +326,8 @@ async function gatherSignals(empresaId) {
     motoristas_sem_lancamento,
     motoristas_baixa_atividade,
     veiculos_inativos,
-    cnh_proximas,
+    cnh_vencidas,
+    cnh_vencendo,
     docs_proximos,
     doc_licenciamento_proximos,
     doc_seguro_proximos,

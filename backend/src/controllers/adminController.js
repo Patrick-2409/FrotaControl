@@ -111,7 +111,37 @@ const userSchema = z.object({
       message: "E-mail é obrigatório para administrador, apontador e super administrador.",
     });
   }
+  if (val.role === "MOTORISTA") {
+    if (!String(val.cnh_numero || "").trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["cnh_numero"],
+        message: "Número da CNH é obrigatório para motoristas.",
+      });
+    }
+    if (!String(val.cnh_categoria || "").trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["cnh_categoria"],
+        message: "Categoria da CNH é obrigatória para motoristas.",
+      });
+    }
+    if (!String(val.cnh_validade || "").trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["cnh_validade"],
+        message: "Validade da CNH é obrigatória para motoristas.",
+      });
+    }
+  }
 });
+
+const applyRoleCnhRules = (payload) => {
+  if (payload.role !== "MOTORISTA") {
+    return { ...payload, cnh_numero: null, cnh_categoria: null, cnh_validade: null };
+  }
+  return payload;
+};
 
 const { vehicleBodySchema, toVehicleWritePayload } = require("../validators/vehicleWriteSchema");
 const vehicleSchema = vehicleBodySchema;
@@ -353,7 +383,7 @@ const deleteCompanyCtrl = async (req, res) => {
 };
 
 const createUserCtrl = async (req, res) => {
-  const payload = normalizeUserPayload(userSchema.parse(req.body));
+  const payload = applyRoleCnhRules(normalizeUserPayload(userSchema.parse(req.body)));
   const empresa_id = payload.role === "SUPER_ADMIN" ? null : getCompanyId(req);
   if (req.user.role === "ADMIN_EMPRESA" && payload.role === "SUPER_ADMIN") {
     return res.status(403).json({
@@ -527,7 +557,7 @@ const getSuperAdminUserCtrl = async (req, res) => {
 };
 
 const updateUserCtrl = async (req, res) => {
-  const payload = normalizeUserPayload(userSchema.parse(req.body));
+  const payload = applyRoleCnhRules(normalizeUserPayload(userSchema.parse(req.body)));
   const rawEmpresaId =
     req.user.role === "SUPER_ADMIN" ? req.body.empresa_id ?? req.query.empresa_id : getCompanyId(req);
   const empresa_id =

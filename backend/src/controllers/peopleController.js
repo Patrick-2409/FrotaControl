@@ -19,6 +19,7 @@ const getSummary = async (req, res) => {
     success: true,
     summary,
     alertas_operacionais: {
+      cnh_vencida: "Ver feed em Alertas (categoria pessoas).",
       cnh_vencendo: "Ver feed em Alertas (categoria pessoas).",
       ausencia_lancamentos: "Motoristas sem romaneio em 72h.",
       baixa_atividade: "Comparativo de romaneios entre semanas.",

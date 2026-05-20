@@ -29,10 +29,21 @@ async function getPeopleSummary(empresa_id) {
       [empresa_id]
     ),
     pool.query(
-      `SELECT COUNT(*)::int AS c FROM usuarios
-       WHERE empresa_id = $1 AND role = 'MOTORISTA'
-         AND cnh_validade IS NOT NULL
-         AND cnh_validade <= CURRENT_DATE + INTERVAL '60 days'`,
+      `SELECT
+         COUNT(*) FILTER (
+           WHERE cnh_validade IS NOT NULL AND cnh_validade < CURRENT_DATE
+         )::int AS vencidas,
+         COUNT(*) FILTER (
+           WHERE cnh_validade IS NOT NULL
+             AND cnh_validade >= CURRENT_DATE
+             AND cnh_validade <= CURRENT_DATE + INTERVAL '60 days'
+         )::int AS vencendo,
+         COUNT(*) FILTER (
+           WHERE cnh_validade IS NOT NULL
+             AND cnh_validade > CURRENT_DATE + INTERVAL '60 days'
+         )::int AS validas
+       FROM usuarios
+       WHERE empresa_id = $1 AND role = 'MOTORISTA'`,
       [empresa_id]
     ),
     pool.query(
@@ -100,7 +111,11 @@ async function getPeopleSummary(empresa_id) {
     apontadores: Number(rolesRow.rows[0]?.apontadores ?? 0),
     admins_empresa: Number(rolesRow.rows[0]?.admins ?? 0),
     por_status: porStatus,
-    cnh_janela_60d: Number(cnhRow.rows[0]?.c ?? 0),
+    cnh_vencidas: Number(cnhRow.rows[0]?.vencidas ?? 0),
+    cnh_vencendo: Number(cnhRow.rows[0]?.vencendo ?? 0),
+    cnh_validas: Number(cnhRow.rows[0]?.validas ?? 0),
+    cnh_janela_60d:
+      Number(cnhRow.rows[0]?.vencidas ?? 0) + Number(cnhRow.rows[0]?.vencendo ?? 0),
     romaneios_7d: Number(rom7Row.rows[0]?.c ?? 0),
     parte_diaria_7d: Number(pd7Row.rows[0]?.c ?? 0),
     motoristas_sem_romaneio_7d: Number(motSem7Row.rows[0]?.c ?? 0),

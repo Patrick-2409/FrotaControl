@@ -128,14 +128,27 @@ function buildAlertsFromSignals(s) {
     });
   }
 
-  for (const row of s.cnh_proximas || []) {
+  for (const row of s.cnh_vencidas || []) {
+    const dias = Number(row.dias);
+    out.push({
+      alert_key: `pessoas.cnh_vencida:${row.id}`,
+      severity: "critical",
+      category: "pessoas",
+      title: "CNH vencida",
+      body: `${row.nome}: CNH venceu há ${Math.abs(dias)} dia(s).`,
+      payload: { usuario_id: row.id, dias },
+    });
+  }
+
+  for (const row of s.cnh_vencendo || []) {
+    const dias = Number(row.dias);
     out.push({
       alert_key: `pessoas.cnh_vencendo:${row.id}`,
-      severity: row.dias <= 14 ? "critical" : "warning",
+      severity: dias <= 14 ? "critical" : "warning",
       category: "pessoas",
-      title: "CNH a vencer",
-      body: `${row.nome}: validade em ${row.dias} dia(s).`,
-      payload: { usuario_id: row.id, dias: row.dias },
+      title: "CNH vencendo em breve",
+      body: `${row.nome}: validade em ${dias} dia(s).`,
+      payload: { usuario_id: row.id, dias },
     });
   }
 

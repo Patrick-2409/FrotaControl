@@ -77,17 +77,18 @@ function formToPayload(form, { includePassword } = {}) {
   const veiculoRaw = String(form.veiculo_id || "").trim();
   const veiculo_id =
     form.role === "MOTORISTA" && veiculoRaw ? Number(veiculoRaw) : form.role === "MOTORISTA" ? null : null;
+  const isMotorista = form.role === "MOTORISTA";
   const out = {
     nome: form.nome.trim(),
     email: form.email.trim() || undefined,
     cpf_id: form.cpf_id.trim(),
     role: form.role,
-    veiculo_id: form.role === "MOTORISTA" ? veiculo_id : null,
+    veiculo_id: isMotorista ? veiculo_id : null,
     profile_image_url: form.profile_image_url.trim() || undefined,
     funcao: form.funcao.trim() || undefined,
-    cnh_categoria: form.cnh_categoria.trim() || undefined,
-    cnh_numero: form.cnh_numero.trim() || undefined,
-    cnh_validade: form.cnh_validade || undefined,
+    cnh_categoria: isMotorista ? form.cnh_categoria.trim() || undefined : null,
+    cnh_numero: isMotorista ? form.cnh_numero.trim() || undefined : null,
+    cnh_validade: isMotorista ? form.cnh_validade || undefined : null,
     treinamentos: (form.treinamentos || [])
       .filter((t) => String(t.titulo || "").trim())
       .map((t) => ({

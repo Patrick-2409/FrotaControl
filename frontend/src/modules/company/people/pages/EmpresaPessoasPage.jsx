@@ -7,6 +7,7 @@ import BIKpiCard from "../../bi/components/BIKpiCard";
 import EmpresaModuleErrorPanel from "../../shared/components/EmpresaModuleErrorPanel";
 import { resolveBackendAssetUrl } from "../../../../services/api";
 import { useEmpresaPeople } from "../hooks/useEmpresaPeople";
+import { CNH_CATEGORIAS, cnhBadgeClass, cnhStatusLabel, getCnhStatus } from "../../../../utils/cnhStatus";
 
 function roleLabel(r) {
   const m = { MOTORISTA: "Motorista", APONTADOR: "Apontador", ADMIN_EMPRESA: "Administrador" };
@@ -54,15 +55,15 @@ export default function EmpresaPessoasPage() {
           <EmpresaModuleErrorPanel title="Resumo indisponível" description={p.summaryError} onRetry={p.refetchSummary} />
         </div>
       ) : p.summaryLoading && !p.summary ? (
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {[1, 2, 3, 4].map((k) => (
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+          {[1, 2, 3, 4, 5, 6].map((k) => (
             <div key={k} className="fc-card p-4">
               <SkeletonRows rows={2} />
             </div>
           ))}
         </div>
       ) : (
-        <section className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Indicadores de pessoas">
+        <section className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6" aria-label="Indicadores de pessoas">
           <BIKpiCard
             label="Motoristas / apontadores"
             value={`${p.fmtInt(p.summary?.motoristas)} / ${p.fmtInt(p.summary?.apontadores)}`}
@@ -73,9 +74,19 @@ export default function EmpresaPessoasPage() {
             hint={`Partes diárias: ${p.fmtInt(p.summary?.parte_diaria_7d)}`}
           />
           <BIKpiCard
-            label="CNH (janela 60 dias)"
-            value={p.fmtInt(p.summary?.cnh_janela_60d)}
-            hint="Motoristas com vencimento próximo ou em atraso."
+            label="CNH vencidas"
+            value={p.fmtInt(p.summary?.cnh_vencidas)}
+            hint="Validade anterior a hoje."
+          />
+          <BIKpiCard
+            label="CNH vencendo (60 dias)"
+            value={p.fmtInt(p.summary?.cnh_vencendo)}
+            hint="Vence hoje ou nos próximos 60 dias."
+          />
+          <BIKpiCard
+            label="CNH válidas"
+            value={p.fmtInt(p.summary?.cnh_validas)}
+            hint="Validade superior a 60 dias."
           />
           <BIKpiCard
             label="Risco operacional"
@@ -231,19 +242,20 @@ export default function EmpresaPessoasPage() {
                   <th className="px-3 py-3">Papel</th>
                   <th className="px-3 py-3 hidden md:table-cell">Vínculo</th>
                   <th className="px-3 py-3">Status</th>
+                  <th className="px-3 py-3 hidden lg:table-cell">CNH</th>
                   <th className="px-3 py-3 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody>
                 {p.listLoading ? (
                   <tr>
-                    <td colSpan={5} className="px-3 py-6">
+                    <td colSpan={6} className="px-3 py-6">
                       <SkeletonRows rows={4} />
                     </td>
                   </tr>
                 ) : p.users.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-3 py-8 text-center text-zinc-500">
+                    <td colSpan={6} className="px-3 py-8 text-center text-zinc-500">
                       Nenhum registo encontrado.
                     </td>
                   </tr>
@@ -281,6 +293,22 @@ export default function EmpresaPessoasPage() {
                         >
                           {u.status_operacional || "ativo"}
                         </span>
+                      </td>
+                      <td className="px-3 py-3 hidden lg:table-cell">
+                        {u.role === "MOTORISTA" ? (
+                          (() => {
+                            const st = getCnhStatus(u.cnh_validade);
+                            return (
+                              <span
+                                className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${cnhBadgeClass(st)}`}
+                              >
+                                {cnhStatusLabel(st)}
+                              </span>
+                            );
+                          })()
+                        ) : (
+                          <span className="text-xs text-zinc-600">—</span>
+                        )}
                       </td>
                       <td className="px-3 py-3 text-right">
                         <button
@@ -377,7 +405,17 @@ export default function EmpresaPessoasPage() {
                   <select
                     className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
                     value={p.form.role}
-                    onChange={(e) => p.setForm((f) => ({ ...f, role: e.target.value }))}
+                    onChange={(e) => {
+                      const role = e.target.value;
+                      p.setForm((f) => ({
+                        ...f,
+                        role,
+                        cnh_numero: role === "MOTORISTA" ? f.cnh_numero : "",
+                        cnh_categoria: role === "MOTORISTA" ? f.cnh_categoria : "",
+                        cnh_validade: role === "MOTORISTA" ? f.cnh_validade : "",
+                        veiculo_id: role === "MOTORISTA" ? f.veiculo_id : "",
+                      }));
+                    }}
                   >
                     <option value="MOTORISTA">Motorista</option>
                     <option value="APONTADOR">Apontador</option>
@@ -422,32 +460,56 @@ export default function EmpresaPessoasPage() {
                     placeholder="Ex.: Motorista transporte, Operador escavadeira…"
                   />
                 </label>
-                <label className="block text-xs font-medium text-zinc-400">
-                  CNH n.º
-                  <input
-                    className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
-                    value={p.form.cnh_numero}
-                    onChange={(e) => p.setForm((f) => ({ ...f, cnh_numero: e.target.value }))}
-                  />
-                </label>
-                <label className="block text-xs font-medium text-zinc-400">
-                  CNH categoria
-                  <input
-                    className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
-                    value={p.form.cnh_categoria}
-                    onChange={(e) => p.setForm((f) => ({ ...f, cnh_categoria: e.target.value }))}
-                    placeholder="B, C, D…"
-                  />
-                </label>
-                <label className="block text-xs font-medium text-zinc-400 sm:col-span-2">
-                  CNH validade
-                  <input
-                    type="date"
-                    className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
-                    value={p.form.cnh_validade}
-                    onChange={(e) => p.setForm((f) => ({ ...f, cnh_validade: e.target.value }))}
-                  />
-                </label>
+                {p.form.role === "MOTORISTA" ? (
+                  <>
+                    <label className="block text-xs font-medium text-zinc-400 sm:col-span-2">
+                      Número CNH
+                      <input
+                        required
+                        className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
+                        value={p.form.cnh_numero}
+                        onChange={(e) => p.setForm((f) => ({ ...f, cnh_numero: e.target.value }))}
+                      />
+                    </label>
+                    <label className="block text-xs font-medium text-zinc-400">
+                      Categoria CNH
+                      <select
+                        required
+                        className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
+                        value={p.form.cnh_categoria}
+                        onChange={(e) => p.setForm((f) => ({ ...f, cnh_categoria: e.target.value }))}
+                      >
+                        <option value="">— Selecionar —</option>
+                        {CNH_CATEGORIAS.map((cat) => (
+                          <option key={cat} value={cat}>
+                            {cat}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block text-xs font-medium text-zinc-400">
+                      Validade CNH
+                      <input
+                        type="date"
+                        required
+                        className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
+                        value={p.form.cnh_validade}
+                        onChange={(e) => p.setForm((f) => ({ ...f, cnh_validade: e.target.value }))}
+                      />
+                    </label>
+                    {p.form.cnh_validade ? (
+                      <p className="sm:col-span-2">
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${cnhBadgeClass(
+                            getCnhStatus(p.form.cnh_validade)
+                          )}`}
+                        >
+                          {cnhStatusLabel(getCnhStatus(p.form.cnh_validade))}
+                        </span>
+                      </p>
+                    ) : null}
+                  </>
+                ) : null}
                 <label className="block text-xs font-medium text-zinc-400 sm:col-span-2">
                   Equipamento vinculado (operador)
                   <input

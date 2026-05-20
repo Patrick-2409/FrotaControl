@@ -10,6 +10,7 @@ import { emitToast } from "../services/uiEvents";
 import { CenteredSpinner } from "../components/LoadingState";
 import useDebouncedValue from "../hooks/useDebouncedValue";
 import Avatar from "../components/Avatar";
+import { CNH_CATEGORIAS, cnhBadgeClass, cnhStatusLabel, getCnhStatus } from "../utils/cnhStatus";
 
 const roleLabel = (role) => {
   if (role === "ADMIN_EMPRESA") return "Administrador";
@@ -55,7 +56,7 @@ export default function CompanyManagementPage() {
   const debouncedUsers = useDebouncedValue(search.users);
   const debouncedVehicles = useDebouncedValue(search.vehicles);
 
-  const [userForm, setUserForm] = useState({
+  const emptyUserForm = () => ({
     id: null,
     nome: "",
     email: "",
@@ -63,7 +64,21 @@ export default function CompanyManagementPage() {
     senha: "",
     role: "MOTORISTA",
     veiculo_id: "",
+    cnh_numero: "",
+    cnh_categoria: "",
+    cnh_validade: "",
   });
+  const [userForm, setUserForm] = useState(emptyUserForm);
+
+  const ymdFromUser = (d) => {
+    if (!d) return "";
+    if (typeof d === "string") return d.slice(0, 10);
+    try {
+      return new Date(d).toISOString().slice(0, 10);
+    } catch {
+      return "";
+    }
+  };
   const [vehicleForm, setVehicleForm] = useState({
     id: null,
     nome: "",
@@ -181,8 +196,23 @@ export default function CompanyManagementPage() {
       emitToast("Motorista precisa ter veículo vinculado.", "warning");
       return;
     }
+    if (userForm.role === "MOTORISTA") {
+      if (!String(userForm.cnh_numero || "").trim()) {
+        emitToast("Informe o número da CNH do motorista.", "warning");
+        return;
+      }
+      if (!String(userForm.cnh_categoria || "").trim()) {
+        emitToast("Selecione a categoria da CNH.", "warning");
+        return;
+      }
+      if (!String(userForm.cnh_validade || "").trim()) {
+        emitToast("Informe a validade da CNH.", "warning");
+        return;
+      }
+    }
     setLoading(true);
     try {
+      const isMotorista = userForm.role === "MOTORISTA";
       const payload = {
         nome: userForm.nome.trim(),
         email: userForm.email.trim(),
@@ -190,6 +220,9 @@ export default function CompanyManagementPage() {
         senha: userForm.senha,
         role: userForm.role,
         veiculo_id: veiculoId,
+        cnh_numero: isMotorista ? String(userForm.cnh_numero).trim() : null,
+        cnh_categoria: isMotorista ? String(userForm.cnh_categoria).trim() : null,
+        cnh_validade: isMotorista ? userForm.cnh_validade : null,
       };
       if (userForm.id) {
         await api.put(`/dashboard/manage/users/${userForm.id}`, payload);
@@ -197,7 +230,7 @@ export default function CompanyManagementPage() {
         await api.post("/dashboard/manage/users", payload);
       }
       emitToast(userForm.id ? "Usuário atualizado com sucesso." : "Usuário criado com sucesso.");
-      setUserForm({ id: null, nome: "", email: "", cpf_id: "", senha: "", role: "MOTORISTA", veiculo_id: "" });
+      setUserForm(emptyUserForm());
       await loadUsers();
     } catch (err) {
       emitToast(err.response?.data?.message || "Erro ao salvar usuário.", "error");
@@ -303,6 +336,9 @@ export default function CompanyManagementPage() {
                       ...f,
                       role,
                       veiculo_id: role === "MOTORISTA" ? f.veiculo_id : "",
+                      cnh_numero: role === "MOTORISTA" ? f.cnh_numero : "",
+                      cnh_categoria: role === "MOTORISTA" ? f.cnh_categoria : "",
+                      cnh_validade: role === "MOTORISTA" ? f.cnh_validade : "",
                     }));
                   }}
                 >
@@ -324,6 +360,35 @@ export default function CompanyManagementPage() {
                     Veículo só se aplica a motoristas.
                   </p>
                 )}
+                {userForm.role === "MOTORISTA" ? (
+                  <>
+                    <input
+                      className={inputClass}
+                      placeholder="Número CNH"
+                      value={userForm.cnh_numero}
+                      onChange={(e) => setUserForm((f) => ({ ...f, cnh_numero: e.target.value }))}
+                    />
+                    <select
+                      className={inputClass}
+                      value={userForm.cnh_categoria}
+                      onChange={(e) => setUserForm((f) => ({ ...f, cnh_categoria: e.target.value }))}
+                    >
+                      <option value="">Categoria CNH</option>
+                      {CNH_CATEGORIAS.map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      className={inputClass}
+                      type="date"
+                      value={userForm.cnh_validade}
+                      onChange={(e) => setUserForm((f) => ({ ...f, cnh_validade: e.target.value }))}
+                      aria-label="Validade CNH"
+                    />
+                  </>
+                ) : null}
               </div>
               <button className="fc-btn mt-3 rounded-lg bg-blue-600 px-4 py-3">{userForm.id ? "Atualizar usuário" : "Criar usuário"}</button>
             </form>
@@ -368,6 +433,15 @@ export default function CompanyManagementPage() {
                           <span className={`rounded-full border px-2 py-0.5 font-semibold ${contaBadgeClass(u.conta_status)}`}>
                             Conta: {u.conta_status === "inativo" ? "inativa" : "ativa"}
                           </span>
+                          {u.role === "MOTORISTA" ? (
+                            <span
+                              className={`inline-flex rounded-full px-2 py-0.5 font-semibold ${cnhBadgeClass(
+                                getCnhStatus(u.cnh_validade)
+                              )}`}
+                            >
+                              {cnhStatusLabel(getCnhStatus(u.cnh_validade))}
+                            </span>
+                          ) : null}
                           <span className="text-slate-400">
                             Veículo: <span className="text-slate-300">{u.veiculo_nome || "Sem vínculo"}</span>
                           </span>
@@ -386,6 +460,9 @@ export default function CompanyManagementPage() {
                             senha: "",
                             role: u.role,
                             veiculo_id: u.veiculo_id || "",
+                            cnh_numero: u.cnh_numero || "",
+                            cnh_categoria: u.cnh_categoria || "",
+                            cnh_validade: ymdFromUser(u.cnh_validade),
                           })
                         }
                         className="fc-btn rounded-lg border border-blue-400/35 bg-blue-500/15 px-3 py-1.5 text-xs text-blue-100"
