@@ -370,7 +370,7 @@ function EmpresaTransportePageContent() {
               disabled={tr.planSaving}
               className="fc-btn rounded-md border border-zinc-600 bg-zinc-800 px-4 py-2.5 text-sm font-semibold text-zinc-100 hover:border-zinc-500 disabled:opacity-50"
             >
-              {tr.planSaving ? "Salvando…" : "Guardar planejamento"}
+              {tr.planSaving ? "Salvando…" : "Salvar planejamento"}
             </button>
             <button
               type="button"

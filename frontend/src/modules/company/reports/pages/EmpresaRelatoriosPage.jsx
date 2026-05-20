@@ -159,7 +159,7 @@ export default function EmpresaRelatoriosPage() {
           <div>
             <h1 className="text-xl font-semibold tracking-tight text-zinc-50 sm:text-2xl">Central de relatórios</h1>
             <p className="mt-1 max-w-2xl text-sm text-zinc-400">
-              Fichas no mesmo layout do papel: escolher tipo e período, confirmar a grelha e exportar Excel ou PDF.
+              Fichas no mesmo layout do papel: escolher tipo e período, confirmar a grade e exportar Excel ou PDF.
             </p>
           </div>
           <div className="flex flex-wrap gap-2 print:hidden">
@@ -168,7 +168,7 @@ export default function EmpresaRelatoriosPage() {
               onClick={() => window.print()}
               className="fc-btn rounded-lg border border-zinc-500 bg-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-100"
             >
-              Imprimir ecrã
+              Imprimir tela
             </button>
           </div>
         </div>
@@ -237,7 +237,7 @@ export default function EmpresaRelatoriosPage() {
           <div>
             <p className="fc-erp-eyebrow text-zinc-400">Favoritos</p>
             {!favorites.length ? (
-              <EmptyState compact title="Nenhum favorito" description="Use a estrela para guardar atalhos." />
+              <EmptyState compact title="Nenhum favorito" description="Use a estrela para salvar atalhos." />
             ) : (
               <ul className="mt-2 space-y-1">
                 {favorites.map((f) => (
@@ -338,7 +338,7 @@ export default function EmpresaRelatoriosPage() {
             {!periodoExplicito ? (
               <p className="mt-3 rounded-lg border border-sky-800/40 bg-sky-950/25 px-3 py-2 text-xs text-sky-100">
                 Sem data explícita nestes filtros: o servidor usa automaticamente os <strong>últimos 7 dias</strong> (fuso
-                São Paulo). Limite de segurança: <strong>1000</strong> registos por exportação.
+                São Paulo). Limite de segurança: <strong>1000</strong> registros por exportação.
               </p>
             ) : null}
             <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -366,7 +366,7 @@ export default function EmpresaRelatoriosPage() {
               >
                 CSV
               </button>
-              {exporting ? <InlineSpinner label="A preparar o ficheiro…" /> : null}
+              {exporting ? <InlineSpinner label="Preparando o arquivo…" /> : null}
             </div>
           </section>
 
@@ -403,7 +403,7 @@ export default function EmpresaRelatoriosPage() {
                   </p>
                 </div>
                 <p className="mt-3 text-xs text-zinc-500">
-                  O ficheiro usa os mesmos filtros de tipo e período (Passo 1). Exportações acima de 1000 registos são
+                  O arquivo usa os mesmos filtros de tipo e período (Passo 1). Exportações acima de 1000 registros são
                   bloqueadas no servidor.
                 </p>
                 <div className="mt-5 flex flex-wrap gap-2">

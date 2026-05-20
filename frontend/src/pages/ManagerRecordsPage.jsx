@@ -731,7 +731,7 @@ export default function ManagerRecordsPage() {
               </p>
             </div>
             <p className="mt-3 text-xs text-slate-500">
-              O ficheiro usa os mesmos filtros desta listagem. Exportações acima de 1000 registos são bloqueadas no
+              O arquivo usa os mesmos filtros desta listagem. Exportações acima de 1000 registros são bloqueadas no
               servidor.
             </p>
             <div className="mt-5 flex flex-wrap gap-2">

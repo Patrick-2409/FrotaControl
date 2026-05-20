@@ -261,7 +261,7 @@ export function useEmpresaFleet() {
 
   const deleteVehicle = useCallback(
     async (id) => {
-      if (!id || !window.confirm("Eliminar este veículo? Esta ação não pode ser anulada.")) return;
+      if (!id || !window.confirm("Excluir este veículo? Esta ação não pode ser desfeita.")) return;
       try {
         await api.delete(`/dashboard/manage/vehicles/${id}`);
         await loadVehicles();
@@ -305,7 +305,7 @@ export function useEmpresaFleet() {
   const removeMaintenance = useCallback(
     async (mid) => {
       if (!selected?.id || !mid) return;
-      if (!window.confirm("Remover este registo de manutenção?")) return;
+      if (!window.confirm("Remover este registro de manutenção?")) return;
       try {
         await api.delete(`/dashboard/fleet/maintenance/${mid}`);
         await loadMaintenance(selected.id);

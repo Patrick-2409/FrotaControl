@@ -57,7 +57,7 @@ function RankingTable({ rows, p, showMotivo = false, showNaoAplicavel = false, e
             <th className="px-3 py-3">Papel</th>
             <th className="px-3 py-3">Vínculos</th>
             {showMotivo ? <th className="px-3 py-3">Motivo</th> : null}
-            {showNaoAplicavel ? <th className="px-3 py-3">Controlo</th> : null}
+            {showNaoAplicavel ? <th className="px-3 py-3">Atividade</th> : null}
             <th className="px-3 py-3 text-right">Romaneios</th>
             <th className="px-3 py-3 text-right">Parte diária</th>
             {onEditRow ? <th className="px-3 py-3 text-right">Ações</th> : null}
@@ -338,7 +338,7 @@ export default function EmpresaPessoasPage() {
         )}
       </section>
 
-      <section id="lista-pessoas" className="mt-10 scroll-mt-6" aria-label="Lista de utilizadores">
+      <section id="lista-pessoas" className="mt-10 scroll-mt-6" aria-label="Lista de usuários">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <h2 className="text-lg font-semibold text-zinc-100">Cadastro e perfil</h2>
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
@@ -477,7 +477,7 @@ export default function EmpresaPessoasPage() {
                   ) : p.displayUsers.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-3 py-8 text-center text-zinc-500">
-                        Nenhum registo encontrado.
+                        Nenhum registro encontrado.
                       </td>
                     </tr>
                   ) : (
@@ -832,7 +832,7 @@ export default function EmpresaPessoasPage() {
                 onClick={() => p.savePerson()}
                 className="w-full rounded-lg bg-amber-500/90 py-2.5 text-sm font-semibold text-zinc-950 disabled:opacity-40"
               >
-                {p.saving ? "A guardar…" : "Guardar alterações"}
+                {p.saving ? "Salvando…" : "Salvar alterações"}
               </button>
             </div>
           </div>

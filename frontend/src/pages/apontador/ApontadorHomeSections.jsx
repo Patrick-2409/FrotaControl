@@ -206,7 +206,7 @@ export const ApontadorHojeResumo = memo(function ApontadorHojeResumo({ esteril, 
             onClick={onLimparDia}
             className="text-[11px] font-medium text-slate-500 underline decoration-slate-600 underline-offset-2 transition hover:text-slate-400"
           >
-            Limpar registo do dia…
+            Limpar registro do dia…
           </button>
         </div>
       ) : null}

@@ -45,7 +45,7 @@ export default function SuperAdminLoginPage() {
       } else if (!err?.response || status >= 500) {
         setError("Servidor indisponível");
       } else {
-        setError(err.response?.data?.message || "Não foi possível iniciar sessão. Tente novamente.");
+        setError(err.response?.data?.message || "Não foi possível fazer login. Tente novamente.");
       }
     } finally {
       submitLockRef.current = false;

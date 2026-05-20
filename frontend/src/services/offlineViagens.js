@@ -139,17 +139,17 @@ export async function markAsSynced(id_local) {
     const store = tx.objectStore(STORE);
     const getReq = store.get(key);
 
-    getReq.onerror = () => reject(getReq.error ?? new Error("Falha ao ler registo offline."));
+    getReq.onerror = () => reject(getReq.error ?? new Error("Falha ao ler registro offline."));
 
     getReq.onsuccess = () => {
       const row = getReq.result;
       if (!row) {
-        reject(new Error(`markAsSynced: registo não encontrado (${key}).`));
+        reject(new Error(`markAsSynced: registro não encontrado (${key}).`));
         return;
       }
       row.status = "sincronizado";
       const putReq = store.put(row);
-      putReq.onerror = () => reject(putReq.error ?? new Error("Falha ao atualizar registo offline."));
+      putReq.onerror = () => reject(putReq.error ?? new Error("Falha ao atualizar registro offline."));
       putReq.onsuccess = () => resolve();
     };
 
@@ -175,7 +175,7 @@ export async function deleteViagemLocal(id_local) {
     const tx = db.transaction(STORE, "readwrite");
     const store = tx.objectStore(STORE);
     const req = store.delete(key);
-    req.onerror = () => reject(req.error ?? new Error("Falha ao remover registo offline."));
+    req.onerror = () => reject(req.error ?? new Error("Falha ao remover registro offline."));
     req.onsuccess = () => resolve();
     tx.onerror = () => reject(tx.error ?? new Error("Transação IndexedDB falhou."));
   });

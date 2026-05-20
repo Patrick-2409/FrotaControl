@@ -542,7 +542,7 @@ export default function EmpresaFrotaPage() {
                     {fl.maintLoading ? (
                       <p>A carregar histórico…</p>
                     ) : fl.maintItems.length === 0 ? (
-                      <p>Sem registos de manutenção.</p>
+                      <p>Sem registros de manutenção.</p>
                     ) : (
                       <ul className="space-y-2">
                         {fl.maintItems.map((m) => (
@@ -584,7 +584,7 @@ export default function EmpresaFrotaPage() {
                 onClick={() => fl.saveVehicle()}
                 className="flex-1 rounded-lg bg-amber-500/90 py-2.5 text-sm font-semibold text-zinc-950 disabled:opacity-40"
               >
-                {fl.saving ? "A guardar…" : "Guardar"}
+                {fl.saving ? "Salvando…" : "Salvar"}
               </button>
               {fl.selected?.id ? (
                 <button
@@ -592,7 +592,7 @@ export default function EmpresaFrotaPage() {
                   onClick={() => fl.deleteVehicle(fl.selected.id)}
                   className="rounded-lg border border-rose-800/70 px-3 py-2.5 text-sm text-rose-200 hover:bg-rose-950/50"
                 >
-                  Eliminar
+                  Excluir
                 </button>
               ) : null}
             </div>

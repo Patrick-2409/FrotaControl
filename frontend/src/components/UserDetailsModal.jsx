@@ -23,7 +23,7 @@ const formatOperacional = (s) => {
 const formatConta = (conta_status) => (conta_status === "inativo" ? "Inativo (sem acesso)" : "Ativo");
 
 /**
- * Modal de consulta de utilizador (somente leitura).
+ * Modal de consulta de usuário (somente leitura).
  */
 export default function UserDetailsModal({ open, onClose, user, loading }) {
   useEffect(() => {
@@ -67,7 +67,7 @@ export default function UserDetailsModal({ open, onClose, user, loading }) {
       <div className="relative z-[1] flex max-h-[min(90dvh,36rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-700/90 bg-gradient-to-b from-slate-900 to-slate-950 shadow-2xl shadow-black/50">
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-800 px-5 py-4">
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-violet-300/90">Utilizador</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-violet-300/90">Usuário</p>
             <h2 id="fc-user-details-title" className="truncate text-lg font-semibold text-white">
               Detalhes
             </h2>

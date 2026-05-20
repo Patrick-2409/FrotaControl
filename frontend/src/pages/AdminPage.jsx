@@ -433,18 +433,18 @@ export default function AdminPage() {
   };
 
   const onDeactivateUser = async (id) => {
-    if (!window.confirm("Desativar este utilizador? Não poderá iniciar sessão até ser reativado.")) return;
+    if (!window.confirm("Desativar este usuário? Não poderá fazer login até ser reativado.")) return;
     try {
       const { data } = await api.patch(`/super-admin/users/${id}/conta-status`, { conta_status: "inativo" });
       setUsers((prev) => prev.map((x) => (x.id === id ? { ...x, ...data } : x)));
-      emitToast("Utilizador desativado.", "success");
+      emitToast("Usuário desativado.", "success");
       await Promise.all([
         loadOverview(),
         loadUsers(),
         selectedCompany ? loadCompanyDetails(selectedCompany.company.id) : Promise.resolve(),
       ]);
     } catch (err) {
-      emitToast(extractApiErrorMessage(err) || "Falha ao desativar utilizador.", "error");
+      emitToast(extractApiErrorMessage(err) || "Falha ao desativar usuário.", "error");
     }
   };
 
@@ -452,14 +452,14 @@ export default function AdminPage() {
     try {
       const { data } = await api.patch(`/super-admin/users/${id}/conta-status`, { conta_status: "ativo" });
       setUsers((prev) => prev.map((x) => (x.id === id ? { ...x, ...data } : x)));
-      emitToast("Utilizador reativado.", "success");
+      emitToast("Usuário reativado.", "success");
       await Promise.all([
         loadOverview(),
         loadUsers(),
         selectedCompany ? loadCompanyDetails(selectedCompany.company.id) : Promise.resolve(),
       ]);
     } catch (err) {
-      emitToast(extractApiErrorMessage(err) || "Falha ao reativar utilizador.", "error");
+      emitToast(extractApiErrorMessage(err) || "Falha ao reativar usuário.", "error");
     }
   };
 
@@ -500,7 +500,7 @@ export default function AdminPage() {
       return;
     }
     if (editingUser.role !== "MOTORISTA" && !emailTrim) {
-      emitToast("E-mail é obrigatório para este tipo de utilizador.", "error");
+      emitToast("E-mail é obrigatório para este tipo de usuário.", "error");
       return;
     }
     submitLockRef.current = true;
@@ -1171,7 +1171,7 @@ export default function AdminPage() {
                       value={editingUser.conta_status === "inativo" ? "inativo" : "ativo"}
                       onChange={(e) => setEditingUser((u) => ({ ...u, conta_status: e.target.value }))}
                     >
-                      <option value="ativo">Ativo — pode iniciar sessão</option>
+                      <option value="ativo">Ativo — pode fazer login</option>
                       <option value="inativo">Inativo — bloqueado</option>
                     </select>
                   </FormField>

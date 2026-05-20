@@ -57,7 +57,7 @@ export const getFriendlyApiErrorMessage = (error) => {
   }
   const status = error.response?.status;
   const fromServer = extractApiErrorMessage(error);
-  if (status === 401) return "Sessão expirada ou inválida. Inicie sessão novamente.";
+  if (status === 401) return "Sessão expirada ou inválida. Faça login novamente.";
   if (status === 403) return fromServer || "Não tem permissão para esta operação.";
   if (status === 404) return fromServer || "O recurso pedido não foi encontrado.";
   if (status === 408 || status === 504) return "Tempo de espera esgotado. Tente novamente.";

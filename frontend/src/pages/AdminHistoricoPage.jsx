@@ -17,7 +17,7 @@ const formatAcao = (acao) => {
 
 const formatTabela = (tabela) => {
   if (tabela === "empresas") return "Empresa";
-  if (tabela === "usuarios") return "Utilizador";
+  if (tabela === "usuarios") return "Usuário";
   if (tabela === "veiculos") return "Veículo";
   return tabela;
 };
@@ -62,7 +62,7 @@ export default function AdminHistoricoPage() {
       <header className="min-w-0">
         <h2 className="break-words text-xl font-semibold text-white">Histórico administrativo</h2>
         <p className="mt-1 text-sm text-slate-400">
-          Registo de criações, edições e exclusões no painel (empresas, utilizadores e veículos). Cada linha indica quem fez a ação, quando e sobre que registo.
+          Registro de criações, edições e exclusões no painel (empresas, usuários e veículos). Cada linha indica quem fez a ação, quando e sobre qual registro.
         </p>
       </header>
 
@@ -72,10 +72,10 @@ export default function AdminHistoricoPage() {
             <thead className="text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
                 <th className="pb-3 pr-3">Data e hora</th>
-                <th className="pb-3 pr-3">Utilizador</th>
+                <th className="pb-3 pr-3">Usuário</th>
                 <th className="pb-3 pr-3">Ação</th>
                 <th className="pb-3 pr-3">Entidade</th>
-                <th className="pb-3 text-right">ID registo</th>
+                <th className="pb-3 text-right">ID registro</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
@@ -124,7 +124,7 @@ export default function AdminHistoricoPage() {
         </div>
 
         {!loading && items.length === 0 && (
-          <EmptyState compact title="Sem registos" description="Ainda não há ações registadas neste âmbito." />
+          <EmptyState compact title="Sem registros" description="Ainda não há ações registradas neste contexto." />
         )}
 
         <PaginationControls
@@ -136,7 +136,7 @@ export default function AdminHistoricoPage() {
       </article>
 
       <p className="text-xs text-slate-500">
-        Os dados vêm da tabela de auditoria do servidor; apenas ações sobre empresas, utilizadores e veículos aparecem aqui.
+        Os dados vêm da tabela de auditoria do servidor; apenas ações sobre empresas, usuários e veículos aparecem aqui.
       </p>
     </div>
   );

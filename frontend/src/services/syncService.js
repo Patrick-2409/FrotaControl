@@ -114,7 +114,7 @@ export const saveWithOffline = async (module, payload) => {
         });
       } catch (e) {
         syncLog.warn("save_local_offline_network", { detail: String(e?.message || e) });
-        emitToast("Não foi possível guardar localmente. Libere espaço ou verifique o armazenamento do navegador.", "error");
+        emitToast("Não foi possível salvar localmente. Libere espaço ou verifique o armazenamento do navegador.", "error");
         return { status: "error", error: e };
       }
       emitSyncState("pending");
@@ -133,7 +133,7 @@ export const saveWithOffline = async (module, payload) => {
         });
       } catch (e) {
         syncLog.warn("save_local_offline_session", { detail: String(e?.message || e) });
-        emitToast("Não foi possível guardar o registo localmente.", "error");
+        emitToast("Não foi possível salvar o registro localmente.", "error");
         return { status: "error", error: e };
       }
       emitSyncState("pending");

@@ -241,12 +241,12 @@ export default function CompanyManagementPage() {
 
   const onPatchUserContaStatus = async (id, conta_status) => {
     if (conta_status === "inativo") {
-      if (!window.confirm("Desativar este utilizador? Não poderá iniciar sessão até ser reativado.")) return;
+      if (!window.confirm("Desativar este usuário? Não poderá fazer login até ser reativado.")) return;
     }
     setLoading(true);
     try {
       await api.patch(`/dashboard/manage/users/${id}/conta-status`, { conta_status });
-      emitToast(conta_status === "inativo" ? "Utilizador desativado." : "Utilizador reativado.");
+      emitToast(conta_status === "inativo" ? "Usuário desativado." : "Usuário reativado.");
       await loadUsers();
     } catch (err) {
       emitToast(extractApiErrorMessage(err) || "Erro ao atualizar conta.", "error");

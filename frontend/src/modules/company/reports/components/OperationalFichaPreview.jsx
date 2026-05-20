@@ -169,7 +169,7 @@ function RomaneioGroupTable({ group }) {
   return (
     <article className={`${sheet} overflow-x-auto rounded-sm px-2 py-2 print:border-black`}>
       <div className="mb-2 flex flex-wrap items-start gap-3 border-b border-zinc-700 pb-2">
-        <div className="h-14 w-24 shrink-0 rounded border border-dashed border-zinc-600 bg-zinc-900/50" aria-hidden title="Logótipo (no PDF)" />
+        <div className="h-14 w-24 shrink-0 rounded border border-dashed border-zinc-600 bg-zinc-900/50" aria-hidden title="Logotipo (no PDF)" />
         <div className="min-w-0 flex-1 text-center">
           <div className="border border-zinc-500 bg-zinc-900 px-2 py-1.5 text-[12px] font-bold uppercase tracking-wide text-zinc-100">
             CONTROLE DIÁRIO DE TRANSPORTE
@@ -596,7 +596,7 @@ function OperationalFichaPreview({ rows, tipoFiltro, companyName = "" }) {
   if (!prepared.length) {
     return (
       <p className="rounded-lg border border-dashed border-zinc-700 bg-zinc-950/40 px-4 py-8 text-center text-sm text-zinc-500">
-        Sem registos para estes filtros. Confirme o período e carregue em «Filtrar».
+        Sem registros para estes filtros. Confirme o período e clique em «Filtrar».
       </p>
     );
   }
@@ -604,7 +604,7 @@ function OperationalFichaPreview({ rows, tipoFiltro, companyName = "" }) {
   return (
     <div className="space-y-6">
       <p className="text-xs text-zinc-500">
-        Pré-visualização com a mesma grelha e textos do PDF (modelo porto). Logótipo e margens finais apenas no ficheiro exportado.
+        Pré-visualização com a mesma grade e textos do PDF (modelo porto). Logotipo e margens finais apenas no arquivo exportado.
       </p>
       <div className="flex flex-col gap-6">
         {entries.map((entry, idx) => {

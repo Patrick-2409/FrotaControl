@@ -223,7 +223,7 @@ export default function ApontadorHomePage() {
       if (avisoServidor) {
         emitToast(avisoServidor, "warning");
       } else {
-        emitToast(loc > 0 ? `Dia reiniciado (${loc} registo(s) local).` : "Dia reiniciado.", "success");
+        emitToast(loc > 0 ? `Dia reiniciado (${loc} registro(s) local).` : "Dia reiniciado.", "success");
       }
     } catch {
       emitToast("Não foi possível limpar os dados locais.", "error");
@@ -270,7 +270,7 @@ export default function ApontadorHomePage() {
         const gravado = await saveOfflineViagem(viagem);
         id_local = gravado.id_local;
       } catch {
-        emitToast("Não foi possível guardar o registo no dispositivo.", "error");
+        emitToast("Não foi possível salvar o registro no dispositivo.", "error");
         return;
       }
       setHojeContagem((prev) => ({ ...prev, [chaveTipo]: prev[chaveTipo] + 1 }));
@@ -364,7 +364,7 @@ export default function ApontadorHomePage() {
 
       <ApontadorRegistradoFlash open={registradoFlash.open} visibleIn={registradoFlash.in} message={registradoFlash.label} />
 
-      <h1 className="sr-only">Apontador — registo de viagens</h1>
+      <h1 className="sr-only">Apontador — registro de viagens</h1>
 
       <main className="flex flex-1 flex-col items-center justify-center px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-4 sm:pt-6 sm:pb-8">
         <div className="flex w-full max-w-md flex-col items-stretch justify-center space-y-6">
@@ -420,7 +420,7 @@ export default function ApontadorHomePage() {
             onClick={(e) => e.stopPropagation()}
           >
             <h2 id="fc-apontador-limpar-dia-titulo" className="text-lg font-semibold text-slate-100">
-              Limpar registo do dia?
+              Limpar registro do dia?
             </h2>
             <p className="mt-3 text-sm leading-relaxed text-slate-300">
               Isto apaga no <strong className="text-slate-100">dispositivo</strong> as viagens de hoje (fuso São Paulo)

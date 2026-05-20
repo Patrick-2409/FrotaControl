@@ -41,7 +41,7 @@ export default function ApontadorHeader({ online, textoPendentes, onSyncManual }
     : `🔴 Offline${textoPendentes ? ` • ${textoPendentes}` : ""}`;
 
   const statusAria = online
-    ? `Ligado à rede.${textoPendentes ? ` ${textoPendentes}.` : " Sem registos pendentes."}`
+    ? `Ligado à rede.${textoPendentes ? ` ${textoPendentes}.` : " Sem registros pendentes."}`
     : `Sem ligação à rede.${textoPendentes ? ` ${textoPendentes}.` : ""}`;
 
   return (
@@ -95,7 +95,7 @@ export default function ApontadorHeader({ online, textoPendentes, onSyncManual }
                 void onSyncManual?.();
               }}
               className="fc-btn flex h-10 items-center gap-1.5 rounded-xl border border-emerald-500/35 bg-emerald-950/45 px-3 text-xs font-semibold text-emerald-50 transition hover:border-emerald-400/50 hover:bg-emerald-900/50 active:scale-[0.98]"
-              aria-label="Sincronizar registos pendentes"
+              aria-label="Sincronizar registros pendentes"
             >
               <span className="text-sm" aria-hidden>
                 ↻

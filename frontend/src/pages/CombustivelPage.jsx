@@ -229,7 +229,7 @@ export default function CombustivelPage({ onSaved }) {
       const result = await saveWithOffline("combustiveis", payload);
       if (result.status === "error") {
         emitToast(
-          extractApiErrorMessage(result.error) || "Não foi possível guardar o registo. Tente novamente.",
+          extractApiErrorMessage(result.error) || "Não foi possível salvar o registro. Tente novamente.",
           "error"
         );
         return;
