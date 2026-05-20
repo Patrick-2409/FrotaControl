@@ -264,6 +264,7 @@ const initDb = async () => {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_usuarios_cpf_id ON usuarios (cpf_id);
     CREATE INDEX IF NOT EXISTS idx_usuarios_admin_cpf ON usuarios (cpf_id) WHERE role IN ('ADMIN_EMPRESA', 'SUPER_ADMIN', 'APONTADOR');
+    CREATE INDEX IF NOT EXISTS idx_usuarios_empresa_id ON usuarios (empresa_id);
     CREATE INDEX IF NOT EXISTS idx_usuarios_empresa_cpf ON usuarios (empresa_id, cpf_id);
     CREATE INDEX IF NOT EXISTS idx_usuarios_email_lower ON usuarios (LOWER(COALESCE(email, '')));
     CREATE UNIQUE INDEX IF NOT EXISTS ux_usuarios_login_motorista_cpf

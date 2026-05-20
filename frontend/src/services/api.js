@@ -46,8 +46,8 @@ export const getFriendlyApiErrorMessage = (error) => {
   if (typeof navigator !== "undefined" && !navigator.onLine) {
     return "Sem ligação à internet. Verifique a rede e tente novamente.";
   }
-  if (error.code === "ECONNABORTED") {
-    return "O pedido excedeu o tempo limite. Tente novamente.";
+  if (error.code === "ECONNABORTED" || error.response?.status === 503) {
+    return error.response?.data?.message || "O pedido excedeu o tempo limite. Tente novamente.";
   }
   if (String(error.message || "").toLowerCase().includes("timeout")) {
     return "O pedido excedeu o tempo limite. Tente novamente.";

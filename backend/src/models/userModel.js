@@ -1,4 +1,5 @@
 const { pool } = require("../db");
+const { queryTimed } = require("../utils/queryTimed");
 
 const STATUS_PESSOA = new Set(["ativo", "afastado", "suspenso"]);
 
@@ -267,19 +268,23 @@ const listUsersByCompany = async (
   const offsetPlaceholder = `$${idx + 1}`;
   params.push(limitNum, offset);
 
-  const count = await pool.query(
+  const count = await queryTimed(
     `SELECT COUNT(*)::int AS total FROM usuarios u WHERE ${whereSql}`,
-    countParams
+    countParams,
+    { label: "usuarios-count" }
   );
-  const { rows } = await pool.query(
-    `SELECT u.*,
+  const { rows } = await queryTimed(
+    `SELECT u.id, u.empresa_id, u.nome, u.email, u.cpf_id, u.role, u.veiculo_id, u.profile_image_url,
+            u.funcao, u.cnh_categoria, u.cnh_numero, u.cnh_validade, u.treinamentos, u.observacoes,
+            u.equipamento_vinculo, u.operacao_escopo, u.status_operacional, u.conta_status, u.created_at,
             v.nome AS veiculo_nome, v.placa, v.marca AS veiculo_marca, v.modelo AS veiculo_modelo
      FROM usuarios u
      LEFT JOIN veiculos v ON v.id = u.veiculo_id
      WHERE ${whereSql}
      ORDER BY u.created_at DESC
      LIMIT ${limitPlaceholder} OFFSET ${offsetPlaceholder}`,
-    params
+    params,
+    { label: "usuarios-list" }
   );
   return { items: rows, total: count.rows[0].total };
 };

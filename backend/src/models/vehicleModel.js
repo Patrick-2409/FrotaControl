@@ -1,6 +1,13 @@
 const { pool } = require("../db");
+const { queryTimed } = require("../utils/queryTimed");
 
 const STATUS_VALUES = new Set(["ativo", "manutencao", "indisponivel", "parado", "operacao"]);
+
+const VEHICLE_LIST_COLS = `v.id, v.empresa_id, v.nome, v.placa, v.marca, v.modelo, v.tipo, v.categoria, v.ano,
+  v.renavam, v.chassi, v.combustivel_principal, v.capacidade_litros, v.capacidade_ton,
+  v.horimetro_atual, v.hodometro_atual, v.usa_para_transporte, v.tipo_operacao, v.status_operacional,
+  v.doc_revisao_validade, v.doc_licenciamento_validade, v.doc_seguro_validade, v.doc_inspecao_validade,
+  v.manutencao_agendar_ate, v.fleet_telemetry_meta, v.created_at`;
 
 const normalizeCapacidade = (usaParaTransporte, capacidade_ton) => {
   if (!usaParaTransporte) return null;
@@ -188,9 +195,9 @@ const listVehicles = async (
      WHERE v.empresa_id = $1 ${transportClause} ${capacidadeClause} ${whereSearch}`;
 
   const t0 = Date.now();
-  const count = await pool.query(countSql, countValues);
-  const { rows } = await pool.query(
-    `SELECT v.*, m.motorista_id, m.motorista_nome
+  const count = await queryTimed(countSql, countValues, { label: "veiculos-count" });
+  const { rows } = await queryTimed(
+    `SELECT ${VEHICLE_LIST_COLS}, m.motorista_id, m.motorista_nome
      FROM veiculos v
      LEFT JOIN LATERAL (
        SELECT u.id AS motorista_id, u.nome AS motorista_nome
@@ -205,7 +212,8 @@ const listVehicles = async (
      ${whereSearch}
      ORDER BY v.created_at DESC
      LIMIT ${qLimit} OFFSET ${qOffset}`,
-    rowsValues
+    rowsValues,
+    { label: "veiculos-list" }
   );
   if (process.env.NODE_ENV !== "production") {
     const ms = Date.now() - t0;

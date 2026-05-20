@@ -193,27 +193,25 @@ export function useEmpresaPeople() {
     setSummaryError(null);
     setProdError(null);
     try {
-      const [summaryRes, prod30Res, prod7Res, feedRes] = await Promise.all([
+      const [summaryRes, prodRes] = await Promise.all([
         peopleGet("/dashboard/people/summary", { label: "fetch-pessoas-summary" }),
         peopleGet("/dashboard/people/productivity", {
-          label: "fetch-pessoas-prod-30d",
-          params: { days: 30, limit: 50 },
+          label: "fetch-pessoas-prod",
+          params: { days: 30, limit: 50, with_7d: 1 },
         }),
-        peopleGet("/dashboard/people/productivity", {
-          label: "fetch-pessoas-prod-7d",
-          params: { days: 7, limit: 50 },
-        }),
-        peopleGet("/dashboard/notifications/feed", { label: "fetch-pessoas-feed" }).catch(() => ({
-          data: { items: [] },
-        })),
       ]);
       if (reqId !== dashboardReqRef.current) return;
       const summaryData = summaryRes.data?.summary ?? null;
-      const items7d = prod7Res.data?.items ?? [];
+      const prodItems = prodRes.data?.items ?? [];
+      const items7d = prodItems.map((row) => ({
+        ...row,
+        romaneios: Number(row.romaneios_7d ?? row.romaneios ?? 0),
+        partes_diaria: Number(row.partes_diaria_7d ?? row.partes_diaria ?? 0),
+      }));
       setSummary(summaryData);
-      setProd(prod30Res.data?.items ?? []);
+      setProd(prodItems);
       setProd7d(items7d);
-      setRiscoDisplay(computeRiscoDisplayMetrics(summaryData, items7d, feedRes.data?.items ?? []));
+      setRiscoDisplay(computeRiscoDisplayMetrics(summaryData, items7d, []));
     } catch (e) {
       if (reqId !== dashboardReqRef.current) return;
       const msg = peopleErrorMessage(e, PEOPLE_LOAD_ERROR);
@@ -317,17 +315,17 @@ export function useEmpresaPeople() {
       let ids = riscoDisplay?.riscoMotoristaIds;
       let items7d = prod7d;
       if (!ids?.size || !items7d.length) {
-        const [prodRes, feedRes] = await Promise.all([
-          peopleGet("/dashboard/people/productivity", {
-            label: "fetch-pessoas-prod-7d",
-            params: { days: 7, limit: 50 },
-          }),
-          peopleGet("/dashboard/notifications/feed", { params: { refresh: 1 }, label: "fetch-pessoas-feed" }).catch(
-            () => ({ data: { items: [] } })
-          ),
-        ]);
-        items7d = prodRes.data?.items ?? [];
-        const metrics = computeRiscoDisplayMetrics(summary, items7d, feedRes.data?.items ?? []);
+        const prodRes = await peopleGet("/dashboard/people/productivity", {
+          label: "fetch-pessoas-prod-7d",
+          params: { days: 30, limit: 50, with_7d: 1 },
+        });
+        const raw = prodRes.data?.items ?? [];
+        items7d = raw.map((row) => ({
+          ...row,
+          romaneios: Number(row.romaneios_7d ?? row.romaneios ?? 0),
+          partes_diaria: Number(row.partes_diaria_7d ?? row.partes_diaria ?? 0),
+        }));
+        const metrics = computeRiscoDisplayMetrics(summary, items7d, []);
         ids = metrics.riscoMotoristaIds;
         setProd7d(items7d);
         setRiscoDisplay(metrics);

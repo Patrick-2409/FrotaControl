@@ -1,6 +1,6 @@
 import api, { extractApiErrorMessage, getFriendlyApiErrorMessage } from "../../../../services/api";
 
-export const FLEET_FETCH_TIMEOUT_MS = 10_000;
+export const FLEET_FETCH_TIMEOUT_MS = 15_000;
 export const FLEET_LOAD_ERROR = "Erro ao carregar dados da frota";
 
 /**

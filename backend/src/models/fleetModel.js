@@ -1,9 +1,10 @@
-const { pool } = require("../db");
+const { queryTimed } = require("../utils/queryTimed");
 
 /**
  * Resumo operacional da frota (consultas agregadas leves).
  */
 async function getFleetSummary(empresa_id) {
+  const t0 = Date.now();
   const [
     totalRow,
     statusRows,
@@ -14,19 +15,23 @@ async function getFleetSummary(empresa_id) {
     consumoRow,
     inativosRow,
   ] = await Promise.all([
-    pool.query(`SELECT COUNT(*)::int AS c FROM veiculos WHERE empresa_id = $1`, [empresa_id]),
-    pool.query(
+    queryTimed(`SELECT COUNT(*)::int AS c FROM veiculos WHERE empresa_id = $1`, [empresa_id], {
+      label: "frota-summary-total",
+    }),
+    queryTimed(
       `SELECT status_operacional, COUNT(*)::int AS c
        FROM veiculos WHERE empresa_id = $1
        GROUP BY status_operacional`,
-      [empresa_id]
+      [empresa_id],
+      { label: "frota-summary-status" }
     ),
-    pool.query(
+    queryTimed(
       `SELECT COUNT(*)::int AS c FROM veiculos
        WHERE empresa_id = $1 AND status_operacional IN ('ativo', 'operacao')`,
-      [empresa_id]
+      [empresa_id],
+      { label: "frota-summary-disp" }
     ),
-    pool.query(
+    queryTimed(
       `SELECT COUNT(*)::int AS c FROM veiculos
        WHERE empresa_id = $1
          AND (
@@ -35,22 +40,25 @@ async function getFleetSummary(empresa_id) {
            OR (doc_seguro_validade IS NOT NULL AND doc_seguro_validade <= CURRENT_DATE + INTERVAL '45 days')
            OR (doc_inspecao_validade IS NOT NULL AND doc_inspecao_validade <= CURRENT_DATE + INTERVAL '45 days')
          )`,
-      [empresa_id]
+      [empresa_id],
+      { label: "frota-summary-doc" }
     ),
-    pool.query(
+    queryTimed(
       `SELECT COUNT(*)::int AS c FROM veiculos
        WHERE empresa_id = $1
          AND (
            status_operacional = 'manutencao'
            OR (manutencao_agendar_ate IS NOT NULL AND manutencao_agendar_ate <= CURRENT_DATE + INTERVAL '30 days')
          )`,
-      [empresa_id]
+      [empresa_id],
+      { label: "frota-summary-manut" }
     ),
-    pool.query(
+    queryTimed(
       `SELECT COUNT(*)::int AS c FROM veiculo_manutencoes WHERE empresa_id = $1`,
-      [empresa_id]
+      [empresa_id],
+      { label: "frota-summary-manut-hist" }
     ),
-    pool.query(
+    queryTimed(
       `SELECT AVG(sub.lp100)::float8 AS litros_100km
        FROM (
          SELECT veiculo_id,
@@ -64,24 +72,35 @@ async function getFleetSummary(empresa_id) {
          GROUP BY veiculo_id
        ) sub
        WHERE sub.lp100 IS NOT NULL AND sub.lp100 > 0 AND sub.lp100 < 800`,
-      [empresa_id]
+      [empresa_id],
+      { label: "frota-summary-consumo" }
     ),
-    pool.query(
-      `SELECT COUNT(*)::int AS c FROM veiculos v
+    queryTimed(
+      `WITH last_mov AS (
+         SELECT veiculo_id, MAX(dt) AS last_dt
+         FROM (
+           SELECT veiculo_id, data AS dt FROM romaneios WHERE empresa_id = $1
+           UNION ALL
+           SELECT veiculo_id, data FROM combustiveis WHERE empresa_id = $1
+           UNION ALL
+           SELECT veiculo_id, data FROM parte_diaria
+             WHERE empresa_id = $1 AND veiculo_id IS NOT NULL
+         ) ev
+         GROUP BY veiculo_id
+       )
+       SELECT COUNT(*)::int AS c FROM veiculos v
+       LEFT JOIN last_mov lm ON lm.veiculo_id = v.id
        WHERE v.empresa_id = $1
          AND v.created_at < NOW() - INTERVAL '14 days'
-         AND NOT EXISTS (
-           SELECT 1 FROM romaneios r WHERE r.veiculo_id = v.id AND r.empresa_id = v.empresa_id AND r.data >= NOW() - INTERVAL '14 days'
-         )
-         AND NOT EXISTS (
-           SELECT 1 FROM combustiveis c WHERE c.veiculo_id = v.id AND c.empresa_id = v.empresa_id AND c.data >= NOW() - INTERVAL '14 days'
-         )
-         AND NOT EXISTS (
-           SELECT 1 FROM parte_diaria p WHERE p.veiculo_id = v.id AND p.empresa_id = v.empresa_id AND p.data >= NOW() - INTERVAL '14 days'
-         )`,
-      [empresa_id]
+         AND COALESCE(lm.last_dt, v.created_at) < NOW() - INTERVAL '14 days'`,
+      [empresa_id],
+      { label: "frota-summary-inativos" }
     ),
   ]);
+
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`[getFleetSummary] empresa=${empresa_id} ${Date.now() - t0}ms`);
+  }
 
   const byStatus = {};
   for (const r of statusRows.rows) {
@@ -107,22 +126,26 @@ async function getFleetSummary(empresa_id) {
 
 async function listMaintenance(empresa_id, veiculo_id, { limit = 50 } = {}) {
   const lim = Math.min(200, Math.max(1, Number(limit) || 50));
-  const { rows } = await pool.query(
-    `SELECT m.* FROM veiculo_manutencoes m
+  const { rows } = await queryTimed(
+    `SELECT m.id, m.empresa_id, m.veiculo_id, m.tipo, m.titulo, m.descricao, m.custo,
+            m.data_servico, m.odometro_snapshot, m.created_at
+     FROM veiculo_manutencoes m
      INNER JOIN veiculos v ON v.id = m.veiculo_id AND v.empresa_id = m.empresa_id
      WHERE m.empresa_id = $1 AND m.veiculo_id = $2
      ORDER BY m.data_servico DESC, m.id DESC
      LIMIT $3`,
-    [empresa_id, veiculo_id, lim]
+    [empresa_id, veiculo_id, lim],
+    { label: "frota-manut-list" }
   );
   return rows;
 }
 
 async function createMaintenance(empresa_id, veiculo_id, row) {
+  const { pool } = require("../db");
   const { rows } = await pool.query(
     `INSERT INTO veiculo_manutencoes (empresa_id, veiculo_id, tipo, titulo, descricao, custo, data_servico, odometro_snapshot)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-     RETURNING *`,
+     RETURNING id, empresa_id, veiculo_id, tipo, titulo, descricao, custo, data_servico, odometro_snapshot, created_at`,
     [
       empresa_id,
       veiculo_id,
@@ -138,6 +161,7 @@ async function createMaintenance(empresa_id, veiculo_id, row) {
 }
 
 async function deleteMaintenance(empresa_id, id) {
+  const { pool } = require("../db");
   const r = await pool.query(
     `DELETE FROM veiculo_manutencoes WHERE id = $1 AND empresa_id = $2 RETURNING id`,
     [id, empresa_id]
@@ -146,10 +170,11 @@ async function deleteMaintenance(empresa_id, id) {
 }
 
 async function assertVehicleOwned(empresa_id, veiculo_id) {
-  const { rows } = await pool.query(`SELECT id FROM veiculos WHERE id = $1 AND empresa_id = $2`, [
-    veiculo_id,
-    empresa_id,
-  ]);
+  const { rows } = await queryTimed(
+    `SELECT id FROM veiculos WHERE id = $1 AND empresa_id = $2`,
+    [veiculo_id, empresa_id],
+    { label: "frota-assert-vehicle" }
+  );
   return Boolean(rows[0]);
 }
 

@@ -38,9 +38,12 @@ const getProductivity = async (req, res) => {
     return res.status(400).json({ success: false, error: "empresa_id é obrigatório" });
   }
   const days = Math.min(90, Math.max(7, Number(req.query.days || 30)));
-  const limit = Math.min(100, Math.max(5, Number(req.query.limit || 40)));
+  const limit = Math.min(50, Math.max(5, Number(req.query.limit || 40)));
+  const with_7d =
+    String(req.query.with_7d || "").trim() === "1" ||
+    String(req.query.with_7d || "").trim().toLowerCase() === "true";
   const t0 = Date.now();
-  const items = await peopleModel.getPeopleProductivity(empresaId, { days, limit });
+  const items = await peopleModel.getPeopleProductivity(empresaId, { days, limit, with_7d });
   if (process.env.NODE_ENV !== "production") {
     const ms = Date.now() - t0;
     if (ms > 800) console.warn(`[getPeopleProductivity] empresa=${empresaId} days=${days} ${ms}ms`);

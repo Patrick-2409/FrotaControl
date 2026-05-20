@@ -37,6 +37,14 @@ const errorMiddleware = (err, req, res, next) => {
     });
   }
 
+  if (err?.code === "QUERY_TIMEOUT") {
+    return res.status(503).json({
+      success: false,
+      error: err.message || "A consulta excedeu o tempo limite. Tente novamente.",
+      message: err.message || "A consulta excedeu o tempo limite. Tente novamente.",
+    });
+  }
+
   const status = err.status || err.statusCode || 500;
   const pathOnly = String(req.originalUrl || "").split("?")[0];
   const pathModule =

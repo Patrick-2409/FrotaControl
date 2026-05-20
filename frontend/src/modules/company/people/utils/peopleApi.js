@@ -1,6 +1,6 @@
 import api, { extractApiErrorMessage, getFriendlyApiErrorMessage } from "../../../../services/api";
 
-export const PEOPLE_FETCH_TIMEOUT_MS = 10_000;
+export const PEOPLE_FETCH_TIMEOUT_MS = 15_000;
 export const PEOPLE_LOAD_ERROR = "Erro ao carregar dados de pessoas";
 
 /**
