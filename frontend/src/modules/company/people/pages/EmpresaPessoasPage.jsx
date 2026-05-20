@@ -4,8 +4,8 @@ import Avatar from "../../../../components/Avatar";
 import PaginationControls from "../../../../components/PaginationControls";
 import SkeletonRows from "../../../../components/SkeletonRows";
 import BIDashboardShell from "../../bi/components/BIDashboardShell";
-import BIKpiCard from "../../bi/components/BIKpiCard";
 import EmpresaModuleErrorPanel from "../../shared/components/EmpresaModuleErrorPanel";
+import ExecutiveKpiCard from "../components/ExecutiveKpiCard";
 import { resolveBackendAssetUrl } from "../../../../services/api";
 import { useEmpresaPeople } from "../hooks/useEmpresaPeople";
 import { CNH_CATEGORIAS, cnhBadgeClass, cnhStatusLabel, getCnhStatus } from "../../../../utils/cnhStatus";
@@ -24,28 +24,18 @@ function statusPessoaClass(s) {
   return "bg-zinc-700/50 text-zinc-200 ring-1 ring-zinc-600/40";
 }
 
-function RiscoStatusLine({ tone, text }) {
-  const isCritical = tone === "critical";
-  const isWarning = tone === "warning";
-  const toneClass = isCritical
-    ? "text-rose-100"
-    : isWarning
-      ? "text-amber-100/95"
-      : "text-emerald-200/75";
-  const sizeClass = isCritical ? "text-[15px] sm:text-base font-semibold" : "text-sm font-medium";
-  const icon = isCritical ? "🔴" : isWarning ? "🟡" : "✔";
-  return (
-    <p className={`flex items-start gap-2.5 leading-snug ${sizeClass} ${toneClass}`}>
-      <span className={`shrink-0 leading-none ${isCritical ? "text-lg" : "text-base"}`} aria-hidden>
-        {icon}
-      </span>
-      <span className="min-w-0 flex-1 break-words">{text}</span>
-    </p>
-  );
-}
+const KPI_GRID = "grid gap-3 grid-cols-[repeat(auto-fit,minmax(220px,1fr))]";
 
 const RISCO_TOOLTIP =
   "Avalia apenas motoristas com veículo de transporte. Apoio e apontadores ficam fora deste indicador.";
+
+const RISCO_TOOLTIP_DETALHE = `${RISCO_TOOLTIP} Sem romaneio: sem lançamentos de transporte nos últimos 7 dias. Baixa atividade: alertas no feed operacional.`;
+
+function cnhCardTone(count, kind) {
+  if (kind === "vencidas") return count > 0 ? "critical" : "neutral";
+  if (kind === "vencendo") return count > 0 ? "warning" : "neutral";
+  return count > 0 ? "ok" : "neutral";
+}
 
 function RankingTable({ rows, p, showMotivo = false, showNaoAplicavel = false, emptyMessage, onEditRow }) {
   return (
@@ -132,14 +122,26 @@ export default function EmpresaPessoasPage() {
   const semRomaneio = Number(p.riscoDisplay?.semRomaneio ?? 0);
   const baixaAtividade = Number(p.riscoDisplay?.baixaAtividade ?? 0);
   const temRisco = semRomaneio > 0 || baixaAtividade > 0;
-  const riscoCardClass =
-    semRomaneio > 0
-      ? "border-rose-500/30 shadow-[0_0_20px_-8px_rgba(244,63,94,0.35)]"
-      : "";
-  const semRomaneioText =
-    totalTransporte > 0
-      ? `${p.fmtInt(semRomaneio)} de ${p.fmtInt(totalTransporte)} motoristas sem lançamentos de transporte nos últimos 7 dias`
-      : `${p.fmtInt(semRomaneio)} motorista(s) sem lançamentos de transporte nos últimos 7 dias`;
+  const alertasRisco = semRomaneio + baixaAtividade;
+  const motoristasAtivos = Number(p.summary?.por_status?.ativo ?? 0);
+  const cnhVencidas = Number(p.summary?.cnh_vencidas ?? 0);
+  const cnhVencendo = Number(p.summary?.cnh_vencendo ?? 0);
+  const cnhValidas = Number(p.summary?.cnh_validas ?? 0);
+
+  const riscoStatus = semRomaneio > 0 ? "Crítico" : baixaAtividade > 0 ? "Atenção" : "OK";
+  const riscoTone = semRomaneio > 0 ? "critical" : baixaAtividade > 0 ? "warning" : "ok";
+  const riscoSubtitle =
+    alertasRisco > 0 ? `${p.fmtInt(alertasRisco)} alerta(s) · 7 dias` : "Sem alertas operacionais";
+
+  const transportTone = semRomaneio > 0 ? "critical" : totalTransporte > 0 ? "ok" : "neutral";
+  const transportValue =
+    totalTransporte === 0 ? "—" : p.fmtInt(semRomaneio > 0 ? semRomaneio : totalTransporte);
+  const transportSubtitle =
+    totalTransporte === 0
+      ? "Nenhum motorista de transporte"
+      : semRomaneio > 0
+        ? "sem produção (7 dias)"
+        : "com produção recente";
 
   const handleEditFromRow = (row) => {
     const found = p.users.find((u) => Number(u.id) === Number(row.id));
@@ -177,84 +179,89 @@ export default function EmpresaPessoasPage() {
           <EmpresaModuleErrorPanel title="Resumo indisponível" description={p.summaryError} onRetry={p.refetchSummary} />
         </div>
       ) : p.summaryLoading && !p.summary ? (
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
-          {[1, 2, 3, 4, 5, 6].map((k) => (
-            <div key={k} className="fc-card p-4">
-              <SkeletonRows rows={2} />
-            </div>
-          ))}
-        </div>
+        <section className="mt-6 space-y-3" aria-busy="true" aria-label="Carregando indicadores">
+          <div className={KPI_GRID}>
+            {[1, 2, 3].map((k) => (
+              <div key={`p-${k}`} className="fc-card min-h-[168px] p-4">
+                <SkeletonRows rows={2} />
+              </div>
+            ))}
+          </div>
+          <div className={KPI_GRID}>
+            {[1, 2, 3, 4].map((k) => (
+              <div key={`s-${k}`} className="fc-card min-h-[168px] p-4">
+                <SkeletonRows rows={2} />
+              </div>
+            ))}
+          </div>
+        </section>
       ) : (
-        <section className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6" aria-label="Indicadores de pessoas">
-          <BIKpiCard
-            label="Motoristas / apontadores"
-            value={`${p.fmtInt(p.summary?.motoristas)} / ${p.fmtInt(p.summary?.apontadores)}`}
-          />
-          <BIKpiCard
-            label="Lançamentos (7 dias)"
-            value={`${p.fmtInt(p.summary?.romaneios_7d)} romaneios`}
-            hint={`Partes diárias: ${p.fmtInt(p.summary?.parte_diaria_7d)}`}
-          />
-          <BIKpiCard
-            label="CNH vencidas"
-            value={p.fmtInt(p.summary?.cnh_vencidas)}
-            hint="Validade anterior a hoje."
-          />
-          <BIKpiCard
-            label="CNH vencendo (60 dias)"
-            value={p.fmtInt(p.summary?.cnh_vencendo)}
-            hint="Vence hoje ou nos próximos 60 dias."
-          />
-          <BIKpiCard
-            label="CNH válidas"
-            value={p.fmtInt(p.summary?.cnh_validas)}
-            hint="Validade superior a 60 dias."
-          />
-          <BIKpiCard
-            className={riscoCardClass}
-            labelNode={
-              <p className="fc-erp-eyebrow inline-flex max-w-full flex-wrap items-center gap-1.5">
-                <span>Risco operacional</span>
-                <button
-                  type="button"
-                  className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-zinc-600/80 bg-zinc-800/80 text-[10px] font-bold leading-none text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
-                  title={RISCO_TOOLTIP}
-                  aria-label={RISCO_TOOLTIP}
-                >
-                  ?
-                </button>
-              </p>
-            }
-            valueNode={
-              <div className="mt-1 max-w-full space-y-3">
-                {semRomaneio > 0 ? (
-                  <RiscoStatusLine tone="critical" text={semRomaneioText} />
-                ) : (
-                  <RiscoStatusLine
-                    tone="ok"
-                    text="Todos os motoristas possuem lançamentos nos últimos 7 dias"
-                  />
-                )}
-                {baixaAtividade > 0 ? (
-                  <RiscoStatusLine
-                    tone="warning"
-                    text={`${p.fmtInt(baixaAtividade)} motorista(s) com baixa atividade`}
-                  />
-                ) : (
-                  <RiscoStatusLine tone="ok" text="Nenhum motorista com baixa atividade" />
-                )}
+        <section className="mt-6 space-y-3" aria-label="Indicadores de pessoas">
+          <div className={KPI_GRID}>
+            <ExecutiveKpiCard
+              icon="🚛"
+              label="Transporte"
+              value={transportValue}
+              subtitle={transportSubtitle}
+              tone={transportTone}
+              tooltip={RISCO_TOOLTIP}
+            />
+            <ExecutiveKpiCard
+              icon="⚠️"
+              label="Risco operacional"
+              value={riscoStatus}
+              subtitle={riscoSubtitle}
+              tone={riscoTone}
+              tooltip={RISCO_TOOLTIP_DETALHE}
+              footer={
                 <button
                   type="button"
                   disabled={p.riscoFilterLoading || !temRisco}
                   onClick={() => p.applyRiscoOperacionalFilter()}
-                  className="mt-0.5 w-full min-w-0 rounded-lg border border-zinc-600/90 bg-zinc-900/90 px-3 py-2.5 text-xs font-semibold text-zinc-200 transition hover:border-amber-500/50 hover:text-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="text-xs font-medium text-zinc-400 underline-offset-2 transition hover:text-amber-100 hover:underline disabled:cursor-not-allowed disabled:no-underline disabled:opacity-40"
                 >
-                  {p.riscoFilterLoading ? "A carregar…" : "Ver motoristas afetados"}
+                  {p.riscoFilterLoading ? "Carregando…" : "Ver detalhes"}
                 </button>
-              </div>
-            }
-            hint="Apenas motoristas com veículo de transporte (7 dias)."
-          />
+              }
+            />
+            <ExecutiveKpiCard
+              icon="👥"
+              label="Motoristas ativos"
+              value={p.fmtInt(motoristasAtivos)}
+              subtitle={`${p.fmtInt(p.summary?.motoristas)} mot. · ${p.fmtInt(p.summary?.apontadores)} apont.`}
+              tone={motoristasAtivos > 0 ? "ok" : "neutral"}
+            />
+          </div>
+          <div className={KPI_GRID}>
+            <ExecutiveKpiCard
+              icon="📄"
+              label="Lançamentos"
+              value={p.fmtInt(p.summary?.romaneios_7d)}
+              subtitle={`Partes diárias: ${p.fmtInt(p.summary?.parte_diaria_7d)} · 7 dias`}
+              tone="neutral"
+            />
+            <ExecutiveKpiCard
+              icon="🪪"
+              label="CNH vencidas"
+              value={p.fmtInt(cnhVencidas)}
+              subtitle="Validade expirada"
+              tone={cnhCardTone(cnhVencidas, "vencidas")}
+            />
+            <ExecutiveKpiCard
+              icon="🪪"
+              label="CNH vencendo"
+              value={p.fmtInt(cnhVencendo)}
+              subtitle="Próximos 60 dias"
+              tone={cnhCardTone(cnhVencendo, "vencendo")}
+            />
+            <ExecutiveKpiCard
+              icon="🪪"
+              label="CNH válidas"
+              value={p.fmtInt(cnhValidas)}
+              subtitle="Acima de 60 dias"
+              tone={cnhCardTone(cnhValidas, "validas")}
+            />
+          </div>
         </section>
       )}
 
