@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import api, { extractApiErrorMessage, getFriendlyApiErrorMessage } from "../../../../services/api";
+import api, { getFriendlyApiErrorMessage, extractApiErrorMessage } from "../../../../services/api";
 import { computeRiscoDisplayMetrics, splitRiscoCadastroLists } from "../../../../utils/riscoOperacional";
+import { peopleErrorMessage, peopleGet, PEOPLE_LOAD_ERROR } from "../utils/peopleApi";
 
 const fmtInt = (n) => Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 
@@ -130,6 +131,7 @@ export function useEmpresaPeople() {
   const [listError, setListError] = useState(null);
 
   const [vehicles, setVehicles] = useState([]);
+  const [vehiclesPicklistLoading, setVehiclesPicklistLoading] = useState(false);
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [selected, setSelected] = useState(null);
@@ -143,76 +145,24 @@ export function useEmpresaPeople() {
   const [riscoMotoristaIds, setRiscoMotoristaIds] = useState(() => new Set());
   const [riscoFilterLoading, setRiscoFilterLoading] = useState(false);
 
+  const usersReqRef = useRef(0);
+  const dashboardReqRef = useRef(0);
+  const dashboardLoadedRef = useRef(false);
+  const riscoUrlInitRef = useRef(false);
+  const vehiclesPicklistLoadedRef = useRef(false);
+
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 320);
     return () => clearTimeout(t);
   }, [search]);
 
-  const refreshRiscoDisplay = useCallback(async (summaryData) => {
-    if (!summaryData) {
-      setRiscoDisplay(null);
-      return;
-    }
-    try {
-      const [prodRes, feedRes] = await Promise.all([
-        api.get("/dashboard/people/productivity", { params: { days: 7, limit: 100 } }),
-        api.get("/dashboard/notifications/feed").catch(() => ({ data: { items: [] } })),
-      ]);
-      const items7d = prodRes.data?.items ?? [];
-      setProd7d(items7d);
-      setRiscoDisplay(computeRiscoDisplayMetrics(summaryData, items7d, feedRes.data?.items ?? []));
-    } catch {
-      setProd7d([]);
-      setRiscoDisplay(computeRiscoDisplayMetrics(summaryData, [], []));
-    }
-  }, []);
-
-  const loadSummary = useCallback(async () => {
-    setSummaryLoading(true);
-    setSummaryError(null);
-    try {
-      const { data } = await api.get("/dashboard/people/summary");
-      const summaryData = data?.summary ?? null;
-      setSummary(summaryData);
-      await refreshRiscoDisplay(summaryData);
-    } catch (e) {
-      setSummaryError(getFriendlyApiErrorMessage(e) || extractApiErrorMessage(e));
-      setSummary(null);
-      setRiscoDisplay(null);
-      setProd7d([]);
-    } finally {
-      setSummaryLoading(false);
-    }
-  }, [refreshRiscoDisplay]);
-
-  const loadProductivity = useCallback(async () => {
-    setProdLoading(true);
-    setProdError(null);
-    try {
-      const { data } = await api.get("/dashboard/people/productivity", { params: { days: 30, limit: 50 } });
-      setProd(data?.items ?? []);
-    } catch (e) {
-      setProdError(getFriendlyApiErrorMessage(e) || extractApiErrorMessage(e));
-      setProd([]);
-    } finally {
-      setProdLoading(false);
-    }
-  }, []);
-
-  const loadVehicles = useCallback(async () => {
-    try {
-      const { data } = await api.get("/dashboard/manage/vehicles", { params: { page: 1, limit: 300, search: "" } });
-      setVehicles(data?.items ?? []);
-    } catch {
-      setVehicles([]);
-    }
-  }, []);
-
   const loadUsers = useCallback(async () => {
+    const reqId = ++usersReqRef.current;
     setListLoading(true);
     setListError(null);
     try {
-      const { data } = await api.get("/dashboard/manage/users", {
+      const { data } = await peopleGet("/dashboard/manage/users", {
+        label: "fetch-pessoas-usuarios",
         params: {
           page,
           limit: 20,
@@ -221,26 +171,105 @@ export function useEmpresaPeople() {
           status_operacional: statusFilter || undefined,
         },
       });
+      if (reqId !== usersReqRef.current) return;
       setUsers(data?.items ?? []);
       setTotal(Number(data?.total ?? 0));
       setTotalPages(Number(data?.totalPages ?? 1));
     } catch (e) {
-      setListError(getFriendlyApiErrorMessage(e) || extractApiErrorMessage(e));
+      if (reqId !== usersReqRef.current) return;
+      setListError(peopleErrorMessage(e, PEOPLE_LOAD_ERROR));
       setUsers([]);
+      setTotal(0);
+      setTotalPages(1);
     } finally {
-      setListLoading(false);
+      if (reqId === usersReqRef.current) setListLoading(false);
     }
   }, [page, debouncedSearch, roleFilter, statusFilter]);
 
-  useEffect(() => {
-    loadSummary();
-    loadProductivity();
-    loadVehicles();
-  }, [loadSummary, loadProductivity, loadVehicles]);
+  const loadDashboard = useCallback(async () => {
+    const reqId = ++dashboardReqRef.current;
+    setSummaryLoading(true);
+    setProdLoading(true);
+    setSummaryError(null);
+    setProdError(null);
+    try {
+      const [summaryRes, prod30Res, prod7Res, feedRes] = await Promise.all([
+        peopleGet("/dashboard/people/summary", { label: "fetch-pessoas-summary" }),
+        peopleGet("/dashboard/people/productivity", {
+          label: "fetch-pessoas-prod-30d",
+          params: { days: 30, limit: 50 },
+        }),
+        peopleGet("/dashboard/people/productivity", {
+          label: "fetch-pessoas-prod-7d",
+          params: { days: 7, limit: 50 },
+        }),
+        peopleGet("/dashboard/notifications/feed", { label: "fetch-pessoas-feed" }).catch(() => ({
+          data: { items: [] },
+        })),
+      ]);
+      if (reqId !== dashboardReqRef.current) return;
+      const summaryData = summaryRes.data?.summary ?? null;
+      const items7d = prod7Res.data?.items ?? [];
+      setSummary(summaryData);
+      setProd(prod30Res.data?.items ?? []);
+      setProd7d(items7d);
+      setRiscoDisplay(computeRiscoDisplayMetrics(summaryData, items7d, feedRes.data?.items ?? []));
+    } catch (e) {
+      if (reqId !== dashboardReqRef.current) return;
+      const msg = peopleErrorMessage(e, PEOPLE_LOAD_ERROR);
+      setSummaryError(msg);
+      setProdError(msg);
+      setSummary(null);
+      setProd([]);
+      setProd7d([]);
+      setRiscoDisplay(null);
+    } finally {
+      if (reqId === dashboardReqRef.current) {
+        setSummaryLoading(false);
+        setProdLoading(false);
+      }
+    }
+  }, []);
+
+  const loadVehiclesPicklist = useCallback(async () => {
+    if (vehiclesPicklistLoadedRef.current && vehicles.length > 0) return;
+    setVehiclesPicklistLoading(true);
+    try {
+      const { data } = await peopleGet("/dashboard/manage/vehicles", {
+        label: "fetch-pessoas-veiculos-picklist",
+        params: { page: 1, limit: 50, search: "" },
+      });
+      setVehicles(data?.items ?? []);
+      vehiclesPicklistLoadedRef.current = true;
+    } catch {
+      setVehicles([]);
+    } finally {
+      setVehiclesPicklistLoading(false);
+    }
+  }, [vehicles.length]);
 
   useEffect(() => {
-    loadUsers();
-  }, [loadUsers]);
+    let cancelled = false;
+    (async () => {
+      if (import.meta.env.DEV) console.time("fetch-pessoas");
+      await loadUsers();
+      if (cancelled) return;
+      if (!dashboardLoadedRef.current) {
+        dashboardLoadedRef.current = true;
+        await loadDashboard();
+      }
+      if (import.meta.env.DEV) console.timeEnd("fetch-pessoas");
+    })();
+    return () => {
+      cancelled = true;
+      usersReqRef.current += 1;
+    };
+  }, [loadUsers, loadDashboard]);
+
+  useEffect(() => {
+    if (!panelOpen) return;
+    loadVehiclesPicklist();
+  }, [panelOpen, loadVehiclesPicklist]);
 
   const openEdit = useCallback((u) => {
     setSelected(u);
@@ -262,15 +291,14 @@ export function useEmpresaPeople() {
       const payload = formToPayload(form, { includePassword: true });
       await api.put(`/dashboard/manage/users/${selected.id}`, payload);
       await loadUsers();
-      await loadSummary();
-      await loadProductivity();
+      await loadDashboard();
       closePanel();
     } catch (e) {
       setSaveError(getFriendlyApiErrorMessage(e) || extractApiErrorMessage(e));
     } finally {
       setSaving(false);
     }
-  }, [form, selected, loadUsers, loadSummary, loadProductivity, closePanel]);
+  }, [form, selected, loadUsers, loadDashboard, closePanel]);
 
   const addTreinoRow = useCallback(() => {
     setForm((f) => ({ ...f, treinamentos: [...(f.treinamentos || []), { titulo: "", validade: "" }] }));
@@ -290,8 +318,13 @@ export function useEmpresaPeople() {
       let items7d = prod7d;
       if (!ids?.size || !items7d.length) {
         const [prodRes, feedRes] = await Promise.all([
-          api.get("/dashboard/people/productivity", { params: { days: 7, limit: 100 } }),
-          api.get("/dashboard/notifications/feed", { params: { refresh: 1 } }).catch(() => ({ data: { items: [] } })),
+          peopleGet("/dashboard/people/productivity", {
+            label: "fetch-pessoas-prod-7d",
+            params: { days: 7, limit: 50 },
+          }),
+          peopleGet("/dashboard/notifications/feed", { params: { refresh: 1 }, label: "fetch-pessoas-feed" }).catch(
+            () => ({ data: { items: [] } })
+          ),
         ]);
         items7d = prodRes.data?.items ?? [];
         const metrics = computeRiscoDisplayMetrics(summary, items7d, feedRes.data?.items ?? []);
@@ -329,7 +362,9 @@ export function useEmpresaPeople() {
   }, [searchParams, setSearchParams]);
 
   useEffect(() => {
-    if (searchParams.get("risco") !== "1" || riscoListFilter) return;
+    if (searchParams.get("risco") !== "1") return;
+    if (riscoListFilter || riscoUrlInitRef.current) return;
+    riscoUrlInitRef.current = true;
     applyRiscoOperacionalFilter();
   }, [searchParams, riscoListFilter, applyRiscoOperacionalFilter]);
 
@@ -351,11 +386,11 @@ export function useEmpresaPeople() {
     riscoDisplay,
     summaryLoading,
     summaryError,
-    refetchSummary: loadSummary,
+    refetchSummary: loadDashboard,
     prod,
     prodLoading,
     prodError,
-    refetchProd: loadProductivity,
+    refetchProd: loadDashboard,
     users,
     displayUsers,
     riscoCadastroLists,
@@ -378,6 +413,7 @@ export function useEmpresaPeople() {
     listError,
     refetchUsers: loadUsers,
     vehicles,
+    vehiclesPicklistLoading,
     panelOpen,
     form,
     setForm,

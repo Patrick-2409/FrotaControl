@@ -207,12 +207,14 @@ export function useEmpresaFleet() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      if (import.meta.env.DEV) console.time("fetch-frota");
       await loadVehicles();
       if (cancelled) return;
       if (!summaryLoadedRef.current) {
         summaryLoadedRef.current = true;
         await loadSummary();
       }
+      if (import.meta.env.DEV) console.timeEnd("fetch-frota");
     })();
     return () => {
       cancelled = true;

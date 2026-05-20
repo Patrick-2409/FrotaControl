@@ -174,7 +174,7 @@ export default function EmpresaPessoasPage() {
       headerAside={headerAside}
     >
 
-      {p.summaryError ? (
+      {p.summaryError && !p.summary ? (
         <div className="mt-6">
           <EmpresaModuleErrorPanel title="Resumo indisponível" description={p.summaryError} onRetry={p.refetchSummary} />
         </div>
@@ -409,9 +409,15 @@ export default function EmpresaPessoasPage() {
 
         {p.listError ? (
           <div className="mt-4">
-            <EmpresaModuleErrorPanel title="Lista indisponível" description={p.listError} onRetry={p.refetchUsers} />
+            <EmpresaModuleErrorPanel
+              title="Erro ao carregar dados de pessoas"
+              description={p.listError}
+              onRetry={p.refetchUsers}
+            />
           </div>
-        ) : p.riscoListFilter ? (
+        ) : null}
+
+        {p.riscoListFilter ? (
           <div className="mt-4 space-y-8">
             <div className="rounded-xl border border-rose-500/25 bg-rose-950/15 p-4 sm:p-5">
               <h3 className="flex flex-wrap items-center gap-2 text-base font-semibold text-rose-100">
@@ -460,7 +466,7 @@ export default function EmpresaPessoasPage() {
               )}
             </div>
           </div>
-        ) : (
+        ) : !p.listError ? (
           <>
             <div className="mt-4 overflow-x-auto rounded-xl border border-zinc-800/90">
               <table className="min-w-[760px] w-full border-collapse text-left text-sm">
@@ -561,7 +567,7 @@ export default function EmpresaPessoasPage() {
               onNext={() => p.setPage((x) => Math.min(p.totalPages, x + 1))}
             />
           </>
-        )}
+        ) : null}
       </section>
 
       {p.panelOpen && p.selected ? (
@@ -669,9 +675,12 @@ export default function EmpresaPessoasPage() {
                     <select
                       className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
                       value={p.form.veiculo_id}
+                      disabled={p.vehiclesPicklistLoading}
                       onChange={(e) => p.setForm((f) => ({ ...f, veiculo_id: e.target.value }))}
                     >
-                      <option value="">— Selecionar —</option>
+                      <option value="">
+                        {p.vehiclesPicklistLoading ? "Carregando veículos…" : "— Selecionar —"}
+                      </option>
                       {p.vehicles.map((v) => (
                         <option key={v.id} value={v.id}>
                           {v.placa} · {v.nome}

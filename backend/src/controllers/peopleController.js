@@ -14,7 +14,12 @@ const getSummary = async (req, res) => {
   if (!empresaId) {
     return res.status(400).json({ success: false, error: "empresa_id é obrigatório" });
   }
+  const t0 = Date.now();
   const summary = await peopleModel.getPeopleSummary(empresaId);
+  if (process.env.NODE_ENV !== "production") {
+    const ms = Date.now() - t0;
+    if (ms > 800) console.warn(`[getPeopleSummary] empresa=${empresaId} ${ms}ms`);
+  }
   return res.json({
     success: true,
     summary,
@@ -34,7 +39,12 @@ const getProductivity = async (req, res) => {
   }
   const days = Math.min(90, Math.max(7, Number(req.query.days || 30)));
   const limit = Math.min(100, Math.max(5, Number(req.query.limit || 40)));
+  const t0 = Date.now();
   const items = await peopleModel.getPeopleProductivity(empresaId, { days, limit });
+  if (process.env.NODE_ENV !== "production") {
+    const ms = Date.now() - t0;
+    if (ms > 800) console.warn(`[getPeopleProductivity] empresa=${empresaId} days=${days} ${ms}ms`);
+  }
   return res.json({
     success: true,
     items,
