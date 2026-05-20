@@ -6,12 +6,14 @@ import { peopleErrorMessage, peopleGet, PEOPLE_LOAD_ERROR } from "../utils/peopl
 
 const fmtInt = (n) => Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 
-const ROLE_OPTS = [
-  { value: "", label: "Todos os papéis" },
+export const PEOPLE_ROLE_FILTER_OPTS = [
+  { value: "", label: "Todos" },
   { value: "MOTORISTA", label: "Motoristas" },
   { value: "APONTADOR", label: "Apontadores" },
   { value: "ADMIN_EMPRESA", label: "Administradores" },
 ];
+
+const ROLE_OPTS = PEOPLE_ROLE_FILTER_OPTS;
 
 const STATUS_OPTS = [
   { value: "", label: "Todos os status" },

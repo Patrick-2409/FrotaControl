@@ -125,7 +125,10 @@ export function EmpresaMenuIcon({ type }) {
 /** Gestão clássica de veículos (legado) — rota mantida, oculta no menu. */
 export const VEICULOS_LEGACY_PATH = "/dashboard/gestao?secao=veiculos";
 
-const SIDEBAR_HIDDEN_TO = new Set([VEICULOS_LEGACY_PATH]);
+/** Cadastro legado de motoristas na gestão — centralizado em /empresa/pessoas. */
+export const MOTORISTAS_LEGACY_PATH = "/dashboard/gestao?secao=motoristas";
+
+const SIDEBAR_HIDDEN_TO = new Set([VEICULOS_LEGACY_PATH, MOTORISTAS_LEGACY_PATH]);
 
 /** Remove itens legados/ocultos antes de renderizar a sidebar. */
 export function filterEmpresaSidebarSections(sections) {
@@ -163,11 +166,12 @@ export const EMPRESA_SIDEBAR_SECTIONS = filterEmpresaSidebarSections([
   {
     id: "frota",
     title: "Frota",
-    items: [
-      { to: "/empresa/frota", label: "Painel frota", icon: "fleet", exact: false },
-      { to: "/empresa/pessoas", label: "Pessoas", icon: "people", exact: false },
-      { to: "/dashboard/gestao?secao=motoristas", label: "Motoristas", icon: "wheel", exact: false },
-    ],
+    items: [{ to: "/empresa/frota", label: "Painel frota", icon: "fleet", exact: false }],
+  },
+  {
+    id: "pessoas",
+    title: "Pessoas",
+    items: [{ to: "/empresa/pessoas", label: "Gestão de pessoas", icon: "people", exact: false }],
   },
   {
     id: "relatorios",

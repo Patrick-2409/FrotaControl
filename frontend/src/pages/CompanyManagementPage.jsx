@@ -292,7 +292,7 @@ export default function CompanyManagementPage() {
                 : "border-slate-700 text-slate-300"
             }`}
           >
-            Usuários
+            Pessoas
           </button>
           <button
             type="button"
@@ -315,7 +315,7 @@ export default function CompanyManagementPage() {
         <section className="grid gap-4 xl:grid-cols-[1fr_1.35fr]">
           <article className="fc-card border-blue-500/20 p-5">
             <h3 className="mb-1 text-base font-semibold text-white">
-              {userForm.id ? "Editar usuário" : "Criar usuário"}
+              {userForm.id ? "Editar pessoa" : "Criar pessoa"}
             </h3>
             <p className="mb-4 text-sm text-slate-400">
               Preencha os dados e confirme para salvar. O apontador usa o mesmo e-mail e senha em{" "}
@@ -403,7 +403,7 @@ export default function CompanyManagementPage() {
 
           <article className="fc-card border-blue-500/20 p-5">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-base font-semibold text-white">Usuários cadastrados</h3>
+              <h3 className="text-base font-semibold text-white">Pessoas cadastradas</h3>
               <span className="rounded-full border border-slate-700 bg-slate-900/70 px-2 py-1 text-xs text-slate-300">
                 Página {usersPage} de {usersTotalPages}
               </span>
@@ -422,7 +422,7 @@ export default function CompanyManagementPage() {
               {!loadingUsers && users.length === 0 && (
                 <EmptyState
                   compact
-                  title="Sem usuários cadastrados"
+                  title="Sem pessoas cadastradas"
                   description="Crie motoristas, apontadores ou outro administrador da empresa para iniciar a operação."
                 />
               )}

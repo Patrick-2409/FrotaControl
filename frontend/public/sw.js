@@ -1,5 +1,5 @@
 /** Bump ao publicar UI crítica — invalida caches antigos no activate. */
-const CACHE = "frotacontrol-v10";
+const CACHE = "frotacontrol-v11";
 const SHELL = ["/manifest.json", "/icon.png"];
 
 const isHashedAsset = (pathname) =>

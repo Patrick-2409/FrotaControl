@@ -7,6 +7,7 @@ import BIDashboardShell from "../../bi/components/BIDashboardShell";
 import EmpresaModuleErrorPanel from "../../shared/components/EmpresaModuleErrorPanel";
 import ExecutiveKpiCard from "../components/ExecutiveKpiCard";
 import { resolveBackendAssetUrl } from "../../../../services/api";
+import PeopleRoleFilter from "../components/PeopleRoleFilter";
 import { useEmpresaPeople } from "../hooks/useEmpresaPeople";
 import { CNH_CATEGORIAS, cnhBadgeClass, cnhStatusLabel, getCnhStatus } from "../../../../utils/cnhStatus";
 import { foraRankingMotivo, splitTransportRanking } from "../../../../utils/peopleRanking";
@@ -157,10 +158,10 @@ export default function EmpresaPessoasPage() {
         Alertas pessoas
       </Link>
       <Link
-        to="/dashboard/gestao?secao=motoristas"
+        to="/dashboard/gestao"
         className="rounded-lg border border-zinc-600 bg-zinc-900/80 px-4 py-2 text-sm text-zinc-200 hover:border-zinc-500"
       >
-        Cadastro no sistema
+        Contas de acesso
       </Link>
     </>
   );
@@ -169,8 +170,8 @@ export default function EmpresaPessoasPage() {
     <BIDashboardShell
       eyebrow="Indicadores"
       title="Pessoas"
-      lead="Motoristas, apontadores e administradores da empresa: produtividade, ligação à frota e equipamento,
-      validade da CNH e alertas ligados à central de alertas."
+      lead="Gestão de pessoas da operação: papéis (motorista, apontador, administrador), CNH, vínculo com veículos,
+      produtividade e alertas operacionais."
       headerAside={headerAside}
     >
 
@@ -345,10 +346,27 @@ export default function EmpresaPessoasPage() {
         )}
       </section>
 
-      <section id="lista-pessoas" className="mt-10 scroll-mt-6" aria-label="Lista de usuários">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <h2 className="text-lg font-semibold text-zinc-100">Cadastro e perfil</h2>
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+      <section id="lista-pessoas" className="mt-10 scroll-mt-6" aria-label="Lista de pessoas">
+        <div className="flex flex-col gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-zinc-100">Gestão de pessoas</h2>
+            <p className="mt-1 max-w-2xl text-sm text-zinc-500">
+              Fluxo: criar conta em Administração → definir papel e perfil aqui → vincular veículo (motoristas) →
+              salvar.
+            </p>
+          </div>
+          <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end lg:justify-between">
+            <PeopleRoleFilter
+              value={p.roleFilter}
+              options={p.ROLE_OPTS}
+              disabled={p.listLoading && p.riscoListFilter}
+              onChange={(role) => {
+                p.setRoleFilter(role);
+                p.setPage(1);
+                if (p.riscoListFilter) p.clearRiscoListFilter();
+              }}
+            />
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             <input
               type="search"
               value={p.search}
@@ -359,21 +377,6 @@ export default function EmpresaPessoasPage() {
               placeholder="Nome, e-mail, CPF, função…"
               className="w-full min-w-[12rem] rounded-lg border border-zinc-700 bg-zinc-900/80 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 sm:max-w-xs"
             />
-            <select
-              value={p.roleFilter}
-              onChange={(e) => {
-                p.setRoleFilter(e.target.value);
-                p.setPage(1);
-                if (p.riscoListFilter) p.clearRiscoListFilter();
-              }}
-              className="rounded-lg border border-zinc-700 bg-zinc-900/80 px-3 py-2 text-sm text-zinc-100"
-            >
-              {p.ROLE_OPTS.map((o) => (
-                <option key={o.value || "all"} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
             <select
               value={p.statusFilter}
               onChange={(e) => {
@@ -388,6 +391,7 @@ export default function EmpresaPessoasPage() {
                 </option>
               ))}
             </select>
+            </div>
           </div>
         </div>
 
