@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
+import { FROTA_PANEL_PATH } from "../components/empresaSidebarConstants";
 import api, { extractApiErrorMessage, resolveBackendAssetUrl } from "../services/api";
 import { useAuth } from "../services/auth";
 import { inputClass } from "../components/FormField";
@@ -41,20 +42,16 @@ const hasFullName = (value) => {
 
 export default function CompanyManagementPage() {
   const { user: authUser } = useAuth();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(false);
-  const [loadingVehicles, setLoadingVehicles] = useState(false);
+  const [loadingVehiclePicklist, setLoadingVehiclePicklist] = useState(false);
   const [users, setUsers] = useState([]);
   const [vehicles, setVehicles] = useState([]);
-  const [search, setSearch] = useState({ users: "", vehicles: "" });
+  const [search, setSearch] = useState({ users: "" });
   const [usersPage, setUsersPage] = useState(1);
-  const [vehiclesPage, setVehiclesPage] = useState(1);
   const [usersTotalPages, setUsersTotalPages] = useState(1);
-  const [vehiclesTotalPages, setVehiclesTotalPages] = useState(1);
-  const [activeSection, setActiveSection] = useState("users");
   const debouncedUsers = useDebouncedValue(search.users);
-  const debouncedVehicles = useDebouncedValue(search.vehicles);
 
   const emptyUserForm = () => ({
     id: null,
@@ -79,16 +76,6 @@ export default function CompanyManagementPage() {
       return "";
     }
   };
-  const [vehicleForm, setVehicleForm] = useState({
-    id: null,
-    nome: "",
-    placa: "",
-    marca: "",
-    modelo: "",
-    usa_para_transporte: false,
-    capacidade_ton: "",
-  });
-
   const loadUsers = useCallback(async () => {
     setLoadingUsers(true);
     try {
@@ -102,79 +89,31 @@ export default function CompanyManagementPage() {
     }
   }, [usersPage, debouncedUsers]);
 
-  const loadVehicles = useCallback(async () => {
-    setLoadingVehicles(true);
+  const loadVehiclePicklist = useCallback(async () => {
+    setLoadingVehiclePicklist(true);
     try {
       const { data } = await api.get("/dashboard/manage/vehicles", {
-        params: { page: vehiclesPage, limit: 6, search: debouncedVehicles },
+        params: { page: 1, limit: 500, search: "" },
       });
       setVehicles(dedupeById(data.items || []));
-      setVehiclesTotalPages(data.totalPages || 1);
+    } catch {
+      setVehicles([]);
     } finally {
-      setLoadingVehicles(false);
+      setLoadingVehiclePicklist(false);
     }
-  }, [vehiclesPage, debouncedVehicles]);
+  }, []);
 
   useEffect(() => {
     loadUsers();
   }, [loadUsers]);
 
   useEffect(() => {
-    loadVehicles();
-  }, [loadVehicles]);
+    loadVehiclePicklist();
+  }, [loadVehiclePicklist]);
 
-  useEffect(() => {
-    const secao = searchParams.get("secao");
-    if (secao === "veiculos") setActiveSection("vehicles");
-    else if (secao === "motoristas") setActiveSection("users");
-    else setActiveSection("users");
-  }, [searchParams]);
-
-  const onSaveVehicle = async (e) => {
-    e.preventDefault();
-    if (!vehicleForm.nome.trim() || !vehicleForm.placa.trim()) {
-      emitToast("Informe nome e placa do veículo.", "warning");
-      return;
-    }
-    const usa = Boolean(vehicleForm.usa_para_transporte);
-    const tonRaw = String(vehicleForm.capacidade_ton ?? "").trim().replace(",", ".");
-    const tonNum = tonRaw === "" ? NaN : Number(tonRaw);
-    if (usa && (!Number.isFinite(tonNum) || tonNum <= 0)) {
-      emitToast("Para veículo de transporte, informe a capacidade em toneladas (valor maior que zero).", "warning");
-      return;
-    }
-    setLoading(true);
-    try {
-      const payload = {
-        nome: vehicleForm.nome.trim(),
-        placa: vehicleForm.placa.trim(),
-        marca: vehicleForm.marca.trim() || undefined,
-        modelo: vehicleForm.modelo.trim() || undefined,
-        usa_para_transporte: usa,
-        capacidade_ton: usa && Number.isFinite(tonNum) && tonNum > 0 ? tonNum : null,
-      };
-      if (vehicleForm.id) {
-        await api.put(`/dashboard/manage/vehicles/${vehicleForm.id}`, payload);
-      } else {
-        await api.post("/dashboard/manage/vehicles", payload);
-      }
-      emitToast(vehicleForm.id ? "Veículo atualizado com sucesso." : "Veículo criado com sucesso.");
-      setVehicleForm({
-        id: null,
-        nome: "",
-        placa: "",
-        marca: "",
-        modelo: "",
-        usa_para_transporte: false,
-        capacidade_ton: "",
-      });
-      await loadVehicles();
-    } catch (err) {
-      emitToast(err.response?.data?.message || "Erro ao salvar veículo.", "error");
-    } finally {
-      setLoading(false);
-    }
-  };
+  if (searchParams.get("secao") === "veiculos") {
+    return <Navigate to={FROTA_PANEL_PATH} replace />;
+  }
 
   const onSaveUser = async (e) => {
     e.preventDefault();
@@ -261,7 +200,6 @@ export default function CompanyManagementPage() {
     try {
       await api.delete(`/dashboard/manage/${kind}/${id}`);
       emitToast("Registro excluído com sucesso.");
-      if (kind === "vehicles") await loadVehicles();
     } catch (err) {
       emitToast(err.response?.data?.message || "Erro ao excluir.", "error");
     } finally {
@@ -275,50 +213,30 @@ export default function CompanyManagementPage() {
     <div className="space-y-6">
       {loading && <CenteredSpinner label="Salvando alterações..." />}
       <section className="fc-card border-blue-500/20 p-5">
-        <h2 className="mb-1 text-lg font-semibold text-white">Gestão operacional</h2>
-        <p className="mb-4 text-sm text-slate-400">
-          Separamos criação e consulta para manter o painel organizado e sem poluição visual.
+        <h2 className="mb-1 text-lg font-semibold text-white">Contas de acesso</h2>
+        <p className="text-sm text-slate-400">
+          Crie login e senha aqui. Perfil operacional (CNH, vínculo, produção) fica em{" "}
+          <Link to="/empresa/pessoas" className="font-medium text-blue-300 hover:text-blue-200">
+            Pessoas → Gestão de pessoas
+          </Link>
+          . Veículos (transporte/apoio, status, documentação) ficam em{" "}
+          <Link to={FROTA_PANEL_PATH} className="font-medium text-blue-300 hover:text-blue-200">
+            Frota → Painel frota
+          </Link>
+          .
         </p>
-        <div className="grid grid-cols-2 gap-2 sm:max-w-md">
-          <button
-            type="button"
-            onClick={() => {
-              setActiveSection("users");
-              setSearchParams({ secao: "motoristas" }, { replace: true });
-            }}
-            className={`fc-btn rounded-lg border px-3 py-2 text-sm ${
-              activeSection === "users"
-                ? "border-blue-500 bg-blue-500/20 text-blue-100"
-                : "border-slate-700 text-slate-300"
-            }`}
-          >
-            Pessoas
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setActiveSection("vehicles");
-              setSearchParams({ secao: "veiculos" }, { replace: true });
-            }}
-            className={`fc-btn rounded-lg border px-3 py-2 text-sm ${
-              activeSection === "vehicles"
-                ? "border-blue-500 bg-blue-500/20 text-blue-100"
-                : "border-slate-700 text-slate-300"
-            }`}
-          >
-            Veículos
-          </button>
-        </div>
+        <p className="mt-3 text-xs text-slate-500">
+          Fluxo: criar conta → definir papel → vincular veículo (motoristas) → completar perfil em Pessoas.
+        </p>
       </section>
 
-      {activeSection === "users" && (
-        <section className="grid gap-4 xl:grid-cols-[1fr_1.35fr]">
+      <section className="grid gap-4 xl:grid-cols-[1fr_1.35fr]">
           <article className="fc-card border-blue-500/20 p-5">
             <h3 className="mb-1 text-base font-semibold text-white">
-              {userForm.id ? "Editar pessoa" : "Criar pessoa"}
+              {userForm.id ? "Editar conta" : "Criar conta"}
             </h3>
             <p className="mb-4 text-sm text-slate-400">
-              Preencha os dados e confirme para salvar. O apontador usa o mesmo e-mail e senha em{" "}
+              E-mail e senha para entrar no sistema. O apontador usa o mesmo e-mail em{" "}
               <span className="text-slate-300">Apontador</span> na página inicial (romaneio).
             </p>
             <form onSubmit={onSaveUser}>
@@ -347,14 +265,30 @@ export default function CompanyManagementPage() {
                   <option value="APONTADOR">Apontador</option>
                 </select>
                 {userForm.role === "MOTORISTA" ? (
-                  <select className={inputClass} value={userForm.veiculo_id} onChange={(e) => setUserForm((f) => ({ ...f, veiculo_id: e.target.value }))}>
-                    <option value="">Vínculo de veículo</option>
-                    {vehicleOptions.map((v) => (
-                      <option key={`v-opt-${v.id}`} value={v.id}>
-                        {v.nome} - {v.placa}
+                  <div className="md:col-span-2">
+                    <select
+                      className={inputClass}
+                      value={userForm.veiculo_id}
+                      disabled={loadingVehiclePicklist}
+                      onChange={(e) => setUserForm((f) => ({ ...f, veiculo_id: e.target.value }))}
+                    >
+                      <option value="">
+                        {loadingVehiclePicklist ? "Carregando veículos…" : "Vínculo de veículo"}
                       </option>
-                    ))}
-                  </select>
+                      {vehicleOptions.map((v) => (
+                        <option key={`v-opt-${v.id}`} value={v.id}>
+                          {v.nome} - {v.placa}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Cadastre ou edite veículos em{" "}
+                      <Link to={FROTA_PANEL_PATH} className="text-blue-300 hover:text-blue-200">
+                        Painel frota
+                      </Link>
+                      .
+                    </p>
+                  </div>
                 ) : (
                   <p className="flex items-center rounded-lg border border-slate-800/80 bg-slate-900/50 px-3 py-2.5 text-xs text-slate-500 md:col-span-2">
                     Veículo só se aplica a motoristas.
@@ -397,7 +331,7 @@ export default function CompanyManagementPage() {
                   </>
                 ) : null}
               </div>
-              <button className="fc-btn mt-3 rounded-lg bg-blue-600 px-4 py-3">{userForm.id ? "Atualizar usuário" : "Criar usuário"}</button>
+              <button className="fc-btn mt-3 rounded-lg bg-blue-600 px-4 py-3">{userForm.id ? "Atualizar conta" : "Criar conta"}</button>
             </form>
           </article>
 
@@ -508,145 +442,6 @@ export default function CompanyManagementPage() {
             />
           </article>
         </section>
-      )}
-
-      {activeSection === "vehicles" && (
-        <section className="grid gap-4 xl:grid-cols-[0.9fr_1.45fr]">
-          <article className="fc-card border-blue-500/20 p-5">
-            <h3 className="mb-1 text-base font-semibold text-white">
-              {vehicleForm.id ? "Editar veículo" : "Criar veículo"}
-            </h3>
-            <p className="mb-4 text-sm text-slate-400">
-              Veículos de <strong className="text-slate-200">transporte</strong> entram no romaneio e na capacidade em toneladas. Os demais são tratados como{" "}
-              <strong className="text-slate-200">operacionais</strong> (sem capacidade neste cadastro).
-            </p>
-            <form onSubmit={onSaveVehicle} className="grid gap-2">
-              <input className={inputClass} placeholder="Nome do veículo" value={vehicleForm.nome} onChange={(e) => setVehicleForm((f) => ({ ...f, nome: e.target.value }))} />
-              <input className={inputClass} placeholder="Placa" value={vehicleForm.placa} onChange={(e) => setVehicleForm((f) => ({ ...f, placa: e.target.value }))} />
-              <input className={inputClass} placeholder="Marca (opcional)" value={vehicleForm.marca} onChange={(e) => setVehicleForm((f) => ({ ...f, marca: e.target.value }))} />
-              <input className={inputClass} placeholder="Modelo (opcional)" value={vehicleForm.modelo} onChange={(e) => setVehicleForm((f) => ({ ...f, modelo: e.target.value }))} />
-              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-700/80 bg-slate-900/40 px-3 py-3 text-sm text-slate-200">
-                <input
-                  type="checkbox"
-                  checked={vehicleForm.usa_para_transporte}
-                  onChange={(e) =>
-                    setVehicleForm((f) => ({
-                      ...f,
-                      usa_para_transporte: e.target.checked,
-                      capacidade_ton: e.target.checked ? f.capacidade_ton : "",
-                    }))
-                  }
-                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-600"
-                />
-                <span>
-                  <span className="font-medium text-white">Usado para transporte (romaneio)</span>
-                  <span className="mt-0.5 block text-xs font-normal text-slate-400">Marque só se o veículo participa do controle diário de transporte.</span>
-                </span>
-              </label>
-              {vehicleForm.usa_para_transporte ? (
-                <div className="grid gap-1">
-                  <label htmlFor="vehicle-cap-ton" className="text-xs font-medium text-slate-300">
-                    Capacidade (toneladas) <span className="text-rose-300">*</span>
-                  </label>
-                  <input
-                    id="vehicle-cap-ton"
-                    className={inputClass}
-                    type="number"
-                    inputMode="decimal"
-                    min="0.01"
-                    step="0.01"
-                    required
-                    placeholder="Ex.: 25,5"
-                    value={vehicleForm.capacidade_ton}
-                    onChange={(e) => setVehicleForm((f) => ({ ...f, capacidade_ton: e.target.value }))}
-                  />
-                </div>
-              ) : null}
-              <button className="fc-btn rounded-lg bg-blue-600 px-4 py-3">{vehicleForm.id ? "Atualizar" : "Criar"}</button>
-            </form>
-          </article>
-
-          <article className="fc-card border-blue-500/20 p-5">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-base font-semibold text-white">Veículos cadastrados</h3>
-              <span className="rounded-full border border-slate-700 bg-slate-900/70 px-2 py-1 text-xs text-slate-300">
-                Página {vehiclesPage} de {vehiclesTotalPages}
-              </span>
-            </div>
-            <input
-              className={inputClass}
-              placeholder="Buscar veículo"
-              value={search.vehicles}
-              onChange={(e) => {
-                setVehiclesPage(1);
-                setSearch((s) => ({ ...s, vehicles: e.target.value }));
-              }}
-            />
-            <div className="mt-4 space-y-3">
-              {loadingVehicles && <SkeletonRows rows={4} />}
-              {!loadingVehicles && vehicles.length === 0 && <EmptyState compact title="Sem veículos cadastrados" description="Cadastre o primeiro veículo para vincular aos motoristas." />}
-              {vehicles.map((v) => (
-                <article key={`veh-${v.id}`} className="flex items-center justify-between gap-3 rounded-xl border border-slate-700/90 bg-slate-950/65 p-4 shadow-md shadow-slate-950/30">
-                  <div className="text-left">
-                    <p className="font-medium text-slate-100">{v.nome}</p>
-                    <p className="text-xs text-slate-400">{v.placa}</p>
-                    <p className="text-xs text-slate-500">
-                      {v.marca || "-"} {v.modelo || ""}
-                    </p>
-                    <p className="mt-1.5 text-xs text-slate-400">
-                      Tipo:{" "}
-                      <span
-                        className={
-                          v.usa_para_transporte
-                            ? "font-semibold text-blue-200"
-                            : "font-semibold text-slate-200"
-                        }
-                      >
-                        {v.usa_para_transporte ? "Transporte" : "Operacional"}
-                      </span>
-                      {v.usa_para_transporte && v.capacidade_ton != null && v.capacidade_ton !== "" ? (
-                        <span className="text-slate-500"> · {v.capacidade_ton} t</span>
-                      ) : null}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setVehicleForm({
-                          id: v.id,
-                          nome: v.nome,
-                          placa: v.placa,
-                          marca: v.marca || "",
-                          modelo: v.modelo || "",
-                          usa_para_transporte: Boolean(v.usa_para_transporte),
-                          capacidade_ton: v.capacidade_ton != null && v.capacidade_ton !== "" ? String(v.capacidade_ton) : "",
-                        })
-                      }
-                      className="fc-btn rounded-lg border border-blue-400/35 bg-blue-500/15 px-3 py-1.5 text-xs text-blue-100"
-                    >
-                      Editar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onDelete("vehicles", v.id)}
-                      className="fc-btn rounded-lg border border-red-400/35 bg-red-500/10 px-3 py-1.5 text-xs text-red-200"
-                    >
-                      Excluir
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
-            <PaginationControls
-              page={vehiclesPage}
-              totalPages={vehiclesTotalPages}
-              onPrev={() => setVehiclesPage((p) => Math.max(1, p - 1))}
-              onNext={() => setVehiclesPage((p) => Math.min(vehiclesTotalPages, p + 1))}
-            />
-          </article>
-        </section>
-      )}
     </div>
   );
 }

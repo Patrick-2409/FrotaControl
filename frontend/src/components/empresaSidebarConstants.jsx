@@ -122,7 +122,10 @@ export function EmpresaMenuIcon({ type }) {
   );
 }
 
-/** Gestão clássica de veículos (legado) — rota mantida, oculta no menu. */
+/** Painel operacional de veículos (fonte única de cadastro de frota). */
+export const FROTA_PANEL_PATH = "/empresa/frota";
+
+/** Gestão clássica de veículos (legado) — redireciona para FROTA_PANEL_PATH. */
 export const VEICULOS_LEGACY_PATH = "/dashboard/gestao?secao=veiculos";
 
 /** Cadastro legado de motoristas na gestão — centralizado em /empresa/pessoas. */
@@ -181,7 +184,7 @@ export const EMPRESA_SIDEBAR_SECTIONS = filterEmpresaSidebarSections([
   {
     id: "admin",
     title: null,
-    items: [{ to: "/dashboard/gestao", label: "Administração", icon: "management", match: "gestao-root" }],
+    items: [{ to: "/dashboard/gestao", label: "Contas de acesso", icon: "management", match: "gestao-root" }],
   },
 ]);
 

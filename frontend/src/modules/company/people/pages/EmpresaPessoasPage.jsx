@@ -7,6 +7,7 @@ import BIDashboardShell from "../../bi/components/BIDashboardShell";
 import EmpresaModuleErrorPanel from "../../shared/components/EmpresaModuleErrorPanel";
 import ExecutiveKpiCard from "../components/ExecutiveKpiCard";
 import { resolveBackendAssetUrl } from "../../../../services/api";
+import { FROTA_PANEL_PATH } from "../../../../components/empresaSidebarConstants";
 import PeopleRoleFilter from "../components/PeopleRoleFilter";
 import { useEmpresaPeople } from "../hooks/useEmpresaPeople";
 import { CNH_CATEGORIAS, cnhBadgeClass, cnhStatusLabel, getCnhStatus } from "../../../../utils/cnhStatus";
@@ -351,8 +352,11 @@ export default function EmpresaPessoasPage() {
           <div>
             <h2 className="text-lg font-semibold text-zinc-100">Gestão de pessoas</h2>
             <p className="mt-1 max-w-2xl text-sm text-zinc-500">
-              Fluxo: criar conta em Administração → definir papel e perfil aqui → vincular veículo (motoristas) →
-              salvar.
+              Fluxo: criar conta em Contas de acesso → definir papel e perfil aqui → vincular veículo em{" "}
+              <Link to={FROTA_PANEL_PATH} className="text-sky-400/90 hover:text-sky-300">
+                Painel frota
+              </Link>{" "}
+              (motoristas) → salvar.
             </p>
           </div>
           <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end lg:justify-between">
