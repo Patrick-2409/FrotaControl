@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
-import api, { extractApiErrorMessage, getFriendlyApiErrorMessage } from "../../../../services/api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import api from "../../../../services/api";
+import { fleetErrorMessage, fleetGet, FLEET_LOAD_ERROR } from "../utils/fleetApi";
 
 const fmtInt = (n) => Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 
@@ -147,56 +148,77 @@ export function useEmpresaFleet() {
   });
   const [maintSaving, setMaintSaving] = useState(false);
 
+  const vehiclesReqRef = useRef(0);
+  const summaryReqRef = useRef(0);
+  const summaryLoadedRef = useRef(false);
+
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 320);
     return () => clearTimeout(t);
   }, [search]);
 
   const loadSummary = useCallback(async () => {
+    const reqId = ++summaryReqRef.current;
     setSummaryLoading(true);
     setSummaryError(null);
     try {
-      const { data } = await api.get("/dashboard/fleet/summary");
+      const { data } = await fleetGet("/dashboard/fleet/summary", { label: "fetch-fleet-summary" });
+      if (reqId !== summaryReqRef.current) return;
       setSummary(data?.summary ?? null);
     } catch (e) {
-      setSummaryError(getFriendlyApiErrorMessage(e) || extractApiErrorMessage(e));
+      if (reqId !== summaryReqRef.current) return;
+      setSummaryError(fleetErrorMessage(e, FLEET_LOAD_ERROR));
       setSummary(null);
     } finally {
-      setSummaryLoading(false);
+      if (reqId === summaryReqRef.current) setSummaryLoading(false);
     }
   }, []);
 
   const loadVehicles = useCallback(async () => {
+    const reqId = ++vehiclesReqRef.current;
     setListLoading(true);
     setListError(null);
     try {
-      const { data } = await api.get("/dashboard/manage/vehicles", {
+      const { data } = await fleetGet("/dashboard/manage/vehicles", {
+        label: "fetch-veiculos",
         params: {
           page,
-          limit: 25,
+          limit: 20,
           search: debouncedSearch,
           status_operacional: statusFilter || undefined,
           tipo: tipoFilter || undefined,
         },
       });
+      if (reqId !== vehiclesReqRef.current) return;
       setVehicles(data?.items ?? []);
       setTotal(Number(data?.total ?? 0));
       setTotalPages(Number(data?.totalPages ?? 1));
     } catch (e) {
-      setListError(getFriendlyApiErrorMessage(e) || extractApiErrorMessage(e));
+      if (reqId !== vehiclesReqRef.current) return;
+      setListError(fleetErrorMessage(e, FLEET_LOAD_ERROR));
       setVehicles([]);
+      setTotal(0);
+      setTotalPages(1);
     } finally {
-      setListLoading(false);
+      if (reqId === vehiclesReqRef.current) setListLoading(false);
     }
   }, [page, debouncedSearch, statusFilter, tipoFilter]);
 
   useEffect(() => {
-    loadSummary();
-  }, [loadSummary]);
-
-  useEffect(() => {
-    loadVehicles();
-  }, [loadVehicles]);
+    let cancelled = false;
+    (async () => {
+      await loadVehicles();
+      if (cancelled) return;
+      if (!summaryLoadedRef.current) {
+        summaryLoadedRef.current = true;
+        await loadSummary();
+      }
+    })();
+    return () => {
+      cancelled = true;
+      vehiclesReqRef.current += 1;
+    };
+  }, [loadVehicles, loadSummary]);
 
   const openCreate = useCallback(() => {
     setSelected(null);
@@ -225,7 +247,9 @@ export function useEmpresaFleet() {
     }
     setMaintLoading(true);
     try {
-      const { data } = await api.get(`/dashboard/fleet/vehicles/${vehicleId}/maintenance`);
+      const { data } = await fleetGet(`/dashboard/fleet/vehicles/${vehicleId}/maintenance`, {
+        label: "fetch-fleet-manutencao",
+      });
       setMaintItems(data?.items ?? []);
     } catch {
       setMaintItems([]);
@@ -235,9 +259,10 @@ export function useEmpresaFleet() {
   }, []);
 
   useEffect(() => {
-    if (panelOpen && selected?.id) loadMaintenance(selected.id);
-    else if (!selected) setMaintItems([]);
-  }, [panelOpen, selected?.id, loadMaintenance, selected]);
+    const vehicleId = selected?.id;
+    if (panelOpen && vehicleId) loadMaintenance(vehicleId);
+    else if (!panelOpen || !vehicleId) setMaintItems([]);
+  }, [panelOpen, selected?.id, loadMaintenance]);
 
   const saveVehicle = useCallback(async () => {
     setSaving(true);
@@ -253,7 +278,7 @@ export function useEmpresaFleet() {
       await loadSummary();
       closePanel();
     } catch (e) {
-      setSaveError(getFriendlyApiErrorMessage(e) || extractApiErrorMessage(e));
+      setSaveError(fleetErrorMessage(e));
     } finally {
       setSaving(false);
     }

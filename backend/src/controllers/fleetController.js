@@ -29,7 +29,12 @@ const getSummary = async (req, res) => {
   if (!empresaId) {
     return res.status(400).json({ success: false, error: "empresa_id é obrigatório" });
   }
+  const t0 = Date.now();
   const summary = await fleetModel.getFleetSummary(empresaId);
+  if (process.env.NODE_ENV !== "production") {
+    const ms = Date.now() - t0;
+    if (ms > 800) console.warn(`[getFleetSummary] empresa=${empresaId} ${ms}ms`);
+  }
   return res.json({
     success: true,
     summary,

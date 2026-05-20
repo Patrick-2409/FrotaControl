@@ -155,7 +155,10 @@ const listVehicles = async (
 
   if (search) {
     extraClauses.push(
-      `(v.nome ILIKE $${paramIdx} OR v.placa ILIKE $${paramIdx} OR COALESCE(v.marca, '') ILIKE $${paramIdx} OR COALESCE(v.modelo, '') ILIKE $${paramIdx} OR COALESCE(v.tipo, '') ILIKE $${paramIdx} OR u.nome ILIKE $${paramIdx})`
+      `(v.nome ILIKE $${paramIdx} OR v.placa ILIKE $${paramIdx} OR COALESCE(v.marca, '') ILIKE $${paramIdx} OR COALESCE(v.modelo, '') ILIKE $${paramIdx} OR COALESCE(v.tipo, '') ILIKE $${paramIdx} OR EXISTS (
+         SELECT 1 FROM usuarios u
+         WHERE u.veiculo_id = v.id AND u.empresa_id = v.empresa_id AND u.nome ILIKE $${paramIdx}
+       ))`
     );
     extraVals.push(`%${search}%`);
     paramIdx += 1;
@@ -180,17 +183,22 @@ const listVehicles = async (
   const qLimit = `$${paramIdx}`;
   const qOffset = `$${paramIdx + 1}`;
 
-  const count = await pool.query(
-    `SELECT COUNT(*)::int AS total
+  const countSql = `SELECT COUNT(*)::int AS total
      FROM veiculos v
-     LEFT JOIN usuarios u ON u.veiculo_id = v.id AND u.empresa_id = v.empresa_id
-     WHERE v.empresa_id = $1 ${transportClause} ${capacidadeClause} ${whereSearch}`,
-    countValues
-  );
+     WHERE v.empresa_id = $1 ${transportClause} ${capacidadeClause} ${whereSearch}`;
+
+  const t0 = Date.now();
+  const count = await pool.query(countSql, countValues);
   const { rows } = await pool.query(
-    `SELECT v.*, u.id AS motorista_id, u.nome AS motorista_nome
+    `SELECT v.*, m.motorista_id, m.motorista_nome
      FROM veiculos v
-     LEFT JOIN usuarios u ON u.veiculo_id = v.id AND u.empresa_id = v.empresa_id
+     LEFT JOIN LATERAL (
+       SELECT u.id AS motorista_id, u.nome AS motorista_nome
+       FROM usuarios u
+       WHERE u.veiculo_id = v.id AND u.empresa_id = v.empresa_id
+       ORDER BY u.id
+       LIMIT 1
+     ) m ON true
      WHERE v.empresa_id = $1
      ${transportClause}
      ${capacidadeClause}
@@ -199,6 +207,10 @@ const listVehicles = async (
      LIMIT ${qLimit} OFFSET ${qOffset}`,
     rowsValues
   );
+  if (process.env.NODE_ENV !== "production") {
+    const ms = Date.now() - t0;
+    if (ms > 500) console.warn(`[listVehicles] empresa=${empresa_id} ${ms}ms total=${count.rows[0]?.total}`);
+  }
   return { items: rows, total: count.rows[0].total };
 };
 

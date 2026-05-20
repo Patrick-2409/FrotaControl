@@ -270,6 +270,13 @@ const initDb = async () => {
       ON usuarios (cpf_id)
       WHERE role = 'MOTORISTA';
     CREATE INDEX IF NOT EXISTS idx_veiculos_empresa_id ON veiculos (empresa_id);
+    CREATE INDEX IF NOT EXISTS idx_veiculos_empresa_created ON veiculos (empresa_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_veiculos_empresa_status ON veiculos (empresa_id, status_operacional);
+    CREATE INDEX IF NOT EXISTS idx_usuarios_veiculo_empresa ON usuarios (veiculo_id, empresa_id)
+      WHERE veiculo_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_romaneios_veiculo_empresa_data ON romaneios (veiculo_id, empresa_id, data DESC);
+    CREATE INDEX IF NOT EXISTS idx_combustiveis_veiculo_empresa_data ON combustiveis (veiculo_id, empresa_id, data DESC);
+    CREATE INDEX IF NOT EXISTS idx_parte_diaria_veiculo_empresa_data ON parte_diaria (veiculo_id, empresa_id, data DESC);
     CREATE INDEX IF NOT EXISTS idx_romaneios_empresa_data ON romaneios (empresa_id, data DESC);
     CREATE INDEX IF NOT EXISTS idx_combustiveis_empresa_data ON combustiveis (empresa_id, data DESC);
     CREATE INDEX IF NOT EXISTS idx_parte_diaria_empresa_data ON parte_diaria (empresa_id, data DESC);

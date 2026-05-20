@@ -81,7 +81,7 @@ export default function EmpresaFrotaPage() {
       headerAside={headerAside}
     >
 
-      {fl.summaryError ? (
+      {fl.summaryError && !fl.summary ? (
         <div className="mt-6">
           <EmpresaModuleErrorPanel title="Resumo indisponível" description={fl.summaryError} onRetry={fl.refetchSummary} />
         </div>
@@ -204,10 +204,15 @@ export default function EmpresaFrotaPage() {
 
         {fl.listError ? (
           <div className="mt-4">
-            <EmpresaModuleErrorPanel title="Lista indisponível" description={fl.listError} onRetry={fl.refetchVehicles} />
+            <EmpresaModuleErrorPanel
+              title="Erro ao carregar dados da frota"
+              description={fl.listError}
+              onRetry={fl.refetchVehicles}
+            />
           </div>
         ) : (
-          <div className="mt-4 overflow-x-auto rounded-xl border border-zinc-800/90">
+          <>
+        <div className="mt-4 overflow-x-auto rounded-xl border border-zinc-800/90">
             <table className="min-w-[720px] w-full border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-zinc-800 bg-zinc-900/60 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
@@ -275,14 +280,14 @@ export default function EmpresaFrotaPage() {
               </tbody>
             </table>
           </div>
+          <PaginationControls
+            page={fl.page}
+            totalPages={fl.totalPages}
+            onPrev={() => fl.setPage((p) => Math.max(1, p - 1))}
+            onNext={() => fl.setPage((p) => Math.min(fl.totalPages, p + 1))}
+          />
+          </>
         )}
-
-        <PaginationControls
-          page={fl.page}
-          totalPages={fl.totalPages}
-          onPrev={() => fl.setPage((p) => Math.max(1, p - 1))}
-          onNext={() => fl.setPage((p) => Math.min(fl.totalPages, p + 1))}
-        />
       </section>
 
       {fl.panelOpen ? (
