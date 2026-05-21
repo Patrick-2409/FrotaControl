@@ -591,16 +591,6 @@ export default function ParteDiariaPage({ onSaved }) {
         <textarea className={inputClass} value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} />
       </FormField>
 
-      <button
-        type="button"
-        className="fc-btn btn-secondary mb-2 rounded-lg px-3 py-2 text-sm"
-        onClick={() => {
-          setForm((prev) => ({ ...prev, source_id: generateId(), version_of: prev.source_id }));
-          emitToast("Registro duplicado. Ajuste e salve.");
-        }}
-      >
-        Duplicar registro
-      </button>
       <SaveBar loading={loading} label="SALVAR PARTE DIÁRIA" />
     </form>
   );
