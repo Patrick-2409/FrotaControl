@@ -431,7 +431,7 @@ export default function CombustivelPage({ onSaved }) {
               setShowForm((prev) => !prev);
               setSubmitAttempted(false);
             }}
-            className="fc-btn rounded-lg border border-blue-500/35 bg-blue-500/15 px-3 py-2 text-sm text-blue-100"
+            className="fc-btn btn-primary rounded-lg px-3 py-2 text-sm"
           >
             {showForm ? "Fechar lançamento" : "+ Novo abastecimento"}
           </button>
@@ -576,7 +576,7 @@ export default function CombustivelPage({ onSaved }) {
       </div>
       <button
         type="button"
-        className="mb-2 rounded-lg border border-slate-700 px-3 py-2 text-sm"
+        className="fc-btn btn-secondary mb-2 rounded-lg px-3 py-2 text-sm"
         onClick={() => {
           setForm((prev) => ({ ...prev, source_id: generateId(), version_of: prev.source_id }));
           emitToast("Registro duplicado. Ajuste e salve.");

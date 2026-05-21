@@ -593,7 +593,7 @@ export default function ParteDiariaPage({ onSaved }) {
 
       <button
         type="button"
-        className="mb-2 rounded-lg border border-slate-700 px-3 py-2 text-sm"
+        className="fc-btn btn-secondary mb-2 rounded-lg px-3 py-2 text-sm"
         onClick={() => {
           setForm((prev) => ({ ...prev, source_id: generateId(), version_of: prev.source_id }));
           emitToast("Registro duplicado. Ajuste e salve.");

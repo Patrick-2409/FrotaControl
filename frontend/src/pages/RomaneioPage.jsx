@@ -132,7 +132,7 @@ export default function RomaneioPage() {
           <button
             type="button"
             onClick={clearFilters}
-            className="fc-btn rounded-lg border border-slate-600 px-3 py-1.5 text-xs text-slate-200"
+            className="fc-btn btn-secondary rounded-lg px-3 py-1.5 text-xs"
           >
             Limpar filtros
           </button>

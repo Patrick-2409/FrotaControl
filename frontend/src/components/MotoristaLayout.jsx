@@ -106,7 +106,7 @@ export default function MotoristaLayout({ children, onSync, pendingCount, online
                 tap(8);
                 setProfileMenuOpen((prev) => !prev);
               }}
-              className="fc-btn rounded-full border border-slate-700/80 bg-slate-900/70 p-1"
+              className="fc-btn btn-secondary rounded-full p-1"
               aria-expanded={profileMenuOpen}
               aria-label="Abrir menu do perfil"
             >
@@ -119,7 +119,7 @@ export default function MotoristaLayout({ children, onSync, pendingCount, online
                 <button
                   type="button"
                   onClick={logout}
-                  className="fc-btn mt-3 w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100"
+                  className="fc-btn btn-secondary mt-3 w-full rounded-lg px-3 py-2 text-sm"
                 >
                   Sair
                 </button>
@@ -147,10 +147,10 @@ export default function MotoristaLayout({ children, onSync, pendingCount, online
           <button
             type="button"
             onClick={toggleFieldMode}
-            className={`fc-btn rounded-full border px-3 py-1 ${
+            className={`fc-btn btn-secondary rounded-full px-3 py-1 ${
               fieldExtremeMode
-                ? "border-cyan-300 bg-cyan-400/20 text-cyan-100"
-                : "border-slate-600 bg-slate-800 text-slate-200"
+                ? "border-cyan-300/70 bg-cyan-400/20 text-cyan-100"
+                : ""
             }`}
             aria-pressed={fieldExtremeMode}
           >
@@ -176,7 +176,7 @@ export default function MotoristaLayout({ children, onSync, pendingCount, online
             tap(10);
             onSync();
           }}
-          className={`fc-btn fixed z-40 rounded-full bg-emerald-600 px-5 py-3 text-sm font-bold text-white shadow-2xl shadow-emerald-950/40 transition-all duration-200 hover:bg-emerald-500 ${
+          className={`fc-btn btn-success fixed z-40 rounded-full px-5 py-3 text-sm font-bold shadow-2xl shadow-emerald-950/40 transition-all duration-200 ${
             hasSaveBarOnScreen
               ? "bottom-[calc(10rem+env(safe-area-inset-bottom,0px))] sm:bottom-[calc(6.5rem+env(safe-area-inset-bottom,0px))]"
               : "bottom-[calc(6.5rem+env(safe-area-inset-bottom,0px))]"

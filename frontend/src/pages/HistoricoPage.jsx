@@ -292,13 +292,13 @@ export default function HistoricoPage({ reloadKey }) {
                     <div className="mt-3 flex gap-2">
                       <button
                         onClick={() => setSelectedRow(row)}
-                        className="fc-btn rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-200"
+                        className="fc-btn btn-secondary rounded-lg px-4 py-2 text-sm"
                       >
                         Visualizar
                       </button>
                       <button
                         onClick={() => onDelete(row)}
-                        className="fc-btn rounded-lg border border-red-600 px-4 py-2 text-sm text-red-300"
+                        className="fc-btn rounded-lg border border-red-600/70 bg-red-900/20 px-4 py-2 text-sm text-red-200"
                       >
                         Excluir
                       </button>
@@ -312,7 +312,7 @@ export default function HistoricoPage({ reloadKey }) {
                           };
                           navigate(pathMap[row.module]);
                         }}
-                        className="fc-btn rounded-lg border border-blue-600 px-4 py-2 text-sm text-blue-300"
+                        className="fc-btn btn-primary rounded-lg px-4 py-2 text-sm"
                       >
                         Editar
                       </button>
@@ -340,7 +340,7 @@ export default function HistoricoPage({ reloadKey }) {
               <button
                 type="button"
                 onClick={() => setSelectedRow(null)}
-                className="fc-btn rounded-lg border border-slate-600 px-3 py-1.5 text-xs text-slate-200"
+                className="fc-btn btn-secondary rounded-lg px-3 py-1.5 text-xs"
               >
                 Fechar
               </button>
@@ -355,14 +355,14 @@ export default function HistoricoPage({ reloadKey }) {
               <button
                 type="button"
                 onClick={() => exportSingle("pdf", selectedRow)}
-                className="fc-btn rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-200"
+                className="fc-btn btn-secondary rounded-lg px-3 py-2 text-sm"
               >
                 {exporting === `pdf:${selectedRow?.source_id || "item"}` ? "Gerando PDF..." : "Exportar PDF"}
               </button>
               <button
                 type="button"
                 onClick={() => exportSingle("excel", selectedRow)}
-                className="fc-btn rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-200"
+                className="fc-btn btn-secondary rounded-lg px-3 py-2 text-sm"
               >
                 {exporting === `excel:${selectedRow?.source_id || "item"}` ? "Gerando Excel..." : "Exportar Excel"}
               </button>

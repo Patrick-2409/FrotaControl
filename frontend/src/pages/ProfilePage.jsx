@@ -141,7 +141,7 @@ export default function ProfilePage() {
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="fc-btn rounded-lg border border-blue-400/35 bg-blue-500/15 px-4 py-2 text-sm text-blue-100"
+            className="fc-btn btn-secondary rounded-lg px-4 py-2 text-sm"
           >
             {uploading ? "Enviando foto..." : "Alterar foto"}
           </button>
@@ -163,7 +163,7 @@ export default function ProfilePage() {
           <button
             type="submit"
             disabled={savingProfile}
-            className="fc-btn rounded-lg border border-blue-400/35 bg-blue-500/15 px-4 py-2 text-sm text-blue-100"
+            className="fc-btn btn-secondary rounded-lg px-4 py-2 text-sm"
           >
             {savingProfile ? "Salvando perfil..." : "Salvar nome do perfil"}
           </button>
@@ -196,7 +196,7 @@ export default function ProfilePage() {
           <button
             type="submit"
             disabled={savingPassword}
-            className="fc-btn rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white"
+            className="fc-btn btn-primary rounded-lg px-4 py-2 text-sm font-semibold"
           >
             {savingPassword ? "Salvando..." : "Alterar senha"}
           </button>
@@ -210,7 +210,7 @@ export default function ProfilePage() {
             <button
               type="button"
               onClick={() => setShowDiagnostics((prev) => !prev)}
-              className="fc-btn rounded-lg border border-indigo-400/35 bg-indigo-500/10 px-3 py-1.5 text-xs text-indigo-100"
+              className="fc-btn btn-secondary rounded-lg px-3 py-1.5 text-xs"
             >
               {showDiagnostics ? "Ocultar painel" : "Mostrar painel"}
             </button>
@@ -226,7 +226,7 @@ export default function ProfilePage() {
                   type="button"
                   onClick={loadDiagnostics}
                   disabled={diagnosticsLoading}
-                  className="fc-btn rounded-lg border border-slate-600 px-3 py-1.5 text-xs text-slate-200"
+                  className="fc-btn btn-secondary rounded-lg px-3 py-1.5 text-xs"
                 >
                   {diagnosticsLoading ? "Atualizando..." : "Atualizar diagnóstico"}
                 </button>
