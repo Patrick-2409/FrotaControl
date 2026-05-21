@@ -15,6 +15,19 @@ const fmtTon = (n) =>
 const fmtPct = (n) =>
   Number(n || 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 1 });
 
+const fmtCountLabel = (count, singular, plural) => {
+  const n = Number(count) || 0;
+  return `${fmtInt(n)} ${n === 1 ? singular : plural}`;
+};
+
+function pickFirstNumber(...values) {
+  for (const v of values) {
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
 function fmtDiaBr(ymd) {
   if (!ymd || typeof ymd !== "string") return "—";
   const d = new Date(`${ymd}T12:00:00`);
@@ -82,6 +95,17 @@ function EmpresaTransportePageContent() {
       : 0;
 
   const pctTotal = Number(tr.comparacao?.percentual_total ?? 0);
+  const porTipoSemana = Array.isArray(prod.stats?.por_tipo_semana) ? prod.stats.por_tipo_semana : [];
+  const totalTiposComRegistros = porTipoSemana.filter((item) => Number(item?.total || 0) > 0).length;
+  const isHistoricoSomenteRomaneio = totalTiposComRegistros > 0 && totalTiposComRegistros === 1 && porTipoSemana.some((item) => item?.tipo === "romaneio" && Number(item?.total || 0) > 0);
+  const historicoItemSingular = isHistoricoSomenteRomaneio ? "romaneio" : "registro";
+  const historicoItemPlural = isHistoricoSomenteRomaneio ? "romaneios" : "registros";
+  const historicoTitle = isHistoricoSomenteRomaneio
+    ? "Histórico semanal (romaneios)"
+    : "Histórico semanal (registros operacionais)";
+  const historicoLead = isHistoricoSomenteRomaneio
+    ? "Últimos 7 dias — total de romaneios por dia."
+    : "Últimos 7 dias — total de registros operacionais por dia.";
 
   return (
     <BIDashboardShell eyebrow="Indicadores" title="Transporte" lead="Toneladas, metas e planejamento do período.">
@@ -146,14 +170,18 @@ function EmpresaTransportePageContent() {
                 <p className="mt-1 text-xl font-bold tabular-nums text-zinc-100">
                   {tr.viagensResumo ? `${fmtTon(tr.viagensResumo.total_toneladas_esteril)} t` : "—"}
                 </p>
-                <p className="mt-1 text-xs text-zinc-500">{fmtInt(tr.viagensResumo?.total_viagens_esteril)} viagens</p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  {fmtCountLabel(tr.viagensResumo?.total_viagens_esteril, "viagem", "viagens")}
+                </p>
               </div>
               <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-4 py-3">
                 <p className="text-xs text-amber-200/80">Rocha</p>
                 <p className="mt-1 text-xl font-bold tabular-nums text-zinc-100">
                   {tr.viagensResumo ? `${fmtTon(tr.viagensResumo.total_toneladas_rocha)} t` : "—"}
                 </p>
-                <p className="mt-1 text-xs text-zinc-500">{fmtInt(tr.viagensResumo?.total_viagens_rocha)} viagens</p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  {fmtCountLabel(tr.viagensResumo?.total_viagens_rocha, "viagem", "viagens")}
+                </p>
               </div>
             </div>
           </>
@@ -270,9 +298,9 @@ function EmpresaTransportePageContent() {
 
       <section className="fc-card border-zinc-800/90 p-5 lg:p-6" aria-labelledby="hist-semanal">
         <h3 id="hist-semanal" className="text-base font-semibold text-zinc-100">
-          Histórico semanal (lançamentos)
+          {historicoTitle}
         </h3>
-        <p className="mt-1 text-xs text-zinc-500">Últimos 7 dias — total de registros operacionais por dia.</p>
+        <p className="mt-1 text-xs text-zinc-500">{historicoLead}</p>
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[320px] text-left text-sm">
             <thead>
@@ -292,11 +320,17 @@ function EmpresaTransportePageContent() {
               ) : (
                 trendSorted.map((row) => {
                   const v = Number(row.total) || 0;
+                  const viagens = pickFirstNumber(row.viagens, row.total_viagens, row.viagens_total);
+                  const totalLabel = fmtCountLabel(v, historicoItemSingular, historicoItemPlural);
+                  const viagensLabel = viagens != null ? fmtCountLabel(viagens, "viagem", "viagens") : null;
                   const w = Math.round((v / maxTrend) * 100);
                   return (
                     <tr key={row.dia}>
                       <td className="py-2.5 pr-3 text-zinc-300">{fmtDiaBr(row.dia)}</td>
-                      <td className="py-2.5 pr-3 font-semibold tabular-nums text-zinc-100">{fmtInt(v)}</td>
+                      <td className="py-2.5 pr-3 font-semibold tabular-nums text-zinc-100">
+                        {totalLabel}
+                        {viagensLabel ? <span className="text-zinc-400"> {" • "}{viagensLabel}</span> : null}
+                      </td>
                       <td className="py-2.5">
                         <div className="h-2 min-w-[80px] overflow-hidden rounded-full bg-zinc-800">
                           <div className="h-2 rounded-full bg-amber-500/90" style={{ width: `${w}%` }} />

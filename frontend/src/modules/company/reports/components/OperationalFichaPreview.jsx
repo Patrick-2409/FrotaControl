@@ -8,6 +8,11 @@ const formTable = "fc-prev-form-table w-full border-collapse [&_td]:border [&_td
 const gridTable = "fc-prev-grid-table w-full border-collapse [&_th]:border [&_th]:border-zinc-600 [&_th]:bg-zinc-900 [&_th]:px-1 [&_th]:py-1 [&_th]:text-center [&_th]:text-[10px] [&_th]:font-semibold [&_td]:border [&_td]:border-zinc-600 [&_td]:px-1 [&_td]:py-1";
 const h4 = "mt-3 mb-1 text-[10px] font-bold uppercase tracking-wide text-zinc-300";
 
+function countLabel(count, singular, plural) {
+  const n = Number(count) || 0;
+  return `${n} ${n === 1 ? singular : plural}`;
+}
+
 function getEff(row) {
   return row?.data || row?.recorded_at_client;
 }
@@ -160,7 +165,7 @@ function RomaneioGroupTable({ group }) {
     return cells;
   };
   const destinos = [...new Set(group.trips.map((t) => String(t.destino || "").trim()).filter(Boolean))].join(" · ");
-  const obsExtras = group.trips.length > 10 ? ` Nota: ${group.trips.length} viagens no dia; colunas 1–10.` : "";
+  const obsExtras = group.trips.length > 10 ? ` Nota: ${countLabel(group.trips.length, "viagem", "viagens")} no dia; colunas 1–10.` : "";
   const obsCombined = [...new Set(group.trips.map((t) => String(t.observacao || "").trim()).filter(Boolean))].join(" | ");
   const obsFinal = [obsCombined, obsExtras].filter(Boolean).join("") || "—";
   const first = group.trips[0];
