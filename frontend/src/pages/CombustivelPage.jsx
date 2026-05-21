@@ -43,6 +43,7 @@ export default function CombustivelPage({ onSaved }) {
   });
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState(null);
+  const [fuelHistory, setFuelHistory] = useState([]);
 
   useEffect(() => {
     let active = true;
@@ -68,6 +69,23 @@ export default function CombustivelPage({ onSaved }) {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const { data } = await api.get("/app/historico");
+        if (!active) return;
+        const items = (Array.isArray(data?.items) ? data.items : []).filter((row) => row?.module === "combustiveis");
+        setFuelHistory(items);
+      } catch {
+        if (active) setFuelHistory([]);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [feedback]);
 
   useEffect(() => {
     try {
@@ -148,6 +166,44 @@ export default function CombustivelPage({ onSaved }) {
     () => vehicleOptions.find((vehicle) => Number(vehicle.id) === Number(form.veiculo_id)),
     [vehicleOptions, form.veiculo_id]
   );
+
+  const fuelSummary = useMemo(() => {
+    const toYmd = (raw) => String(raw || "").slice(0, 10);
+    const addDays = (ymd, delta) => {
+      const d = new Date(`${ymd}T12:00:00`);
+      if (Number.isNaN(d.getTime())) return ymd;
+      d.setDate(d.getDate() + delta);
+      return d.toISOString().slice(0, 10);
+    };
+    const today = new Date().toISOString().slice(0, 10);
+    const weekStart = addDays(today, -6);
+    const stats = {
+      diaLitros: 0,
+      diaValor: 0,
+      semanaLitros: 0,
+      semanaValor: 0,
+      qtdDia: 0,
+      qtdSemana: 0,
+    };
+    for (const row of fuelHistory) {
+      const payload = row?.payload || {};
+      const ymd = toYmd(payload.data || payload.recorded_at_client || row?.updatedAt);
+      const litros = Number(payload.litros || 0);
+      const valor = Number(payload.valor_total || 0);
+      if (ymd === today) {
+        stats.qtdDia += 1;
+        stats.diaLitros += litros;
+        stats.diaValor += valor;
+      }
+      if (ymd && ymd >= weekStart && ymd <= today) {
+        stats.qtdSemana += 1;
+        stats.semanaLitros += litros;
+        stats.semanaValor += valor;
+      }
+    }
+    const mediaLitroSemana = stats.semanaLitros > 0 ? stats.semanaValor / stats.semanaLitros : 0;
+    return { ...stats, mediaLitroSemana };
+  }, [fuelHistory]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -303,6 +359,29 @@ export default function CombustivelPage({ onSaved }) {
             : "Registro salvo localmente"}
         </p>
       )}
+      <div className="fc-op-section fc-stagger">
+        <p className="fc-op-section-title">Resumo diário e semanal</p>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+          <article className="rounded-lg border border-slate-700/80 bg-slate-900/60 p-2.5">
+            <p className="text-[11px] text-slate-400">Abastecimentos hoje</p>
+            <p className="mt-1 text-lg font-semibold text-white">{fuelSummary.qtdDia}</p>
+          </article>
+          <article className="rounded-lg border border-slate-700/80 bg-slate-900/60 p-2.5">
+            <p className="text-[11px] text-slate-400">Litros hoje</p>
+            <p className="mt-1 text-lg font-semibold text-white">{fuelSummary.diaLitros.toFixed(1)}</p>
+          </article>
+          <article className="rounded-lg border border-slate-700/80 bg-slate-900/60 p-2.5">
+            <p className="text-[11px] text-slate-400">Litros semana</p>
+            <p className="mt-1 text-lg font-semibold text-white">{fuelSummary.semanaLitros.toFixed(1)}</p>
+          </article>
+          <article className="rounded-lg border border-slate-700/80 bg-slate-900/60 p-2.5">
+            <p className="text-[11px] text-slate-400">Média R$/L (semana)</p>
+            <p className="mt-1 text-lg font-semibold text-white">
+              {fuelSummary.mediaLitroSemana.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+            </p>
+          </article>
+        </div>
+      </div>
       <div className="fc-op-section fc-stagger">
         <p className="fc-op-section-title">Identificação do Abastecimento</p>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

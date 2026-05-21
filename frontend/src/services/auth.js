@@ -21,10 +21,18 @@ const readStoredUser = () => {
 
 const normalizeUser = (user) => {
   if (!user) return user;
+  const tipoOperacao = String(user.veiculo_tipo_operacao || "").trim().toLowerCase();
+  const isTransporte =
+    user.role === "MOTORISTA" &&
+    Number(user.veiculo_id) > 0 &&
+    (tipoOperacao === "transporte" || Boolean(user.veiculo_usa_para_transporte));
   return {
     ...user,
     logo_url: resolveBackendAssetUrl(user.logo_url),
     profile_image_url: resolveBackendAssetUrl(user.profile_image_url),
+    motorista_perfil_operacional: isTransporte ? "motorista_transporte" : "motorista_apoio",
+    is_motorista_transporte: isTransporte,
+    is_motorista_apoio: user.role === "MOTORISTA" && !isTransporte,
   };
 };
 
@@ -156,6 +164,8 @@ export const AuthProvider = ({ children }) => {
       isAdminEmpresa: user?.role === "ADMIN_EMPRESA",
       isSuperAdmin: user?.role === "SUPER_ADMIN",
       isMotorista: user?.role === "MOTORISTA",
+      isMotoristaTransporte: Boolean(user?.is_motorista_transporte),
+      isMotoristaApoio: Boolean(user?.is_motorista_apoio),
       isApontador: user?.role === "APONTADOR",
     }),
     [user, loading]

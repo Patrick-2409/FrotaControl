@@ -283,7 +283,16 @@ function App() {
                     <Routes>
                       <Route path="/" element={<Navigate to="home" replace />} />
                       <Route path="home" element={<HomePage pendingCount={pendingCount} online={online} />} />
-                      <Route path="romaneio" element={<RomaneioPage onSaved={handleSaved} />} />
+                      <Route
+                        path="romaneio"
+                        element={
+                          user?.is_motorista_apoio ? (
+                            <Navigate to="/app/home" replace />
+                          ) : (
+                            <RomaneioPage onSaved={handleSaved} />
+                          )
+                        }
+                      />
                       <Route path="combustivel" element={<CombustivelPage onSaved={handleSaved} />} />
                       <Route path="parte-diaria" element={<ParteDiariaPage onSaved={handleSaved} />} />
                       <Route path="historico" element={<HistoricoPage reloadKey={reloadKey} />} />

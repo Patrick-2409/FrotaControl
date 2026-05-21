@@ -6,7 +6,7 @@ import SystemLogo from "./SystemLogo";
 import CompanyLogo from "./CompanyLogo";
 import Avatar from "./Avatar";
 
-const tabs = [
+const tabsBase = [
   { to: "/app/home", label: "Início" },
   { to: "/app/romaneio", label: "Romaneio" },
   { to: "/app/combustivel", label: "Combustível" },
@@ -20,7 +20,7 @@ export default function MotoristaLayout({ children, onSync, pendingCount, online
   const { pathname } = useLocation();
   const { tap } = useHaptics();
   const syncing = syncStatus === "syncing";
-  const saveBarRoutes = ["/app/romaneio", "/app/combustivel", "/app/parte-diaria"];
+  const saveBarRoutes = ["/app/combustivel", "/app/parte-diaria"];
   const hasSaveBarOnScreen = saveBarRoutes.includes(pathname);
   const [fieldExtremeMode, setFieldExtremeMode] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
@@ -57,6 +57,9 @@ export default function MotoristaLayout({ children, onSync, pendingCount, online
       return next;
     });
   };
+
+  const isApoio = Boolean(user?.is_motorista_apoio);
+  const tabs = isApoio ? tabsBase.filter((tab) => tab.to !== "/app/romaneio") : tabsBase;
 
   const lastSyncLabel = (() => {
     if (!lastSyncAt) return "—";

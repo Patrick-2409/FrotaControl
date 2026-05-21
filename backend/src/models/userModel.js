@@ -144,7 +144,10 @@ const createUser = async (
 
 const getMotoristaByLogin = async (login) => {
   const { rows } = await pool.query(
-    `SELECT u.*, e.nome AS empresa_nome, e.logo_url, v.nome AS veiculo_nome, v.placa, v.marca AS veiculo_marca, v.modelo AS veiculo_modelo
+    `SELECT u.*, e.nome AS empresa_nome, e.logo_url,
+            v.nome AS veiculo_nome, v.placa, v.marca AS veiculo_marca, v.modelo AS veiculo_modelo,
+            COALESCE(NULLIF(TRIM(v.tipo_operacao), ''), CASE WHEN COALESCE(v.usa_para_transporte, false) THEN 'transporte' ELSE 'apoio' END) AS veiculo_tipo_operacao,
+            COALESCE(v.usa_para_transporte, false) AS veiculo_usa_para_transporte
      FROM usuarios u
      JOIN empresas e ON e.id = u.empresa_id
      LEFT JOIN veiculos v ON v.id = u.veiculo_id
@@ -158,7 +161,10 @@ const getMotoristaByLogin = async (login) => {
 
 const getAdminsEmpresaByEmail = async (email) => {
   const { rows } = await pool.query(
-    `SELECT u.*, e.nome AS empresa_nome, e.logo_url, v.nome AS veiculo_nome, v.placa, v.marca AS veiculo_marca, v.modelo AS veiculo_modelo
+    `SELECT u.*, e.nome AS empresa_nome, e.logo_url,
+            v.nome AS veiculo_nome, v.placa, v.marca AS veiculo_marca, v.modelo AS veiculo_modelo,
+            COALESCE(NULLIF(TRIM(v.tipo_operacao), ''), CASE WHEN COALESCE(v.usa_para_transporte, false) THEN 'transporte' ELSE 'apoio' END) AS veiculo_tipo_operacao,
+            COALESCE(v.usa_para_transporte, false) AS veiculo_usa_para_transporte
      FROM usuarios u
      JOIN empresas e ON e.id = u.empresa_id
      LEFT JOIN veiculos v ON v.id = u.veiculo_id
@@ -173,7 +179,10 @@ const getAdminsEmpresaByEmail = async (email) => {
 
 const getApontadorByEmail = async (email) => {
   const { rows } = await pool.query(
-    `SELECT u.*, e.nome AS empresa_nome, e.logo_url, v.nome AS veiculo_nome, v.placa, v.marca AS veiculo_marca, v.modelo AS veiculo_modelo
+    `SELECT u.*, e.nome AS empresa_nome, e.logo_url,
+            v.nome AS veiculo_nome, v.placa, v.marca AS veiculo_marca, v.modelo AS veiculo_modelo,
+            COALESCE(NULLIF(TRIM(v.tipo_operacao), ''), CASE WHEN COALESCE(v.usa_para_transporte, false) THEN 'transporte' ELSE 'apoio' END) AS veiculo_tipo_operacao,
+            COALESCE(v.usa_para_transporte, false) AS veiculo_usa_para_transporte
      FROM usuarios u
      JOIN empresas e ON e.id = u.empresa_id
      LEFT JOIN veiculos v ON v.id = u.veiculo_id
@@ -219,7 +228,10 @@ const getUserById = async (id, empresa_id) => {
 
   const { rows } = await pool.query(
     `SELECT u.*,
-            e.nome AS empresa_nome, e.logo_url, v.nome AS veiculo_nome, v.placa, v.marca AS veiculo_marca, v.modelo AS veiculo_modelo
+            e.nome AS empresa_nome, e.logo_url,
+            v.nome AS veiculo_nome, v.placa, v.marca AS veiculo_marca, v.modelo AS veiculo_modelo,
+            COALESCE(NULLIF(TRIM(v.tipo_operacao), ''), CASE WHEN COALESCE(v.usa_para_transporte, false) THEN 'transporte' ELSE 'apoio' END) AS veiculo_tipo_operacao,
+            COALESCE(v.usa_para_transporte, false) AS veiculo_usa_para_transporte
      FROM usuarios u
      LEFT JOIN empresas e ON e.id = u.empresa_id
      LEFT JOIN veiculos v ON v.id = u.veiculo_id
