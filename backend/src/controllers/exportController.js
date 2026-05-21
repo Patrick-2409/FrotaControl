@@ -2138,42 +2138,6 @@ const getProfessionalPeriodLabel = (filters) => {
   return "Últimos 7 dias (automático)";
 };
 
-const addProfessionalResumoWorksheet = (workbook, { companyName, filters, rows }) => {
-  const ws = workbook.addWorksheet("Resumo");
-  ws.columns = [{ width: 34 }, { width: 42 }];
-  ws.views = [{ showGridLines: false }];
-  ws.mergeCells("A1:B1");
-  ws.getCell("A1").value = "RESUMO DA EXPORTAÇÃO";
-  ws.getCell("A1").font = { name: "Arial", size: 14, bold: true, color: { argb: "FF0F172A" } };
-  ws.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
-  ws.mergeCells("A2:B2");
-  ws.getCell("A2").value = `${companyName || "Empresa"} • Período: ${getProfessionalPeriodLabel(filters)}`;
-  ws.getCell("A2").font = { name: "Arial", size: 10, color: { argb: "FF334155" } };
-  ws.getCell("A2").alignment = { horizontal: "center", vertical: "middle" };
-
-  const totalLitros = rows.reduce((sum, row) => sum + (Number(row?.litros) || 0), 0);
-  const totalValor = rows.reduce((sum, row) => sum + (Number(row?.valor_total) || 0), 0);
-  const lines = [
-    ["Total de registros", rows.length],
-    ["Total litros", totalLitros],
-    ["Total valor", totalValor],
-  ];
-  let rowIdx = 4;
-  lines.forEach(([label, value]) => {
-    ws.getCell(`A${rowIdx}`).value = label;
-    ws.getCell(`A${rowIdx}`).font = { name: "Arial", size: 11, bold: true };
-    ws.getCell(`B${rowIdx}`).value = value;
-    if (label === "Total litros") ws.getCell(`B${rowIdx}`).numFmt = "#,##0.000";
-    if (label === "Total valor") ws.getCell(`B${rowIdx}`).numFmt = '"R$" #,##0.00';
-    ws.getCell(`B${rowIdx}`).font = { name: "Arial", size: 11 };
-    ws.getCell(`A${rowIdx}`).alignment = { vertical: "middle", horizontal: "left" };
-    ws.getCell(`B${rowIdx}`).alignment = { vertical: "middle", horizontal: "right" };
-    ws.getCell(`A${rowIdx}`).border = { top: { style: "thin" }, left: { style: "thin" }, bottom: { style: "thin" }, right: { style: "thin" } };
-    ws.getCell(`B${rowIdx}`).border = { top: { style: "thin" }, left: { style: "thin" }, bottom: { style: "thin" }, right: { style: "thin" } };
-    rowIdx += 1;
-  });
-};
-
 const addProfessionalFichaWorksheet = (workbook, { row, logoImageId, sheetNumber }) => {
   const ws = workbook.addWorksheet(`Ficha ${sheetNumber}`);
   applyBaseStyle(ws);
@@ -2304,11 +2268,6 @@ const exportExcel = async (req, res) => {
   } else if (isProfessionalLayout) {
     const fichaRows = data.filter((row) => row.tipo === "combustivel");
     const rows = fichaRows.length ? fichaRows : data;
-    addProfessionalResumoWorksheet(workbook, {
-      companyName: company?.nome || "Empresa",
-      filters: filtersEffective,
-      rows,
-    });
     rows.forEach((row, idx) => {
       addProfessionalFichaWorksheet(workbook, {
         row,
