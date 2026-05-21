@@ -28,6 +28,11 @@ function pickFirstNumber(...values) {
   return null;
 }
 
+function getTransportCount(row) {
+  const n = Number(row?.romaneios);
+  return Number.isFinite(n) ? n : 0;
+}
+
 function fmtDiaBr(ymd) {
   if (!ymd || typeof ymd !== "string") return "—";
   const d = new Date(`${ymd}T12:00:00`);
@@ -50,7 +55,7 @@ function EmpresaTransportePageContent() {
 
   const maxTrend = useMemo(() => {
     if (!trendSorted.length) return 1;
-    return Math.max(1, ...trendSorted.map((d) => Number(d.total) || 0));
+    return Math.max(1, ...trendSorted.map((d) => getTransportCount(d)));
   }, [trendSorted]);
 
   const pageLoading = prod.loading && !prod.stats;
@@ -95,17 +100,8 @@ function EmpresaTransportePageContent() {
       : 0;
 
   const pctTotal = Number(tr.comparacao?.percentual_total ?? 0);
-  const porTipoSemana = Array.isArray(prod.stats?.por_tipo_semana) ? prod.stats.por_tipo_semana : [];
-  const totalTiposComRegistros = porTipoSemana.filter((item) => Number(item?.total || 0) > 0).length;
-  const isHistoricoSomenteRomaneio = totalTiposComRegistros > 0 && totalTiposComRegistros === 1 && porTipoSemana.some((item) => item?.tipo === "romaneio" && Number(item?.total || 0) > 0);
-  const historicoItemSingular = isHistoricoSomenteRomaneio ? "romaneio" : "registro";
-  const historicoItemPlural = isHistoricoSomenteRomaneio ? "romaneios" : "registros";
-  const historicoTitle = isHistoricoSomenteRomaneio
-    ? "Histórico semanal (romaneios)"
-    : "Histórico semanal (registros operacionais)";
-  const historicoLead = isHistoricoSomenteRomaneio
-    ? "Últimos 7 dias — total de romaneios por dia."
-    : "Últimos 7 dias — total de registros operacionais por dia.";
+  const historicoTitle = "Histórico semanal (transporte)";
+  const historicoLead = "Últimos 7 dias — romaneios, viagens e tonelagem da operação de transporte.";
 
   return (
     <BIDashboardShell eyebrow="Indicadores" title="Transporte" lead="Toneladas, metas e planejamento do período.">
@@ -306,7 +302,7 @@ function EmpresaTransportePageContent() {
             <thead>
               <tr className="border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500">
                 <th className="pb-2 pr-3">Dia</th>
-                <th className="pb-2 pr-3">Total</th>
+                <th className="pb-2 pr-3">Operação</th>
                 <th className="pb-2">Ritmo</th>
               </tr>
             </thead>
@@ -319,17 +315,24 @@ function EmpresaTransportePageContent() {
                 </tr>
               ) : (
                 trendSorted.map((row) => {
-                  const v = Number(row.total) || 0;
+                  const v = getTransportCount(row);
+                  const apoio = Number.isFinite(Number(row?.apoio_registros)) ? Number(row.apoio_registros) : 0;
                   const viagens = pickFirstNumber(row.viagens, row.total_viagens, row.viagens_total);
-                  const totalLabel = fmtCountLabel(v, historicoItemSingular, historicoItemPlural);
+                  const toneladas = pickFirstNumber(row.toneladas, row.total_toneladas, row.toneladas_total);
                   const viagensLabel = viagens != null ? fmtCountLabel(viagens, "viagem", "viagens") : null;
+                  const toneladasLabel = toneladas != null && toneladas > 0 ? `${fmtTon(toneladas)} t` : null;
+                  const transporteLabel =
+                    v > 0 ? fmtCountLabel(v, "romaneio", "romaneios") : "Sem transporte";
+                  const apoioLabel = v <= 0 && apoio > 0 ? `Apoio: ${fmtCountLabel(apoio, "registro", "registros")}` : null;
                   const w = Math.round((v / maxTrend) * 100);
                   return (
                     <tr key={row.dia}>
                       <td className="py-2.5 pr-3 text-zinc-300">{fmtDiaBr(row.dia)}</td>
                       <td className="py-2.5 pr-3 font-semibold tabular-nums text-zinc-100">
-                        {totalLabel}
+                        {transporteLabel}
                         {viagensLabel ? <span className="text-zinc-400"> {" • "}{viagensLabel}</span> : null}
+                        {toneladasLabel ? <span className="text-zinc-400"> {" • "}{toneladasLabel}</span> : null}
+                        {apoioLabel ? <span className="text-zinc-400"> {" • "}{apoioLabel}</span> : null}
                       </td>
                       <td className="py-2.5">
                         <div className="h-2 min-w-[80px] overflow-hidden rounded-full bg-zinc-800">

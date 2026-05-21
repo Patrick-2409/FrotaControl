@@ -402,6 +402,7 @@ const dashboardStats = async ({ empresa_id = null, periodo = null } = {}) => {
   const values = [];
   let paramIdx = 1;
   const companyWhere = empresa_id != null ? `WHERE empresa_id = $${paramIdx++}` : "";
+  const companyWhereViagens = empresa_id != null ? "AND vi.empresa_id = $1" : "";
   if (empresa_id != null) {
     values.push(Number(empresa_id));
   }
@@ -474,11 +475,39 @@ const dashboardStats = async ({ empresa_id = null, periodo = null } = {}) => {
         ORDER BY total DESC
       ) y) AS por_motorista,
       (SELECT json_agg(z) FROM (
-        SELECT d::date AS dia, COALESCE(COUNT(b.tipo), 0)::int AS total
+        SELECT
+          d::date AS dia,
+          COALESCE(COUNT(b.tipo), 0)::int AS total,
+          COALESCE(COUNT(*) FILTER (WHERE b.tipo = 'romaneio'), 0)::int AS romaneios,
+          COALESCE(COUNT(*) FILTER (WHERE b.tipo <> 'romaneio'), 0)::int AS apoio_registros,
+          COALESCE(vd.total_viagens, 0)::int AS viagens,
+          COALESCE(vd.total_toneladas, 0)::double precision AS toneladas
         FROM ref,
              generate_series(ref.hoje - INTERVAL '6 days', ref.hoje, INTERVAL '1 day') d
         LEFT JOIN base b ON b.dia = d::date
-        GROUP BY d
+        LEFT JOIN (
+          SELECT
+            (vi.marcacao AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
+            COUNT(*)::int AS total_viagens,
+            COALESCE(
+              SUM(
+                CASE
+                  WHEN COALESCE(v.usa_para_transporte, false) = true
+                  THEN COALESCE(v.capacidade_ton, 0)
+                  ELSE 0
+                END
+              ),
+              0
+            )::double precision AS total_toneladas
+          FROM viagens vi
+          INNER JOIN veiculos v ON v.id = vi.veiculo_id AND v.empresa_id = vi.empresa_id
+          CROSS JOIN ref
+          WHERE (vi.marcacao AT TIME ZONE 'America/Sao_Paulo')::date >= ref.hoje - INTERVAL '6 days'
+            AND (vi.marcacao AT TIME ZONE 'America/Sao_Paulo')::date <= ref.hoje
+            ${companyWhereViagens}
+          GROUP BY (vi.marcacao AT TIME ZONE 'America/Sao_Paulo')::date
+        ) vd ON vd.dia = d::date
+        GROUP BY d, vd.total_viagens, vd.total_toneladas
         ORDER BY d
       ) z) AS ultimos_7_dias`,
     values
