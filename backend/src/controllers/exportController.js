@@ -2138,8 +2138,46 @@ const getProfessionalPeriodLabel = (filters) => {
   return "Últimos 7 dias (automático)";
 };
 
-const addProfessionalFichaWorksheet = (workbook, { row, logoImageId, sheetNumber }) => {
-  const ws = workbook.addWorksheet(`Ficha ${sheetNumber}`);
+const sanitizeSheetName = (value) => {
+  const base = String(value || "")
+    .replace(/[\\/*?:[\]]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+  return base || "Ficha";
+};
+
+const reserveSheetName = (usedNames, preferredName) => {
+  const normalized = sanitizeSheetName(preferredName);
+  const maxLen = 31;
+  const toKey = (name) => String(name).toLowerCase();
+  let candidate = normalized.slice(0, maxLen);
+  if (!usedNames.has(toKey(candidate))) {
+    usedNames.add(toKey(candidate));
+    return candidate;
+  }
+  for (let i = 2; i <= 999; i += 1) {
+    const suffix = ` (${i})`;
+    const room = maxLen - suffix.length;
+    candidate = `${normalized.slice(0, Math.max(1, room))}${suffix}`;
+    if (!usedNames.has(toKey(candidate))) {
+      usedNames.add(toKey(candidate));
+      return candidate;
+    }
+  }
+  const fallback = `Ficha-${Date.now()}`.slice(0, maxLen);
+  usedNames.add(toKey(fallback));
+  return fallback;
+};
+
+const getAbastecimentoSheetDateLabel = (row) => {
+  const ymd = asYmdSp(getEffectiveDateValue(row));
+  if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return "";
+  const [yyyy, mm, dd] = ymd.split("-");
+  return `${dd}-${mm}-${yyyy}`;
+};
+
+const addProfessionalFichaWorksheet = (workbook, { row, logoImageId, sheetName = "Ficha" }) => {
+  const ws = workbook.addWorksheet(sheetName);
   applyBaseStyle(ws);
   ws.pageSetup = {
     paperSize: 9,
@@ -2268,11 +2306,15 @@ const exportExcel = async (req, res) => {
   } else if (isProfessionalLayout) {
     const fichaRows = data.filter((row) => row.tipo === "combustivel");
     const rows = fichaRows.length ? fichaRows : data;
+    const usedSheetNames = new Set();
     rows.forEach((row, idx) => {
+      const preferredSheetName =
+        rows.length > 1 ? getAbastecimentoSheetDateLabel(row) || `Ficha ${idx + 1}` : `Ficha ${idx + 1}`;
+      const sheetName = reserveSheetName(usedSheetNames, preferredSheetName);
       addProfessionalFichaWorksheet(workbook, {
         row,
         logoImageId,
-        sheetNumber: idx + 1,
+        sheetName,
       });
     });
   } else {
