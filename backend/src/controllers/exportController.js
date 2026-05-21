@@ -136,6 +136,7 @@ const parseExportFilters = (query = {}) => {
       data_fim: z.string().optional(),
       mes: z.string().optional(),
       motorista: z.string().optional(),
+      veiculo: z.string().optional(),
       tipo: z.preprocess((v) => {
         const s = String(v ?? "").trim();
         if (!s) return undefined;
@@ -155,6 +156,7 @@ const parseExportFilters = (query = {}) => {
       data_fim: normalizedDateEnd,
       mes: normalizedMonth,
       motorista: query.motorista ? String(query.motorista).trim() : undefined,
+      veiculo: query.veiculo ? String(query.veiculo).trim() : undefined,
       tipo: query.tipo ? String(query.tipo).trim() : undefined,
       source_id: query.source_id ? String(query.source_id).trim() : undefined,
       modelo: query.modelo,
@@ -190,6 +192,7 @@ const formatExportFiltersSummaryPt = (filter, recordCount = 0) => {
     lines.push(`Filtro — intervalo: ${filter.data_inicio || "—"} a ${filter.data_fim || "—"}`);
   }
   if (filter.motorista) lines.push(`Filtro — motorista / texto: ${filter.motorista}`);
+  if (filter.veiculo) lines.push(`Filtro — veículo / placa: ${filter.veiculo}`);
   if (filter.tipo) lines.push(`Filtro — tipo de registo: ${filter.tipo}`);
   if (filter.modelo === "porto") lines.push("Modelo de impressão: Porto (grelhas e resumo de produção quando aplicável).");
   if (filter.source_id) lines.push(`Filtro — registo específico: ${filter.source_id}`);

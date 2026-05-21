@@ -217,6 +217,7 @@ const list = async (req, res) => {
     data_fim: normalizedDateEnd,
     mes: normalizedMonth,
     motorista: req.query.motorista ? String(req.query.motorista).trim() : undefined,
+    veiculo: req.query.veiculo ? String(req.query.veiculo).trim() : undefined,
     tipo: req.query.tipo ? String(req.query.tipo).trim() : undefined,
   };
   if (!normalizedQuery.data) delete normalizedQuery.data;
@@ -224,6 +225,7 @@ const list = async (req, res) => {
   if (!normalizedQuery.data_fim) delete normalizedQuery.data_fim;
   if (!normalizedQuery.mes) delete normalizedQuery.mes;
   if (!normalizedQuery.motorista) delete normalizedQuery.motorista;
+  if (!normalizedQuery.veiculo) delete normalizedQuery.veiculo;
   if (!normalizedQuery.tipo) delete normalizedQuery.tipo;
 
   const filter = z
@@ -233,6 +235,7 @@ const list = async (req, res) => {
       data_fim: z.string().optional(),
       mes: z.string().optional(),
       motorista: z.string().optional(),
+      veiculo: z.string().optional(),
       tipo: z.enum(["romaneio", "combustivel", "parte_diaria"]).optional(),
       page: z.coerce.number().int().positive().optional(),
       limit: z.coerce.number().int().positive().max(1_000_000).optional(),

@@ -141,6 +141,7 @@ const listManagerRecords = async ({
   data_fim,
   mes,
   motorista,
+  veiculo,
   tipo,
   source_id,
   page = 1,
@@ -187,6 +188,16 @@ const listManagerRecords = async ({
         LOWER(translate(COALESCE(u.nome, ''), '${accentSource}', '${accentTarget}')) LIKE
         LOWER(translate($${values.length}, '${accentSource}', '${accentTarget}'))
         OR COALESCE(u.cpf_id, '') LIKE REPLACE($${values.length}, '%', '')
+      )`
+    );
+  }
+  if (veiculo) {
+    values.push(`%${String(veiculo).toLowerCase()}%`);
+    where.push(
+      `(
+        LOWER(translate(COALESCE(v.nome, ''), '${accentSource}', '${accentTarget}')) LIKE
+        LOWER(translate($${values.length}, '${accentSource}', '${accentTarget}'))
+        OR LOWER(COALESCE(v.placa, '')) LIKE LOWER(translate($${values.length}, '${accentSource}', '${accentTarget}'))
       )`
     );
   }

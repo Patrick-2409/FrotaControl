@@ -1,85 +1,159 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../../../services/auth";
 import api from "../../../../services/api";
-import ManagerRecordsFiltersCard from "../../../../components/reports/ManagerRecordsFiltersCard";
 import EmptyState from "../../../../components/EmptyState";
 import { InlineSpinner } from "../../../../components/LoadingState";
 import {
   typeLabelMap,
   todayAsInput,
-  temPeriodoExplicitoNoFiltro,
   formatExportPeriodoLinha,
+  formatOperationalData,
 } from "../../../../utils/managerRecordsOperational";
-import useDebouncedValue from "../../../../hooks/useDebouncedValue";
 import { useOperationalExport } from "../../../../hooks/useOperationalExport";
-import { REPORT_HUB_CATEGORIES } from "../reportsHubCategories";
 import { useReportsHubPersistence } from "../useReportsHubPersistence";
-import OperationalFichaPreview from "../components/OperationalFichaPreview";
+import { inputClass } from "../../../../components/FormField";
 
-/** Pré-visualização na hub: no máximo estes registos no DOM (exportação continua completa no servidor). */
 const PREVIEW_RECORD_LIMIT = 100;
+const DEBOUNCE_MS = 380;
+
+const REPORT_TYPES = [
+  { key: "romaneio", label: "Transporte" },
+  { key: "combustivel", label: "Combustível" },
+  { key: "parte_diaria", label: "Pessoas" },
+];
+
+const addDays = (ymd, delta) => {
+  const d = new Date(`${ymd}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return ymd;
+  d.setDate(d.getDate() + delta);
+  return d.toISOString().slice(0, 10);
+};
+
+const currentMonth = () => {
+  const today = todayAsInput();
+  return today.slice(0, 7);
+};
+
+const applyPeriodPreset = (prev, preset) => {
+  const today = todayAsInput();
+  if (preset === "hoje") {
+    return { ...prev, preset, periodo: "dia", data: today, mes: "", data_inicio: "", data_fim: "" };
+  }
+  if (preset === "ultimos_7_dias") {
+    return {
+      ...prev,
+      preset,
+      periodo: "intervalo",
+      data: "",
+      mes: "",
+      data_inicio: addDays(today, -6),
+      data_fim: today,
+    };
+  }
+  if (preset === "mes_atual") {
+    return { ...prev, preset, periodo: "mes", data: "", mes: currentMonth(), data_inicio: "", data_fim: "" };
+  }
+  return {
+    ...prev,
+    preset,
+    periodo: "intervalo",
+    data: "",
+    mes: "",
+    data_inicio: prev.data_inicio || addDays(today, -6),
+    data_fim: prev.data_fim || today,
+  };
+};
 
 const defaultFiltro = () => ({
   data: todayAsInput(),
   data_inicio: "",
   data_fim: "",
-  mes: "",
+  mes: currentMonth(),
   motorista: "",
+  veiculo: "",
   tipo: "",
   periodo: "dia",
+  preset: "hoje",
 });
 
 export default function EmpresaRelatoriosPage() {
-  const navigate = useNavigate();
   const { user } = useAuth();
-  const setPage = useCallback(() => {}, []);
   const [filtro, setFiltro] = useState(defaultFiltro);
-  const [applyTick, setApplyTick] = useState(0);
-  const [localTreeSearch, setLocalTreeSearch] = useState("");
-  const [expandedCat, setExpandedCat] = useState(REPORT_HUB_CATEGORIES[0]?.id || "");
-  const debouncedMotorista = useDebouncedValue(filtro.motorista);
+  const [queryFiltro, setQueryFiltro] = useState(defaultFiltro);
   const [previewRows, setPreviewRows] = useState([]);
   const [previewTotal, setPreviewTotal] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
-  const [pendingExport, setPendingExport] = useState(null);
-  const { exporting, download, downloadCsv } = useOperationalExport(filtro, debouncedMotorista);
-  const periodoExplicito = temPeriodoExplicitoNoFiltro(filtro);
+  const previewCacheRef = useRef(new Map());
 
-  const tipoExportLabel = typeLabelMap[filtro.tipo] || typeLabelMap[""];
+  const { favorites, recent, exportHistory, pushRecent, toggleFavorite, logExport } = useReportsHubPersistence();
+  const { exporting, download } = useOperationalExport(queryFiltro, queryFiltro.motorista, queryFiltro.veiculo);
+
+  const tipoExportLabel = typeLabelMap[queryFiltro.tipo] || typeLabelMap[""];
   const periodoExportLabel = useMemo(
-    () => formatExportPeriodoLinha(filtro),
-    [filtro.data, filtro.data_fim, filtro.data_inicio, filtro.mes, filtro.periodo, filtro.tipo]
+    () => formatExportPeriodoLinha(queryFiltro),
+    [queryFiltro.data, queryFiltro.data_fim, queryFiltro.data_inicio, queryFiltro.mes, queryFiltro.periodo, queryFiltro.tipo]
   );
 
   useEffect(() => {
+    const timer = setTimeout(() => {
+      setQueryFiltro((prev) => ({
+        ...prev,
+        ...filtro,
+        motorista: String(filtro.motorista || "").trim(),
+        veiculo: String(filtro.veiculo || "").trim(),
+      }));
+    }, DEBOUNCE_MS);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [filtro.data, filtro.data_fim, filtro.data_inicio, filtro.mes, filtro.motorista, filtro.veiculo, filtro.periodo, filtro.tipo, filtro.preset]);
+
+  useEffect(() => {
+    const queryKey = JSON.stringify({
+      data: queryFiltro.data,
+      data_inicio: queryFiltro.data_inicio,
+      data_fim: queryFiltro.data_fim,
+      mes: queryFiltro.mes,
+      motorista: queryFiltro.motorista,
+      veiculo: queryFiltro.veiculo,
+      tipo: queryFiltro.tipo,
+      periodo: queryFiltro.periodo,
+    });
+    const cached = previewCacheRef.current.get(queryKey);
+    if (cached) {
+      setPreviewRows(cached.items);
+      setPreviewTotal(cached.total);
+      setPreviewError("");
+      return;
+    }
     let cancelled = false;
     (async () => {
       setPreviewLoading(true);
       setPreviewError("");
       try {
         const params = { page: 1, limit: PREVIEW_RECORD_LIMIT };
-        if (filtro.periodo === "dia" && filtro.data?.trim()) params.data = filtro.data.trim();
-        if (filtro.periodo === "mes" && filtro.mes?.trim()) params.mes = filtro.mes.trim();
-        if (filtro.periodo === "intervalo") {
-          if (filtro.data_inicio?.trim()) params.data_inicio = filtro.data_inicio.trim();
-          if (filtro.data_fim?.trim()) params.data_fim = filtro.data_fim.trim();
+        if (queryFiltro.periodo === "dia" && queryFiltro.data?.trim()) params.data = queryFiltro.data.trim();
+        if (queryFiltro.periodo === "mes" && queryFiltro.mes?.trim()) params.mes = queryFiltro.mes.trim();
+        if (queryFiltro.periodo === "intervalo") {
+          if (queryFiltro.data_inicio?.trim()) params.data_inicio = queryFiltro.data_inicio.trim();
+          if (queryFiltro.data_fim?.trim()) params.data_fim = queryFiltro.data_fim.trim();
         }
-        if (debouncedMotorista?.trim()) params.motorista = debouncedMotorista.trim();
-        if (filtro.tipo?.trim()) params.tipo = filtro.tipo.trim();
+        if (queryFiltro.motorista?.trim()) params.motorista = queryFiltro.motorista.trim();
+        if (queryFiltro.veiculo?.trim()) params.veiculo = queryFiltro.veiculo.trim();
+        if (queryFiltro.tipo?.trim()) params.tipo = queryFiltro.tipo.trim();
         const { data } = await api.get("/dashboard/registros", { params });
-        if (!cancelled) {
-          const items = data.items || [];
-          setPreviewRows(items.slice(0, PREVIEW_RECORD_LIMIT));
-          setPreviewTotal(typeof data.total === "number" ? data.total : null);
-        }
+        if (cancelled) return;
+        const items = Array.isArray(data?.items) ? data.items.slice(0, PREVIEW_RECORD_LIMIT) : [];
+        const total = typeof data?.total === "number" ? data.total : null;
+        previewCacheRef.current.set(queryKey, { items, total });
+        setPreviewRows(items);
+        setPreviewTotal(total);
       } catch (err) {
-        if (!cancelled) {
-          setPreviewRows([]);
-          setPreviewTotal(null);
-          setPreviewError(err.response?.data?.message || "Não foi possível carregar as fichas.");
-        }
+        if (cancelled) return;
+        setPreviewRows([]);
+        setPreviewTotal(null);
+        setPreviewError(err.response?.data?.message || "Não foi possível carregar os dados do relatório.");
       } finally {
         if (!cancelled) setPreviewLoading(false);
       }
@@ -87,13 +161,9 @@ export default function EmpresaRelatoriosPage() {
     return () => {
       cancelled = true;
     };
-  }, [applyTick, debouncedMotorista, filtro.data, filtro.data_fim, filtro.data_inicio, filtro.mes, filtro.periodo, filtro.tipo]);
+  }, [queryFiltro.data, queryFiltro.data_fim, queryFiltro.data_inicio, queryFiltro.mes, queryFiltro.motorista, queryFiltro.veiculo, queryFiltro.periodo, queryFiltro.tipo]);
 
-  useEffect(() => {
-    setPendingExport(null);
-  }, [applyTick, debouncedMotorista, filtro.data, filtro.data_fim, filtro.data_inicio, filtro.mes, filtro.periodo, filtro.tipo]);
-
-  const { favorites, recent, exportHistory, pushRecent, toggleFavorite, logExport } = useReportsHubPersistence();
+  const hasDataToExport = !previewLoading && previewRows.length > 0;
 
   useEffect(() => {
     const onExport = (ev) => {
@@ -104,52 +174,51 @@ export default function EmpresaRelatoriosPage() {
     return () => window.removeEventListener("fc:reports-export", onExport);
   }, [logExport]);
 
-  const hasActiveFilters = useMemo(
-    () =>
-      Boolean(
-        filtro.tipo ||
-          debouncedMotorista?.trim() ||
-          (filtro.periodo === "dia" && filtro.data) ||
-          (filtro.periodo === "mes" && filtro.mes) ||
-          (filtro.periodo === "intervalo" && (filtro.data_inicio || filtro.data_fim))
-      ),
-    [debouncedMotorista, filtro.data, filtro.data_fim, filtro.data_inicio, filtro.mes, filtro.periodo, filtro.tipo]
-  );
-
-  const activePeriodLabel = useMemo(() => {
-    if (filtro.periodo === "dia") return filtro.data ? `Dia: ${filtro.data}` : "Dia não definido";
-    if (filtro.periodo === "mes") return filtro.mes ? `Mês: ${filtro.mes}` : "Mês não definido";
-    if (filtro.periodo === "intervalo") {
-      if (filtro.data_inicio && filtro.data_fim) return `Período: ${filtro.data_inicio} até ${filtro.data_fim}`;
-      if (filtro.data_inicio) return `Início: ${filtro.data_inicio}`;
-      if (filtro.data_fim) return `Fim: ${filtro.data_fim}`;
-      return "Período não definido";
-    }
-    return "Período não definido";
-  }, [filtro.data, filtro.data_fim, filtro.data_inicio, filtro.mes, filtro.periodo]);
-
   const clearFilters = useCallback(() => {
-    setLocalTreeSearch("");
     setFiltro(defaultFiltro());
   }, []);
 
-  const handleCategoryItem = useCallback(
-    (item) => {
-      const { action } = item;
-      if (!action) return;
-      if (action.kind === "link") {
-        pushRecent({ id: `nav-${item.id}`, label: item.label });
-        navigate(action.to);
-        return;
-      }
-      if (action.kind === "filterTipo") {
-        setFiltro((prev) => ({ ...prev, tipo: action.tipo || "" }));
-        pushRecent({ id: `flt-${item.id}`, label: item.label });
-        setApplyTick((t) => t + 1);
-      }
-    },
-    [navigate, pushRecent]
+  const quickActions = useMemo(
+    () => [
+      {
+        id: "qa-tr-hoje",
+        label: "Transporte hoje",
+        run: () => {
+          setFiltro((prev) => applyPeriodPreset({ ...prev, tipo: "romaneio" }, "hoje"));
+          pushRecent({ id: "qa-tr-hoje", label: "Transporte hoje" });
+        },
+      },
+      {
+        id: "qa-tr-7d",
+        label: "Transporte 7 dias",
+        run: () => {
+          setFiltro((prev) => applyPeriodPreset({ ...prev, tipo: "romaneio" }, "ultimos_7_dias"));
+          pushRecent({ id: "qa-tr-7d", label: "Transporte 7 dias" });
+        },
+      },
+      {
+        id: "qa-cb-mes",
+        label: "Combustível mês",
+        run: () => {
+          setFiltro((prev) => applyPeriodPreset({ ...prev, tipo: "combustivel" }, "mes_atual"));
+          pushRecent({ id: "qa-cb-mes", label: "Combustível mês" });
+        },
+      },
+    ],
+    [pushRecent]
   );
+
+  const summary = useMemo(() => {
+    const motoristas = new Set(previewRows.map((r) => String(r.motorista || "").trim()).filter(Boolean));
+    const veiculos = new Set(
+      previewRows.map((r) => `${String(r.veiculo || "").trim()}|${String(r.placa || "").trim()}`).filter((v) => v !== "|")
+    );
+    return {
+      total: previewTotal != null ? previewTotal : previewRows.length,
+      motoristas: motoristas.size,
+      veiculos: veiculos.size,
+    };
+  }, [previewRows, previewTotal]);
 
   return (
     <div className="fc-reports-hub space-y-6 print:bg-white print:text-black">
@@ -158,18 +227,7 @@ export default function EmpresaRelatoriosPage() {
         <div className="mt-1 flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-xl font-semibold tracking-tight text-zinc-50 sm:text-2xl">Central de relatórios</h1>
-            <p className="mt-1 max-w-2xl text-sm text-zinc-400">
-              Fichas no mesmo layout do papel: escolher tipo e período, confirmar a grade e exportar Excel ou PDF.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2 print:hidden">
-            <button
-              type="button"
-              onClick={() => window.print()}
-              className="fc-btn rounded-lg border border-zinc-500 bg-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-100"
-            >
-              Imprimir tela
-            </button>
+            <p className="mt-1 max-w-2xl text-sm text-zinc-400">Selecione o tipo, ajuste o período e exporte o relatório com 1 clique.</p>
           </div>
         </div>
         {user?.empresa_nome ? (
@@ -182,56 +240,27 @@ export default function EmpresaRelatoriosPage() {
       <div className="grid gap-6 lg:grid-cols-[minmax(0,17.5rem)_minmax(0,1fr)]">
         <aside className="fc-reports-sidebar fc-card space-y-5 border-zinc-800/90 p-4 print:hidden">
           <div>
-            <p className="fc-erp-eyebrow text-zinc-400">Atalhos por categoria</p>
-            <nav className="mt-2 space-y-2" aria-label="Categorias de relatórios">
-              {REPORT_HUB_CATEGORIES.map((cat) => (
-                <div key={cat.id} className="rounded-lg border border-zinc-800/80 bg-zinc-950/40">
-                  <button
-                    type="button"
-                    onClick={() => setExpandedCat((cur) => (cur === cat.id ? "" : cat.id))}
-                    className="flex w-full items-center justify-between px-3 py-2 text-left text-sm font-semibold text-zinc-100"
-                  >
-                    {cat.label}
-                    <span className="text-xs text-zinc-500">{expandedCat === cat.id ? "−" : "+"}</span>
-                  </button>
-                  {expandedCat === cat.id ? (
-                    <ul className="border-t border-zinc-800/80 px-2 py-2">
-                      {cat.items.map((item) => {
-                        const favId = `fav-${item.id}`;
-                        const isFav = favorites.some((f) => f.id === favId);
-                        return (
-                          <li key={item.id} className="flex items-start gap-1 py-1">
-                            <button
-                              type="button"
-                              aria-label={isFav ? "Remover dos favoritos" : "Adicionar aos favoritos"}
-                              className={`mt-0.5 rounded p-0.5 text-lg leading-none ${isFav ? "text-amber-300" : "text-zinc-600 hover:text-zinc-400"}`}
-                              onClick={() =>
-                                toggleFavorite({
-                                  id: favId,
-                                  label: `${cat.label} — ${item.label}`,
-                                  kind: item.action?.kind,
-                                  to: item.action?.kind === "link" ? item.action.to : undefined,
-                                })
-                              }
-                            >
-                              ★
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleCategoryItem(item)}
-                              className="flex-1 rounded-md px-2 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-900/80"
-                            >
-                              <span className="font-medium text-zinc-100">{item.label}</span>
-                              {item.hint ? <span className="mt-0.5 block text-[11px] text-zinc-500">{item.hint}</span> : null}
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  ) : null}
-                </div>
-              ))}
-            </nav>
+            <p className="fc-erp-eyebrow text-zinc-400">Atalhos rápidos</p>
+            <div className="mt-2 space-y-2">
+              {quickActions.map((shortcut) => {
+                const isFav = favorites.some((f) => f.id === shortcut.id);
+                return (
+                  <div key={shortcut.id} className="flex items-center gap-2 rounded-lg border border-zinc-800/80 bg-zinc-950/40 p-2">
+                    <button
+                      type="button"
+                      aria-label={isFav ? "Remover dos favoritos" : "Adicionar aos favoritos"}
+                      className={`rounded p-0.5 text-lg leading-none ${isFav ? "text-amber-300" : "text-zinc-600 hover:text-zinc-400"}`}
+                      onClick={() => toggleFavorite({ id: shortcut.id, label: shortcut.label })}
+                    >
+                      ★
+                    </button>
+                    <button type="button" onClick={shortcut.run} className="flex-1 text-left text-xs font-medium text-zinc-200">
+                      {shortcut.label}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           <div>
@@ -242,13 +271,7 @@ export default function EmpresaRelatoriosPage() {
               <ul className="mt-2 space-y-1">
                 {favorites.map((f) => (
                   <li key={f.id}>
-                    {f.to ? (
-                      <Link to={f.to} className="block rounded-md px-2 py-1.5 text-xs text-sky-300 hover:bg-zinc-900/60">
-                        {f.label}
-                      </Link>
-                    ) : (
-                      <span className="block px-2 py-1.5 text-xs text-zinc-400">{f.label}</span>
-                    )}
+                    <span className="block rounded-md px-2 py-1.5 text-xs text-zinc-300">{f.label}</span>
                   </li>
                 ))}
               </ul>
@@ -288,29 +311,87 @@ export default function EmpresaRelatoriosPage() {
 
         <div className="min-w-0 space-y-6">
           <section className="fc-card border-zinc-800/90 p-4 print:hidden">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Passos 1 e 2 — Tipo e período</h2>
-            <p className="mt-1 text-xs text-zinc-500">Tipo de relatório em primeiro; depois dia, mês ou intervalo completo. «Filtrar» atualiza a ficha.</p>
-            <div className="mt-3">
-              <ManagerRecordsFiltersCard
-                filtro={filtro}
-                setFiltro={setFiltro}
-                setPage={setPage}
-                debouncedMotorista={debouncedMotorista}
-                localTreeSearch={localTreeSearch}
-                setLocalTreeSearch={setLocalTreeSearch}
-                hasActiveFilters={hasActiveFilters}
-                clearFilters={clearFilters}
-                activePeriodLabel={activePeriodLabel}
-                typeLabelMap={typeLabelMap}
-                onApplyFilter={() => setApplyTick((t) => t + 1)}
-                variant="hubMinimal"
-                tipoFirst
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Etapa 1 — Tipo de relatório</h2>
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+              {REPORT_TYPES.map((reportType) => (
+                <button
+                  key={reportType.key}
+                  type="button"
+                  onClick={() => setFiltro((prev) => ({ ...prev, tipo: reportType.key }))}
+                  className={`fc-btn rounded-lg border px-3 py-2 text-sm ${
+                    filtro.tipo === reportType.key
+                      ? "border-blue-500 bg-blue-500/20 text-blue-100"
+                      : "border-zinc-700 bg-zinc-950/50 text-zinc-300"
+                  }`}
+                >
+                  {reportType.label}
+                </button>
+              ))}
+            </div>
+
+            <h2 className="mt-5 text-xs font-semibold uppercase tracking-wide text-zinc-400">Etapa 2 — Período</h2>
+            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {[
+                ["hoje", "Hoje"],
+                ["ultimos_7_dias", "Últimos 7 dias"],
+                ["mes_atual", "Mês atual"],
+                ["personalizado", "Personalizado"],
+              ].map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setFiltro((prev) => applyPeriodPreset(prev, id))}
+                  className={`fc-btn rounded-lg border px-3 py-2 text-xs ${
+                    filtro.preset === id
+                      ? "border-blue-500 bg-blue-500/20 text-blue-100"
+                      : "border-zinc-700 bg-zinc-950/50 text-zinc-300"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {filtro.preset === "personalizado" ? (
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <input
+                  type="date"
+                  className={inputClass}
+                  value={filtro.data_inicio}
+                  onChange={(e) => setFiltro((prev) => ({ ...prev, data_inicio: e.target.value }))}
+                />
+                <input
+                  type="date"
+                  className={inputClass}
+                  value={filtro.data_fim}
+                  onChange={(e) => setFiltro((prev) => ({ ...prev, data_fim: e.target.value }))}
+                />
+              </div>
+            ) : null}
+
+            <h2 className="mt-5 text-xs font-semibold uppercase tracking-wide text-zinc-400">Filtros avançados (opcional)</h2>
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <input
+                placeholder="Motorista"
+                className={inputClass}
+                value={filtro.motorista}
+                onChange={(e) => setFiltro((prev) => ({ ...prev, motorista: e.target.value }))}
               />
+              <input
+                placeholder="Veículo ou placa"
+                className={inputClass}
+                value={filtro.veiculo}
+                onChange={(e) => setFiltro((prev) => ({ ...prev, veiculo: e.target.value }))}
+              />
+            </div>
+            <div className="mt-3 flex justify-end">
+              <button type="button" onClick={clearFilters} className="fc-btn rounded-lg border border-zinc-600 px-3 py-2 text-xs text-zinc-200">
+                Limpar filtros
+              </button>
             </div>
           </section>
 
           <section className="fc-card border-zinc-800/90 p-3 print:border-0 print:shadow-none sm:p-4">
-            <h2 className="mb-3 text-sm font-semibold text-zinc-200 print:hidden">Passo 2 — Ficha (como no papel)</h2>
+            <h2 className="mb-3 text-sm font-semibold text-zinc-200 print:hidden">Preview do relatório</h2>
             {previewError ? (
               <p className="rounded-lg border border-red-800/60 bg-red-950/30 px-4 py-3 text-sm text-red-200">{previewError}</p>
             ) : previewLoading ? (
@@ -319,119 +400,87 @@ export default function EmpresaRelatoriosPage() {
               </div>
             ) : (
               <>
-                {previewTotal != null && previewTotal > PREVIEW_RECORD_LIMIT ? (
-                  <p
-                    className="mb-3 rounded-lg border border-amber-700/50 bg-amber-950/35 px-3 py-2 text-xs text-amber-100 print:hidden"
-                    role="status"
-                  >
-                    Mostrando {PREVIEW_RECORD_LIMIT} de {previewTotal} registros
-                  </p>
-                ) : null}
-                <OperationalFichaPreview rows={previewRows} tipoFiltro={filtro.tipo} companyName={user?.empresa_nome || ""} />
+                {!previewRows.length ? (
+                  <EmptyState compact title="Nenhum registro encontrado para esse período" />
+                ) : (
+                  <>
+                    <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      <article className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3">
+                        <p className="text-[11px] uppercase tracking-wide text-zinc-500">Total de registros</p>
+                        <p className="mt-1 text-lg font-semibold text-zinc-100">{summary.total}</p>
+                      </article>
+                      <article className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3">
+                        <p className="text-[11px] uppercase tracking-wide text-zinc-500">Motoristas</p>
+                        <p className="mt-1 text-lg font-semibold text-zinc-100">{summary.motoristas}</p>
+                      </article>
+                      <article className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3">
+                        <p className="text-[11px] uppercase tracking-wide text-zinc-500">Veículos</p>
+                        <p className="mt-1 text-lg font-semibold text-zinc-100">{summary.veiculos}</p>
+                      </article>
+                    </div>
+                    {previewTotal != null && previewTotal > PREVIEW_RECORD_LIMIT ? (
+                      <p className="mb-3 rounded-lg border border-amber-700/50 bg-amber-950/35 px-3 py-2 text-xs text-amber-100" role="status">
+                        Mostrando {PREVIEW_RECORD_LIMIT} de {previewTotal} registros
+                      </p>
+                    ) : null}
+                    <div className="overflow-x-auto rounded-lg border border-zinc-800/90">
+                      <table className="w-full text-left text-sm">
+                        <thead className="bg-zinc-950/70 text-xs uppercase tracking-wide text-zinc-500">
+                          <tr>
+                            <th className="px-3 py-2">Data</th>
+                            <th className="px-3 py-2">Tipo</th>
+                            <th className="px-3 py-2">Motorista</th>
+                            <th className="px-3 py-2">Veículo</th>
+                            <th className="px-3 py-2">Placa</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-800/80">
+                          {previewRows.map((row) => (
+                            <tr key={`${row.tipo}-${row.id ?? row.source_id}`}>
+                              <td className="px-3 py-2 text-zinc-300">{formatOperationalData(row)}</td>
+                              <td className="px-3 py-2 text-zinc-100">{typeLabelMap[row.tipo] || row.tipo}</td>
+                              <td className="px-3 py-2 text-zinc-200">{row.motorista || "—"}</td>
+                              <td className="px-3 py-2 text-zinc-200">{row.veiculo || "—"}</td>
+                              <td className="px-3 py-2 text-zinc-400">{row.placa || "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
               </>
             )}
           </section>
 
           <section className="fc-card border-zinc-800/90 p-4 print:hidden">
-            <h2 className="text-sm font-semibold text-zinc-200">Passo 3 — Exportar</h2>
-            <p className="mt-1 text-xs text-zinc-500">Excel e PDF usam o modelo porto; CSV inclui colunas tabulares.</p>
-            {!periodoExplicito ? (
-              <p className="mt-3 rounded-lg border border-sky-800/40 bg-sky-950/25 px-3 py-2 text-xs text-sky-100">
-                Sem data explícita nestes filtros: o servidor usa automaticamente os <strong>últimos 7 dias</strong> (fuso
-                São Paulo). Limite de segurança: <strong>1000</strong> registros por exportação.
-              </p>
-            ) : null}
+            <h2 className="text-sm font-semibold text-zinc-200">Exportação</h2>
+            <p className="mt-1 text-xs text-zinc-500">
+              Tipo: <strong>{tipoExportLabel}</strong> • Período: <strong>{periodoExportLabel}</strong>
+            </p>
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                disabled={Boolean(exporting)}
-                onClick={() => setPendingExport("excel")}
+                disabled={Boolean(exporting) || !hasDataToExport}
+                onClick={() => download("pdf")}
                 className="fc-btn rounded-lg border border-blue-500 px-3 py-2 text-sm text-blue-300 disabled:opacity-40"
               >
-                Excel
+                Exportar PDF
               </button>
               <button
                 type="button"
-                disabled={Boolean(exporting)}
-                onClick={() => setPendingExport("pdf")}
+                disabled={Boolean(exporting) || !hasDataToExport}
+                onClick={() => download("excel")}
                 className="fc-btn rounded-lg border border-blue-500 px-3 py-2 text-sm text-blue-300 disabled:opacity-40"
               >
-                PDF
-              </button>
-              <button
-                type="button"
-                disabled={Boolean(exporting)}
-                onClick={() => setPendingExport("csv")}
-                className="fc-btn rounded-lg border border-teal-500/70 px-3 py-2 text-sm text-teal-200 disabled:opacity-40"
-              >
-                CSV
+                Exportar Excel
               </button>
               {exporting ? <InlineSpinner label="Preparando o arquivo…" /> : null}
             </div>
+            {!hasDataToExport ? (
+              <p className="mt-2 text-xs text-zinc-500">Nenhum dado disponível para exportar com os filtros atuais.</p>
+            ) : null}
           </section>
-
-          {pendingExport ? (
-            <div
-              className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print:hidden"
-              role="presentation"
-              onClick={() => !exporting && setPendingExport(null)}
-            >
-              <div
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="fc-export-confirm-title"
-                className="fc-card max-w-md border border-zinc-600 bg-zinc-950 p-5 shadow-xl"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <h3 id="fc-export-confirm-title" className="text-base font-semibold text-zinc-100">
-                  Confirmar exportação
-                </h3>
-                <p className="mt-3 text-sm leading-relaxed text-zinc-300">Você está exportando:</p>
-                <div className="mt-3 space-y-1 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-3 font-medium text-zinc-100">
-                  <p>{tipoExportLabel}</p>
-                  <p className="text-sm font-normal text-zinc-300">
-                    Período: <span className="text-zinc-100">{periodoExportLabel}</span>
-                  </p>
-                  <p className="text-sm font-normal text-zinc-300">
-                    Registros: <span className="text-zinc-100">{previewTotal != null ? previewTotal : "—"}</span>
-                  </p>
-                  <p className="text-sm font-normal text-zinc-300">
-                    Formato:{" "}
-                    <span className="text-zinc-100">
-                      {pendingExport === "excel" ? "Excel" : pendingExport === "pdf" ? "PDF" : "CSV"}
-                    </span>
-                  </p>
-                </div>
-                <p className="mt-3 text-xs text-zinc-500">
-                  O arquivo usa os mesmos filtros de tipo e período (Passo 1). Exportações acima de 1000 registros são
-                  bloqueadas no servidor.
-                </p>
-                <div className="mt-5 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={Boolean(exporting)}
-                    onClick={async () => {
-                      const fmt = pendingExport;
-                      setPendingExport(null);
-                      if (fmt === "csv") await downloadCsv();
-                      else if (fmt === "excel" || fmt === "pdf") await download(fmt);
-                    }}
-                    className="fc-btn rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
-                  >
-                    {exporting ? "A gerar…" : "Confirmar exportação"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={Boolean(exporting)}
-                    onClick={() => setPendingExport(null)}
-                    className="fc-btn rounded-lg border border-zinc-600 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-900 disabled:opacity-50"
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : null}
         </div>
       </div>
     </div>

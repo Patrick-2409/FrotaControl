@@ -28,12 +28,13 @@ async function messageFromExportError(err, fallback) {
 /**
  * Exportação em lote (Excel/PDF/CSV) com os mesmos parâmetros que `/dashboard/registros`.
  */
-export function useOperationalExport(filtro, debouncedMotorista) {
+export function useOperationalExport(filtro, debouncedMotorista, debouncedVeiculo = "") {
   const [exporting, setExporting] = useState("");
 
   const buildExportQueryParams = useCallback(() => {
     const params = {
       motorista: debouncedMotorista?.trim() || undefined,
+      veiculo: debouncedVeiculo?.trim() || undefined,
       modelo: "porto",
     };
     if (filtro.periodo === "dia") params.data = filtro.data?.trim() || undefined;
@@ -43,7 +44,7 @@ export function useOperationalExport(filtro, debouncedMotorista) {
       params.data_fim = filtro.data_fim?.trim() || undefined;
     }
     return params;
-  }, [debouncedMotorista, filtro.data, filtro.data_fim, filtro.data_inicio, filtro.mes, filtro.periodo]);
+  }, [debouncedMotorista, debouncedVeiculo, filtro.data, filtro.data_fim, filtro.data_inicio, filtro.mes, filtro.periodo]);
 
   const download = useCallback(
     async (tipo) => {
