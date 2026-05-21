@@ -33,6 +33,13 @@ function getTransportCount(row) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function fmtShortDateBr(ymd) {
+  if (!ymd || typeof ymd !== "string") return "—";
+  const d = new Date(`${ymd}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return ymd;
+  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+}
+
 function fmtDiaBr(ymd) {
   if (!ymd || typeof ymd !== "string") return "—";
   const d = new Date(`${ymd}T12:00:00`);
@@ -100,8 +107,8 @@ function EmpresaTransportePageContent() {
       : 0;
 
   const pctTotal = Number(tr.comparacao?.percentual_total ?? 0);
-  const historicoTitle = "Histórico semanal (transporte)";
-  const historicoLead = "Últimos 7 dias — romaneios, viagens e tonelagem da operação de transporte.";
+  const historicoTitle = "Histórico semanal de transporte";
+  const historicoLead = "Últimos 7 dias de operação (romaneios)";
 
   return (
     <BIDashboardShell eyebrow="Indicadores" title="Transporte" lead="Toneladas, metas e planejamento do período.">
@@ -297,8 +304,30 @@ function EmpresaTransportePageContent() {
           {historicoTitle}
         </h3>
         <p className="mt-1 text-xs text-zinc-500">{historicoLead}</p>
+        <div className="mt-4 rounded-lg border border-zinc-800/80 bg-zinc-950/50 p-3">
+          <div className="flex h-20 items-end gap-2 sm:h-24">
+            {trendSorted.length === 0 ? (
+              <div className="flex h-full w-full items-center justify-center text-xs text-zinc-500">Sem transporte</div>
+            ) : (
+              trendSorted.map((row) => {
+                const romaneios = getTransportCount(row);
+                const h = Math.max(8, Math.round((romaneios / maxTrend) * 100));
+                const barClass = romaneios > 0 ? "bg-amber-500/90" : "bg-zinc-700";
+                const tooltip = `${fmtShortDateBr(row.dia)} • ${fmtCountLabel(romaneios, "romaneio", "romaneios")}`;
+                return (
+                  <div key={`hist-bar-${row.dia}`} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+                    <div className="flex h-16 w-full items-end sm:h-20" title={tooltip} aria-label={tooltip}>
+                      <div className={`w-full rounded-sm ${barClass}`} style={{ height: `${h}%` }} />
+                    </div>
+                    <span className="text-[10px] text-zinc-500">{fmtShortDateBr(row.dia)}</span>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[320px] text-left text-sm">
+          <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500">
                 <th className="pb-2 pr-3">Dia</th>
@@ -316,27 +345,20 @@ function EmpresaTransportePageContent() {
               ) : (
                 trendSorted.map((row) => {
                   const v = getTransportCount(row);
-                  const apoio = Number.isFinite(Number(row?.apoio_registros)) ? Number(row.apoio_registros) : 0;
-                  const viagens = pickFirstNumber(row.viagens, row.total_viagens, row.viagens_total);
-                  const toneladas = pickFirstNumber(row.toneladas, row.total_toneladas, row.toneladas_total);
-                  const viagensLabel = viagens != null ? fmtCountLabel(viagens, "viagem", "viagens") : null;
-                  const toneladasLabel = toneladas != null && toneladas > 0 ? `${fmtTon(toneladas)} t` : null;
-                  const transporteLabel =
-                    v > 0 ? fmtCountLabel(v, "romaneio", "romaneios") : "Sem transporte";
-                  const apoioLabel = v <= 0 && apoio > 0 ? `Apoio: ${fmtCountLabel(apoio, "registro", "registros")}` : null;
+                  const transporteLabel = v > 0 ? fmtCountLabel(v, "romaneio", "romaneios") : "Sem transporte";
                   const w = Math.round((v / maxTrend) * 100);
                   return (
                     <tr key={row.dia}>
                       <td className="py-2.5 pr-3 text-zinc-300">{fmtDiaBr(row.dia)}</td>
                       <td className="py-2.5 pr-3 font-semibold tabular-nums text-zinc-100">
                         {transporteLabel}
-                        {viagensLabel ? <span className="text-zinc-400"> {" • "}{viagensLabel}</span> : null}
-                        {toneladasLabel ? <span className="text-zinc-400"> {" • "}{toneladasLabel}</span> : null}
-                        {apoioLabel ? <span className="text-zinc-400"> {" • "}{apoioLabel}</span> : null}
                       </td>
                       <td className="py-2.5">
                         <div className="h-2 min-w-[80px] overflow-hidden rounded-full bg-zinc-800">
-                          <div className="h-2 rounded-full bg-amber-500/90" style={{ width: `${w}%` }} />
+                          <div
+                            className={`h-2 rounded-full ${v > 0 ? "bg-amber-500/90" : "bg-zinc-700"}`}
+                            style={{ width: `${v > 0 ? w : 100}%` }}
+                          />
                         </div>
                       </td>
                     </tr>
