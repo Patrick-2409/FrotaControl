@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../services/auth";
 import FormField, { inputClass } from "../components/FormField";
 import { saveWithOffline } from "../services/syncService";
@@ -24,6 +24,27 @@ const normalizeDraftDatetime = (value) => {
   return normalized.slice(0, 10) === current.slice(0, 10) ? normalized : current;
 };
 const isSyncedStatus = (status) => status === "synced" || status === "sincronizado";
+const PERIOD_PRESETS = [
+  { id: "hoje", label: "Hoje" },
+  { id: "semana", label: "Semana" },
+  { id: "mes", label: "Mês" },
+  { id: "ano", label: "Ano" },
+];
+
+const addDays = (ymd, delta) => {
+  const d = new Date(`${ymd}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return ymd;
+  d.setDate(d.getDate() + delta);
+  return d.toISOString().slice(0, 10);
+};
+
+const formatMoneyBr = (value) =>
+  Number(value || 0).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 
 export default function CombustivelPage({ onSaved }) {
   const { user } = useAuth();
@@ -44,6 +65,10 @@ export default function CombustivelPage({ onSaved }) {
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [fuelHistory, setFuelHistory] = useState([]);
+  const [periodPreset, setPeriodPreset] = useState("semana");
+  const [showForm, setShowForm] = useState(false);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const litrosInputRef = useRef(null);
 
   useEffect(() => {
     let active = true;
@@ -121,19 +146,32 @@ export default function CombustivelPage({ onSaved }) {
     localStorage.setItem("fc_draft_combustivel", JSON.stringify(form));
   }, [form]);
 
-  const requiredChecks = useMemo(
-    () => ({
-      data: Boolean(form.data),
+  useEffect(() => {
+    if (!showForm) return;
+    const timer = window.setTimeout(() => {
+      litrosInputRef.current?.focus();
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [showForm]);
+
+  const requiredChecks = useMemo(() => {
+    return {
       veiculo_id: Boolean(form.veiculo_id),
       litros: Boolean(form.litros),
       valor_total: Boolean(form.valor_total),
       tipo_combustivel: Boolean(form.tipo_combustivel),
-    }),
-    [form.data, form.veiculo_id, form.litros, form.valor_total, form.tipo_combustivel]
-  );
-  const progress = Math.round(
-    (Object.values(requiredChecks).filter(Boolean).length / Object.keys(requiredChecks).length) * 100
-  );
+    };
+  }, [form.veiculo_id, form.litros, form.valor_total, form.tipo_combustivel]);
+
+  const hasFormInteraction = useMemo(() => {
+    return Boolean(
+      String(form.litros || "").trim() ||
+        String(form.valor_total || "").trim() ||
+        String(form.horimetro || "").trim() ||
+        String(form.hodometro || "").trim() ||
+        Number(form.veiculo_id) > 0
+    );
+  }, [form.litros, form.valor_total, form.horimetro, form.hodometro, form.veiculo_id]);
 
   const vehicleOptions = useMemo(() => {
     const byId = new Map();
@@ -169,45 +207,52 @@ export default function CombustivelPage({ onSaved }) {
 
   const fuelSummary = useMemo(() => {
     const toYmd = (raw) => String(raw || "").slice(0, 10);
-    const addDays = (ymd, delta) => {
-      const d = new Date(`${ymd}T12:00:00`);
-      if (Number.isNaN(d.getTime())) return ymd;
-      d.setDate(d.getDate() + delta);
-      return d.toISOString().slice(0, 10);
-    };
     const today = new Date().toISOString().slice(0, 10);
-    const weekStart = addDays(today, -6);
+    const periodStart =
+      periodPreset === "hoje"
+        ? today
+        : periodPreset === "semana"
+          ? addDays(today, -6)
+          : periodPreset === "mes"
+            ? `${today.slice(0, 7)}-01`
+            : `${today.slice(0, 4)}-01-01`;
     const stats = {
-      diaLitros: 0,
-      diaValor: 0,
-      semanaLitros: 0,
-      semanaValor: 0,
-      qtdDia: 0,
-      qtdSemana: 0,
+      totalAbastecimentos: 0,
+      litrosTotais: 0,
+      valorTotal: 0,
+      mediaLitro: 0,
     };
     for (const row of fuelHistory) {
       const payload = row?.payload || {};
       const ymd = toYmd(payload.data || payload.recorded_at_client || row?.updatedAt);
       const litros = Number(payload.litros || 0);
       const valor = Number(payload.valor_total || 0);
-      if (ymd === today) {
-        stats.qtdDia += 1;
-        stats.diaLitros += litros;
-        stats.diaValor += valor;
-      }
-      if (ymd && ymd >= weekStart && ymd <= today) {
-        stats.qtdSemana += 1;
-        stats.semanaLitros += litros;
-        stats.semanaValor += valor;
+      if (ymd && ymd >= periodStart && ymd <= today) {
+        stats.totalAbastecimentos += 1;
+        stats.litrosTotais += litros;
+        stats.valorTotal += valor;
       }
     }
-    const mediaLitroSemana = stats.semanaLitros > 0 ? stats.semanaValor / stats.semanaLitros : 0;
-    return { ...stats, mediaLitroSemana };
-  }, [fuelHistory]);
+    stats.mediaLitro = stats.litrosTotais > 0 ? stats.valorTotal / stats.litrosTotais : 0;
+    return stats;
+  }, [fuelHistory, periodPreset]);
+
+  const fieldErrors = useMemo(() => {
+    if (!submitAttempted) return {};
+    const errors = {};
+    const litrosNum = parseDecimalInput(form.litros);
+    const valorNum = parseDecimalInput(form.valor_total);
+    if (!form.veiculo_id) errors.veiculo_id = "Selecione o veículo.";
+    if (!Number.isFinite(litrosNum) || litrosNum <= 0) errors.litros = "Informe litros maiores que zero.";
+    if (!Number.isFinite(valorNum) || valorNum <= 0) errors.valor_total = "Informe o valor total maior que zero.";
+    if (!String(form.tipo_combustivel || "").trim()) errors.tipo_combustivel = "Selecione o combustível.";
+    return errors;
+  }, [submitAttempted, form.veiculo_id, form.litros, form.valor_total, form.tipo_combustivel]);
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!form.veiculo_id) {
+    setSubmitAttempted(true);
+    if (!requiredChecks.veiculo_id) {
       emitToast("Selecione o veículo (modelo e placa) para registrar o abastecimento.", "warning");
       return;
     }
@@ -313,6 +358,8 @@ export default function CombustivelPage({ onSaved }) {
         horimetro: "",
         hodometro: "",
       }));
+      setSubmitAttempted(false);
+      setShowForm(false);
     } catch (err) {
       console.error(err);
       emitToast(
@@ -328,20 +375,72 @@ export default function CombustivelPage({ onSaved }) {
   if (error) return <div className="fc-card p-4 text-sm text-red-300">Erro ao carregar dados</div>;
 
   return (
-    <form onSubmit={submit} className="fc-card fc-op-form space-y-4 p-4 pb-28">
-      <div className="fc-op-form-header p-3">
+    <form onSubmit={submit} className="space-y-4 pb-28">
+      <section className="fc-card space-y-4 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold text-white">Controle de Combustível Semanal</h2>
+          <h2 className="text-lg font-semibold text-white">Combustível</h2>
           <span className="fc-chip">Atividade: Combustível</span>
         </div>
         <p className="mt-1 text-sm text-slate-400">Motorista: {user?.nome} | Equipamento: {user?.veiculo_nome || "-"}</p>
-        <div className="fc-progress">
-          <div className="fc-progress-track">
-            <div className="fc-progress-bar" style={{ width: `${progress}%` }} />
-          </div>
-          <span className="fc-progress-label">Preenchimento obrigatório: {progress}%</span>
+        <div className="flex flex-wrap gap-2">
+          {PERIOD_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              onClick={() => setPeriodPreset(preset.id)}
+              className={`fc-btn rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                periodPreset === preset.id
+                  ? "border-blue-400/45 bg-blue-500/20 text-blue-100"
+                  : "border-slate-700 bg-slate-900/70 text-slate-300"
+              }`}
+            >
+              {preset.label}
+            </button>
+          ))}
         </div>
-      </div>
+      </section>
+
+      <section className="fc-card space-y-3 p-4">
+        <p className="text-sm font-semibold text-slate-100">Visão do período</p>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+          <div className="rounded-lg border border-slate-700/80 bg-slate-900/60 p-2.5">
+            <p className="text-[11px] text-slate-400">Abastecimentos</p>
+            <p className="mt-1 text-lg font-semibold text-white">{fuelSummary.totalAbastecimentos}</p>
+          </div>
+          <div className="rounded-lg border border-slate-700/80 bg-slate-900/60 p-2.5">
+            <p className="text-[11px] text-slate-400">Litros totais</p>
+            <p className="mt-1 text-lg font-semibold text-white">{fuelSummary.litrosTotais.toFixed(1)}</p>
+          </div>
+          <div className="rounded-lg border border-slate-700/80 bg-slate-900/60 p-2.5">
+            <p className="text-[11px] text-slate-400">Valor total</p>
+            <p className="mt-1 text-lg font-semibold text-white">{formatMoneyBr(fuelSummary.valorTotal)}</p>
+          </div>
+          <div className="rounded-lg border border-slate-700/80 bg-slate-900/60 p-2.5">
+            <p className="text-[11px] text-slate-400">Média R$/L</p>
+            <p className="mt-1 text-lg font-semibold text-white">{formatMoneyBr(fuelSummary.mediaLitro)}</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="fc-card space-y-4 p-4">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-semibold text-slate-100">Lançamento</p>
+          <button
+            type="button"
+            onClick={() => {
+              setShowForm((prev) => !prev);
+              setSubmitAttempted(false);
+            }}
+            className="fc-btn rounded-lg border border-blue-500/35 bg-blue-500/15 px-3 py-2 text-sm text-blue-100"
+          >
+            {showForm ? "Fechar lançamento" : "+ Novo abastecimento"}
+          </button>
+        </div>
+
+        {!showForm ? (
+          <p className="text-sm text-slate-400">Toque em “+ Novo abastecimento” para registrar um novo lançamento.</p>
+        ) : (
+          <>
       {feedback && (
         <p
           className={`mb-3 rounded-lg px-3 py-2 text-sm ${
@@ -360,35 +459,12 @@ export default function CombustivelPage({ onSaved }) {
         </p>
       )}
       <div className="fc-op-section fc-stagger">
-        <p className="fc-op-section-title">Resumo diário e semanal</p>
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-          <article className="rounded-lg border border-slate-700/80 bg-slate-900/60 p-2.5">
-            <p className="text-[11px] text-slate-400">Abastecimentos hoje</p>
-            <p className="mt-1 text-lg font-semibold text-white">{fuelSummary.qtdDia}</p>
-          </article>
-          <article className="rounded-lg border border-slate-700/80 bg-slate-900/60 p-2.5">
-            <p className="text-[11px] text-slate-400">Litros hoje</p>
-            <p className="mt-1 text-lg font-semibold text-white">{fuelSummary.diaLitros.toFixed(1)}</p>
-          </article>
-          <article className="rounded-lg border border-slate-700/80 bg-slate-900/60 p-2.5">
-            <p className="text-[11px] text-slate-400">Litros semana</p>
-            <p className="mt-1 text-lg font-semibold text-white">{fuelSummary.semanaLitros.toFixed(1)}</p>
-          </article>
-          <article className="rounded-lg border border-slate-700/80 bg-slate-900/60 p-2.5">
-            <p className="text-[11px] text-slate-400">Média R$/L (semana)</p>
-            <p className="mt-1 text-lg font-semibold text-white">
-              {fuelSummary.mediaLitroSemana.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-            </p>
-          </article>
-        </div>
-      </div>
-      <div className="fc-op-section fc-stagger">
         <p className="fc-op-section-title">Identificação do Abastecimento</p>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <FormField label="Data de execução">
           <input
             type="datetime-local"
-            className={`${inputClass} ${requiredChecks.data ? "fc-required-ok" : "fc-required-pending"}`}
+            className={inputClass}
             value={form.data}
             readOnly
           />
@@ -398,7 +474,7 @@ export default function CombustivelPage({ onSaved }) {
         </FormField>
         <FormField label="Tipo combustível">
           <select
-            className={`${inputClass} ${requiredChecks.tipo_combustivel ? "fc-required-ok" : "fc-required-pending"}`}
+            className={`${inputClass} ${fieldErrors.tipo_combustivel ? "border-red-500/60" : ""}`}
             value={form.tipo_combustivel}
             onChange={(e) => setForm({ ...form, tipo_combustivel: e.target.value })}
           >
@@ -406,6 +482,7 @@ export default function CombustivelPage({ onSaved }) {
             <option>Gasolina</option>
             <option>Etanol</option>
           </select>
+          {fieldErrors.tipo_combustivel ? <p className="mt-1 text-xs text-red-300">{fieldErrors.tipo_combustivel}</p> : null}
         </FormField>
         </div>
       </div>
@@ -413,7 +490,7 @@ export default function CombustivelPage({ onSaved }) {
         <p className="fc-op-section-title">Veículo Abastecido</p>
         <FormField label="Selecione o veículo">
           <select
-            className={`${inputClass} ${requiredChecks.veiculo_id ? "fc-required-ok" : "fc-required-pending"}`}
+            className={`${inputClass} ${fieldErrors.veiculo_id ? "border-red-500/60" : ""}`}
             value={form.veiculo_id ?? ""}
             onChange={(e) => setForm({ ...form, veiculo_id: e.target.value ? Number(e.target.value) : undefined })}
             disabled={vehiclesLoading}
@@ -427,6 +504,7 @@ export default function CombustivelPage({ onSaved }) {
               </option>
             ))}
           </select>
+          {fieldErrors.veiculo_id ? <p className="mt-1 text-xs text-red-300">{fieldErrors.veiculo_id}</p> : null}
         </FormField>
         {selectedVehicle ? (
           <p className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-xs text-blue-200">
@@ -454,10 +532,12 @@ export default function CombustivelPage({ onSaved }) {
             min="0"
             step="0.01"
             inputMode="decimal"
-            className={`${inputClass} ${requiredChecks.litros ? "fc-required-ok" : "fc-required-pending"}`}
+            ref={litrosInputRef}
+            className={`${inputClass} ${fieldErrors.litros ? "border-red-500/60" : ""}`}
             value={form.litros}
             onChange={(e) => setForm({ ...form, litros: e.target.value })}
           />
+          {fieldErrors.litros ? <p className="mt-1 text-xs text-red-300">{fieldErrors.litros}</p> : null}
         </FormField>
         <FormField label="Valor total (R$)">
           <input
@@ -467,10 +547,11 @@ export default function CombustivelPage({ onSaved }) {
             min="0"
             step="0.01"
             inputMode="decimal"
-            className={`${inputClass} ${requiredChecks.valor_total ? "fc-required-ok" : "fc-required-pending"}`}
+            className={`${inputClass} ${fieldErrors.valor_total ? "border-red-500/60" : ""}`}
             value={form.valor_total}
             onChange={(e) => setForm({ ...form, valor_total: e.target.value })}
           />
+          {fieldErrors.valor_total ? <p className="mt-1 text-xs text-red-300">{fieldErrors.valor_total}</p> : null}
           {Number(form.litros) > 0 && Number(form.valor_total) > 0 ? (
             <p className="mt-1 text-xs text-slate-400">
               Preço por litro (calculado):{" "}
@@ -503,7 +584,10 @@ export default function CombustivelPage({ onSaved }) {
       >
         Duplicar registro
       </button>
-      <SaveBar loading={loading} label="SALVAR ABASTECIMENTO" />
+          </>
+        )}
+      </section>
+      {showForm && hasFormInteraction ? <SaveBar loading={loading} label="SALVAR ABASTECIMENTO" /> : null}
     </form>
   );
 }
