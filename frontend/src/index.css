@@ -97,6 +97,27 @@ body {
   color: #ecfdf5;
 }
 
+.fc-savebar-shell {
+  border-top: 1px solid color-mix(in srgb, var(--primary) 24%, transparent);
+}
+
+.fc-savebar-shell::before {
+  content: "";
+  position: absolute;
+  inset: -0.35rem 1rem -0.15rem;
+  border-radius: 1.15rem;
+  background: linear-gradient(180deg, rgba(2, 6, 23, 0.12) 0%, rgba(2, 6, 23, 0.62) 100%);
+  backdrop-filter: blur(8px);
+  border: 1px solid color-mix(in srgb, var(--primary) 24%, #334155);
+  pointer-events: none;
+  z-index: -1;
+}
+
+.fc-savebar-btn {
+  min-height: 54px;
+  letter-spacing: 0.02em;
+}
+
 /* Apontador: feedback de toque com animação própria (evita conflito com :active). */
 .fc-btn.fc-apontador-tipo-btn:active {
   transform: none;
@@ -911,12 +932,25 @@ textarea:focus-visible,
   }
 
   .fc-field-mode .fc-tab-link {
-    min-height: 42px;
+    min-height: 44px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     font-size: 0.8rem;
     font-weight: 600;
+  }
+
+  .fc-savebar-shell {
+    bottom: calc(5.65rem + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .fc-savebar-shell::before {
+    inset: -0.3rem 0.85rem -0.1rem;
+  }
+
+  .fc-savebar-btn {
+    min-height: 56px;
+    font-size: 0.97rem;
   }
 }
 
@@ -930,6 +964,10 @@ textarea:focus-visible,
 
   .fc-field-mode .fc-op-form-header {
     border-width: 1.5px;
+  }
+
+  .fc-savebar-btn {
+    min-height: 58px;
   }
 }
 
