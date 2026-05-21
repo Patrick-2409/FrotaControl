@@ -2138,225 +2138,127 @@ const getProfessionalPeriodLabel = (filters) => {
   return "Últimos 7 dias (automático)";
 };
 
-const buildProfessionalRows = (records = []) =>
-  records.map((row) => ({
-    dataHora: asDateTime(getEffectiveDateValue(row)),
-    tipo: row?.tipo_label || getActivityName(row?.tipo),
-    motorista: asDisplayValue(row?.motorista),
-    veiculo: asDisplayValue(row?.veiculo),
-    placa: asDisplayValue(row?.placa),
-    litros: Number(row?.litros) || 0,
-    valor: Number(row?.valor_total) || 0,
-  }));
-
-const addProfessionalExcelWorksheet = (workbook, { companyName, filters, rows, logoImageId }) => {
-  const ws = workbook.addWorksheet("Relatório profissional");
+const addProfessionalResumoWorksheet = (workbook, { companyName, filters, rows }) => {
+  const ws = workbook.addWorksheet("Resumo");
+  ws.columns = [{ width: 34 }, { width: 42 }];
   ws.views = [{ showGridLines: false }];
-  ws.pageSetup = {
-    paperSize: 9,
-    orientation: "landscape",
-    fitToPage: true,
-    fitToWidth: 1,
-    fitToHeight: 0,
-    margins: { left: 0.35, right: 0.35, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 },
-  };
-  ws.columns = [
-    { width: 20 },
-    { width: 18 },
-    { width: 24 },
-    { width: 24 },
-    { width: 14 },
-    { width: 14 },
-    { width: 16 },
+  ws.mergeCells("A1:B1");
+  ws.getCell("A1").value = "RESUMO DA EXPORTAÇÃO";
+  ws.getCell("A1").font = { name: "Arial", size: 14, bold: true, color: { argb: "FF0F172A" } };
+  ws.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
+  ws.mergeCells("A2:B2");
+  ws.getCell("A2").value = `${companyName || "Empresa"} • Período: ${getProfessionalPeriodLabel(filters)}`;
+  ws.getCell("A2").font = { name: "Arial", size: 10, color: { argb: "FF334155" } };
+  ws.getCell("A2").alignment = { horizontal: "center", vertical: "middle" };
+
+  const totalLitros = rows.reduce((sum, row) => sum + (Number(row?.litros) || 0), 0);
+  const totalValor = rows.reduce((sum, row) => sum + (Number(row?.valor_total) || 0), 0);
+  const lines = [
+    ["Total de registros", rows.length],
+    ["Total litros", totalLitros],
+    ["Total valor", totalValor],
   ];
-
-  ws.mergeCells("A1:A3");
-  ws.mergeCells("B1:G1");
-  ws.mergeCells("B2:G2");
-  ws.mergeCells("B3:G3");
-  ws.getCell("B1").value = companyName || "Empresa";
-  ws.getCell("B2").value = "Relatório de abastecimento";
-  ws.getCell("B3").value = `Período: ${getProfessionalPeriodLabel(filters)}`;
-  ws.getCell("B1").font = { name: "Arial", size: 15, bold: true, color: { argb: "FF0F172A" } };
-  ws.getCell("B2").font = { name: "Arial", size: 12, bold: true, color: { argb: "FF1D4ED8" } };
-  ws.getCell("B3").font = { name: "Arial", size: 10, color: { argb: "FF334155" } };
-  ["B1", "B2", "B3"].forEach((addr) => {
-    ws.getCell(addr).alignment = { horizontal: "left", vertical: "middle" };
-  });
-  applyBorderAndFont(ws, 1, 3, 1, 7);
-
-  if (logoImageId !== null && logoImageId !== undefined) {
-    ws.addImage(logoImageId, { tl: { col: 0.08, row: 0.1 }, br: { col: 0.92, row: 2.9 }, editAs: "oneCell" });
-  } else {
-    ws.getCell("A1").value = "LOGO";
-    ws.getCell("A1").font = { name: "Arial", size: 10, italic: true, color: { argb: "FF64748B" } };
-    ws.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
-  }
-
-  const headerRow = 5;
-  const headers = ["Data/Hora", "Tipo", "Motorista", "Veículo", "Placa", "Litros (L)", "Valor (R$)"];
-  headers.forEach((label, idx) => {
-    const cell = ws.getCell(headerRow, idx + 1);
-    cell.value = label;
-    cell.font = { name: "Arial", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E3A8A" } };
-    cell.alignment = { horizontal: idx >= 5 ? "center" : "left", vertical: "middle" };
-    cell.border = {
-      top: { style: "thin", color: { argb: "FFCBD5E1" } },
-      left: { style: "thin", color: { argb: "FFCBD5E1" } },
-      bottom: { style: "thin", color: { argb: "FFCBD5E1" } },
-      right: { style: "thin", color: { argb: "FFCBD5E1" } },
-    };
-  });
-
-  let rowIndex = headerRow + 1;
-  rows.forEach((row) => {
-    const values = [row.dataHora, row.tipo, row.motorista, row.veiculo, row.placa, row.litros, row.valor];
-    values.forEach((value, idx) => {
-      const cell = ws.getCell(rowIndex, idx + 1);
-      cell.value = value;
-      if (idx === 5) cell.numFmt = "#,##0.000";
-      if (idx === 6) cell.numFmt = '"R$" #,##0.00';
-      cell.font = { name: "Arial", size: 10, color: { argb: "FF0F172A" } };
-      cell.alignment = {
-        horizontal: idx >= 5 ? "right" : idx === 4 ? "center" : "left",
-        vertical: "middle",
-        wrapText: true,
-      };
-      cell.border = {
-        top: { style: "thin", color: { argb: "FFE2E8F0" } },
-        left: { style: "thin", color: { argb: "FFE2E8F0" } },
-        bottom: { style: "thin", color: { argb: "FFE2E8F0" } },
-        right: { style: "thin", color: { argb: "FFE2E8F0" } },
-      };
-    });
-    rowIndex += 1;
-  });
-
-  const totalLitros = rows.reduce((sum, row) => sum + (Number(row.litros) || 0), 0);
-  const totalValor = rows.reduce((sum, row) => sum + (Number(row.valor) || 0), 0);
-  const footerStart = Math.max(headerRow + 2, rowIndex + 1);
-  ws.mergeCells(`A${footerStart}:E${footerStart}`);
-  ws.getCell(`A${footerStart}`).value = `Total de registros: ${rows.length}`;
-  ws.getCell(`A${footerStart}`).font = { name: "Arial", size: 10, bold: true };
-  ws.getCell(`F${footerStart}`).value = totalLitros;
-  ws.getCell(`F${footerStart}`).numFmt = "#,##0.000";
-  ws.getCell(`G${footerStart}`).value = totalValor;
-  ws.getCell(`G${footerStart}`).numFmt = '"R$" #,##0.00';
-  ["A", "F", "G"].forEach((col) => {
-    const cell = ws.getCell(`${col}${footerStart}`);
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE2E8F0" } };
-    cell.font = { name: "Arial", size: 10, bold: true, color: { argb: "FF0F172A" } };
-    cell.alignment = { vertical: "middle", horizontal: col === "A" ? "left" : "right" };
-    cell.border = {
-      top: { style: "thin", color: { argb: "FFCBD5E1" } },
-      left: { style: "thin", color: { argb: "FFCBD5E1" } },
-      bottom: { style: "thin", color: { argb: "FFCBD5E1" } },
-      right: { style: "thin", color: { argb: "FFCBD5E1" } },
-    };
+  let rowIdx = 4;
+  lines.forEach(([label, value]) => {
+    ws.getCell(`A${rowIdx}`).value = label;
+    ws.getCell(`A${rowIdx}`).font = { name: "Arial", size: 11, bold: true };
+    ws.getCell(`B${rowIdx}`).value = value;
+    if (label === "Total litros") ws.getCell(`B${rowIdx}`).numFmt = "#,##0.000";
+    if (label === "Total valor") ws.getCell(`B${rowIdx}`).numFmt = '"R$" #,##0.00';
+    ws.getCell(`B${rowIdx}`).font = { name: "Arial", size: 11 };
+    ws.getCell(`A${rowIdx}`).alignment = { vertical: "middle", horizontal: "left" };
+    ws.getCell(`B${rowIdx}`).alignment = { vertical: "middle", horizontal: "right" };
+    ws.getCell(`A${rowIdx}`).border = { top: { style: "thin" }, left: { style: "thin" }, bottom: { style: "thin" }, right: { style: "thin" } };
+    ws.getCell(`B${rowIdx}`).border = { top: { style: "thin" }, left: { style: "thin" }, bottom: { style: "thin" }, right: { style: "thin" } };
+    rowIdx += 1;
   });
 };
 
-const buildProfessionalPdfBuffer = async ({ companyName, filters, rows, logoImage }) =>
-  new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: "A4", layout: "landscape", margin: 28 });
-    const chunks = [];
-    doc.on("data", (chunk) => chunks.push(chunk));
-    doc.on("end", () => resolve(Buffer.concat(chunks)));
-    doc.on("error", reject);
+const addProfessionalFichaWorksheet = (workbook, { row, logoImageId, sheetNumber }) => {
+  const ws = workbook.addWorksheet(`Ficha ${sheetNumber}`);
+  applyBaseStyle(ws);
+  ws.pageSetup = {
+    paperSize: 9,
+    orientation: "portrait",
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: 1,
+    margins: { left: 0.35, right: 0.35, top: 0.35, bottom: 0.35, header: 0.2, footer: 0.2 },
+  };
 
-    const pageWidth = doc.page.width - 56;
-    const pageBottom = () => doc.page.height - 28;
-    const columns = [
-      { key: "dataHora", title: "Data/Hora", width: 112, align: "left" },
-      { key: "tipo", title: "Tipo", width: 88, align: "left" },
-      { key: "motorista", title: "Motorista", width: 132, align: "left" },
-      { key: "veiculo", title: "Veículo", width: 132, align: "left" },
-      { key: "placa", title: "Placa", width: 70, align: "center" },
-      { key: "litros", title: "Litros (L)", width: 78, align: "right" },
-      { key: "valor", title: "Valor (R$)", width: Math.max(86, pageWidth - (112 + 88 + 132 + 132 + 70 + 78)), align: "right" },
-    ];
+  const reportDate = getEffectiveDateValue(row);
+  const preco = row.preco_por_litro ?? row.preco_litro;
+  ws.mergeCells("A1:B3");
+  ws.mergeCells("C1:H2");
+  ws.getCell("C1").value = "FICHA DE ABASTECIMENTO";
+  ws.getCell("C1").font = { name: "Arial", size: 14, bold: true, color: { argb: "FF0F172A" } };
+  ws.getCell("C1").alignment = { horizontal: "center", vertical: "middle" };
+  ws.mergeCells("C3:H3");
+  ws.getCell("C3").value = `Atividade principal: ${getActivityName(row?.tipo)} • Data executada: ${asDate(reportDate)}`;
+  ws.getCell("C3").font = { name: "Arial", size: 10, color: { argb: "FF334155" } };
+  ws.getCell("C3").alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+  applyBorderAndFont(ws, 1, 3, 1, 8);
 
-    const drawHeader = () => {
-      const y = doc.y;
-      doc.rect(28, y, pageWidth, 66).lineWidth(0.8).stroke("#CBD5E1");
-      if (logoImage?.buffer) {
-        try {
-          doc.image(logoImage.buffer, 34, y + 8, { fit: [68, 50] });
-        } catch {
-          // ignora logo inválida
-        }
-      } else {
-        doc.font("Helvetica-Oblique").fontSize(9).fillColor("#64748B").text("LOGO", 40, y + 26);
-      }
-      doc.font("Helvetica-Bold").fontSize(16).fillColor("#0F172A").text(companyName || "Empresa", 110, y + 10, { width: pageWidth - 120 });
-      doc.font("Helvetica-Bold").fontSize(12).fillColor("#1D4ED8").text("Relatório de abastecimento", 110, y + 32, { width: pageWidth - 120 });
-      doc.font("Helvetica").fontSize(10).fillColor("#334155").text(`Período: ${getProfessionalPeriodLabel(filters)}`, 110, y + 50, {
-        width: pageWidth - 120,
-      });
-      doc.moveDown(4.2);
-    };
-
-    const drawTableHead = (y) => {
-      let x = 28;
-      columns.forEach((col) => {
-        doc.rect(x, y, col.width, 24).fillAndStroke("#1E3A8A", "#CBD5E1");
-        doc.font("Helvetica-Bold").fontSize(9.5).fillColor("#FFFFFF").text(col.title, x + 6, y + 7, {
-          width: col.width - 12,
-          align: col.align === "right" ? "right" : col.align === "center" ? "center" : "left",
-        });
-        x += col.width;
-      });
-      return y + 24;
-    };
-
-    const drawRow = (y, row) => {
-      let x = 28;
-      columns.forEach((col) => {
-        doc.rect(x, y, col.width, 20).lineWidth(0.6).stroke("#E2E8F0");
-        const text =
-          col.key === "litros"
-            ? fmtLitrosBr(row.litros)
-            : col.key === "valor"
-              ? fmtMoneyBr(row.valor)
-              : asDisplayValue(row[col.key]);
-        doc.font("Helvetica").fontSize(9).fillColor("#0F172A").text(text, x + 5, y + 5, {
-          width: col.width - 10,
-          align: col.align === "right" ? "right" : col.align === "center" ? "center" : "left",
-          lineBreak: false,
-        });
-        x += col.width;
-      });
-      return y + 20;
-    };
-
-    drawHeader();
-    let y = drawTableHead(doc.y);
-    rows.forEach((row) => {
-      if (y + 24 > pageBottom()) {
-        doc.addPage();
-        drawHeader();
-        y = drawTableHead(doc.y);
-      }
-      y = drawRow(y, row);
+  if (logoImageId !== null && logoImageId !== undefined) {
+    ws.addImage(logoImageId, {
+      tl: { col: 0.1, row: 0.1 },
+      br: { col: 1.9, row: 2.9 },
+      editAs: "oneCell",
     });
+  } else {
+    ws.getCell("A1").value = "LOGO";
+    ws.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
+    ws.getCell("A1").font = { name: "Arial", size: 10, italic: true, color: { argb: "FF64748B" } };
+  }
 
-    const totalLitros = rows.reduce((sum, row) => sum + (Number(row.litros) || 0), 0);
-    const totalValor = rows.reduce((sum, row) => sum + (Number(row.valor) || 0), 0);
-    if (y + 28 > pageBottom()) {
-      doc.addPage();
-      drawHeader();
-      y = drawTableHead(doc.y);
-    }
-    doc.rect(28, y + 8, pageWidth, 22).fillAndStroke("#E2E8F0", "#CBD5E1");
-    doc.font("Helvetica-Bold").fontSize(9.5).fillColor("#0F172A").text(`Total de registros: ${rows.length}`, 34, y + 15, {
-      width: 250,
-      align: "left",
-    });
-    doc.text(`Total litros: ${fmtLitrosBr(totalLitros)}`, 300, y + 15, { width: 180, align: "right" });
-    doc.text(`Total valor: ${fmtMoneyBr(totalValor)}`, 500, y + 15, { width: 260, align: "right" });
-    doc.end();
-  });
+  putLabelValue(ws, 5, "A5:B5", "C5:H5", "MOTORISTA / OPERADOR:", row.motorista);
+  putLabelValue(ws, 6, "A6:B6", "C6:H6", "EQUIPAMENTO:", row.veiculo);
+  putLabelValue(ws, 7, "A7:B7", "C7:D7", "PLACA:", row.placa);
+  putLabelValue(ws, 7, "E7:F7", "G7:H7", "COMBUSTÍVEL:", row.tipo_combustivel);
+
+  ws.mergeCells("A9:H9");
+  ws.getCell("A9").value = "VALORES DO LANÇAMENTO";
+  ws.getCell("A9").font = { name: "Arial", size: 11, bold: true };
+  ws.getCell("A9").alignment = { horizontal: "left", vertical: "middle" };
+  ws.getCell("A9").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE2E8F0" } };
+  applyBorderAndFont(ws, 9, 9, 1, 8);
+
+  ws.getCell("A10").value = "Litros (L)";
+  ws.getCell("B10").value = row.litros != null ? Number(row.litros) : "";
+  ws.getCell("B10").numFmt = "#,##0.000";
+  ws.getCell("C10").value = "Valor total (R$)";
+  ws.getCell("D10").value = row.valor_total != null ? Number(row.valor_total) : "";
+  ws.getCell("D10").numFmt = '"R$" #,##0.00';
+  ws.getCell("E10").value = "Preço por litro (R$)";
+  ws.mergeCells("F10:H10");
+  ws.getCell("F10").value = preco != null ? Number(preco) : "";
+  ws.getCell("F10").numFmt = '"R$" #,##0.00';
+  applyBorderAndFont(ws, 10, 10, 1, 8);
+  ["A10", "C10", "E10"].forEach((addr) => (ws.getCell(addr).font = { name: "Arial", size: 10, bold: true }));
+
+  ws.getCell("A12").value = "Horímetro";
+  ws.getCell("B12").value = asDisplayValue(row.horimetro);
+  ws.getCell("C12").value = "Hodômetro";
+  ws.getCell("D12").value = asDisplayValue(row.hodometro);
+  ws.getCell("E12").value = "Combustível";
+  ws.mergeCells("F12:H12");
+  ws.getCell("F12").value = asDisplayValue(row.tipo_combustivel);
+  applyBorderAndFont(ws, 12, 12, 1, 8);
+  ["A12", "C12", "E12"].forEach((addr) => (ws.getCell(addr).font = { name: "Arial", size: 10, bold: true }));
+
+  ws.mergeCells("A14:H14");
+  ws.getCell("A14").value = "ASSINATURAS";
+  ws.getCell("A14").font = { name: "Arial", size: 11, bold: true };
+  ws.getCell("A14").alignment = { horizontal: "center", vertical: "middle" };
+  ws.getCell("A14").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF3F4F6" } };
+  applyBorderAndFont(ws, 14, 14, 1, 8);
+
+  ws.mergeCells("A15:D15");
+  ws.mergeCells("E15:H15");
+  ws.getCell("A15").value = "Operador: ________________________________";
+  ws.getCell("E15").value = "Responsável: ________________________________";
+  applyBorderAndFont(ws, 15, 15, 1, 8);
+};
 
 const exportExcel = async (req, res) => {
   let filters;
@@ -2400,12 +2302,19 @@ const exportExcel = async (req, res) => {
     empty.getCell("A1").value = `Sem registros para exportação (${company?.nome || "Empresa"})`;
     empty.getCell("A1").font = { name: "Arial", size: 12, bold: true };
   } else if (isProfessionalLayout) {
-    const professionalRows = buildProfessionalRows(data);
-    addProfessionalExcelWorksheet(workbook, {
+    const fichaRows = data.filter((row) => row.tipo === "combustivel");
+    const rows = fichaRows.length ? fichaRows : data;
+    addProfessionalResumoWorksheet(workbook, {
       companyName: company?.nome || "Empresa",
       filters: filtersEffective,
-      rows: professionalRows,
-      logoImageId,
+      rows,
+    });
+    rows.forEach((row, idx) => {
+      addProfessionalFichaWorksheet(workbook, {
+        row,
+        logoImageId,
+        sheetNumber: idx + 1,
+      });
     });
   } else {
     const sheetEntries = buildSheetEntriesFromRecords(data);
@@ -2482,20 +2391,6 @@ const exportPdf = async (req, res) => {
   const company = await getCompanyById(scope.empresa_id);
   const logoAssets = await resolveEmpresaLogoAssets(req, company);
   const summaryText = formatExportFiltersSummaryPt(filtersEffective, data.length);
-  const isProfessionalLayout = filtersEffective.layout === "profissional";
-  if (isProfessionalLayout) {
-    const rasterForPdf = await toExcelCompatibleImage(logoAssets.htmlSrc, logoAssets.excelImage);
-    const professionalRows = buildProfessionalRows(data);
-    const professionalBuffer = await buildProfessionalPdfBuffer({
-      companyName: company?.nome || "Empresa",
-      filters: filtersEffective,
-      rows: professionalRows,
-      logoImage: rasterForPdf,
-    });
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", "attachment; filename=registros.pdf");
-    return res.send(professionalBuffer);
-  }
   const html = buildOfficialHtml({
     companyName: company?.nome || "Empresa",
     logoUrl: logoAssets.htmlSrc,
