@@ -1,7 +1,22 @@
 import { memo } from "react";
 import BISparkline from "../../bi/components/BISparkline";
 import { fmtBRL, fmtLitros } from "../services/fuelFormatters";
-import { growthPercent } from "../../bi/utils/chartMath";
+
+const formatDeltaLitrosMensagem = (deltaLitros) => {
+  if (!Number.isFinite(deltaLitros) || Math.abs(deltaLitros) < 0.01) {
+    return "Sem variação relevante em relação ao histórico";
+  }
+  const valor = fmtLitros(Math.abs(deltaLitros));
+  if (deltaLitros > 0) return `Aumento de ${valor} L em relação ao histórico`;
+  return `Redução de ${valor} L em relação ao histórico`;
+};
+
+const getPrecoInterpretacao = ({ comparacaoPreco, hasHistorical }) => {
+  if (!hasHistorical) return "Sem histórico suficiente para comparação";
+  if (comparacaoPreco === "acima") return "Acima da média";
+  if (comparacaoPreco === "abaixo") return "Abaixo da média";
+  return "Dentro do padrão";
+};
 
 function FuelMetricsCards({ resumo, mediaPorVeiculo }) {
   if (!resumo) return null;
@@ -15,14 +30,26 @@ function FuelMetricsCards({ resumo, mediaPorVeiculo }) {
 
   const atual = Number(resumo.preco_medio_litro);
   const refHist = Number(intel.preco_medio_historico);
+  const hasHistoricalPrice = Number.isFinite(refHist) && refHist > 0;
   const pctPreco =
-    Number.isFinite(atual) && atual > 0 && Number.isFinite(refHist) && refHist > 0
+    Number.isFinite(atual) && atual > 0 && hasHistoricalPrice
       ? Math.min(100, Math.round((refHist / atual) * 100))
       : null;
 
-  const gLitros = growthPercent(mediaD, hist);
-  const precoOk = pctPreco != null && pctPreco >= 85;
-  const precoWarn = pctPreco != null && pctPreco >= 60 && !precoOk;
+  const deltaLitros = Number.isFinite(mediaD) && Number.isFinite(hist) ? mediaD - hist : null;
+  const hasCurrentPrice = Number.isFinite(atual) && atual > 0;
+  const comparacaoPreco =
+    hasCurrentPrice && hasHistoricalPrice
+      ? atual > refHist * 1.03
+        ? "acima"
+        : atual < refHist * 0.97
+          ? "abaixo"
+          : "padrao"
+      : "sem-base";
+  const interpretacaoPreco = getPrecoInterpretacao({
+    comparacaoPreco,
+    hasHistorical: hasHistoricalPrice,
+  });
 
   const cardBase = "rounded-2xl border-2 p-5 sm:p-6";
 
@@ -36,11 +63,8 @@ function FuelMetricsCards({ resumo, mediaPorVeiculo }) {
               {fmtLitros(resumo.total_litros)}
             </p>
             <p className="mt-2 text-xs text-zinc-400">Volume no período</p>
-            {gLitros != null && Number.isFinite(hist) && hist > 0 ? (
-              <p className="mt-2 text-xs font-medium text-zinc-300">
-                Vs. histórico: {gLitros >= 0 ? "+" : ""}
-                {gLitros.toFixed(1)}%
-              </p>
+            {deltaLitros != null && Number.isFinite(hist) && hist > 0 ? (
+              <p className="mt-2 text-xs font-medium text-zinc-300">{formatDeltaLitrosMensagem(deltaLitros)}</p>
             ) : null}
           </div>
           {sparkLitros.length >= 2 ? (
@@ -79,8 +103,11 @@ function FuelMetricsCards({ resumo, mediaPorVeiculo }) {
                 "—"
               )}
             </p>
-            {intel.preco_medio_historico != null ? (
-              <p className="mt-2 text-xs text-zinc-400">Ref. preço: {fmtBRL(intel.preco_medio_historico)}/L</p>
+            {hasCurrentPrice ? (
+              <p className="mt-2 text-xs text-zinc-300">Preço médio: {fmtBRL(atual)}/L</p>
+            ) : null}
+            {hasHistoricalPrice ? (
+              <p className="mt-1 text-xs text-zinc-400">Média histórica: {fmtBRL(refHist)}/L</p>
             ) : null}
           </div>
           {sparkLitros.length >= 2 ? (
@@ -89,24 +116,17 @@ function FuelMetricsCards({ resumo, mediaPorVeiculo }) {
             </div>
           ) : null}
         </div>
-        {pctPreco != null ? (
-          <div className="mt-4">
-            <div className="mb-1 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-              <span>Preço vs. referência</span>
-              <span className={`tabular-nums ${precoOk ? "text-emerald-300" : precoWarn ? "text-amber-200" : "text-rose-300"}`}>
-                {pctPreco}%
-              </span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-zinc-800">
-              <div
-                className={`h-2 rounded-full transition-[width] duration-500 ${
-                  precoOk ? "bg-gradient-to-r from-emerald-800 to-emerald-500" : precoWarn ? "bg-gradient-to-r from-amber-800 to-amber-500" : "bg-gradient-to-r from-rose-800 to-rose-500"
-                }`}
-                style={{ width: `${pctPreco}%` }}
-              />
-            </div>
-          </div>
-        ) : null}
+        <p
+          className={`mt-3 text-xs font-medium ${
+            comparacaoPreco === "abaixo"
+              ? "text-emerald-200"
+              : comparacaoPreco === "acima"
+                ? "text-amber-200"
+                : "text-zinc-300"
+          }`}
+        >
+          {interpretacaoPreco}
+        </p>
       </div>
     </div>
   );
