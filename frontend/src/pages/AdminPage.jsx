@@ -50,9 +50,6 @@ const adminActionBtnBase =
 const adminBtnVisualizar = `${adminActionBtnBase} border border-slate-500/55 bg-slate-800/60 text-slate-100 hover:bg-slate-700/80 hover:text-white focus-visible:ring-slate-400/40`;
 const adminBtnEditar = `${adminActionBtnBase} border border-blue-500/65 bg-blue-600/35 text-blue-50 hover:border-blue-400 hover:bg-blue-600/55 hover:text-white hover:shadow-[0_0_20px_-4px_rgba(59,130,246,0.6)] focus-visible:ring-blue-500/55`;
 const adminBtnExcluir = `${adminActionBtnBase} border border-red-600/90 bg-red-700/45 text-red-50 hover:border-red-400 hover:bg-red-600/65 hover:text-white hover:shadow-[0_6px_22px_-2px_rgba(248,113,113,0.55)] hover:brightness-110 focus-visible:ring-red-500/60`;
-const adminBtnResetSenha = `${adminActionBtnBase} border border-amber-500/70 bg-amber-600/38 text-amber-50 hover:border-orange-400 hover:bg-orange-600/48 hover:text-white hover:shadow-[0_0_18px_-3px_rgba(251,146,60,0.5)] focus-visible:ring-amber-500/50`;
-const adminBtnDesativar = `${adminActionBtnBase} border border-amber-600/75 bg-amber-900/25 text-amber-100 hover:border-amber-400 hover:bg-amber-800/40 hover:text-white focus-visible:ring-amber-500/45`;
-const adminBtnReativar = `${adminActionBtnBase} border border-emerald-500/60 bg-emerald-700/25 text-emerald-100 hover:border-emerald-400 hover:bg-emerald-700/45 hover:text-white focus-visible:ring-emerald-500/45`;
 
 const adminActionBtnBaseCompact =
   "fc-btn inline-flex items-center justify-center gap-0.5 rounded-md px-2 py-1 text-[11px] font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-950";
@@ -61,7 +58,8 @@ const adminBtnExcluirCompact = `${adminActionBtnBaseCompact} border border-red-6
 
 /** Monta estado do formulário de edição a partir da linha da listagem (sem dados sensíveis). */
 const toEditUserState = (u) => {
-  const { senha_hash: _omit, ...rest } = u;
+  const rest = { ...(u || {}) };
+  delete rest.senha_hash;
   const raw = rest.cnh_validade;
   let cnhInput = "";
   if (raw) {

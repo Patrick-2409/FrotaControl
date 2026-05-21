@@ -4,18 +4,17 @@ import { useAuth } from "../services/auth";
 import EmptyState from "../components/EmptyState";
 
 const toYmd = (raw) => String(raw || "").slice(0, 10);
-const addDays = (ymd, delta) => {
-  const d = new Date(`${ymd}T12:00:00`);
-  if (Number.isNaN(d.getTime())) return ymd;
-  d.setDate(d.getDate() + delta);
-  return d.toISOString().slice(0, 10);
-};
+const cleanText = (value) => String(value || "").trim();
+const rowDate = (row) => toYmd(row?.payload?.data || row?.payload?.recorded_at_client || row?.updatedAt);
 
 export default function RomaneioPage() {
   const { user } = useAuth();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [materialFilter, setMaterialFilter] = useState("");
+  const [dateStart, setDateStart] = useState("");
+  const [dateEnd, setDateEnd] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -42,21 +41,46 @@ export default function RomaneioPage() {
     };
   }, []);
 
-  const summary = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    const weekStart = addDays(today, -6);
-    const monthStart = `${today.slice(0, 7)}-01`;
-    const byPeriod = (start) =>
-      rows.filter((row) => {
-        const ymd = toYmd(row?.payload?.data || row?.payload?.recorded_at_client || row?.updatedAt);
-        return ymd && ymd >= start && ymd <= today;
-      }).length;
-    return {
-      hoje: byPeriod(today),
-      semana: byPeriod(weekStart),
-      mes: byPeriod(monthStart),
-    };
+  const groupedRows = useMemo(() => {
+    const grouped = new Map();
+    for (const row of rows) {
+      const payload = row?.payload || {};
+      const ymd = rowDate(row);
+      const material = cleanText(payload.tipo_transporte || payload.material || "Sem material");
+      const destino = cleanText(payload.destino || "-");
+      const key = `${ymd}|${material}|${destino}`;
+      const current = grouped.get(key) || {
+        key,
+        data: ymd,
+        material,
+        destino,
+        quantidade: 0,
+      };
+      current.quantidade += Number(payload.quantidade || payload.viagens || 1) || 1;
+      grouped.set(key, current);
+    }
+    return Array.from(grouped.values()).sort((a, b) => String(b.data).localeCompare(String(a.data)));
   }, [rows]);
+
+  const filteredRows = useMemo(() => {
+    const materialTerm = cleanText(materialFilter).toLowerCase();
+    return groupedRows.filter((row) => {
+      if (dateStart && row.data && row.data < dateStart) return false;
+      if (dateEnd && row.data && row.data > dateEnd) return false;
+      if (materialTerm && !row.material.toLowerCase().includes(materialTerm)) return false;
+      return true;
+    });
+  }, [groupedRows, materialFilter, dateStart, dateEnd]);
+
+  const clearFilters = () => {
+    setMaterialFilter("");
+    setDateStart("");
+    setDateEnd("");
+  };
+
+  const totalQuantidade = useMemo(() => {
+    return filteredRows.reduce((acc, row) => acc + (Number(row.quantidade) || 0), 0);
+  }, [filteredRows]);
 
   if (loading) return <div className="fc-card p-4 text-sm text-slate-300">Carregando transportes...</div>;
   if (error) return <div className="fc-card p-4 text-sm text-red-300">{error}</div>;
@@ -68,37 +92,58 @@ export default function RomaneioPage() {
         <p className="mt-1 text-sm text-slate-300">
           Motorista: {user?.nome} | Veículo: {user?.veiculo_nome || "-"}
         </p>
-        <p className="mt-2 text-xs text-slate-400">
-          Modo somente leitura. Registros de romaneio são exibidos para conferência operacional.
-        </p>
+        <p className="mt-2 text-xs text-slate-400">Tela detalhada e somente leitura para conferência operacional dos transportes.</p>
       </section>
 
       <section className="fc-card p-4">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-blue-200">Indicadores</h3>
-        <div className="mt-3 grid grid-cols-3 gap-2">
-          <article className="rounded-xl border border-slate-700/80 bg-slate-900/70 p-3 text-center">
-            <p className="text-[11px] text-slate-400">Hoje</p>
-            <p className="mt-1 text-2xl font-bold text-white">{summary.hoje}</p>
-            <p className="text-[11px] text-slate-500">viagens</p>
-          </article>
-          <article className="rounded-xl border border-slate-700/80 bg-slate-900/70 p-3 text-center">
-            <p className="text-[11px] text-slate-400">Semana</p>
-            <p className="mt-1 text-2xl font-bold text-white">{summary.semana}</p>
-            <p className="text-[11px] text-slate-500">viagens</p>
-          </article>
-          <article className="rounded-xl border border-slate-700/80 bg-slate-900/70 p-3 text-center">
-            <p className="text-[11px] text-slate-400">Mês</p>
-            <p className="mt-1 text-2xl font-bold text-white">{summary.mes}</p>
-            <p className="text-[11px] text-slate-500">viagens</p>
-          </article>
+        <h3 className="text-sm font-semibold text-white">Filtros rápidos</h3>
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          <label className="text-xs text-slate-300">
+            De
+            <input
+              type="date"
+              value={dateStart}
+              onChange={(e) => setDateStart(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100"
+            />
+          </label>
+          <label className="text-xs text-slate-300">
+            Até
+            <input
+              type="date"
+              value={dateEnd}
+              onChange={(e) => setDateEnd(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100"
+            />
+          </label>
+          <label className="text-xs text-slate-300">
+            Material
+            <input
+              type="text"
+              value={materialFilter}
+              onChange={(e) => setMaterialFilter(e.target.value)}
+              placeholder="Ex.: brita"
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500"
+            />
+          </label>
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <p className="text-xs text-slate-400">Quantidade total no filtro: {totalQuantidade}</p>
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="fc-btn rounded-lg border border-slate-600 px-3 py-1.5 text-xs text-slate-200"
+          >
+            Limpar filtros
+          </button>
         </div>
       </section>
 
       <section className="fc-card p-4">
-        <h3 className="text-sm font-semibold text-white">Últimos transportes</h3>
-        {!rows.length ? (
+        <h3 className="text-sm font-semibold text-white">Lista de transportes</h3>
+        {!filteredRows.length ? (
           <div className="mt-3">
-            <EmptyState compact title="Sem transportes registrados" description="Quando houver romaneios vinculados ao seu perfil, eles aparecerão aqui." />
+            <EmptyState compact title="Sem transportes para os filtros atuais" description="Ajuste os filtros para visualizar os romaneios do período desejado." />
           </div>
         ) : (
           <div className="mt-3 overflow-x-auto">
@@ -108,19 +153,17 @@ export default function RomaneioPage() {
                   <th className="pb-2 pr-3">Data</th>
                   <th className="pb-2 pr-3">Material</th>
                   <th className="pb-2 pr-3">Destino</th>
-                  <th className="pb-2">Viagens</th>
+                  <th className="pb-2">Quantidade</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/80">
-                {rows.map((row) => {
-                  const payload = row?.payload || {};
-                  const ymd = toYmd(payload.data || payload.recorded_at_client || row.updatedAt);
+                {filteredRows.map((row) => {
                   return (
-                    <tr key={row?.source_id || row?.updatedAt}>
-                      <td className="py-2.5 pr-3 text-slate-300">{ymd || "—"}</td>
-                      <td className="py-2.5 pr-3 text-slate-200">{payload.tipo_transporte || "—"}</td>
-                      <td className="py-2.5 pr-3 text-slate-200">{payload.destino || "—"}</td>
-                      <td className="py-2.5 text-slate-100">1</td>
+                    <tr key={row.key}>
+                      <td className="py-2.5 pr-3 text-slate-300">{row.data || "—"}</td>
+                      <td className="py-2.5 pr-3 text-slate-200">{row.material || "—"}</td>
+                      <td className="py-2.5 pr-3 text-slate-200">{row.destino || "—"}</td>
+                      <td className="py-2.5 text-slate-100">{row.quantidade}</td>
                     </tr>
                   );
                 })}

@@ -5,7 +5,7 @@ import { isJwtExpired, sanitizePlainText } from "../utils/security";
 const AuthContext = createContext(null);
 
 const MAX_EMAIL_LEN = 254;
-const MAX_CPF_DIGITS = 14;
+const MAX_LOGIN_LEN = 254;
 const MAX_PASSWORD_LEN = 128;
 
 const readStoredUser = () => {
@@ -37,10 +37,7 @@ const normalizeUser = (user) => {
 };
 
 const buildMotoristaLoginPayload = (payload = {}) => {
-  const rawLogin = String(payload.login ?? payload.cpf_id ?? "")
-    .trim()
-    .replace(/\D/g, "")
-    .slice(0, MAX_CPF_DIGITS);
+  const rawLogin = sanitizePlainText(String(payload.login ?? payload.cpf_id ?? "").trim(), MAX_LOGIN_LEN);
   const senha = String(payload.senha ?? payload.password ?? "").slice(0, MAX_PASSWORD_LEN);
   return {
     login: rawLogin,

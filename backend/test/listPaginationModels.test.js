@@ -6,9 +6,11 @@ const assert = require("node:assert");
 const pathDb = require.resolve("../src/db");
 const pathVm = require.resolve("../src/models/vehicleModel");
 const pathUm = require.resolve("../src/models/userModel");
+const pathQt = require.resolve("../src/utils/queryTimed");
 
 test("listVehicles envia LIMIT e OFFSET numéricos (sem undefined)", async () => {
   delete require.cache[pathVm];
+  delete require.cache[pathQt];
   delete require.cache[pathDb];
   const db = require("../src/db");
   const orig = db.pool.query;
@@ -23,7 +25,7 @@ test("listVehicles envia LIMIT e OFFSET numéricos (sem undefined)", async () =>
   try {
     const { listVehicles } = require("../src/models/vehicleModel");
     await listVehicles(7, { page: 3, limit: 12, search: "" });
-    const selectCall = calls.find((c) => String(c.sql).includes("SELECT v.*"));
+    const selectCall = calls.find((c) => String(c.sql).includes("ORDER BY v.created_at"));
     assert.ok(selectCall, "esperado SELECT de veículos");
     assert.ok(!selectCall.vals.some((x) => x === undefined), `valores: ${JSON.stringify(selectCall.vals)}`);
     assert.strictEqual(selectCall.vals[selectCall.vals.length - 2], 12);
@@ -31,12 +33,14 @@ test("listVehicles envia LIMIT e OFFSET numéricos (sem undefined)", async () =>
   } finally {
     db.pool.query = orig;
     delete require.cache[pathVm];
+    delete require.cache[pathQt];
     delete require.cache[pathDb];
   }
 });
 
 test("listUsersByCompany envia LIMIT e OFFSET numéricos (sem undefined)", async () => {
   delete require.cache[pathUm];
+  delete require.cache[pathQt];
   delete require.cache[pathDb];
   const db = require("../src/db");
   const orig = db.pool.query;
@@ -59,6 +63,7 @@ test("listUsersByCompany envia LIMIT e OFFSET numéricos (sem undefined)", async
   } finally {
     db.pool.query = orig;
     delete require.cache[pathUm];
+    delete require.cache[pathQt];
     delete require.cache[pathDb];
   }
 });

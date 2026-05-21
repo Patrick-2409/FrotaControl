@@ -202,7 +202,7 @@ function App() {
   };
 
   const manualSync = async () => {
-    setSyncStatus("enviando");
+    setSyncStatus("syncing");
     const result = await syncPending();
     setSyncStatus(result.state);
     if (result?.state === "synced") {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { FROTA_PANEL_PATH } from "../components/empresaSidebarConstants";
 import api, { extractApiErrorMessage, resolveBackendAssetUrl } from "../services/api";
@@ -194,20 +194,7 @@ export default function CompanyManagementPage() {
     }
   };
 
-  const onDelete = async (kind, id) => {
-    if (!window.confirm("Confirma exclusão?")) return;
-    setLoading(true);
-    try {
-      await api.delete(`/dashboard/manage/${kind}/${id}`);
-      emitToast("Registro excluído com sucesso.");
-    } catch (err) {
-      emitToast(err.response?.data?.message || "Erro ao excluir.", "error");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const vehicleOptions = useMemo(() => vehicles || [], [vehicles]);
+  const vehicleOptions = vehicles || [];
 
   return (
     <div className="space-y-6">

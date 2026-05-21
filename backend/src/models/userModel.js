@@ -142,7 +142,45 @@ const createUser = async (
   return rows[0];
 };
 
-const getMotoristaByLogin = async (login) => {
+const normalizeMotoristaLoginInput = (loginInput) => {
+  if (typeof loginInput === "object" && loginInput !== null) {
+    return {
+      cpf: trimOrNull(loginInput.cpf),
+      email: trimOrNull(loginInput.email),
+      user_id: Number.isInteger(loginInput.user_id) && loginInput.user_id > 0 ? loginInput.user_id : null,
+    };
+  }
+  return {
+    cpf: trimOrNull(loginInput),
+    email: null,
+    user_id: null,
+  };
+};
+
+const getMotoristaByLogin = async (loginInput) => {
+  const login = normalizeMotoristaLoginInput(loginInput);
+  const whereClauses = [];
+  const params = [];
+  let idx = 1;
+
+  if (login.cpf) {
+    whereClauses.push(`u.cpf_id = $${idx}`);
+    params.push(login.cpf);
+    idx += 1;
+  }
+  if (login.email) {
+    whereClauses.push(`LOWER(COALESCE(u.email, '')) = LOWER($${idx})`);
+    params.push(login.email);
+    idx += 1;
+  }
+  if (login.user_id) {
+    whereClauses.push(`u.id = $${idx}`);
+    params.push(login.user_id);
+    idx += 1;
+  }
+
+  if (!whereClauses.length) return [];
+
   const { rows } = await pool.query(
     `SELECT u.*, e.nome AS empresa_nome, e.logo_url,
             v.nome AS veiculo_nome, v.placa, v.marca AS veiculo_marca, v.modelo AS veiculo_modelo,
@@ -152,9 +190,9 @@ const getMotoristaByLogin = async (login) => {
      JOIN empresas e ON e.id = u.empresa_id
      LEFT JOIN veiculos v ON v.id = u.veiculo_id
      WHERE u.role = 'MOTORISTA'
-       AND u.cpf_id = $1
+       AND (${whereClauses.join(" OR ")})
        AND COALESCE(u.conta_status, 'ativo') = 'ativo'`,
-    [login]
+    params
   );
   return rows;
 };

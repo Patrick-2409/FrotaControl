@@ -8,7 +8,7 @@ import Avatar from "./Avatar";
 
 const tabsBase = [
   { to: "/app/home", label: "Início" },
-  { to: "/app/romaneio", label: "Romaneio" },
+  { to: "/app/romaneio", label: "Transporte" },
   { to: "/app/combustivel", label: "Combustível" },
   { to: "/app/parte-diaria", label: "Parte diária" },
   { to: "/app/historico", label: "Histórico" },
@@ -20,6 +20,8 @@ export default function MotoristaLayout({ children, onSync, pendingCount, online
   const { pathname } = useLocation();
   const { tap } = useHaptics();
   const syncing = syncStatus === "syncing";
+  const hasSyncIssue = !online || pendingCount > 0 || (syncStatus !== "synced" && syncStatus !== "syncing");
+  const syncIndicatorLabel = pendingCount > 0 || !online || syncStatus === "pending" || syncStatus === "syncing" ? "pendente" : "sincronizado";
   const saveBarRoutes = ["/app/combustivel", "/app/parte-diaria"];
   const hasSaveBarOnScreen = saveBarRoutes.includes(pathname);
   const [fieldExtremeMode, setFieldExtremeMode] = useState(false);
@@ -126,18 +128,21 @@ export default function MotoristaLayout({ children, onSync, pendingCount, online
           </div>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-medium" role="status" aria-live="polite">
-          <span className={`rounded-full px-3 py-1 ${pendingCount > 0 ? "bg-amber-500/30 text-amber-100" : "bg-slate-800 text-slate-300"}`}>
-            🔴 {pendingCount} pendentes
+          <span className={`rounded-full px-3 py-1 ${syncIndicatorLabel === "pendente" ? "bg-amber-500/30 text-amber-100" : "bg-emerald-500/20 text-emerald-100"}`}>
+            Status: {syncIndicatorLabel}
+          </span>
+          <span className={`rounded-full px-3 py-1 ${pendingCount > 0 ? "bg-amber-500/20 text-amber-100" : "bg-slate-800 text-slate-300"}`}>
+            Pendências: {pendingCount}
           </span>
           <span className="inline-flex items-center gap-2 rounded-full bg-slate-800 px-3 py-1">
             <span className={`fc-sync-dot ${syncing ? "syncing" : ""}`} />
             {syncStatus === "syncing"
-              ? "🔄 sincronizando"
+              ? "sincronizando"
               : syncStatus === "sem_internet"
-              ? "🟡 sem internet"
+              ? "sem internet"
               : syncStatus === "pending"
-              ? "🔴 pendente"
-              : "🟢 sincronizado"}
+              ? "pendente"
+              : "sincronizado"}
           </span>
           <button
             type="button"
@@ -164,20 +169,22 @@ export default function MotoristaLayout({ children, onSync, pendingCount, online
         {children}
       </main>
 
-      <button
-        type="button"
-        onClick={() => {
-          tap(10);
-          onSync();
-        }}
-        className={`fc-btn fixed z-40 rounded-full bg-emerald-600 px-5 py-3 text-sm font-bold text-white shadow-2xl shadow-emerald-950/40 transition-all duration-200 hover:bg-emerald-500 ${
-          hasSaveBarOnScreen
-            ? "bottom-[calc(10rem+env(safe-area-inset-bottom,0px))] sm:bottom-[calc(6.5rem+env(safe-area-inset-bottom,0px))]"
-            : "bottom-[calc(6.5rem+env(safe-area-inset-bottom,0px))]"
-        } right-[max(1.25rem,env(safe-area-inset-right,0px))]`}
-      >
-        {syncing ? "Sincronizando..." : "Sincronizar agora"}
-      </button>
+      {hasSyncIssue && (
+        <button
+          type="button"
+          onClick={() => {
+            tap(10);
+            onSync();
+          }}
+          className={`fc-btn fixed z-40 rounded-full bg-emerald-600 px-5 py-3 text-sm font-bold text-white shadow-2xl shadow-emerald-950/40 transition-all duration-200 hover:bg-emerald-500 ${
+            hasSaveBarOnScreen
+              ? "bottom-[calc(10rem+env(safe-area-inset-bottom,0px))] sm:bottom-[calc(6.5rem+env(safe-area-inset-bottom,0px))]"
+              : "bottom-[calc(6.5rem+env(safe-area-inset-bottom,0px))]"
+          } right-[max(1.25rem,env(safe-area-inset-right,0px))]`}
+        >
+          {syncing ? "Sincronizando..." : "Sincronizar"}
+        </button>
+      )}
 
       <nav
         className="fixed bottom-0 left-0 right-0 z-30 mx-auto flex max-w-xl gap-2 overflow-x-auto border-t border-slate-800 bg-slate-900/95 px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] [-webkit-overflow-scrolling:touch]"

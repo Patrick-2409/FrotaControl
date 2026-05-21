@@ -123,6 +123,7 @@ export default function ProfilePage() {
           <div className="text-sm">
             <p className="font-semibold text-slate-100">{user?.nome}</p>
             <p className="text-slate-300">{user?.email || user?.cpf_id}</p>
+            <p className="text-xs text-slate-400">ID de acesso: {user?.user_login_id || `USR-${String(user?.id || 0).padStart(6, "0")}`}</p>
             <p className="text-xs text-slate-400">{user?.empresa_nome || "Sem empresa vinculada"}</p>
           </div>
         </div>

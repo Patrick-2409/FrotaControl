@@ -20,14 +20,6 @@ const fmtCountLabel = (count, singular, plural) => {
   return `${fmtInt(n)} ${n === 1 ? singular : plural}`;
 };
 
-function pickFirstNumber(...values) {
-  for (const v of values) {
-    const n = Number(v);
-    if (Number.isFinite(n)) return n;
-  }
-  return null;
-}
-
 function getTransportCount(row) {
   const n = Number(row?.romaneios);
   return Number.isFinite(n) ? n : 0;

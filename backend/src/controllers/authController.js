@@ -29,7 +29,7 @@ const motoristaLoginSchema = z
     senha: v.senha,
   }))
   .refine((v) => Boolean(v.login), {
-    message: "Informe CPF ou e-mail.",
+    message: "Informe CPF, e-mail ou ID do usuário.",
     path: ["login"],
   })
   .refine((v) => Boolean(v.senha), {
@@ -76,6 +76,28 @@ const alterarSenhaSchema = z
   });
 
 const isBcryptHashValido = (hash) => typeof hash === "string" && /^\$2[aby]\$/.test(hash);
+const formatUserLoginId = (id) => `USR-${String(Number(id) || 0).padStart(6, "0")}`;
+
+const isEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+
+const parseMotoristaLogin = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  if (isEmail(raw)) {
+    return { email: raw.toLowerCase(), tipo: "email" };
+  }
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length >= 11) {
+    return { cpf: digits, tipo: "cpf" };
+  }
+  if (/^USR-\d{1,}$/i.test(raw)) {
+    return { user_id: Number(raw.replace(/\D/g, "")), tipo: "id" };
+  }
+  if (/^\d+$/.test(raw)) {
+    return { user_id: Number(raw), tipo: "id" };
+  }
+  return null;
+};
 
 const compararSenhaComHash = async (senha, hash) => {
   if (!isBcryptHashValido(hash)) {
@@ -88,6 +110,7 @@ const compararSenhaComHash = async (senha, hash) => {
 
 const buildUserResponse = (user) => ({
   id: user.id,
+  user_login_id: formatUserLoginId(user.id),
   nome: user.nome,
   email: user.email,
   cpf_id: user.cpf_id,
@@ -105,18 +128,18 @@ const buildUserResponse = (user) => ({
 
 const motoristaLogin = async (req, res) => {
   const data = motoristaLoginSchema.parse(req.body);
-  const loginOriginal = String(data.login || data.cpf_id || "").trim();
-  const loginLimpo = loginOriginal.replace(/\D/g, "");
-  if (loginLimpo.length < 11) {
+  const loginOriginal = String(data.login || "").trim();
+  const loginParsed = parseMotoristaLogin(loginOriginal);
+  if (!loginParsed) {
     return res.status(400).json({
       success: false,
-      error: "CPF inválido. Informe apenas o CPF do motorista.",
-      message: "CPF inválido. Informe apenas o CPF do motorista.",
+      error: "Login inválido. Use CPF, e-mail ou ID do usuário.",
+      message: "Login inválido. Use CPF, e-mail ou ID do usuário.",
     });
   }
-  const loginBusca = loginLimpo;
+  const loginBusca = loginParsed;
 
-  logAuthDebug("MOTORISTA", { login: loginBusca });
+  logAuthDebug("MOTORISTA", { tipo_login: loginParsed.tipo, login: loginOriginal });
   const resultadoBusca = await getMotoristaByLogin(loginBusca);
   const rows = Array.isArray(resultadoBusca)
     ? resultadoBusca
@@ -320,7 +343,10 @@ const me = async (req, res) => {
       message: "Esta conta foi desativada.",
     });
   }
-  return res.json(user);
+  return res.json({
+    ...user,
+    user_login_id: formatUserLoginId(user.id),
+  });
 };
 
 const alterarSenha = async (req, res) => {

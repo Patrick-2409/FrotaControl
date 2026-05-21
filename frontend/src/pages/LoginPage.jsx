@@ -20,7 +20,7 @@ export default function LoginPage() {
     const normalizedLogin = String(form.login || "").trim();
     const normalizedSenha = String(form.senha || "");
     if (!normalizedLogin || !normalizedSenha) {
-      setError("Preencha CPF e senha.");
+      setError("Preencha login e senha.");
       return;
     }
     if (normalizedSenha.length < 6) {
@@ -63,12 +63,13 @@ export default function LoginPage() {
         <h1 className="mb-1 text-2xl font-bold text-white">Acesso Motorista</h1>
         <p className="mb-5 text-sm text-slate-400">Entre para iniciar a operação rapidamente</p>
 
-        <FormField label="CPF">
+        <FormField label="Login (CPF, e-mail ou ID)">
           <input
             className={inputClass}
             value={form.login}
             onChange={(e) => setForm({ ...form, login: e.target.value })}
             autoComplete="username"
+            placeholder="Ex.: 123.456.789-00, motorista@empresa.com ou USR-000123"
             aria-invalid={Boolean(error)}
           />
         </FormField>

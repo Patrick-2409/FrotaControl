@@ -1,5 +1,5 @@
 import { memo, useMemo } from "react";
-import { parseOperationalDate, typeLabelMap } from "../../../../utils/managerRecordsOperational";
+import { parseOperationalDate } from "../../../../utils/managerRecordsOperational";
 
 const TZ = "America/Sao_Paulo";
 
@@ -643,4 +643,3 @@ function OperationalFichaPreview({ rows, tipoFiltro, companyName = "" }) {
 }
 
 export default memo(OperationalFichaPreview);
-export { typeLabelMap };
