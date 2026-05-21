@@ -27,9 +27,11 @@ async function messageFromExportError(err, fallback) {
 
 /**
  * Exportação em lote (Excel/PDF/CSV) com os mesmos parâmetros que `/dashboard/registros`.
+ * Suporta seleção explícita via source_id (individual) e source_ids (múltiplos).
  */
-export function useOperationalExport(filtro, debouncedMotorista, debouncedVeiculo = "") {
+export function useOperationalExport(filtro, debouncedMotorista, debouncedVeiculo = "", options = {}) {
   const [exporting, setExporting] = useState("");
+  const extraParams = options?.extraParams && typeof options.extraParams === "object" ? options.extraParams : null;
 
   const buildExportQueryParams = useCallback(() => {
     const params = {
@@ -43,17 +45,26 @@ export function useOperationalExport(filtro, debouncedMotorista, debouncedVeicul
       params.data_inicio = filtro.data_inicio?.trim() || undefined;
       params.data_fim = filtro.data_fim?.trim() || undefined;
     }
+    if (extraParams) Object.assign(params, extraParams);
     return params;
-  }, [debouncedMotorista, debouncedVeiculo, filtro.data, filtro.data_fim, filtro.data_inicio, filtro.mes, filtro.periodo]);
+  }, [debouncedMotorista, debouncedVeiculo, extraParams, filtro.data, filtro.data_fim, filtro.data_inicio, filtro.mes, filtro.periodo]);
 
   const download = useCallback(
-    async (tipo) => {
+    async (tipo, opts = {}) => {
       setExporting(tipo);
       try {
+        const sourceIds = Array.isArray(opts.sourceIds)
+          ? Array.from(new Set(opts.sourceIds.map((id) => String(id || "").trim()).filter(Boolean)))
+          : [];
         const params = {
           ...buildExportQueryParams(),
           tipo: filtro.tipo?.trim() || undefined,
         };
+        if (sourceIds.length === 1) {
+          params.source_id = sourceIds[0];
+        } else if (sourceIds.length > 1) {
+          params.source_ids = sourceIds.join(",");
+        }
         const { data } = await api.get(`/dashboard/export/${tipo}`, {
           responseType: "blob",
           params,
@@ -73,7 +84,9 @@ export function useOperationalExport(filtro, debouncedMotorista, debouncedVeicul
         a.click();
         URL.revokeObjectURL(url);
         emitToast(`Arquivo ${tipo.toUpperCase()} exportado.`);
-        notifyReportsHubExport(`Fichas ${tipo.toUpperCase()} — ${activityTag}`);
+        const scopeLabel =
+          sourceIds.length === 1 ? "registro" : sourceIds.length > 1 ? `${sourceIds.length} registros` : "todos";
+        notifyReportsHubExport(`Fichas ${tipo.toUpperCase()} — ${activityTag} (${scopeLabel})`);
       } catch (err) {
         const msg = await messageFromExportError(err, `Falha ao gerar ${tipo.toUpperCase()}.`);
         emitToast(msg, "error");

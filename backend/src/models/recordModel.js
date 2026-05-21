@@ -144,6 +144,7 @@ const listManagerRecords = async ({
   veiculo,
   tipo,
   source_id,
+  source_ids,
   page = 1,
   limit = 20,
 }) => {
@@ -368,6 +369,10 @@ const listManagerRecords = async ({
   if (source_id) {
     wrapperValues.push(source_id);
     wrapperWhere.push(`t.source_id = $${wrapperValues.length}`);
+  }
+  if (Array.isArray(source_ids) && source_ids.length > 0) {
+    wrapperValues.push(source_ids.map((id) => String(id).trim()).filter(Boolean));
+    wrapperWhere.push(`t.source_id = ANY($${wrapperValues.length}::text[])`);
   }
   sql = `SELECT * FROM (${sql}) t${
     wrapperWhere.length ? ` WHERE ${wrapperWhere.join(" AND ")}` : ""

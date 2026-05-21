@@ -144,6 +144,22 @@ const parseExportFilters = (query = {}) => {
         return undefined;
       }, z.enum(["romaneio", "combustivel", "parte_diaria"]).optional()),
       source_id: z.string().min(8).optional(),
+      source_ids: z
+        .preprocess((v) => {
+          if (Array.isArray(v)) return v;
+          const raw = String(v ?? "").trim();
+          if (!raw) return [];
+          return raw
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean);
+        }, z.array(z.string().min(8)).max(300))
+        .optional(),
+      layout: z.preprocess((v) => {
+        const s = String(v ?? "").trim().toLowerCase();
+        if (s === "profissional") return "profissional";
+        return undefined;
+      }, z.enum(["profissional"]).optional()),
       modelo: z.preprocess((v) => {
         const s = String(v ?? "").trim().toLowerCase();
         if (s === "porto" || s === "padrao") return s;
@@ -159,9 +175,14 @@ const parseExportFilters = (query = {}) => {
       veiculo: query.veiculo ? String(query.veiculo).trim() : undefined,
       tipo: query.tipo ? String(query.tipo).trim() : undefined,
       source_id: query.source_id ? String(query.source_id).trim() : undefined,
+      source_ids: query.source_ids,
+      layout: query.layout,
       modelo: query.modelo,
     });
-
+  if (Array.isArray(filter.source_ids) && filter.source_ids.length > 0) {
+    const uniqueSourceIds = Array.from(new Set(filter.source_ids.map((id) => String(id || "").trim()).filter(Boolean)));
+    return { ...filter, source_id: undefined, source_ids: uniqueSourceIds };
+  }
   return filter;
 };
 
@@ -195,7 +216,11 @@ const formatExportFiltersSummaryPt = (filter, recordCount = 0) => {
   if (filter.veiculo) lines.push(`Filtro — veículo / placa: ${filter.veiculo}`);
   if (filter.tipo) lines.push(`Filtro — tipo de registo: ${filter.tipo}`);
   if (filter.modelo === "porto") lines.push("Modelo de impressão: Porto (grelhas e resumo de produção quando aplicável).");
+  if (filter.layout === "profissional") lines.push("Layout de exportação: Profissional (tabela executiva).");
   if (filter.source_id) lines.push(`Filtro — registo específico: ${filter.source_id}`);
+  if (Array.isArray(filter.source_ids) && filter.source_ids.length) {
+    lines.push(`Filtro — registos específicos: ${filter.source_ids.length}`);
+  }
   if (filter._autoSevenDays) {
     lines.push("Período automático: últimos 7 dias (pedido sem data, mês ou intervalo).");
   }
@@ -224,6 +249,7 @@ const buildDefaultLastSevenDaysRange = () => {
 const normalizeExportQueryFilters = (filter) => {
   const next = { ...filter };
   if (next.source_id) return next;
+  if (Array.isArray(next.source_ids) && next.source_ids.length > 0) return next;
   if (next.data || next.mes) return next;
   if (next.data_inicio || next.data_fim) return next;
   const { data_inicio, data_fim } = buildDefaultLastSevenDaysRange();
@@ -2105,6 +2131,233 @@ const addExportSummaryWorksheet = (workbook, { companyName, summaryText }) => {
   ws.getCell("A6").alignment = { wrapText: true, vertical: "top" };
 };
 
+const getProfessionalPeriodLabel = (filters) => {
+  if (filters.data) return filters.data;
+  if (filters.mes) return filters.mes;
+  if (filters.data_inicio || filters.data_fim) return `${filters.data_inicio || "—"} a ${filters.data_fim || "—"}`;
+  return "Últimos 7 dias (automático)";
+};
+
+const buildProfessionalRows = (records = []) =>
+  records.map((row) => ({
+    dataHora: asDateTime(getEffectiveDateValue(row)),
+    tipo: row?.tipo_label || getActivityName(row?.tipo),
+    motorista: asDisplayValue(row?.motorista),
+    veiculo: asDisplayValue(row?.veiculo),
+    placa: asDisplayValue(row?.placa),
+    litros: Number(row?.litros) || 0,
+    valor: Number(row?.valor_total) || 0,
+  }));
+
+const addProfessionalExcelWorksheet = (workbook, { companyName, filters, rows, logoImageId }) => {
+  const ws = workbook.addWorksheet("Relatório profissional");
+  ws.views = [{ showGridLines: false }];
+  ws.pageSetup = {
+    paperSize: 9,
+    orientation: "landscape",
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: 0,
+    margins: { left: 0.35, right: 0.35, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 },
+  };
+  ws.columns = [
+    { width: 20 },
+    { width: 18 },
+    { width: 24 },
+    { width: 24 },
+    { width: 14 },
+    { width: 14 },
+    { width: 16 },
+  ];
+
+  ws.mergeCells("A1:A3");
+  ws.mergeCells("B1:G1");
+  ws.mergeCells("B2:G2");
+  ws.mergeCells("B3:G3");
+  ws.getCell("B1").value = companyName || "Empresa";
+  ws.getCell("B2").value = "Relatório de abastecimento";
+  ws.getCell("B3").value = `Período: ${getProfessionalPeriodLabel(filters)}`;
+  ws.getCell("B1").font = { name: "Arial", size: 15, bold: true, color: { argb: "FF0F172A" } };
+  ws.getCell("B2").font = { name: "Arial", size: 12, bold: true, color: { argb: "FF1D4ED8" } };
+  ws.getCell("B3").font = { name: "Arial", size: 10, color: { argb: "FF334155" } };
+  ["B1", "B2", "B3"].forEach((addr) => {
+    ws.getCell(addr).alignment = { horizontal: "left", vertical: "middle" };
+  });
+  applyBorderAndFont(ws, 1, 3, 1, 7);
+
+  if (logoImageId !== null && logoImageId !== undefined) {
+    ws.addImage(logoImageId, { tl: { col: 0.08, row: 0.1 }, br: { col: 0.92, row: 2.9 }, editAs: "oneCell" });
+  } else {
+    ws.getCell("A1").value = "LOGO";
+    ws.getCell("A1").font = { name: "Arial", size: 10, italic: true, color: { argb: "FF64748B" } };
+    ws.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
+  }
+
+  const headerRow = 5;
+  const headers = ["Data/Hora", "Tipo", "Motorista", "Veículo", "Placa", "Litros (L)", "Valor (R$)"];
+  headers.forEach((label, idx) => {
+    const cell = ws.getCell(headerRow, idx + 1);
+    cell.value = label;
+    cell.font = { name: "Arial", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E3A8A" } };
+    cell.alignment = { horizontal: idx >= 5 ? "center" : "left", vertical: "middle" };
+    cell.border = {
+      top: { style: "thin", color: { argb: "FFCBD5E1" } },
+      left: { style: "thin", color: { argb: "FFCBD5E1" } },
+      bottom: { style: "thin", color: { argb: "FFCBD5E1" } },
+      right: { style: "thin", color: { argb: "FFCBD5E1" } },
+    };
+  });
+
+  let rowIndex = headerRow + 1;
+  rows.forEach((row) => {
+    const values = [row.dataHora, row.tipo, row.motorista, row.veiculo, row.placa, row.litros, row.valor];
+    values.forEach((value, idx) => {
+      const cell = ws.getCell(rowIndex, idx + 1);
+      cell.value = value;
+      if (idx === 5) cell.numFmt = "#,##0.000";
+      if (idx === 6) cell.numFmt = '"R$" #,##0.00';
+      cell.font = { name: "Arial", size: 10, color: { argb: "FF0F172A" } };
+      cell.alignment = {
+        horizontal: idx >= 5 ? "right" : idx === 4 ? "center" : "left",
+        vertical: "middle",
+        wrapText: true,
+      };
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFE2E8F0" } },
+        left: { style: "thin", color: { argb: "FFE2E8F0" } },
+        bottom: { style: "thin", color: { argb: "FFE2E8F0" } },
+        right: { style: "thin", color: { argb: "FFE2E8F0" } },
+      };
+    });
+    rowIndex += 1;
+  });
+
+  const totalLitros = rows.reduce((sum, row) => sum + (Number(row.litros) || 0), 0);
+  const totalValor = rows.reduce((sum, row) => sum + (Number(row.valor) || 0), 0);
+  const footerStart = Math.max(headerRow + 2, rowIndex + 1);
+  ws.mergeCells(`A${footerStart}:E${footerStart}`);
+  ws.getCell(`A${footerStart}`).value = `Total de registros: ${rows.length}`;
+  ws.getCell(`A${footerStart}`).font = { name: "Arial", size: 10, bold: true };
+  ws.getCell(`F${footerStart}`).value = totalLitros;
+  ws.getCell(`F${footerStart}`).numFmt = "#,##0.000";
+  ws.getCell(`G${footerStart}`).value = totalValor;
+  ws.getCell(`G${footerStart}`).numFmt = '"R$" #,##0.00';
+  ["A", "F", "G"].forEach((col) => {
+    const cell = ws.getCell(`${col}${footerStart}`);
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE2E8F0" } };
+    cell.font = { name: "Arial", size: 10, bold: true, color: { argb: "FF0F172A" } };
+    cell.alignment = { vertical: "middle", horizontal: col === "A" ? "left" : "right" };
+    cell.border = {
+      top: { style: "thin", color: { argb: "FFCBD5E1" } },
+      left: { style: "thin", color: { argb: "FFCBD5E1" } },
+      bottom: { style: "thin", color: { argb: "FFCBD5E1" } },
+      right: { style: "thin", color: { argb: "FFCBD5E1" } },
+    };
+  });
+};
+
+const buildProfessionalPdfBuffer = async ({ companyName, filters, rows, logoImage }) =>
+  new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: "A4", layout: "landscape", margin: 28 });
+    const chunks = [];
+    doc.on("data", (chunk) => chunks.push(chunk));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    const pageWidth = doc.page.width - 56;
+    const pageBottom = () => doc.page.height - 28;
+    const columns = [
+      { key: "dataHora", title: "Data/Hora", width: 112, align: "left" },
+      { key: "tipo", title: "Tipo", width: 88, align: "left" },
+      { key: "motorista", title: "Motorista", width: 132, align: "left" },
+      { key: "veiculo", title: "Veículo", width: 132, align: "left" },
+      { key: "placa", title: "Placa", width: 70, align: "center" },
+      { key: "litros", title: "Litros (L)", width: 78, align: "right" },
+      { key: "valor", title: "Valor (R$)", width: Math.max(86, pageWidth - (112 + 88 + 132 + 132 + 70 + 78)), align: "right" },
+    ];
+
+    const drawHeader = () => {
+      const y = doc.y;
+      doc.rect(28, y, pageWidth, 66).lineWidth(0.8).stroke("#CBD5E1");
+      if (logoImage?.buffer) {
+        try {
+          doc.image(logoImage.buffer, 34, y + 8, { fit: [68, 50] });
+        } catch {
+          // ignora logo inválida
+        }
+      } else {
+        doc.font("Helvetica-Oblique").fontSize(9).fillColor("#64748B").text("LOGO", 40, y + 26);
+      }
+      doc.font("Helvetica-Bold").fontSize(16).fillColor("#0F172A").text(companyName || "Empresa", 110, y + 10, { width: pageWidth - 120 });
+      doc.font("Helvetica-Bold").fontSize(12).fillColor("#1D4ED8").text("Relatório de abastecimento", 110, y + 32, { width: pageWidth - 120 });
+      doc.font("Helvetica").fontSize(10).fillColor("#334155").text(`Período: ${getProfessionalPeriodLabel(filters)}`, 110, y + 50, {
+        width: pageWidth - 120,
+      });
+      doc.moveDown(4.2);
+    };
+
+    const drawTableHead = (y) => {
+      let x = 28;
+      columns.forEach((col) => {
+        doc.rect(x, y, col.width, 24).fillAndStroke("#1E3A8A", "#CBD5E1");
+        doc.font("Helvetica-Bold").fontSize(9.5).fillColor("#FFFFFF").text(col.title, x + 6, y + 7, {
+          width: col.width - 12,
+          align: col.align === "right" ? "right" : col.align === "center" ? "center" : "left",
+        });
+        x += col.width;
+      });
+      return y + 24;
+    };
+
+    const drawRow = (y, row) => {
+      let x = 28;
+      columns.forEach((col) => {
+        doc.rect(x, y, col.width, 20).lineWidth(0.6).stroke("#E2E8F0");
+        const text =
+          col.key === "litros"
+            ? fmtLitrosBr(row.litros)
+            : col.key === "valor"
+              ? fmtMoneyBr(row.valor)
+              : asDisplayValue(row[col.key]);
+        doc.font("Helvetica").fontSize(9).fillColor("#0F172A").text(text, x + 5, y + 5, {
+          width: col.width - 10,
+          align: col.align === "right" ? "right" : col.align === "center" ? "center" : "left",
+          lineBreak: false,
+        });
+        x += col.width;
+      });
+      return y + 20;
+    };
+
+    drawHeader();
+    let y = drawTableHead(doc.y);
+    rows.forEach((row) => {
+      if (y + 24 > pageBottom()) {
+        doc.addPage();
+        drawHeader();
+        y = drawTableHead(doc.y);
+      }
+      y = drawRow(y, row);
+    });
+
+    const totalLitros = rows.reduce((sum, row) => sum + (Number(row.litros) || 0), 0);
+    const totalValor = rows.reduce((sum, row) => sum + (Number(row.valor) || 0), 0);
+    if (y + 28 > pageBottom()) {
+      doc.addPage();
+      drawHeader();
+      y = drawTableHead(doc.y);
+    }
+    doc.rect(28, y + 8, pageWidth, 22).fillAndStroke("#E2E8F0", "#CBD5E1");
+    doc.font("Helvetica-Bold").fontSize(9.5).fillColor("#0F172A").text(`Total de registros: ${rows.length}`, 34, y + 15, {
+      width: 250,
+      align: "left",
+    });
+    doc.text(`Total litros: ${fmtLitrosBr(totalLitros)}`, 300, y + 15, { width: 180, align: "right" });
+    doc.text(`Total valor: ${fmtMoneyBr(totalValor)}`, 500, y + 15, { width: 260, align: "right" });
+    doc.end();
+  });
+
 const exportExcel = async (req, res) => {
   let filters;
   try {
@@ -2137,12 +2390,23 @@ const exportExcel = async (req, res) => {
   const excelImage = await toExcelCompatibleImage(logoAssets.htmlSrc, logoAssets.excelImage);
   const logoImageId = await loadLogoImage(workbook, excelImage);
   const summaryText = formatExportFiltersSummaryPt(filtersEffective, data.length);
-  addExportSummaryWorksheet(workbook, { companyName: company?.nome || "Empresa", summaryText });
+  const isProfessionalLayout = filtersEffective.layout === "profissional";
+  if (!isProfessionalLayout) {
+    addExportSummaryWorksheet(workbook, { companyName: company?.nome || "Empresa", summaryText });
+  }
 
   if (!data.length) {
     const empty = workbook.addWorksheet("Sem registros");
     empty.getCell("A1").value = `Sem registros para exportação (${company?.nome || "Empresa"})`;
     empty.getCell("A1").font = { name: "Arial", size: 12, bold: true };
+  } else if (isProfessionalLayout) {
+    const professionalRows = buildProfessionalRows(data);
+    addProfessionalExcelWorksheet(workbook, {
+      companyName: company?.nome || "Empresa",
+      filters: filtersEffective,
+      rows: professionalRows,
+      logoImageId,
+    });
   } else {
     const sheetEntries = buildSheetEntriesFromRecords(data);
     sheetEntries.forEach((entry, index) => {
@@ -2218,6 +2482,20 @@ const exportPdf = async (req, res) => {
   const company = await getCompanyById(scope.empresa_id);
   const logoAssets = await resolveEmpresaLogoAssets(req, company);
   const summaryText = formatExportFiltersSummaryPt(filtersEffective, data.length);
+  const isProfessionalLayout = filtersEffective.layout === "profissional";
+  if (isProfessionalLayout) {
+    const rasterForPdf = await toExcelCompatibleImage(logoAssets.htmlSrc, logoAssets.excelImage);
+    const professionalRows = buildProfessionalRows(data);
+    const professionalBuffer = await buildProfessionalPdfBuffer({
+      companyName: company?.nome || "Empresa",
+      filters: filtersEffective,
+      rows: professionalRows,
+      logoImage: rasterForPdf,
+    });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", "attachment; filename=registros.pdf");
+    return res.send(professionalBuffer);
+  }
   const html = buildOfficialHtml({
     companyName: company?.nome || "Empresa",
     logoUrl: logoAssets.htmlSrc,

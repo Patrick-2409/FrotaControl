@@ -12,9 +12,11 @@ import {
 import { useOperationalExport } from "../../../../hooks/useOperationalExport";
 import { useReportsHubPersistence } from "../useReportsHubPersistence";
 import { inputClass } from "../../../../components/FormField";
+import { emitToast } from "../../../../services/uiEvents";
 
 const PREVIEW_RECORD_LIMIT = 100;
 const DEBOUNCE_MS = 380;
+const TABLE_EXPORT_LAYOUT_PARAMS = Object.freeze({ layout: "profissional" });
 
 const REPORT_TYPES = [
   { key: "romaneio", label: "Transporte" },
@@ -76,6 +78,11 @@ const defaultFiltro = () => ({
   preset: "hoje",
 });
 
+const asRowKey = (row) => `${row?.tipo || "tipo"}::${row?.source_id || row?.id || "sem-id"}`;
+const fmtMoney = (value) =>
+  Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtLitros = (value) => Number(value || 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+
 export default function EmpresaRelatoriosPage() {
   const { user } = useAuth();
   const [filtro, setFiltro] = useState(defaultFiltro);
@@ -84,10 +91,14 @@ export default function EmpresaRelatoriosPage() {
   const [previewTotal, setPreviewTotal] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
+  const [selectedRowKeys, setSelectedRowKeys] = useState(new Set());
+  const [detailRow, setDetailRow] = useState(null);
   const previewCacheRef = useRef(new Map());
 
   const { favorites, recent, exportHistory, pushRecent, toggleFavorite, logExport } = useReportsHubPersistence();
-  const { exporting, download } = useOperationalExport(queryFiltro, queryFiltro.motorista, queryFiltro.veiculo);
+  const { exporting, download } = useOperationalExport(queryFiltro, queryFiltro.motorista, queryFiltro.veiculo, {
+    extraParams: TABLE_EXPORT_LAYOUT_PARAMS,
+  });
 
   const tipoExportLabel = typeLabelMap[queryFiltro.tipo] || typeLabelMap[""];
   const periodoExportLabel = useMemo(
@@ -163,7 +174,19 @@ export default function EmpresaRelatoriosPage() {
     };
   }, [queryFiltro.data, queryFiltro.data_fim, queryFiltro.data_inicio, queryFiltro.mes, queryFiltro.motorista, queryFiltro.veiculo, queryFiltro.periodo, queryFiltro.tipo]);
 
+  useEffect(() => {
+    setSelectedRowKeys(new Set());
+    setDetailRow(null);
+  }, [queryFiltro.data, queryFiltro.data_fim, queryFiltro.data_inicio, queryFiltro.mes, queryFiltro.motorista, queryFiltro.veiculo, queryFiltro.periodo, queryFiltro.tipo]);
+
   const hasDataToExport = !previewLoading && previewRows.length > 0;
+  const selectedRows = useMemo(() => previewRows.filter((row) => selectedRowKeys.has(asRowKey(row))), [previewRows, selectedRowKeys]);
+  const selectedSourceIds = useMemo(
+    () => selectedRows.map((row) => String(row?.source_id || "").trim()).filter(Boolean),
+    [selectedRows]
+  );
+  const hasSelection = selectedSourceIds.length > 0;
+  const allVisibleSelected = hasDataToExport && previewRows.every((row) => selectedRowKeys.has(asRowKey(row)));
 
   useEffect(() => {
     const onExport = (ev) => {
@@ -177,6 +200,38 @@ export default function EmpresaRelatoriosPage() {
   const clearFilters = useCallback(() => {
     setFiltro(defaultFiltro());
   }, []);
+
+  const toggleAllRows = useCallback(() => {
+    setSelectedRowKeys((prev) => {
+      if (!previewRows.length) return new Set();
+      if (previewRows.every((row) => prev.has(asRowKey(row)))) return new Set();
+      return new Set(previewRows.map((row) => asRowKey(row)));
+    });
+  }, [previewRows]);
+
+  const toggleRowSelection = useCallback((row) => {
+    const rowKey = asRowKey(row);
+    setSelectedRowKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(rowKey)) next.delete(rowKey);
+      else next.add(rowKey);
+      return next;
+    });
+  }, []);
+
+  const exportWithCurrentSelection = useCallback(
+    async (format, explicitRow = null) => {
+      const sourceIds = explicitRow
+        ? [String(explicitRow?.source_id || "").trim()].filter(Boolean)
+        : selectedSourceIds;
+      if (explicitRow && !sourceIds.length) {
+        emitToast("Registro sem identificador para exportação.", "error");
+        return;
+      }
+      await download(format, { sourceIds });
+    },
+    [download, selectedSourceIds]
+  );
 
   const quickActions = useMemo(
     () => [
@@ -427,6 +482,14 @@ export default function EmpresaRelatoriosPage() {
                       <table className="w-full text-left text-sm">
                         <thead className="bg-zinc-950/70 text-xs uppercase tracking-wide text-zinc-500">
                           <tr>
+                            <th className="w-10 px-3 py-2">
+                              <input
+                                type="checkbox"
+                                aria-label="Selecionar todos os registros exibidos"
+                                checked={allVisibleSelected}
+                                onChange={toggleAllRows}
+                              />
+                            </th>
                             <th className="px-3 py-2">Data</th>
                             <th className="px-3 py-2">Tipo</th>
                             <th className="px-3 py-2">Motorista</th>
@@ -436,7 +499,29 @@ export default function EmpresaRelatoriosPage() {
                         </thead>
                         <tbody className="divide-y divide-zinc-800/80">
                           {previewRows.map((row) => (
-                            <tr key={`${row.tipo}-${row.id ?? row.source_id}`}>
+                            <tr
+                              key={`${row.tipo}-${row.id ?? row.source_id}`}
+                              className={`${row.tipo === "combustivel" ? "cursor-pointer hover:bg-zinc-900/60" : ""} transition`}
+                              onClick={() => {
+                                if (row.tipo === "combustivel") setDetailRow(row);
+                              }}
+                              role={row.tipo === "combustivel" ? "button" : undefined}
+                              tabIndex={row.tipo === "combustivel" ? 0 : undefined}
+                              onKeyDown={(ev) => {
+                                if (row.tipo === "combustivel" && (ev.key === "Enter" || ev.key === " ")) {
+                                  ev.preventDefault();
+                                  setDetailRow(row);
+                                }
+                              }}
+                            >
+                              <td className="px-3 py-2" onClick={(ev) => ev.stopPropagation()}>
+                                <input
+                                  type="checkbox"
+                                  checked={selectedRowKeys.has(asRowKey(row))}
+                                  onChange={() => toggleRowSelection(row)}
+                                  aria-label="Selecionar registro"
+                                />
+                              </td>
                               <td className="px-3 py-2 text-zinc-300">{formatOperationalData(row)}</td>
                               <td className="px-3 py-2 text-zinc-100">{typeLabelMap[row.tipo] || row.tipo}</td>
                               <td className="px-3 py-2 text-zinc-200">{row.motorista || "—"}</td>
@@ -459,10 +544,20 @@ export default function EmpresaRelatoriosPage() {
               Tipo: <strong>{tipoExportLabel}</strong> • Período: <strong>{periodoExportLabel}</strong>
             </p>
             <div className="mt-4 flex flex-wrap items-center gap-2">
+              {hasSelection ? (
+                <button
+                  type="button"
+                  disabled={Boolean(exporting)}
+                  onClick={() => exportWithCurrentSelection("excel")}
+                  className="fc-btn rounded-lg border border-emerald-500 px-3 py-2 text-sm text-emerald-300 disabled:opacity-40"
+                >
+                  Exportar selecionados ({selectedSourceIds.length})
+                </button>
+              ) : null}
               <button
                 type="button"
                 disabled={Boolean(exporting) || !hasDataToExport}
-                onClick={() => download("pdf")}
+                onClick={() => exportWithCurrentSelection("pdf")}
                 className="fc-btn rounded-lg border border-blue-500 px-3 py-2 text-sm text-blue-300 disabled:opacity-40"
               >
                 Exportar PDF
@@ -470,7 +565,7 @@ export default function EmpresaRelatoriosPage() {
               <button
                 type="button"
                 disabled={Boolean(exporting) || !hasDataToExport}
-                onClick={() => download("excel")}
+                onClick={() => exportWithCurrentSelection("excel")}
                 className="fc-btn rounded-lg border border-blue-500 px-3 py-2 text-sm text-blue-300 disabled:opacity-40"
               >
                 Exportar Excel
@@ -483,6 +578,50 @@ export default function EmpresaRelatoriosPage() {
           </section>
         </div>
       </div>
+      {detailRow ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print:hidden"
+          role="presentation"
+          onClick={() => setDetailRow(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="fc-report-detail-title"
+            className="fc-card w-full max-w-2xl border border-zinc-700 bg-zinc-950 p-5 shadow-xl"
+            onClick={(ev) => ev.stopPropagation()}
+          >
+            <h3 id="fc-report-detail-title" className="text-base font-semibold text-zinc-100">
+              Detalhe do abastecimento
+            </h3>
+            <div className="mt-4 grid grid-cols-1 gap-3 text-sm text-zinc-300 sm:grid-cols-2">
+              <p><strong>Data/hora:</strong> {formatOperationalData(detailRow)}</p>
+              <p><strong>Motorista:</strong> {detailRow.motorista || "—"}</p>
+              <p><strong>Veículo:</strong> {detailRow.veiculo || "—"}</p>
+              <p><strong>Placa:</strong> {detailRow.placa || "—"}</p>
+              <p><strong>Litros:</strong> {fmtLitros(detailRow.litros)} L</p>
+              <p><strong>Valor:</strong> {fmtMoney(detailRow.valor_total)}</p>
+            </div>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={Boolean(exporting)}
+                onClick={() => exportWithCurrentSelection("pdf", detailRow)}
+                className="fc-btn rounded-lg border border-blue-500 px-4 py-2 text-sm text-blue-300 disabled:opacity-40"
+              >
+                Gerar PDF desse registro
+              </button>
+              <button
+                type="button"
+                onClick={() => setDetailRow(null)}
+                className="fc-btn rounded-lg border border-zinc-600 px-4 py-2 text-sm text-zinc-300"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
