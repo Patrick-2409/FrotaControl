@@ -7,6 +7,7 @@ import EmptyState from "../components/EmptyState";
 import FormField, { inputClass } from "../components/FormField";
 import { emitToast } from "../services/uiEvents";
 import { parseDecimalInput } from "../utils/numberParse";
+import { useAuth } from "../services/auth";
 
 const OPERATION_TIMEZONE = "America/Sao_Paulo";
 
@@ -84,6 +85,7 @@ const newEditForm = () => ({
 });
 
 export default function HistoricoPage({ reloadKey }) {
+  const { user } = useAuth();
   const [rows, setRows] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [selectedYear, setSelectedYear] = useState("all");
@@ -98,6 +100,7 @@ export default function HistoricoPage({ reloadKey }) {
   const [exporting, setExporting] = useState("");
   const loadMoreRef = useRef(null);
   const navigate = useNavigate();
+  const canSeeTransport = Boolean(user?.is_motorista_transporte);
   const typeMeta = {
     romaneios: { label: "Romaneio", badge: "bg-blue-500/20 text-blue-200 border-blue-400/40", icon: "🚛" },
     combustiveis: { label: "Combustível", badge: "bg-emerald-500/20 text-emerald-200 border-emerald-400/40", icon: "⛽" },
@@ -132,6 +135,7 @@ export default function HistoricoPage({ reloadKey }) {
   }, []);
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
+      if (!canSeeTransport && row?.module === "romaneios") return false;
       const instant = parseOperationalInstant(getFolderAnchorRaw(row));
       const year = instant ? dayKeyInOpsTz(instant).slice(0, 4) : "";
       if (selectedYear !== "all" && year !== selectedYear) return false;
@@ -143,7 +147,7 @@ export default function HistoricoPage({ reloadKey }) {
       }
       return true;
     });
-  }, [rows, selectedYear, selectedType, selectedVehicle]);
+  }, [rows, selectedYear, selectedType, selectedVehicle, canSeeTransport]);
 
   const groupedByMonth = useMemo(() => {
     const map = new Map();
@@ -251,17 +255,8 @@ export default function HistoricoPage({ reloadKey }) {
 
   useEffect(() => {
     setVisibleMonths(3);
+    setOpenMonthKey(null);
   }, [selectedYear, selectedType, selectedVehicle]);
-
-  useEffect(() => {
-    if (!visibleGroups.length) {
-      setOpenMonthKey(null);
-      return;
-    }
-    if (!openMonthKey || !visibleGroups.some((group) => group.monthKey === openMonthKey)) {
-      setOpenMonthKey(visibleGroups[0].monthKey);
-    }
-  }, [visibleGroups, openMonthKey]);
 
   useEffect(() => {
     const target = loadMoreRef.current;
@@ -448,7 +443,7 @@ export default function HistoricoPage({ reloadKey }) {
             <select className={inputClass} value={selectedType} onChange={(e) => setSelectedType(e.target.value)}>
               <option value="all">Todos os tipos</option>
               <option value="combustiveis">Combustível</option>
-              <option value="romaneios">Transporte</option>
+              {canSeeTransport ? <option value="romaneios">Transporte</option> : null}
               <option value="parteDiaria">Parte diária</option>
             </select>
           </FormField>
@@ -471,6 +466,7 @@ export default function HistoricoPage({ reloadKey }) {
           <button
             type="button"
             onClick={() => toggleMonth(group.monthKey)}
+            aria-expanded={openMonthKey === group.monthKey}
             className="mb-3 flex w-full flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-700/80 bg-slate-900/70 px-3 py-2 text-left transition hover:border-blue-500/40"
           >
             <p className="truncate text-sm font-semibold capitalize text-slate-100">
@@ -488,71 +484,93 @@ export default function HistoricoPage({ reloadKey }) {
 
           <div
             className={`overflow-hidden transition-all duration-300 ${
-              openMonthKey === group.monthKey ? "max-h-[4000px] opacity-100" : "max-h-0 opacity-0"
+              openMonthKey === group.monthKey ? "max-h-[4000px] opacity-100" : "max-h-0 opacity-0 pointer-events-none"
             }`}
           >
-            <div className="space-y-3 border-l-2 border-slate-800 pl-3 sm:pl-4">
-              {group.items.map((row, idx) => {
-                const statusMeta = getStatusMeta(row.status);
-                const fuelCompact = row.module === "combustiveis" ? compactFuelCardData(row) : null;
-                return (
-                  <article
-                    key={`${group.monthKey}-${row.module}-${row.source_id || idx}`}
-                    className="rounded-xl border border-slate-800 bg-slate-950/55 p-4"
-                  >
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xl">{typeMeta[row.module]?.icon || "📄"}</span>
-                        <span
-                          className={`rounded-full border px-2 py-1 text-xs font-semibold ${typeMeta[row.module]?.badge || "border-slate-700 bg-slate-800 text-slate-200"}`}
+            <div className="space-y-4 border-l-2 border-slate-800 pl-3 sm:pl-4">
+              {Object.entries(
+                group.items.reduce((acc, item) => {
+                  const key = String(item?.module || "outros");
+                  if (!acc[key]) acc[key] = [];
+                  acc[key].push(item);
+                  return acc;
+                }, {})
+              ).map(([moduleKey, activityItems]) => (
+                <section key={`${group.monthKey}-${moduleKey}`} className="rounded-xl border border-slate-800/80 bg-slate-900/30 p-3">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">{typeMeta[moduleKey]?.icon || "📄"}</span>
+                      <p className="text-sm font-semibold text-slate-100">{typeMeta[moduleKey]?.label || moduleKey}</p>
+                    </div>
+                    <span className="rounded-full border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-300">
+                      {activityItems.length} registro(s)
+                    </span>
+                  </div>
+                  <div className="space-y-3">
+                    {activityItems.map((row, idx) => {
+                      const statusMeta = getStatusMeta(row.status);
+                      const fuelCompact = row.module === "combustiveis" ? compactFuelCardData(row) : null;
+                      return (
+                        <article
+                          key={`${group.monthKey}-${row.module}-${row.source_id || idx}`}
+                          className="rounded-xl border border-slate-800 bg-slate-950/55 p-4"
                         >
-                          {typeMeta[row.module]?.label || row.module}
-                        </span>
-                      </div>
-                      <span className={`rounded-full px-2 py-1 text-xs ${statusMeta.className}`}>
-                        {statusMeta.label}
-                      </span>
-                    </div>
-                    <div className="grid gap-1 text-sm text-slate-300">
-                      {fuelCompact ? (
-                        <>
-                          <p><strong>Data e hora:</strong> {fuelCompact.dateLabel}</p>
-                          <p><strong>Litros:</strong> {fuelCompact.litros.toFixed(2)} L</p>
-                          <p><strong>Valor total:</strong> {fuelCompact.valorTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
-                          <p><strong>Valor/L:</strong> {fuelCompact.valorLitro.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
-                          <p><strong>Veículo:</strong> {fuelCompact.vehicleLabel}{fuelCompact.plateLabel ? ` | ${fuelCompact.plateLabel}` : ""}</p>
-                        </>
-                      ) : (
-                        <>
-                          <p><strong>Data:</strong> {formatRowDate(row)}</p>
-                          <p><strong>Registrado em:</strong> {formatRegisteredAt(row)}</p>
-                          <p><strong>Veículo:</strong> {row.payload?.veiculo_nome || row.payload?.equipamento || row.payload?.placa || "Não informado"}</p>
-                        </>
-                      )}
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button
-                        onClick={() => setSelectedRow(row)}
-                        className="fc-btn btn-secondary rounded-lg px-4 py-2 text-sm"
-                      >
-                        Visualizar
-                      </button>
-                      <button
-                        onClick={() => onDelete(row)}
-                        className="fc-btn rounded-lg border border-red-600/70 bg-red-900/20 px-4 py-2 text-sm text-red-200"
-                      >
-                        Excluir
-                      </button>
-                      <button
-                        onClick={() => onEdit(row)}
-                        className="fc-btn btn-primary rounded-lg px-4 py-2 text-sm"
-                      >
-                        Editar
-                      </button>
-                    </div>
-                  </article>
-                );
-              })}
+                          <div className="mb-2 flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xl">{typeMeta[row.module]?.icon || "📄"}</span>
+                              <span
+                                className={`rounded-full border px-2 py-1 text-xs font-semibold ${typeMeta[row.module]?.badge || "border-slate-700 bg-slate-800 text-slate-200"}`}
+                              >
+                                {typeMeta[row.module]?.label || row.module}
+                              </span>
+                            </div>
+                            <span className={`rounded-full px-2 py-1 text-xs ${statusMeta.className}`}>
+                              {statusMeta.label}
+                            </span>
+                          </div>
+                          <div className="grid gap-1 text-sm text-slate-300">
+                            {fuelCompact ? (
+                              <>
+                                <p><strong>Data e hora:</strong> {fuelCompact.dateLabel}</p>
+                                <p><strong>Litros:</strong> {fuelCompact.litros.toFixed(2)} L</p>
+                                <p><strong>Valor total:</strong> {fuelCompact.valorTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+                                <p><strong>Valor/L:</strong> {fuelCompact.valorLitro.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+                                <p><strong>Veículo:</strong> {fuelCompact.vehicleLabel}{fuelCompact.plateLabel ? ` | ${fuelCompact.plateLabel}` : ""}</p>
+                              </>
+                            ) : (
+                              <>
+                                <p><strong>Data:</strong> {formatRowDate(row)}</p>
+                                <p><strong>Registrado em:</strong> {formatRegisteredAt(row)}</p>
+                                <p><strong>Veículo:</strong> {row.payload?.veiculo_nome || row.payload?.equipamento || row.payload?.placa || "Não informado"}</p>
+                              </>
+                            )}
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button
+                              onClick={() => setSelectedRow(row)}
+                              className="fc-btn btn-secondary rounded-lg px-4 py-2 text-sm"
+                            >
+                              Visualizar
+                            </button>
+                            <button
+                              onClick={() => onDelete(row)}
+                              className="fc-btn rounded-lg border border-red-600/70 bg-red-900/20 px-4 py-2 text-sm text-red-200"
+                            >
+                              Excluir
+                            </button>
+                            <button
+                              onClick={() => onEdit(row)}
+                              className="fc-btn btn-primary rounded-lg px-4 py-2 text-sm"
+                            >
+                              Editar
+                            </button>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
             </div>
           </div>
         </section>

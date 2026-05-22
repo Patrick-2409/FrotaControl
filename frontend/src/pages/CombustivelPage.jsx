@@ -58,12 +58,6 @@ const toHistoryYmd = (row) => {
   return toYmdInOperationTimezone(raw);
 };
 
-const toRangeStartByFilter = (today, filter) => {
-  if (filter === "dia") return today;
-  if (filter === "semana") return addDays(today, -6);
-  return `${today.slice(0, 7)}-01`;
-};
-
 const formatMoneyBr = (value) =>
   Number(value || 0).toLocaleString("pt-BR", {
     style: "currency",
