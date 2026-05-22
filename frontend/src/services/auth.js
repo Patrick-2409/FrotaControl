@@ -4,7 +4,6 @@ import { isJwtExpired, sanitizePlainText } from "../utils/security";
 
 const AuthContext = createContext(null);
 
-const MAX_EMAIL_LEN = 254;
 const MAX_LOGIN_LEN = 254;
 const MAX_PASSWORD_LEN = 128;
 
@@ -45,11 +44,12 @@ const buildMotoristaLoginPayload = (payload = {}) => {
   };
 };
 
-const buildEmailLoginPayload = (payload = {}) => {
-  const email = sanitizePlainText(String(payload.email ?? "").trim().toLowerCase(), MAX_EMAIL_LEN);
+const buildUniversalLoginPayload = (payload = {}) => {
+  const rawLogin = String(payload.login ?? payload.email ?? payload.cpf_id ?? "").trim();
+  const login = sanitizePlainText(rawLogin, MAX_LOGIN_LEN);
   const senha = String(payload.senha ?? payload.password ?? "").slice(0, MAX_PASSWORD_LEN);
   return {
-    email,
+    login,
     senha,
   };
 };
@@ -113,7 +113,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const adminEmpresaLogin = async (payload) => {
-    const { data } = await api.post("/auth/admin-empresa-login", buildEmailLoginPayload(payload));
+    const { data } = await api.post("/auth/admin-empresa-login", buildUniversalLoginPayload(payload));
     const normalized = normalizeUser(data.user);
     localStorage.setItem("fc_token", data.token);
     localStorage.setItem("fc_user", JSON.stringify(normalized));
@@ -123,7 +123,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const apontadorLogin = async (payload) => {
-    const { data } = await api.post("/auth/apontador-login", buildEmailLoginPayload(payload));
+    const { data } = await api.post("/auth/apontador-login", buildUniversalLoginPayload(payload));
     const normalized = normalizeUser(data.user);
     localStorage.setItem("fc_token", data.token);
     localStorage.setItem("fc_user", JSON.stringify(normalized));
@@ -133,7 +133,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const superAdminLogin = async (payload) => {
-    const { data } = await api.post("/auth/super-admin-login", buildEmailLoginPayload(payload));
+    const { data } = await api.post("/auth/super-admin-login", buildUniversalLoginPayload(payload));
     const normalized = normalizeUser(data.user);
     localStorage.setItem("fc_token", data.token);
     localStorage.setItem("fc_user", JSON.stringify(normalized));

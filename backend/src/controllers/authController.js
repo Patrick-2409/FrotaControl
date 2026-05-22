@@ -3,9 +3,9 @@ const { z } = require("zod");
 const {
   getUserById,
   getMotoristaByLogin,
-  getAdminsEmpresaByEmail,
-  getApontadorByEmail,
-  getSuperAdminsByEmail,
+  getAdminsEmpresaByLogin,
+  getApontadorByLogin,
+  getSuperAdminsByLogin,
   updateOwnUserPassword,
 } = require("../models/userModel");
 const { buildToken } = require("../services/authService");
@@ -37,28 +37,25 @@ const motoristaLoginSchema = z
     path: ["senha"],
   });
 
-const adminEmpresaLoginSchema = z
+const roleLoginSchema = z
   .object({
-    email: z.string().trim().email(),
+    login: z.string().trim().min(3).optional(),
+    email: z.string().trim().min(3).optional(),
+    cpf_id: z.string().trim().min(3).optional(),
     senha: z.string().min(6),
   })
   .transform((v) => ({
-    email: v.email.toLowerCase(),
+    login: v.login || v.email || v.cpf_id,
     senha: v.senha,
-  }));
+  }))
+  .refine((v) => Boolean(v.login), {
+    message: "Informe CPF, e-mail ou ID do usuário.",
+    path: ["login"],
+  });
 
-const superAdminLoginSchema = z
-  .object({
-    email: z.string().trim().email(),
-    senha: z.string().min(6),
-  })
-  .transform((v) => ({
-    email: v.email.toLowerCase(),
-    senha: v.senha,
-  }));
-
-/** Mesmo payload que admin empresa (e-mail + senha). */
-const apontadorLoginSchema = adminEmpresaLoginSchema;
+const adminEmpresaLoginSchema = roleLoginSchema;
+const superAdminLoginSchema = roleLoginSchema;
+const apontadorLoginSchema = roleLoginSchema;
 
 const alterarSenhaSchema = z
   .object({
@@ -192,17 +189,18 @@ const motoristaLogin = async (req, res) => {
 
 const adminEmpresaLogin = async (req, res) => {
   const data = adminEmpresaLoginSchema.parse(req.body);
-  logAuthDebug("ADMIN_EMPRESA", { email: data.email });
-  const rows = await getAdminsEmpresaByEmail(data.email);
+  const loginOriginal = String(data.login || "").trim();
+  logAuthDebug("ADMIN_EMPRESA", { login: loginOriginal });
+  const rows = await getAdminsEmpresaByLogin(loginOriginal);
   logAuthDebug("ADMIN_EMPRESA_RESULTADO", {
     encontrados: rows.length,
-    usuarios: rows.map((u) => ({ id: u.id, role: u.role, email: u.email })),
+    usuarios: rows.map((u) => ({ id: u.id, role: u.role, email: u.email, cpf_id: u.cpf_id })),
   });
   if (!rows.length) {
     return res.status(401).json({ success: false, error: "Credenciais inválidas", message: "Credenciais inválidas" });
   }
   if (rows.length > 1) {
-    logInfo("auth:admin-empresa-duplicado", { email: data.email, ids: rows.map((u) => u.id) });
+    logInfo("auth:admin-empresa-duplicado", { login: loginOriginal, ids: rows.map((u) => u.id) });
     return res.status(409).json({
       success: false,
       error: "Conflito de credenciais",
@@ -239,17 +237,18 @@ const adminEmpresaLogin = async (req, res) => {
 
 const apontadorLogin = async (req, res) => {
   const data = apontadorLoginSchema.parse(req.body);
-  logAuthDebug("APONTADOR", { email: data.email });
-  const rows = await getApontadorByEmail(data.email);
+  const loginOriginal = String(data.login || "").trim();
+  logAuthDebug("APONTADOR", { login: loginOriginal });
+  const rows = await getApontadorByLogin(loginOriginal);
   logAuthDebug("APONTADOR_RESULTADO", {
     encontrados: rows.length,
-    usuarios: rows.map((u) => ({ id: u.id, role: u.role, email: u.email })),
+    usuarios: rows.map((u) => ({ id: u.id, role: u.role, email: u.email, cpf_id: u.cpf_id })),
   });
   if (!rows.length) {
     return res.status(401).json({ success: false, error: "Credenciais inválidas", message: "Credenciais inválidas" });
   }
   if (rows.length > 1) {
-    logInfo("auth:apontador-duplicado", { email: data.email, ids: rows.map((u) => u.id) });
+    logInfo("auth:apontador-duplicado", { login: loginOriginal, ids: rows.map((u) => u.id) });
     return res.status(409).json({
       success: false,
       error: "Conflito de credenciais",
@@ -286,17 +285,18 @@ const apontadorLogin = async (req, res) => {
 
 const superAdminLogin = async (req, res) => {
   const data = superAdminLoginSchema.parse(req.body);
-  logAuthDebug("SUPER_ADMIN", { email: data.email });
-  const rows = await getSuperAdminsByEmail(data.email);
+  const loginOriginal = String(data.login || "").trim();
+  logAuthDebug("SUPER_ADMIN", { login: loginOriginal });
+  const rows = await getSuperAdminsByLogin(loginOriginal);
   logAuthDebug("SUPER_ADMIN_RESULTADO", {
     encontrados: rows.length,
-    usuarios: rows.map((u) => ({ id: u.id, role: u.role, email: u.email })),
+    usuarios: rows.map((u) => ({ id: u.id, role: u.role, email: u.email, cpf_id: u.cpf_id })),
   });
   if (!rows.length) {
     return res.status(401).json({ success: false, error: "Credenciais inválidas", message: "Credenciais inválidas" });
   }
   if (rows.length > 1) {
-    logInfo("auth:super-admin-duplicado", { email: data.email, ids: rows.map((u) => u.id) });
+    logInfo("auth:super-admin-duplicado", { login: loginOriginal, ids: rows.map((u) => u.id) });
     return res.status(409).json({
       success: false,
       error: "Conflito de credenciais",

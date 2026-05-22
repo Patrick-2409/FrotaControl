@@ -8,7 +8,7 @@ import SystemLogo from "../components/SystemLogo";
 export default function AdminLoginPage() {
   const { adminEmpresaLogin, logout } = useAuth();
   const navigate = useNavigate();
-  const [form, setForm] = useState({ email: "", senha: "" });
+  const [form, setForm] = useState({ login: "", senha: "" });
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const submitLockRef = useRef(false);
@@ -17,10 +17,10 @@ export default function AdminLoginPage() {
     e.preventDefault();
     if (submitLockRef.current) return;
     setError("");
-    const normalizedEmail = String(form.email || "").trim().toLowerCase();
+    const normalizedLogin = String(form.login || "").trim();
     const normalizedSenha = String(form.senha || "");
-    if (!normalizedEmail || !normalizedSenha) {
-      setError("Preencha e-mail e senha.");
+    if (!normalizedLogin || !normalizedSenha) {
+      setError("Preencha login e senha.");
       return;
     }
     if (normalizedSenha.length < 6) {
@@ -30,7 +30,7 @@ export default function AdminLoginPage() {
     submitLockRef.current = true;
     setSubmitting(true);
     try {
-      const user = await adminEmpresaLogin({ email: normalizedEmail, senha: normalizedSenha });
+      const user = await adminEmpresaLogin({ login: normalizedLogin, senha: normalizedSenha });
       if (user.role !== "ADMIN_EMPRESA") {
         logout();
         setError("Acesso restrito a administrador de empresa.");
@@ -63,12 +63,13 @@ export default function AdminLoginPage() {
         <h1 className="mb-1 text-2xl font-bold text-white">Acesso Empresa</h1>
         <p className="mb-5 text-sm text-slate-400">Painel de gestão de motoristas, veículos e relatórios</p>
 
-        <FormField label="E-mail">
+        <FormField label="Login (CPF, e-mail ou ID)">
           <input
             className={inputClass}
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
+            value={form.login}
+            onChange={(e) => setForm({ ...form, login: e.target.value })}
             autoComplete="username"
+            placeholder="Ex.: 123.456.789-00, admin@empresa.com ou USR-000123"
             aria-invalid={Boolean(error)}
           />
         </FormField>

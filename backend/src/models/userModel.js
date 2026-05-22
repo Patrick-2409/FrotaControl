@@ -157,6 +157,39 @@ const normalizeMotoristaLoginInput = (loginInput) => {
   };
 };
 
+const isEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+
+const normalizeUserLoginInput = (loginInput) => {
+  if (typeof loginInput === "object" && loginInput !== null) {
+    return {
+      cpf: trimOrNull(loginInput.cpf),
+      email: trimOrNull(loginInput.email),
+      user_id: Number.isInteger(loginInput.user_id) && loginInput.user_id > 0 ? loginInput.user_id : null,
+    };
+  }
+
+  const raw = trimOrNull(loginInput);
+  if (!raw) {
+    return { cpf: null, email: null, user_id: null };
+  }
+
+  if (isEmail(raw)) {
+    return { cpf: null, email: raw.toLowerCase(), user_id: null };
+  }
+
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length >= 11) {
+    return { cpf: digits, email: null, user_id: null };
+  }
+
+  if (/^USR-\d+$/i.test(raw) || /^\d+$/.test(raw)) {
+    const userId = Number(raw.replace(/\D/g, ""));
+    return { cpf: null, email: null, user_id: Number.isInteger(userId) && userId > 0 ? userId : null };
+  }
+
+  return { cpf: null, email: null, user_id: null };
+};
+
 const getMotoristaByLogin = async (loginInput) => {
   const login = normalizeMotoristaLoginInput(loginInput);
   const whereClauses = [];
@@ -197,54 +230,58 @@ const getMotoristaByLogin = async (loginInput) => {
   return rows;
 };
 
-const getAdminsEmpresaByEmail = async (email) => {
-  const { rows } = await pool.query(
-    `SELECT u.*, e.nome AS empresa_nome, e.logo_url,
-            v.nome AS veiculo_nome, v.placa, v.marca AS veiculo_marca, v.modelo AS veiculo_modelo,
-            COALESCE(NULLIF(TRIM(v.tipo_operacao), ''), CASE WHEN COALESCE(v.usa_para_transporte, false) THEN 'transporte' ELSE 'apoio' END) AS veiculo_tipo_operacao,
-            COALESCE(v.usa_para_transporte, false) AS veiculo_usa_para_transporte
-     FROM usuarios u
-     JOIN empresas e ON e.id = u.empresa_id
-     LEFT JOIN veiculos v ON v.id = u.veiculo_id
-     WHERE LOWER(COALESCE(u.email, '')) = LOWER($1)
-      AND u.role = 'ADMIN_EMPRESA'
-      AND COALESCE(u.conta_status, 'ativo') = 'ativo'
-     ORDER BY u.created_at DESC, u.id DESC`,
-    [email]
-  );
-  return rows;
-};
+const getUsersByRoleLogin = async (role, loginInput) => {
+  const login = normalizeUserLoginInput(loginInput);
+  const whereClauses = [];
+  const params = [role];
+  let idx = 2;
 
-const getApontadorByEmail = async (email) => {
+  if (login.cpf) {
+    whereClauses.push(`u.cpf_id = $${idx}`);
+    params.push(login.cpf);
+    idx += 1;
+  }
+  if (login.email) {
+    whereClauses.push(`LOWER(COALESCE(u.email, '')) = LOWER($${idx})`);
+    params.push(login.email);
+    idx += 1;
+  }
+  if (login.user_id) {
+    whereClauses.push(`u.id = $${idx}`);
+    params.push(login.user_id);
+    idx += 1;
+  }
+
+  if (!whereClauses.length) return [];
+
   const { rows } = await pool.query(
     `SELECT u.*, e.nome AS empresa_nome, e.logo_url,
             v.nome AS veiculo_nome, v.placa, v.marca AS veiculo_marca, v.modelo AS veiculo_modelo,
             COALESCE(NULLIF(TRIM(v.tipo_operacao), ''), CASE WHEN COALESCE(v.usa_para_transporte, false) THEN 'transporte' ELSE 'apoio' END) AS veiculo_tipo_operacao,
             COALESCE(v.usa_para_transporte, false) AS veiculo_usa_para_transporte
      FROM usuarios u
-     JOIN empresas e ON e.id = u.empresa_id
+     LEFT JOIN empresas e ON e.id = u.empresa_id
      LEFT JOIN veiculos v ON v.id = u.veiculo_id
-     WHERE LOWER(COALESCE(u.email, '')) = LOWER($1)
-       AND u.role = 'APONTADOR'
+     WHERE u.role = $1
+       AND (${whereClauses.join(" OR ")})
        AND COALESCE(u.conta_status, 'ativo') = 'ativo'
      ORDER BY u.created_at DESC, u.id DESC`,
-    [email]
+    params
   );
   return rows;
 };
 
-const getSuperAdminsByEmail = async (email) => {
-  const { rows } = await pool.query(
-    `SELECT u.*, NULL::text AS empresa_nome, NULL::text AS logo_url, NULL::text AS veiculo_nome, NULL::text AS placa
-     FROM usuarios u
-     WHERE LOWER(COALESCE(u.email, '')) = LOWER($1)
-      AND u.role = 'SUPER_ADMIN'
-      AND COALESCE(u.conta_status, 'ativo') = 'ativo'
-     ORDER BY u.created_at DESC, u.id DESC`,
-    [email]
-  );
-  return rows;
-};
+const getAdminsEmpresaByLogin = async (loginInput) => getUsersByRoleLogin("ADMIN_EMPRESA", loginInput);
+
+const getApontadorByLogin = async (loginInput) => getUsersByRoleLogin("APONTADOR", loginInput);
+
+const getSuperAdminsByLogin = async (loginInput) => getUsersByRoleLogin("SUPER_ADMIN", loginInput);
+
+const getAdminsEmpresaByEmail = async (email) => getAdminsEmpresaByLogin({ email });
+
+const getApontadorByEmail = async (email) => getApontadorByLogin({ email });
+
+const getSuperAdminsByEmail = async (email) => getSuperAdminsByLogin({ email });
 
 const getAdminEmpresaByEmail = async (email) => {
   const rows = await getAdminsEmpresaByEmail(email);
@@ -507,6 +544,9 @@ const getUserByIdForSuperAdmin = async (id) => {
 module.exports = {
   createUser,
   getMotoristaByLogin,
+  getAdminsEmpresaByLogin,
+  getApontadorByLogin,
+  getSuperAdminsByLogin,
   getAdminsEmpresaByEmail,
   getApontadorByEmail,
   getSuperAdminsByEmail,
