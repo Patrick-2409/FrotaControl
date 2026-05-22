@@ -14,6 +14,7 @@ const HISTORY_FILTERS = [
   { id: "semana", label: "Semana" },
   { id: "mes", label: "Mês" },
 ];
+const OPERATION_TIMEZONE = "America/Sao_Paulo";
 
 const newEmptyForm = (defaultVehicleId) => ({
   data: nowLocalDateTimeString().slice(0, 16),
@@ -32,10 +33,33 @@ const addDays = (ymd, delta) => {
   return d.toISOString().slice(0, 10);
 };
 
+const toYmdInOperationTimezone = (value) => {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    const direct = String(value || "").slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(direct) ? direct : "";
+  }
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: OPERATION_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(parsed);
+};
+
+const getTodayInOperationTimezone = () =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: OPERATION_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+
 const toHistoryYmd = (row) => {
   const payload = row?.payload || {};
   const raw = payload.data || payload.recorded_at_client || row?.updatedAt;
-  return String(raw || "").slice(0, 10);
+  return toYmdInOperationTimezone(raw);
 };
 
 const toRangeStartByFilter = (today, filter) => {
@@ -172,7 +196,7 @@ export default function CombustivelPage({ onSaved }) {
   }, [refreshHistory]);
 
   const fuelDashboard = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getTodayInOperationTimezone();
     const weekStart = addDays(today, -6);
     let totalDia = 0;
     let totalSemana = 0;
@@ -198,7 +222,7 @@ export default function CombustivelPage({ onSaved }) {
   }, [fuelHistory]);
 
   const graphData = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getTodayInOperationTimezone();
     const start = addDays(today, -6);
     const labels = [];
     for (let cursor = start; cursor <= today; cursor = addDays(cursor, 1)) {
@@ -214,7 +238,7 @@ export default function CombustivelPage({ onSaved }) {
   }, [fuelHistory]);
 
   const filteredFuelHistory = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getTodayInOperationTimezone();
     const start = toRangeStartByFilter(today, historyFilter);
     return fuelHistory.filter((row) => {
       const ymd = toHistoryYmd(row);

@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import FormField, { inputClass } from "../components/FormField";
+import FormField, { inputClass, primaryButtonClass } from "../components/FormField";
 import { saveWithOffline } from "../services/syncService";
 import { useAuth } from "../services/auth";
-import SaveBar from "../components/SaveBar";
 import { emitToast } from "../services/uiEvents";
 import { generateId } from "../utils/id";
 import api from "../services/api";
@@ -591,7 +590,11 @@ export default function ParteDiariaPage({ onSaved }) {
         <textarea className={inputClass} value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} />
       </FormField>
 
-      <SaveBar loading={loading} label="SALVAR PARTE DIÁRIA" />
+      <div className="pt-2">
+        <button type="submit" disabled={loading} className={primaryButtonClass}>
+          {loading ? "Salvando..." : "Salvar parte diária"}
+        </button>
+      </div>
     </form>
   );
 }
