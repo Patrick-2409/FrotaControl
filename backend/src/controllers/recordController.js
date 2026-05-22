@@ -190,6 +190,52 @@ const createCombustivel = async (req, res) => {
   return res.status(201).json({ success: true, data: row });
 };
 
+const updateCombustivelBySourceId = async (req, res) => {
+  logInfo("record:update-combustivel", {
+    user_id: req.user?.sub,
+    empresa_id: req.user?.empresa_id,
+    source_id: req.params?.id,
+  });
+  if (req.user.empresa_id == null) {
+    return res.status(400).json({
+      success: false,
+      error: "Usuário sem empresa vinculada. Não é possível atualizar abastecimento.",
+      message: "Usuário sem empresa vinculada. Não é possível atualizar abastecimento.",
+    });
+  }
+  const params = z
+    .object({
+      id: z.string().trim().min(8),
+    })
+    .parse(req.params);
+
+  const body = {
+    ...req.body,
+    source_id: params.id,
+    client_id: params.id,
+  };
+  const payload = combustivelSchema.parse(body);
+  const before = await pool.query(
+    "SELECT id FROM combustiveis WHERE empresa_id = $1 AND source_id = $2",
+    [req.user.empresa_id, payload.source_id]
+  );
+  if (!before.rowCount) {
+    return res.status(404).json({
+      success: false,
+      error: "Abastecimento não encontrado",
+      message: "Abastecimento não encontrado",
+    });
+  }
+  const row = await upsertCombustivel(req.user.empresa_id, req.user.sub, payload);
+  await logAudit({
+    usuario_id: req.user.sub,
+    acao: "editou",
+    tabela: "combustiveis",
+    registro_id: row.id,
+  });
+  return res.json({ success: true, data: row });
+};
+
 const createParteDiaria = async (req, res) => {
   logInfo("record:create-parte-diaria", { user_id: req.user?.sub, empresa_id: req.user?.empresa_id });
   if (req.user.empresa_id == null) {
@@ -335,6 +381,7 @@ const listMyHistory = async (req, res) => {
 module.exports = {
   createRomaneio,
   createCombustivel,
+  updateCombustivelBySourceId,
   createParteDiaria,
   syncPending,
   deleteRecord,

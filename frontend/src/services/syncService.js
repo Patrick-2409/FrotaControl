@@ -41,7 +41,7 @@ const safeLogOfflineError = async (context, err) => {
 
 const endpointByModule = {
   romaneios: "/app/romaneio",
-  combustiveis: "/app/combustivel",
+  combustiveis: "/app/abastecimentos",
   parteDiaria: "/app/parte-diaria",
 };
 const MODULE_ALIAS = {
