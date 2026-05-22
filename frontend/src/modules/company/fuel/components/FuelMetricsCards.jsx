@@ -31,10 +31,6 @@ function FuelMetricsCards({ resumo, mediaPorVeiculo }) {
   const atual = Number(resumo.preco_medio_litro);
   const refHist = Number(intel.preco_medio_historico);
   const hasHistoricalPrice = Number.isFinite(refHist) && refHist > 0;
-  const pctPreco =
-    Number.isFinite(atual) && atual > 0 && hasHistoricalPrice
-      ? Math.min(100, Math.round((refHist / atual) * 100))
-      : null;
 
   const deltaLitros = Number.isFinite(mediaD) && Number.isFinite(hist) ? mediaD - hist : null;
   const hasCurrentPrice = Number.isFinite(atual) && atual > 0;
@@ -83,9 +79,9 @@ function FuelMetricsCards({ resumo, mediaPorVeiculo }) {
 
       <div
         className={`${cardBase} ${
-          precoOk
+          comparacaoPreco === "abaixo"
             ? "border-emerald-500/40 bg-emerald-950/25"
-            : precoWarn
+            : comparacaoPreco === "acima"
               ? "border-amber-500/40 bg-amber-950/20"
               : "border-zinc-600 bg-zinc-950/50"
         }`}
