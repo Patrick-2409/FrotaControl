@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../services/auth";
 import FormField, { inputClass, primaryButtonClass } from "../components/FormField";
-import { deleteHistoryItem, saveWithOffline } from "../services/syncService";
+import { saveWithOffline } from "../services/syncService";
 import { emitToast } from "../services/uiEvents";
 import { generateId } from "../utils/id";
 import api, { extractApiErrorMessage } from "../services/api";
@@ -9,11 +10,6 @@ import { nowLocalDateTimeString, toIsoWithCurrentTimeIfDateOnly } from "../utils
 import { parseDecimalInput } from "../utils/numberParse";
 import { listHistory } from "../offline/offlineRepo";
 
-const HISTORY_FILTERS = [
-  { id: "dia", label: "Dia" },
-  { id: "semana", label: "Semana" },
-  { id: "mes", label: "Mês" },
-];
 const OPERATION_TIMEZONE = "America/Sao_Paulo";
 
 const newEmptyForm = (defaultVehicleId) => ({
@@ -117,14 +113,8 @@ export default function CombustivelPage({ onSaved }) {
   const [vehicles, setVehicles] = useState([]);
   const [vehiclesLoading, setVehiclesLoading] = useState(true);
   const [fuelHistory, setFuelHistory] = useState([]);
-  const [historyFilter, setHistoryFilter] = useState("semana");
   const [createForm, setCreateForm] = useState(() => newEmptyForm(user?.veiculo_id));
   const [createLoading, setCreateLoading] = useState(false);
-  const [selectedRecord, setSelectedRecord] = useState(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState(() => newEmptyForm(user?.veiculo_id));
-  const [editLoading, setEditLoading] = useState(false);
 
   const vehicleOptions = useMemo(() => {
     const byId = new Map();
@@ -237,45 +227,7 @@ export default function CombustivelPage({ onSaved }) {
     return labels.map((ymd) => ({ ymd, label: ymd.slice(8, 10), total: totals.get(ymd) || 0 }));
   }, [fuelHistory]);
 
-  const filteredFuelHistory = useMemo(() => {
-    const today = getTodayInOperationTimezone();
-    const start = toRangeStartByFilter(today, historyFilter);
-    return fuelHistory.filter((row) => {
-      const ymd = toHistoryYmd(row);
-      return ymd && ymd >= start && ymd <= today;
-    });
-  }, [fuelHistory, historyFilter]);
-
-  const hydrateEditForm = useCallback(
-    (record) => {
-      const payload = record?.payload || {};
-      setEditForm({
-        data: String(payload.data || payload.recorded_at_client || nowLocalDateTimeString()).slice(0, 16),
-        litros: String(payload.litros ?? ""),
-        valor_total: String(payload.valor_total ?? ""),
-        tipo_combustivel: payload.tipo_combustivel || "Diesel",
-        horimetro: String(payload.horimetro ?? ""),
-        hodometro: String(payload.hodometro ?? ""),
-        veiculo_id: payload.veiculo_id ? Number(payload.veiculo_id) : user?.veiculo_id || undefined,
-      });
-    },
-    [user?.veiculo_id]
-  );
-
-  useEffect(() => {
-    const raw = localStorage.getItem("fc_edit_record");
-    if (!raw) return;
-    try {
-      const record = JSON.parse(raw);
-      if (record?.module === "combustiveis") {
-        setEditingId(record?.source_id || null);
-        setIsEditing(true);
-        hydrateEditForm(record);
-      }
-    } finally {
-      localStorage.removeItem("fc_edit_record");
-    }
-  }, [hydrateEditForm]);
+  const lastFiveFuelRecords = useMemo(() => fuelHistory.slice(0, 5), [fuelHistory]);
 
   const submitCreate = async (e) => {
     e.preventDefault();
@@ -305,65 +257,6 @@ export default function CombustivelPage({ onSaved }) {
       emitToast(extractApiErrorMessage(err) || "Falha ao salvar abastecimento.", "error");
     } finally {
       setCreateLoading(false);
-    }
-  };
-
-  const openEditModal = (record) => {
-    setEditingId(record?.source_id || null);
-    hydrateEditForm(record);
-    setIsEditing(true);
-  };
-
-  const closeEditModal = () => {
-    setIsEditing(false);
-    setEditingId(null);
-  };
-
-  const submitEdit = async (e) => {
-    e.preventDefault();
-    if (!editingId) return;
-    const sanitized = sanitizeForm(editForm);
-    if (!sanitized.ok) {
-      emitToast(sanitized.message, "warning");
-      return;
-    }
-    setEditLoading(true);
-    try {
-      await api.put(`/app/abastecimentos/${encodeURIComponent(editingId)}`, sanitized.payload);
-      setFuelHistory((prev) =>
-        prev.map((row) =>
-          String(row?.source_id || "") === String(editingId)
-            ? {
-                ...row,
-                status: "synced",
-                updatedAt: nowLocalDateTimeString(),
-                payload: {
-                  ...(row?.payload || {}),
-                  source_id: editingId,
-                  client_id: editingId,
-                  ...sanitized.payload,
-                },
-              }
-            : row
-        )
-      );
-      closeEditModal();
-      onSaved?.("synced");
-      emitToast("Abastecimento atualizado com sucesso.", "success");
-    } catch (err) {
-      emitToast(extractApiErrorMessage(err) || "Não foi possível salvar alterações.", "error");
-    } finally {
-      setEditLoading(false);
-    }
-  };
-
-  const onDeleteRecord = async (record) => {
-    const ok = window.confirm("Tem certeza que deseja excluir este abastecimento?");
-    if (!ok) return;
-    await deleteHistoryItem(record);
-    setFuelHistory((prev) => prev.filter((row) => String(row?.source_id || "") !== String(record?.source_id || "")));
-    if (String(record?.source_id || "") === String(editingId || "")) {
-      closeEditModal();
     }
   };
 
@@ -457,27 +350,27 @@ export default function CombustivelPage({ onSaved }) {
 
       <section className="fc-card space-y-3 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm font-semibold text-slate-100">Lista de abastecimentos</p>
-          <div className="flex flex-wrap gap-2">
-            {HISTORY_FILTERS.map((preset) => (
-              <button key={preset.id} type="button" onClick={() => setHistoryFilter(preset.id)} className={`fc-btn rounded-full border px-3 py-1.5 text-xs font-semibold ${historyFilter === preset.id ? "border-blue-400/45 bg-blue-500/20 text-blue-100" : "border-slate-700 bg-slate-900/70 text-slate-300"}`}>
-                {preset.label}
-              </button>
-            ))}
-          </div>
+          <p className="text-sm font-semibold text-slate-100">Últimos 5 registros</p>
+          <Link to="/app/historico" className="fc-btn btn-secondary rounded-lg px-3 py-2 text-xs">
+            Ver histórico completo
+          </Link>
         </div>
-        {filteredFuelHistory.length === 0 ? (
-          <p className="text-sm text-slate-400">Nenhum abastecimento encontrado no período selecionado.</p>
+        {lastFiveFuelRecords.length === 0 ? (
+          <p className="text-sm text-slate-400">Ainda não há abastecimentos recentes.</p>
         ) : (
           <div className="space-y-2">
-            {filteredFuelHistory.map((row) => {
+            {lastFiveFuelRecords.map((row) => {
               const payload = row?.payload || {};
               const sourceId = row?.source_id || payload?.source_id;
               return (
-                <article key={String(sourceId)} className="rounded-xl border border-slate-800 bg-slate-950/55 p-3">
+                <article key={String(sourceId)} className="rounded-xl border border-slate-800 bg-slate-950/55 p-3 text-sm">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm font-semibold text-slate-100">{payload?.veiculo_nome || "Veículo"} {payload?.placa ? `| ${payload.placa}` : ""}</p>
-                    <span className="rounded-full border border-slate-600 px-2 py-1 text-[11px] text-slate-300">{row?.status === "synced" ? "Sincronizado" : "Pendente"}</span>
+                    <p className="font-semibold text-slate-100">
+                      {payload?.veiculo_nome || "Veículo"} {payload?.placa ? `| ${payload.placa}` : ""}
+                    </p>
+                    <span className="rounded-full border border-slate-600 px-2 py-1 text-[11px] text-slate-300">
+                      {row?.status === "synced" ? "Sincronizado" : "Pendente"}
+                    </span>
                   </div>
                   <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-300">
                     <p><strong>Data:</strong> {formatDateTimeBr(payload?.data || payload?.recorded_at_client || row?.updatedAt)}</p>
@@ -485,66 +378,12 @@ export default function CombustivelPage({ onSaved }) {
                     <p><strong>Total:</strong> {formatMoneyBr(payload?.valor_total || 0)}</p>
                     <p><strong>R$/L:</strong> {formatMoneyBr((Number(payload?.valor_total || 0) / Number(payload?.litros || 0)) || 0)}</p>
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button type="button" onClick={() => setSelectedRecord(row)} className="fc-btn btn-secondary rounded-lg px-3 py-2 text-xs">Visualizar</button>
-                    <button type="button" onClick={() => openEditModal(row)} className="fc-btn btn-primary rounded-lg px-3 py-2 text-xs">Editar</button>
-                    <button type="button" onClick={() => onDeleteRecord(row)} className="fc-btn rounded-lg border border-red-600/70 bg-red-900/20 px-3 py-2 text-xs text-red-200">Excluir</button>
-                  </div>
                 </article>
               );
             })}
           </div>
         )}
       </section>
-
-      {isEditing && (
-        <div className="fixed inset-0 z-50 grid overflow-y-auto bg-slate-950/70 p-4 sm:place-content-center">
-          <div className="fc-card w-full max-w-xl rounded-2xl border border-slate-800 p-4">
-            <h3 className="text-base font-semibold text-white">Editar abastecimento</h3>
-            <form onSubmit={submitEdit} className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-              <FormField label="Data"><input type="datetime-local" className={inputClass} value={editForm.data} onChange={(e) => setEditForm((prev) => ({ ...prev, data: e.target.value }))} /></FormField>
-              <FormField label="Tipo combustível">
-                <select className={inputClass} value={editForm.tipo_combustivel} onChange={(e) => setEditForm((prev) => ({ ...prev, tipo_combustivel: e.target.value }))}>
-                  <option>Diesel</option><option>Gasolina</option><option>Etanol</option>
-                </select>
-              </FormField>
-              <FormField label="Veículo">
-                <select className={inputClass} value={editForm.veiculo_id ?? ""} onChange={(e) => setEditForm((prev) => ({ ...prev, veiculo_id: e.target.value ? Number(e.target.value) : undefined }))} disabled={vehiclesLoading}>
-                  <option value="">{vehiclesLoading ? "Carregando veículos..." : "Selecione um veículo"}</option>
-                  {vehicleOptions.map((vehicle) => (<option key={vehicle.id} value={vehicle.id}>{vehicle.nome} - {vehicle.placa || "Sem placa"}</option>))}
-                </select>
-              </FormField>
-              <FormField label="Quantidade (L)"><input type="number" min="0" step="0.01" inputMode="decimal" className={inputClass} value={editForm.litros} onChange={(e) => setEditForm((prev) => ({ ...prev, litros: e.target.value }))} /></FormField>
-              <FormField label="Valor total (R$)"><input type="number" min="0" step="0.01" inputMode="decimal" className={inputClass} value={editForm.valor_total} onChange={(e) => setEditForm((prev) => ({ ...prev, valor_total: e.target.value }))} /></FormField>
-              <FormField label="Horímetro"><input className={inputClass} value={editForm.horimetro} onChange={(e) => setEditForm((prev) => ({ ...prev, horimetro: e.target.value }))} /></FormField>
-              <FormField label="Hodômetro"><input className={inputClass} value={editForm.hodometro} onChange={(e) => setEditForm((prev) => ({ ...prev, hodometro: e.target.value }))} /></FormField>
-              <div className="flex justify-end gap-2 md:col-span-2">
-                <button type="button" onClick={closeEditModal} className="fc-btn btn-secondary rounded-lg px-3 py-2 text-sm">Cancelar</button>
-                <button type="submit" disabled={editLoading} className="fc-btn btn-primary rounded-lg px-3 py-2 text-sm">{editLoading ? "Salvando..." : "Salvar alterações"}</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {selectedRecord && (
-        <div className="fixed inset-0 z-50 grid overflow-y-auto bg-slate-950/70 p-4 sm:place-content-center">
-          <div className="fc-card w-full max-w-xl rounded-2xl border border-slate-800 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="text-base font-semibold text-white">Detalhes do abastecimento</h3>
-              <button type="button" onClick={() => setSelectedRecord(null)} className="fc-btn btn-secondary rounded-lg px-3 py-1.5 text-xs">Fechar</button>
-            </div>
-            <div className="mt-3 grid gap-2 text-sm text-slate-300">
-              {Object.entries(selectedRecord?.payload || {}).map(([key, value]) => (
-                <div key={key} className="rounded-lg border border-slate-800/80 bg-slate-950/60 p-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{key.replaceAll("_", " ")}</p>
-                  <p className="mt-1 break-words text-sm text-slate-200">{String(value ?? "-")}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
