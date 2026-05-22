@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../services/auth";
 import FormField, { inputClass } from "../components/FormField";
-import { saveWithOffline } from "../services/syncService";
+import { deleteHistoryItem, saveWithOffline } from "../services/syncService";
 import SaveBar from "../components/SaveBar";
 import { emitToast } from "../services/uiEvents";
 import { generateId } from "../utils/id";
 import api, { extractApiErrorMessage } from "../services/api";
 import { nowLocalDateTimeString, toIsoWithCurrentTimeIfDateOnly } from "../utils/datetime";
 import { parseDecimalInput } from "../utils/numberParse";
+import { listHistory } from "../offline/offlineRepo";
 
 const toDatetimeLocal = (value) => {
   if (!value) return "";
@@ -24,11 +25,10 @@ const normalizeDraftDatetime = (value) => {
   return normalized.slice(0, 10) === current.slice(0, 10) ? normalized : current;
 };
 const isSyncedStatus = (status) => status === "synced" || status === "sincronizado";
-const PERIOD_PRESETS = [
-  { id: "hoje", label: "Hoje" },
+const HISTORY_FILTERS = [
+  { id: "dia", label: "Dia" },
   { id: "semana", label: "Semana" },
   { id: "mes", label: "Mês" },
-  { id: "ano", label: "Ano" },
 ];
 
 const addDays = (ymd, delta) => {
@@ -45,6 +45,36 @@ const formatMoneyBr = (value) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+
+const parseInstant = (value) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const toHistoryYmd = (row) => {
+  const payload = row?.payload || {};
+  const raw = payload.data || payload.recorded_at_client || row?.updatedAt;
+  return String(raw || "").slice(0, 10);
+};
+
+const toRangeStartByFilter = (today, filter) => {
+  if (filter === "dia") return today;
+  if (filter === "semana") return addDays(today, -6);
+  return `${today.slice(0, 7)}-01`;
+};
+
+const formatDateTimeBr = (value) => {
+  const parsed = parseInstant(value);
+  if (!parsed) return "Não informado";
+  return parsed.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
 
 export default function CombustivelPage({ onSaved }) {
   const { user } = useAuth();
@@ -65,10 +95,47 @@ export default function CombustivelPage({ onSaved }) {
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [fuelHistory, setFuelHistory] = useState([]);
-  const [periodPreset, setPeriodPreset] = useState("semana");
+  const [historyFilter, setHistoryFilter] = useState("semana");
   const [showForm, setShowForm] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [selectedRecord, setSelectedRecord] = useState(null);
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const litrosInputRef = useRef(null);
+
+  const mergeHistory = useCallback((remoteRows, localRows) => {
+    const merged = new Map();
+    for (const row of remoteRows || []) {
+      if (!row?.source_id || row?.module !== "combustiveis") continue;
+      merged.set(`${row.module}:${row.source_id}`, row);
+    }
+    for (const row of localRows || []) {
+      if (!row?.source_id || row?.module !== "combustiveis") continue;
+      merged.set(`${row.module}:${row.source_id}`, row);
+    }
+    return Array.from(merged.values())
+      .sort((a, b) => String(a?.updatedAt || "").localeCompare(String(b?.updatedAt || ""), undefined, { numeric: true }))
+      .reverse();
+  }, []);
+
+  const hydrateFormFromRecord = useCallback((record) => {
+    if (!record) return;
+    const payload = record?.payload || {};
+    setForm({
+      source_id: payload.source_id || record.source_id || generateId(),
+      data: toDatetimeLocal(payload?.data || payload?.recorded_at_client || new Date().toISOString()),
+      litros: String(payload?.litros ?? ""),
+      valor_total: String(payload?.valor_total ?? ""),
+      tipo_combustivel: payload?.tipo_combustivel || "Diesel",
+      horimetro: String(payload?.horimetro ?? ""),
+      hodometro: String(payload?.hodometro ?? ""),
+      veiculo_id: payload?.veiculo_id ? Number(payload.veiculo_id) : user?.veiculo_id || undefined,
+    });
+    setEditingId(record?.source_id || payload?.source_id || null);
+    setIsEditing(true);
+    setShowForm(true);
+    setSubmitAttempted(false);
+  }, [user?.veiculo_id]);
 
   useEffect(() => {
     let active = true;
@@ -95,22 +162,28 @@ export default function CombustivelPage({ onSaved }) {
     };
   }, []);
 
+  const fetchFuelHistory = useCallback(async () => {
+    const localRows = await listHistory();
+    try {
+      const { data } = await api.get("/app/historico");
+      const remoteRows = Array.isArray(data?.items) ? data.items : [];
+      return mergeHistory(remoteRows, localRows);
+    } catch {
+      return mergeHistory([], localRows);
+    }
+  }, [mergeHistory]);
+
   useEffect(() => {
     let active = true;
     (async () => {
-      try {
-        const { data } = await api.get("/app/historico");
-        if (!active) return;
-        const items = (Array.isArray(data?.items) ? data.items : []).filter((row) => row?.module === "combustiveis");
-        setFuelHistory(items);
-      } catch {
-        if (active) setFuelHistory([]);
-      }
+      const items = await fetchFuelHistory();
+      if (!active) return;
+      setFuelHistory(items);
     })();
     return () => {
       active = false;
     };
-  }, [feedback]);
+  }, [feedback, fetchFuelHistory]);
 
   useEffect(() => {
     try {
@@ -118,14 +191,7 @@ export default function CombustivelPage({ onSaved }) {
       if (raw) {
         const record = JSON.parse(raw);
         if (record?.module === "combustiveis") {
-          setForm({
-            ...record.payload,
-            data: toDatetimeLocal(record.payload?.data),
-            litros: String(record.payload?.litros || ""),
-            valor_total: String(record.payload?.valor_total ?? ""),
-            horimetro: String(record.payload?.horimetro || ""),
-            hodometro: String(record.payload?.hodometro || ""),
-          });
+          hydrateFormFromRecord(record);
         }
         return;
       }
@@ -140,7 +206,7 @@ export default function CombustivelPage({ onSaved }) {
     } finally {
       setInitializing(false);
     }
-  }, []);
+  }, [hydrateFormFromRecord]);
 
   useEffect(() => {
     localStorage.setItem("fc_draft_combustivel", JSON.stringify(form));
@@ -205,37 +271,57 @@ export default function CombustivelPage({ onSaved }) {
     [vehicleOptions, form.veiculo_id]
   );
 
-  const fuelSummary = useMemo(() => {
-    const toYmd = (raw) => String(raw || "").slice(0, 10);
+  const fuelDashboard = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
-    const periodStart =
-      periodPreset === "hoje"
-        ? today
-        : periodPreset === "semana"
-          ? addDays(today, -6)
-          : periodPreset === "mes"
-            ? `${today.slice(0, 7)}-01`
-            : `${today.slice(0, 4)}-01-01`;
-    const stats = {
-      totalAbastecimentos: 0,
-      litrosTotais: 0,
-      valorTotal: 0,
-      mediaLitro: 0,
-    };
+    const weekStart = addDays(today, -6);
+    const monthStart = `${today.slice(0, 7)}-01`;
+    const stats = { totalDia: 0, totalSemana: 0, litrosMes: 0, valorMes: 0 };
     for (const row of fuelHistory) {
       const payload = row?.payload || {};
-      const ymd = toYmd(payload.data || payload.recorded_at_client || row?.updatedAt);
+      const ymd = toHistoryYmd(row);
       const litros = Number(payload.litros || 0);
       const valor = Number(payload.valor_total || 0);
-      if (ymd && ymd >= periodStart && ymd <= today) {
-        stats.totalAbastecimentos += 1;
-        stats.litrosTotais += litros;
-        stats.valorTotal += valor;
+      if (!ymd || ymd > today) continue;
+      if (ymd === today) stats.totalDia += valor;
+      if (ymd >= weekStart) stats.totalSemana += valor;
+      if (ymd >= monthStart) {
+        stats.litrosMes += litros;
+        stats.valorMes += valor;
       }
     }
-    stats.mediaLitro = stats.litrosTotais > 0 ? stats.valorTotal / stats.litrosTotais : 0;
+    stats.mediaLitro = stats.litrosMes > 0 ? stats.valorMes / stats.litrosMes : 0;
     return stats;
-  }, [fuelHistory, periodPreset]);
+  }, [fuelHistory]);
+
+  const filteredFuelHistory = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const start = toRangeStartByFilter(today, historyFilter);
+    return fuelHistory.filter((row) => {
+      const ymd = toHistoryYmd(row);
+      return ymd && ymd >= start && ymd <= today;
+    });
+  }, [fuelHistory, historyFilter]);
+
+  const graphData = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const labels = [];
+    const start = addDays(today, -6);
+    for (let cursor = start; cursor <= today; cursor = addDays(cursor, 1)) {
+      labels.push(cursor);
+    }
+    const totals = new Map(labels.map((d) => [d, 0]));
+    for (const row of fuelHistory) {
+      const ymd = toHistoryYmd(row);
+      if (!totals.has(ymd)) continue;
+      const amount = Number(row?.payload?.valor_total || 0);
+      totals.set(ymd, Number(totals.get(ymd) || 0) + amount);
+    }
+    return labels.map((d) => ({
+      ymd: d,
+      label: d.slice(8, 10),
+      total: totals.get(d) || 0,
+    }));
+  }, [fuelHistory]);
 
   const fieldErrors = useMemo(() => {
     if (!submitAttempted) return {};
@@ -279,12 +365,17 @@ export default function CombustivelPage({ onSaved }) {
     setLoading(true);
     try {
       let editRecord = null;
-      const editRaw = localStorage.getItem("fc_edit_record");
-      if (editRaw) {
-        try {
-          editRecord = JSON.parse(editRaw);
-        } catch {
-          localStorage.removeItem("fc_edit_record");
+      if (isEditing && editingId) {
+        editRecord = fuelHistory.find((row) => String(row?.source_id || "") === String(editingId)) || null;
+      }
+      if (!editRecord) {
+        const editRaw = localStorage.getItem("fc_edit_record");
+        if (editRaw) {
+          try {
+            editRecord = JSON.parse(editRaw);
+          } catch {
+            localStorage.removeItem("fc_edit_record");
+          }
         }
       }
       const executionDate = editRecord ? toIsoWithCurrentTimeIfDateOnly(form.data) : nowLocalDateTimeString();
@@ -358,6 +449,8 @@ export default function CombustivelPage({ onSaved }) {
         horimetro: "",
         hodometro: "",
       }));
+      setIsEditing(false);
+      setEditingId(null);
       setSubmitAttempted(false);
       setShowForm(false);
     } catch (err) {
@@ -371,69 +464,104 @@ export default function CombustivelPage({ onSaved }) {
     }
   };
 
+  const getStatusMeta = (status) => {
+    if (status === "synced" || status === "sincronizado") {
+      return { label: "Sincronizado", className: "bg-emerald-600/20 text-emerald-200 border-emerald-400/40" };
+    }
+    if (status === "syncing") {
+      return { label: "Sincronizando", className: "bg-sky-600/20 text-sky-200 border-sky-400/40" };
+    }
+    return { label: "Pendente", className: "bg-amber-500/20 text-amber-100 border-amber-300/40" };
+  };
+
+  const onEditRecord = (record) => {
+    localStorage.setItem("fc_edit_record", JSON.stringify(record));
+    hydrateFormFromRecord(record);
+  };
+
+  const onDeleteRecord = async (record) => {
+    const ok = window.confirm("Tem certeza que deseja excluir este abastecimento?");
+    if (!ok) return;
+    await deleteHistoryItem(record);
+    setFeedback(`deleted:${Date.now()}`);
+    if (editingId && String(editingId) === String(record?.source_id)) {
+      setIsEditing(false);
+      setEditingId(null);
+      localStorage.removeItem("fc_edit_record");
+    }
+  };
+
   if (initializing) return <div className="fc-card p-4 text-sm text-slate-300">Carregando...</div>;
   if (error) return <div className="fc-card p-4 text-sm text-red-300">Erro ao carregar dados</div>;
 
+  const maxGraphValue = Math.max(...graphData.map((item) => item.total), 1);
+
   return (
-    <form onSubmit={submit} className="space-y-4 pb-28">
+    <form onSubmit={submit} className="space-y-4 pb-36">
       <section className="fc-card space-y-4 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-semibold text-white">Combustível</h2>
           <span className="fc-chip">Atividade: Combustível</span>
         </div>
         <p className="mt-1 text-sm text-slate-400">Motorista: {user?.nome} | Equipamento: {user?.veiculo_nome || "-"}</p>
-        <div className="flex flex-wrap gap-2">
-          {PERIOD_PRESETS.map((preset) => (
-            <button
-              key={preset.id}
-              type="button"
-              onClick={() => setPeriodPreset(preset.id)}
-              className={`fc-btn rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                periodPreset === preset.id
-                  ? "border-blue-400/45 bg-blue-500/20 text-blue-100"
-                  : "border-slate-700 bg-slate-900/70 text-slate-300"
-              }`}
-            >
-              {preset.label}
-            </button>
-          ))}
-        </div>
       </section>
 
       <section className="fc-card space-y-3 p-4">
-        <p className="text-sm font-semibold text-slate-100">Visão do período</p>
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+        <p className="text-sm font-semibold text-slate-100">Dashboard rápido</p>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
           <div className="rounded-lg border border-slate-700/80 bg-slate-900/60 p-2.5">
-            <p className="text-[11px] text-slate-400">Abastecimentos</p>
-            <p className="mt-1 text-lg font-semibold text-white">{fuelSummary.totalAbastecimentos}</p>
+            <p className="text-[11px] text-slate-400">Total dia</p>
+            <p className="mt-1 text-lg font-semibold text-white">{formatMoneyBr(fuelDashboard.totalDia)}</p>
           </div>
           <div className="rounded-lg border border-slate-700/80 bg-slate-900/60 p-2.5">
-            <p className="text-[11px] text-slate-400">Litros totais</p>
-            <p className="mt-1 text-lg font-semibold text-white">{fuelSummary.litrosTotais.toFixed(1)}</p>
-          </div>
-          <div className="rounded-lg border border-slate-700/80 bg-slate-900/60 p-2.5">
-            <p className="text-[11px] text-slate-400">Valor total</p>
-            <p className="mt-1 text-lg font-semibold text-white">{formatMoneyBr(fuelSummary.valorTotal)}</p>
+            <p className="text-[11px] text-slate-400">Total semana</p>
+            <p className="mt-1 text-lg font-semibold text-white">{formatMoneyBr(fuelDashboard.totalSemana)}</p>
           </div>
           <div className="rounded-lg border border-slate-700/80 bg-slate-900/60 p-2.5">
             <p className="text-[11px] text-slate-400">Média R$/L</p>
-            <p className="mt-1 text-lg font-semibold text-white">{formatMoneyBr(fuelSummary.mediaLitro)}</p>
+            <p className="mt-1 text-lg font-semibold text-white">{formatMoneyBr(fuelDashboard.mediaLitro)}</p>
+          </div>
+        </div>
+        <div className="rounded-xl border border-slate-700/80 bg-slate-900/50 p-3">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-300">Últimos 7 dias (R$)</p>
+          <div className="flex h-28 items-end gap-2">
+            {graphData.map((point) => {
+              const heightPct = Math.max(6, Math.round((point.total / maxGraphValue) * 100));
+              return (
+                <div key={point.ymd} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+                  <div className="text-[10px] text-slate-400">{point.total > 0 ? Math.round(point.total) : "-"}</div>
+                  <div className="flex h-20 w-full items-end rounded-md bg-slate-800/80 p-1">
+                    <div
+                      className="w-full rounded-sm bg-blue-500/80"
+                      style={{ height: `${heightPct}%` }}
+                      title={`${point.ymd}: ${formatMoneyBr(point.total)}`}
+                    />
+                  </div>
+                  <div className="text-[10px] text-slate-500">{point.label}</div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>
 
       <section className="fc-card space-y-4 p-4">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-sm font-semibold text-slate-100">Lançamento</p>
+          <p className="text-sm font-semibold text-slate-100">{isEditing ? "Editando abastecimento" : "Novo abastecimento"}</p>
           <button
             type="button"
             onClick={() => {
+              if (isEditing) {
+                setIsEditing(false);
+                setEditingId(null);
+                localStorage.removeItem("fc_edit_record");
+              }
               setShowForm((prev) => !prev);
               setSubmitAttempted(false);
             }}
             className="fc-btn btn-primary rounded-lg px-3 py-2 text-sm"
           >
-            {showForm ? "Fechar lançamento" : "+ Novo abastecimento"}
+            {showForm ? (isEditing ? "Cancelar edição" : "Fechar lançamento") : "+ Novo abastecimento"}
           </button>
         </div>
 
@@ -577,7 +705,107 @@ export default function CombustivelPage({ onSaved }) {
           </>
         )}
       </section>
-      {showForm && hasFormInteraction ? <SaveBar loading={loading} label="SALVAR ABASTECIMENTO" /> : null}
+      <section className="fc-card space-y-3 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-semibold text-slate-100">Lista de abastecimentos</p>
+          <div className="flex flex-wrap gap-2">
+            {HISTORY_FILTERS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => setHistoryFilter(preset.id)}
+                className={`fc-btn rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                  historyFilter === preset.id
+                    ? "border-blue-400/45 bg-blue-500/20 text-blue-100"
+                    : "border-slate-700 bg-slate-900/70 text-slate-300"
+                }`}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {filteredFuelHistory.length === 0 ? (
+          <p className="text-sm text-slate-400">Nenhum abastecimento encontrado no período selecionado.</p>
+        ) : (
+          <div className="space-y-2">
+            {filteredFuelHistory.map((row) => {
+              const payload = row?.payload || {};
+              const statusMeta = getStatusMeta(row?.status);
+              const sourceId = row?.source_id || payload?.source_id;
+              return (
+                <article key={String(sourceId)} className="rounded-xl border border-slate-800 bg-slate-950/55 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-slate-100">
+                      {payload?.veiculo_nome || selectedVehicle?.nome || "Veículo"} {payload?.placa ? `| ${payload.placa}` : ""}
+                    </p>
+                    <span className={`rounded-full border px-2 py-1 text-[11px] ${statusMeta.className}`}>{statusMeta.label}</span>
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-300">
+                    <p><strong>Data:</strong> {formatDateTimeBr(payload?.data || payload?.recorded_at_client || row?.updatedAt)}</p>
+                    <p><strong>Litros:</strong> {Number(payload?.litros || 0).toFixed(2)} L</p>
+                    <p><strong>Total:</strong> {formatMoneyBr(payload?.valor_total || 0)}</p>
+                    <p><strong>R$/L:</strong> {formatMoneyBr((Number(payload?.valor_total || 0) / Number(payload?.litros || 0)) || 0)}</p>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRecord(row)}
+                      className="fc-btn btn-secondary rounded-lg px-3 py-2 text-xs"
+                    >
+                      Visualizar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onEditRecord(row)}
+                      className="fc-btn btn-primary rounded-lg px-3 py-2 text-xs"
+                    >
+                      Editar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onDeleteRecord(row)}
+                      className="fc-btn rounded-lg border border-red-600/70 bg-red-900/20 px-3 py-2 text-xs text-red-200"
+                    >
+                      Excluir
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {selectedRecord && (
+        <div className="fixed inset-0 z-50 grid overflow-y-auto bg-slate-950/70 p-4 sm:place-content-center">
+          <div className="fc-card w-full max-w-xl rounded-2xl border border-slate-800 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-base font-semibold text-white">Detalhes do abastecimento</h3>
+              <button
+                type="button"
+                onClick={() => setSelectedRecord(null)}
+                className="fc-btn btn-secondary rounded-lg px-3 py-1.5 text-xs"
+              >
+                Fechar
+              </button>
+            </div>
+            <div className="mt-3 grid gap-2 text-sm text-slate-300">
+              {Object.entries(selectedRecord?.payload || {}).map(([key, value]) => (
+                <div key={key} className="rounded-lg border border-slate-800/80 bg-slate-950/60 p-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{key.replaceAll("_", " ")}</p>
+                  <p className="mt-1 break-words text-sm text-slate-200">{String(value ?? "-")}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showForm && (hasFormInteraction || isEditing) ? (
+        <SaveBar loading={loading} label={isEditing ? "Atualizar abastecimento" : "Salvar abastecimento"} />
+      ) : null}
     </form>
   );
 }
