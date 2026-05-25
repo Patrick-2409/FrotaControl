@@ -130,7 +130,7 @@ export const ApontadorTipoButtons = memo(function ApontadorTipoButtons({ podeReg
           className="w-full max-w-sm rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-center text-base font-semibold text-amber-100"
           role="alert"
         >
-          Selecione veículo válido
+          Selecione um veículo para iniciar
         </p>
       ) : null}
       <button
@@ -148,7 +148,7 @@ export const ApontadorTipoButtons = memo(function ApontadorTipoButtons({ podeReg
         disabled={!podeRegistrar}
         aria-disabled={!podeRegistrar}
         onClick={pressRocha}
-        className="fc-btn fc-apontador-tipo-btn flex w-full min-h-[88px] max-w-sm items-center justify-center gap-2.5 rounded-2xl border-2 border-orange-400/90 bg-gradient-to-b from-orange-500/55 to-red-800/50 px-4 py-5 text-2xl font-extrabold tracking-wide text-orange-50 shadow-xl shadow-orange-950/50 ring-1 ring-orange-200/15 transition enabled:hover:border-amber-300 enabled:hover:from-orange-500/70 enabled:hover:to-red-700/55 enabled:hover:ring-orange-100/20 disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-[96px] sm:gap-3 sm:text-3xl"
+        className="fc-btn fc-apontador-tipo-btn flex w-full min-h-[88px] max-w-sm items-center justify-center gap-2.5 rounded-2xl border-2 border-orange-300/85 bg-gradient-to-b from-orange-500/55 to-orange-700/45 px-4 py-5 text-2xl font-extrabold tracking-wide text-orange-50 shadow-xl shadow-orange-950/40 ring-1 ring-orange-200/15 transition enabled:hover:border-amber-300 enabled:hover:from-orange-500/70 enabled:hover:to-orange-700/60 enabled:hover:ring-orange-100/20 disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-[96px] sm:gap-3 sm:text-3xl"
       >
         <IconRocha className="h-5 w-5 shrink-0 text-orange-100/90 sm:h-6 sm:w-6" />
         <span className="drop-shadow-sm">[ + ROCHA ]</span>
@@ -157,7 +157,13 @@ export const ApontadorTipoButtons = memo(function ApontadorTipoButtons({ podeReg
   );
 });
 
-export const ApontadorHojeResumo = memo(function ApontadorHojeResumo({ esteril, rocha, tonTotal, onLimparDia }) {
+export const ApontadorHojeResumo = memo(function ApontadorHojeResumo({
+  esteril,
+  rocha,
+  tonTotal,
+  onLimparDia,
+  ultimosLancamentos = [],
+}) {
   const totalViagens = (Number(esteril) || 0) + (Number(rocha) || 0);
   const ton = Number(tonTotal);
   const mostrarToneladas = Number.isFinite(ton) && ton > 0;
@@ -206,10 +212,30 @@ export const ApontadorHojeResumo = memo(function ApontadorHojeResumo({ esteril, 
             onClick={onLimparDia}
             className="text-[11px] font-medium text-slate-500 underline decoration-slate-600 underline-offset-2 transition hover:text-slate-400"
           >
-            Limpar registro do dia…
+            Resetar dia…
           </button>
         </div>
       ) : null}
+      <div className="mt-4 border-t border-slate-500/25 pt-3">
+        <p className="text-center text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Últimos lançamentos</p>
+        {Array.isArray(ultimosLancamentos) && ultimosLancamentos.length > 0 ? (
+          <div className="mt-3 space-y-1.5">
+            {ultimosLancamentos.slice(0, 5).map((item) => (
+              <div
+                key={String(item.id)}
+                className="flex items-center justify-between rounded-lg border border-slate-600/35 bg-slate-900/45 px-3 py-2 text-xs"
+              >
+                <span className="font-medium text-slate-200">{item.hora}</span>
+                <span className={`font-semibold ${item.tipo === "esteril" ? "text-cyan-300" : "text-amber-300"}`}>
+                  {item.tipo === "esteril" ? "Estéril" : "Rocha"}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-2 text-center text-xs text-slate-400">Sem lançamentos hoje.</p>
+        )}
+      </div>
     </section>
   );
 });

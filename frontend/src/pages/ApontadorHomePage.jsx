@@ -23,6 +23,7 @@ export default function ApontadorHomePage() {
   const [pendentesCount, setPendentesCount] = useState(0);
   const [limparDiaModalOpen, setLimparDiaModalOpen] = useState(false);
   const [limparDiaEmCurso, setLimparDiaEmCurso] = useState(false);
+  const [ultimosLancamentos, setUltimosLancamentos] = useState([]);
   const flashTimeoutsRef = useRef([]);
 
   const clearFlashTimeouts = useCallback(() => {
@@ -41,6 +42,57 @@ export default function ApontadorHomePage() {
     }
   }, []);
 
+  const formatHoraBr = useCallback((timestamp) => {
+    const parsed = new Date(Number(timestamp));
+    if (Number.isNaN(parsed.getTime())) return "--:--";
+    return parsed.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  }, []);
+
+  const normalizeLancamentos = useCallback(
+    (items) =>
+      (Array.isArray(items) ? items : [])
+        .map((item, index) => {
+          const tipo = item?.tipo === "esteril" ? "esteril" : item?.tipo === "rocha" ? "rocha" : null;
+          const timestamp = Number(item?.timestamp);
+          if (!tipo || !Number.isFinite(timestamp)) return null;
+          return {
+            id: item?.id ?? `local-${timestamp}-${tipo}-${index}`,
+            tipo,
+            timestamp,
+            hora: formatHoraBr(timestamp),
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.timestamp - a.timestamp)
+        .slice(0, 5),
+    [formatHoraBr]
+  );
+
+  const pushLancamentoLocal = useCallback(
+    ({ tipo, timestamp, localId }) => {
+      const next = {
+        id: localId || `local-${timestamp}-${tipo}`,
+        tipo,
+        timestamp,
+        hora: formatHoraBr(timestamp),
+      };
+      setUltimosLancamentos((prev) => {
+        const merged = [next, ...prev];
+        const seen = new Set();
+        return merged
+          .filter((item) => {
+            const key = `${item.tipo}:${item.timestamp}:${item.id}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          })
+          .sort((a, b) => b.timestamp - a.timestamp)
+          .slice(0, 5);
+      });
+    },
+    [formatHoraBr]
+  );
+
   const refreshContagemHoje = useCallback(async () => {
     try {
       const { data } = await api.get("/apontador/viagens/contagem-hoje");
@@ -54,17 +106,22 @@ export default function ApontadorHomePage() {
         rocha: Number(h?.rocha) || 0,
         tonTotal: Number.isFinite(ton) ? ton : 0,
       });
+      setUltimosLancamentos(normalizeLancamentos(data?.ultimos_lancamentos));
     } catch {
       /* mantém valores atuais */
     }
-  }, []);
+  }, [normalizeLancamentos]);
 
   const onSyncManual = useCallback(async () => {
+    if (!online) {
+      emitToast("Sem internet no momento. Os registros serão sincronizados automaticamente quando voltar.", "warning");
+      return;
+    }
     await syncPendentes();
     await refreshPendentesCount();
     await refreshContagemHoje();
-    emitToast("Sincronizado com sucesso");
-  }, [refreshPendentesCount, refreshContagemHoje]);
+    emitToast("Sincronização concluída.", "success");
+  }, [online, refreshPendentesCount, refreshContagemHoje]);
 
   useEffect(() => {
     void refreshPendentesCount();
@@ -274,6 +331,7 @@ export default function ApontadorHomePage() {
         return;
       }
       setHojeContagem((prev) => ({ ...prev, [chaveTipo]: prev[chaveTipo] + 1 }));
+      pushLancamentoLocal({ tipo, timestamp: ts, localId: id_local });
       showRegistradoOk(tipo);
 
       const ctx = {
@@ -284,7 +342,7 @@ export default function ApontadorHomePage() {
         serverViagemId: null,
       };
 
-      const mensagem = tipo === "esteril" ? "+1 Estéril ✔" : "+1 Rocha ✔";
+      const mensagem = tipo === "esteril" ? "✔ Estéril registrado" : "✔ Rocha registrado";
       emitToast(mensagem, "success", {
         durationMs: 5000,
         actionLabel: "Desfazer",
@@ -296,6 +354,7 @@ export default function ApontadorHomePage() {
             ...prev,
             [ctx.chaveTipo]: Math.max(0, prev[ctx.chaveTipo] - 1),
           }));
+          setUltimosLancamentos((prev) => prev.filter((item) => item.id !== ctx.id_local));
           void removerViagemNoServidor(ctx);
           void refreshPendentesCount();
           void refreshContagemHoje();
@@ -327,7 +386,7 @@ export default function ApontadorHomePage() {
       void refreshPendentesCount();
       void refreshContagemHoje();
     },
-    [veiculoSelecionado, showRegistradoOk, refreshPendentesCount, refreshContagemHoje, removerViagemNoServidor]
+    [veiculoSelecionado, showRegistradoOk, refreshPendentesCount, refreshContagemHoje, removerViagemNoServidor, pushLancamentoLocal]
   );
 
   useEffect(() => {
@@ -357,10 +416,11 @@ export default function ApontadorHomePage() {
       : pendentesCount === 1
         ? "1 registro pendente"
         : `${pendentesCount} registros pendentes`;
+  const showSyncAction = !online || pendentesCount > 0;
 
   return (
     <div className="relative flex min-h-[100dvh] min-h-screen flex-col bg-slate-950 text-slate-100">
-      <ApontadorHeader online={online} textoPendentes={textoPendentes} onSyncManual={onSyncManual} />
+      <ApontadorHeader online={online} textoPendentes={textoPendentes} onSyncManual={onSyncManual} showSyncAction={showSyncAction} />
 
       <ApontadorRegistradoFlash open={registradoFlash.open} visibleIn={registradoFlash.in} message={registradoFlash.label} />
 
@@ -401,6 +461,7 @@ export default function ApontadorHomePage() {
             esteril={hojeContagem.esteril}
             rocha={hojeContagem.rocha}
             tonTotal={hojeContagem.tonTotal}
+            ultimosLancamentos={ultimosLancamentos}
             onLimparDia={() => setLimparDiaModalOpen(true)}
           />
         </div>
@@ -420,7 +481,7 @@ export default function ApontadorHomePage() {
             onClick={(e) => e.stopPropagation()}
           >
             <h2 id="fc-apontador-limpar-dia-titulo" className="text-lg font-semibold text-slate-100">
-              Limpar registro do dia?
+              Resetar dia?
             </h2>
             <p className="mt-3 text-sm leading-relaxed text-slate-300">
               Isto apaga no <strong className="text-slate-100">dispositivo</strong> as viagens de hoje (fuso São Paulo)
@@ -433,9 +494,9 @@ export default function ApontadorHomePage() {
                 type="button"
                 disabled={limparDiaEmCurso}
                 onClick={() => void executarLimparDia()}
-                className="fc-btn rounded-lg bg-amber-700 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-50"
+                className="fc-btn rounded-lg border border-rose-400/40 bg-rose-700 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-600 disabled:opacity-50"
               >
-                {limparDiaEmCurso ? "A limpar…" : "Confirmar limpeza"}
+                {limparDiaEmCurso ? "A resetar…" : "Confirmar reset"}
               </button>
               <button
                 type="button"

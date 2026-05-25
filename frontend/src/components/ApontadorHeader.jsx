@@ -7,7 +7,7 @@ import Avatar from "./Avatar";
 /**
  * Barra superior do app apontador: identidade da operação, estado de rede, sincronizar e menu de perfil com saída.
  */
-export default function ApontadorHeader({ online, textoPendentes, onSyncManual }) {
+export default function ApontadorHeader({ online, textoPendentes, onSyncManual, showSyncAction = true }) {
   const { user, logout, refreshUser } = useAuth();
   const { tap } = useHaptics();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -88,20 +88,22 @@ export default function ApontadorHeader({ online, textoPendentes, onSyncManual }
           </div>
 
           <div className="col-span-2 col-start-1 row-start-2 flex items-center justify-end gap-2 sm:col-span-1 sm:col-start-3 sm:row-start-1 sm:justify-self-end">
-            <button
-              type="button"
-              onClick={() => {
-                tap(10);
-                void onSyncManual?.();
-              }}
-              className="fc-btn flex h-10 items-center gap-1.5 rounded-xl border border-emerald-500/35 bg-emerald-950/45 px-3 text-xs font-semibold text-emerald-50 transition hover:border-emerald-400/50 hover:bg-emerald-900/50 active:scale-[0.98]"
-              aria-label="Sincronizar registros pendentes"
-            >
-              <span className="text-sm" aria-hidden>
-                ↻
-              </span>
-              <span className="hidden sm:inline">Sync</span>
-            </button>
+            {showSyncAction ? (
+              <button
+                type="button"
+                onClick={() => {
+                  tap(10);
+                  void onSyncManual?.();
+                }}
+                className="fc-btn flex h-10 items-center gap-1.5 rounded-xl border border-emerald-500/35 bg-emerald-950/45 px-3 text-xs font-semibold text-emerald-50 transition hover:border-emerald-400/50 hover:bg-emerald-900/50 active:scale-[0.98]"
+                aria-label="Sincronizar registros pendentes"
+              >
+                <span className="text-sm" aria-hidden>
+                  ↻
+                </span>
+                <span className="hidden sm:inline">Sync</span>
+              </button>
+            ) : null}
 
             <div className="relative shrink-0" ref={menuRef}>
               <button

@@ -2,6 +2,7 @@ const { listVehicles } = require("../models/vehicleModel");
 const {
   insertViagem,
   countViagensHojeEmpresaSaoPaulo,
+  listRecentViagensHojeEmpresaSaoPaulo,
   deleteViagemApontadorMatch,
   deleteViagensEmpresaDiaAtualSaoPaulo,
 } = require("../models/viagemModel");
@@ -106,6 +107,7 @@ const getContagemHojeApontador = async (req, res) => {
     });
   }
   const counts = await countViagensHojeEmpresaSaoPaulo(empresaId);
+  const recentes = await listRecentViagensHojeEmpresaSaoPaulo(empresaId, 5);
   return res.json({
     success: true,
     hoje: {
@@ -115,6 +117,11 @@ const getContagemHojeApontador = async (req, res) => {
       ton_rocha: counts.ton_rocha,
       ton_total: counts.ton_total,
     },
+    ultimos_lancamentos: (recentes || []).map((item) => ({
+      id: item.id,
+      tipo: item.tipo,
+      timestamp: item.marcacao instanceof Date ? item.marcacao.getTime() : new Date(item.marcacao).getTime(),
+    })),
   });
 };
 

@@ -100,6 +100,26 @@ const countViagensHojeEmpresaSaoPaulo = async (empresa_id, db = pool) => {
   };
 };
 
+/**
+ * Lista os últimos lançamentos do dia corrente no fuso America/Sao_Paulo.
+ * @param {number} empresa_id
+ * @param {number} limit
+ */
+const listRecentViagensHojeEmpresaSaoPaulo = async (empresa_id, limit = 5, db = pool) => {
+  const parsedLimit = Math.min(Math.max(Number(limit) || 5, 1), 20);
+  const { rows } = await db.query(
+    `SELECT id, tipo, marcacao
+     FROM viagens
+     WHERE empresa_id = $1
+       AND (marcacao AT TIME ZONE 'America/Sao_Paulo')::date
+         = (CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')::date
+     ORDER BY marcacao DESC
+     LIMIT $2`,
+    [empresa_id, parsedLimit]
+  );
+  return rows;
+};
+
 /** Limites [start,end) em ISO UTC a partir de datas YYYY-MM-DD inclusive (fim = dia seguinte ao data_fim). */
 const utcBoundsFromDateRangeYmd = (data_inicio_ymd, data_fim_ymd) => {
   const parse = (ymd) => {
@@ -200,6 +220,7 @@ module.exports = {
   insertViagem,
   getViagensResumoProducao,
   countViagensHojeEmpresaSaoPaulo,
+  listRecentViagensHojeEmpresaSaoPaulo,
   utcBoundsFromDateRangeYmd,
   listViagensByVehicleDay,
   deleteViagemApontadorMatch,
