@@ -113,7 +113,7 @@ function FuelDashboardContent() {
                   </strong>
                 </p>
                 <p className="mt-1 text-xs text-zinc-500">
-                  Valor somado no ano civil atual, considerando todos os abastecimentos da empresa (referência).
+                  Valor somado no ano civil atual, considerando todos os abastecimentos da empresa (base anual).
                 </p>
                 <button
                   type="button"
@@ -147,7 +147,7 @@ function FuelDashboardContent() {
               onRetry={retryResumo}
             />
             <p className="mt-4 text-sm text-zinc-500">
-              Referência anual (quando disponível):{" "}
+              Base anual (quando disponível):{" "}
               <strong className="tabular-nums text-zinc-300">
                 {fuel.totalGeralAno == null ? "—" : fmtBRL(fuel.totalGeralAno)}
               </strong>
