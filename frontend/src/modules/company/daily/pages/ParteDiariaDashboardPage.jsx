@@ -16,6 +16,7 @@ import ParteDiariaResumoStrip from "../components/ParteDiariaResumoStrip";
 import ParteDiariaDayChart from "../components/ParteDiariaDayChart";
 import ParteDiariaMotoristaRanking from "../components/ParteDiariaMotoristaRanking";
 import AccordionSection from "../../shared/components/AccordionSection";
+import TooltipInfo from "../../shared/components/TooltipInfo";
 
 function ParteDiariaDashboardInner() {
   const {
@@ -114,7 +115,10 @@ function ParteDiariaDashboardInner() {
             />
             <div className="grid min-w-0 gap-6 lg:grid-cols-2">
               <div className="fc-card border-zinc-800/90 p-5">
-                <h3 className="text-sm font-semibold text-zinc-100">Registros por dia</h3>
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-zinc-100">
+                  <span>Produção diária</span>
+                  <TooltipInfo text="Quantidade total registrada no dia para o equipamento." />
+                </h3>
                 <div className="mt-4">
                   <ParteDiariaDayChart daySeries={snapshotInsights.daySeries} loading={snapshotLoading} />
                 </div>

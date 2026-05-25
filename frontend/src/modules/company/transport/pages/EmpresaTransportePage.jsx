@@ -9,6 +9,7 @@ import { TransportProvider } from "../../contexts/TransportContext";
 import { useTransportMetrics } from "../../hooks/useTransportMetrics";
 import EmpresaModuleErrorPanel from "../../shared/components/EmpresaModuleErrorPanel";
 import AccordionSection from "../../shared/components/AccordionSection";
+import TooltipInfo from "../../shared/components/TooltipInfo";
 
 const fmtInt = (n) => Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 const fmtTon = (n) =>
@@ -153,7 +154,10 @@ function EmpresaTransportePageContent() {
         }`}
       >
         <section className="p-2 sm:p-3" aria-label="Total de toneladas no período">
-        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Total no período filtrado</p>
+        <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-400">
+          <span>Toneladas</span>
+          <TooltipInfo text="Volume total transportado no período." />
+        </p>
         {tr.viagensLoading ? (
           <div className="mt-4">
             <SkeletonRows rows={2} />
@@ -171,8 +175,9 @@ function EmpresaTransportePageContent() {
                 <p className="mt-1 text-xl font-bold tabular-nums text-zinc-100">
                   {tr.viagensResumo ? `${fmtTon(tr.viagensResumo.total_toneladas_esteril)} t` : "—"}
                 </p>
-                <p className="mt-1 text-xs text-zinc-500">
+                <p className="mt-1 flex items-center gap-1.5 text-xs text-zinc-500">
                   {fmtCountLabel(tr.viagensResumo?.total_viagens_esteril, "viagem", "viagens")}
+                  <TooltipInfo text="Quantidade de viagens realizadas pelo motorista ou veículo." />
                 </p>
               </div>
               <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-4 py-3">
@@ -180,8 +185,9 @@ function EmpresaTransportePageContent() {
                 <p className="mt-1 text-xl font-bold tabular-nums text-zinc-100">
                   {tr.viagensResumo ? `${fmtTon(tr.viagensResumo.total_toneladas_rocha)} t` : "—"}
                 </p>
-                <p className="mt-1 text-xs text-zinc-500">
+                <p className="mt-1 flex items-center gap-1.5 text-xs text-zinc-500">
                   {fmtCountLabel(tr.viagensResumo?.total_viagens_rocha, "viagem", "viagens")}
+                  <TooltipInfo text="Quantidade de viagens realizadas pelo motorista ou veículo." />
                 </p>
               </div>
             </div>
@@ -300,7 +306,10 @@ function EmpresaTransportePageContent() {
                         : "border-rose-500/35 bg-rose-950/20"
                   }`}
                 >
-                  <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">% atingido</p>
+                  <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                    <span>Meta / atingimento</span>
+                    <TooltipInfo text="Percentual de cumprimento da meta definida para o período." />
+                  </p>
                   <p className={`mt-1 text-4xl font-black tabular-nums tracking-tight sm:text-5xl ${pctTone(pctTotal)}`}>
                     {fmtPct(pctTotal)}%
                   </p>

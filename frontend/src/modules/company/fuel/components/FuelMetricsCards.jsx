@@ -1,6 +1,7 @@
 import { memo } from "react";
 import BISparkline from "../../bi/components/BISparkline";
 import { fmtBRL, fmtLitros } from "../services/fuelFormatters";
+import TooltipInfo from "../../shared/components/TooltipInfo";
 
 const formatDeltaLitrosMensagem = (deltaLitros) => {
   if (!Number.isFinite(deltaLitros) || Math.abs(deltaLitros) < 0.01) {
@@ -54,13 +55,19 @@ function FuelMetricsCards({ resumo, mediaPorVeiculo }) {
       <div className={`${cardBase} border-sky-500/35 bg-sky-950/25`}>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-sky-200/80">Litros</p>
+            <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-sky-200/80">
+              <span>Litros no período</span>
+              <TooltipInfo text="Quantidade total de combustível abastecido no período filtrado." />
+            </p>
             <p className="mt-2 text-3xl font-black tabular-nums tracking-tight text-zinc-50 sm:text-4xl">
               {fmtLitros(resumo.total_litros)}
             </p>
             <p className="mt-2 text-xs text-zinc-400">Volume no período</p>
             {deltaLitros != null && Number.isFinite(hist) && hist > 0 ? (
-              <p className="mt-2 text-xs font-medium text-zinc-300">{formatDeltaLitrosMensagem(deltaLitros)}</p>
+              <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-zinc-300">
+                <span>Vs histórico: {formatDeltaLitrosMensagem(deltaLitros)}</span>
+                <TooltipInfo text="Comparação com períodos anteriores. Valores altos indicam aumento significativo no consumo." />
+              </p>
             ) : null}
           </div>
           {sparkLitros.length >= 2 ? (
@@ -100,7 +107,10 @@ function FuelMetricsCards({ resumo, mediaPorVeiculo }) {
               )}
             </p>
             {hasCurrentPrice ? (
-              <p className="mt-2 text-xs text-zinc-300">Preço médio: {fmtBRL(atual)}/L</p>
+              <p className="mt-2 flex items-center gap-1.5 text-xs text-zinc-300">
+                <span>Média R$/L: {fmtBRL(atual)}/L</span>
+                <TooltipInfo text="Média do valor pago por litro no período selecionado." />
+              </p>
             ) : null}
             {hasHistoricalPrice ? (
               <p className="mt-1 text-xs text-zinc-400">Média histórica: {fmtBRL(refHist)}/L</p>
@@ -112,16 +122,19 @@ function FuelMetricsCards({ resumo, mediaPorVeiculo }) {
             </div>
           ) : null}
         </div>
-        <p
-          className={`mt-3 text-xs font-medium ${
-            comparacaoPreco === "abaixo"
-              ? "text-emerald-200"
-              : comparacaoPreco === "acima"
-                ? "text-amber-200"
-                : "text-zinc-300"
-          }`}
-        >
-          {interpretacaoPreco}
+        <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-zinc-300">
+          <span
+            className={
+              comparacaoPreco === "abaixo"
+                ? "text-emerald-200"
+                : comparacaoPreco === "acima"
+                  ? "text-amber-200"
+                  : "text-zinc-300"
+            }
+          >
+            Preço vs referência: {interpretacaoPreco}
+          </span>
+          <TooltipInfo text="Compara o preço médio pago com o valor de referência definido pelo sistema ou histórico." />
         </p>
       </div>
     </div>

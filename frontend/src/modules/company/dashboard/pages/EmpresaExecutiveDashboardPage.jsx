@@ -138,6 +138,7 @@ export default function EmpresaExecutiveDashboardPage() {
           title="Transporte"
           to="/empresa/transporte"
           accent="amber"
+          tooltipText="Mostra o volume total transportado no período. É calculado pela soma das toneladas de estéril e rocha. Quanto maior, melhor o ritmo frente à meta."
           value={`${fmtTon(transporte.toneladas)} t`}
           trendDirection={transporteTrend}
           trendText={transporte.atingimento != null ? `${trendArrow(transporteTrend)} ${fmtDelta(transporteDelta)}` : "→ sem meta"}
@@ -169,6 +170,7 @@ export default function EmpresaExecutiveDashboardPage() {
           title="Combustível"
           to="/empresa/combustivel"
           accent="blue"
+          tooltipText="Representa o custo total de combustível no período e a eficiência por litro. Valor muito alto indica pressão de custo e necessidade de revisão de consumo/preço."
           value={fmtMoney(combustivel.valor)}
           trendDirection={combustivelTrend}
           trendText={`${trendArrow(combustivelTrend)} ${fmtDelta(combustivelDelta)}`}
@@ -189,6 +191,7 @@ export default function EmpresaExecutiveDashboardPage() {
           title="Parte diária"
           to="/empresa/parte-diaria"
           accent="emerald"
+          tooltipText="Quantidade de lançamentos de parte diária no período. É comparada com motoristas ativos para medir cobertura operacional. Valor baixo pode indicar falha de registro."
           value={fmtInt(parteDiaria.registros)}
           trendDirection={parteDiariaTrend}
           trendText={`${trendArrow(parteDiariaTrend)} ${fmtDelta(parteDiariaDelta)}`}
@@ -209,6 +212,7 @@ export default function EmpresaExecutiveDashboardPage() {
           title="Frota"
           to="/empresa/frota"
           accent="zinc"
+          tooltipText="Total de veículos com movimento no período. O indicador cruza atividade da frota com equipe ativa. Valor baixo pode sinalizar ociosidade ou indisponibilidade."
           value={fmtInt(frota.veiculosAtivos)}
           trendDirection={frotaTrend}
           trendText={`${trendArrow(frotaTrend)} ${fmtDelta(frotaDeltaBase)}`}
@@ -225,6 +229,7 @@ export default function EmpresaExecutiveDashboardPage() {
           title="Pessoas"
           to="/empresa/pessoas"
           accent="violet"
+          tooltipText="Motoristas com lançamentos no período. É calculado por usuários ativos com registro operacional. Valor baixo reduz capacidade de execução da frota."
           value={fmtInt(pessoas.motoristasAtivos)}
           trendDirection={pessoasTrend}
           trendText={`${trendArrow(pessoasTrend)} ${fmtDelta(pessoasDeltaBase)}`}

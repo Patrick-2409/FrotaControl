@@ -5,6 +5,7 @@ import { emitToast } from "../../../../services/uiEvents";
 import { ScreenLoading } from "../../../../components/LoadingState";
 import EmptyState from "../../../../components/EmptyState";
 import AccordionSection from "../../shared/components/AccordionSection";
+import TooltipInfo from "../../shared/components/TooltipInfo";
 
 const sevBadge = (s) => {
   if (s === "critical") return "border-rose-500/50 bg-rose-950/40 text-rose-100";
@@ -165,7 +166,10 @@ export default function EmpresaAlertasPage() {
       >
         <section>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">Alertas ativos</h2>
+          <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-zinc-400">
+            <span>Alertas ativos</span>
+            <TooltipInfo text="Indica o nível de criticidade do alerta com base nos dados operacionais." />
+          </h2>
           <span className="text-xs text-zinc-500">
             {feed?.cached ? "Resumo guardado no servidor" : "Leitura em tempo real"} ·{" "}
             {feed?.generated_at ? new Date(feed.generated_at).toLocaleString("pt-BR") : "—"}
@@ -207,6 +211,10 @@ export default function EmpresaAlertasPage() {
                   )}
                 </div>
                 <h3 className="mt-2 text-base font-semibold text-zinc-100">{it.title}</h3>
+                <p className="mt-1 flex items-center gap-1.5 text-xs text-zinc-500">
+                  <span>Motivo do alerta</span>
+                  <TooltipInfo text="Explica a lógica que disparou o alerta, como ausência de registros ou consumo alto." />
+                </p>
                 <p className="mt-1 text-sm text-zinc-400">{it.body}</p>
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                   <Link

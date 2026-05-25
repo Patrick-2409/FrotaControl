@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import TooltipInfo from "../../shared/components/TooltipInfo";
 
 const trendStyleMap = {
   positive: {
@@ -64,6 +65,7 @@ export default function ExecutiveModuleCard({
   subtitle,
   progress = 0,
   miniSeries = [],
+  tooltipText = "",
   children,
 }) {
   const accentMap = {
@@ -81,7 +83,10 @@ export default function ExecutiveModuleCard({
       className={`fc-erp-module-card fc-erp-module-card--interactive fc-card flex h-full flex-col rounded-xl border p-4 sm:p-5 ${accentClass}`}
     >
       <header className="mb-2 flex items-center justify-between gap-3">
-        <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-zinc-100">{title}</h3>
+        <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.12em] text-zinc-100">
+          <span>{title}</span>
+          {tooltipText ? <TooltipInfo text={tooltipText} /> : null}
+        </h3>
         <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
           {to ? "Abrir módulo" : "Somente leitura"}
         </span>

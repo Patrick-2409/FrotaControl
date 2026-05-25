@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { fmtHoras } from "../services/parteDiariaFormatters";
+import TooltipInfo from "../../shared/components/TooltipInfo";
 
 function statusBorder(st) {
   if (st === "atencao_checklist") return "border-amber-500/45 bg-amber-950/20";
@@ -17,7 +18,10 @@ function ParteDiariaResumoStrip({ total, mediaHorasNum, statusOperacional, amost
       aria-label="Resumo da parte diária"
     >
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Total no período</p>
+        <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+          <span>Acumulado</span>
+          <TooltipInfo text="Soma das produções registradas no período selecionado." />
+        </p>
         <p className="mt-1 text-3xl font-black tabular-nums text-zinc-50 sm:text-4xl">{Number(total || 0).toLocaleString("pt-BR")}</p>
         <p className="mt-1 text-xs text-zinc-500">registros</p>
       </div>
@@ -35,6 +39,10 @@ function ParteDiariaResumoStrip({ total, mediaHorasNum, statusOperacional, amost
           {statusOperacional === "ocorrencias_texto" && "Com ocorrências"}
           {statusOperacional === "regular" && "Sem alertas na página"}
           {statusOperacional === "sem_dados" && "Sem linhas nesta vista"}
+        </p>
+        <p className="mt-2 flex items-center gap-1.5 text-xs text-zinc-500">
+          <span>Tipo (estéril / rocha)</span>
+          <TooltipInfo text="Classificação do material movimentado." />
         </p>
       </div>
     </section>
