@@ -721,6 +721,48 @@ textarea:focus-visible,
   box-shadow: 0 6px 16px rgba(12, 74, 110, 0.32);
 }
 
+.fc-fuel-page .fc-fuel-panel {
+  border-color: color-mix(in srgb, var(--primary) 24%, #334155);
+  box-shadow: 0 10px 22px rgba(2, 6, 23, 0.35);
+}
+
+.fc-fuel-kpi {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.72) 0%, rgba(2, 6, 23, 0.68) 100%);
+  transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+
+.fc-fuel-record {
+  transition: border-color 180ms ease, transform 180ms ease, background 180ms ease;
+}
+
+.fc-fuel-cta {
+  letter-spacing: 0.01em;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .fc-fuel-kpi:hover,
+  .fc-fuel-record:hover {
+    transform: translateY(-1px);
+    border-color: rgba(100, 116, 139, 0.9);
+    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.32);
+  }
+}
+
+.fc-fuel-record:active,
+.fc-fuel-cta:active {
+  transform: scale(0.99);
+}
+
+@media (max-width: 640px) {
+  .fc-fuel-page {
+    gap: 0.9rem;
+  }
+
+  .fc-fuel-page .fc-fuel-panel {
+    padding: 0.85rem;
+  }
+}
+
 .fc-field-mode {
   --fc-field-bg: #020617;
   --fc-field-surface: #0b1220;

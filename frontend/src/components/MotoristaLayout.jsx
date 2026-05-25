@@ -73,6 +73,7 @@ export default function MotoristaLayout({ children, onSync, pendingCount, online
       className={`fc-theme-driver fc-field-mode ${
         fieldExtremeMode ? "fc-field-extreme" : ""
       } mx-auto min-h-[100dvh] min-h-screen w-full max-w-xl bg-slate-950 px-4 py-4 text-slate-100 sm:px-6`}
+      style={{ paddingTop: "max(0.85rem, env(safe-area-inset-top, 0px))" }}
     >
       {!online && (
         <div className="fc-page mb-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-center text-sm font-medium text-amber-100" role="status" aria-live="assertive">
@@ -80,7 +81,10 @@ export default function MotoristaLayout({ children, onSync, pendingCount, online
         </div>
       )}
 
-      <header className="fc-card sticky top-2 z-40 mb-4 p-4">
+      <header
+        className="fc-card sticky z-40 mb-4 p-4"
+        style={{ top: "max(0.5rem, env(safe-area-inset-top, 0px))" }}
+      >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex items-start gap-3">
             <CompanyLogo

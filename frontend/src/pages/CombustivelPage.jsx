@@ -78,6 +78,16 @@ const formatDateTimeBr = (value) => {
   });
 };
 
+const toInputDateTime = (value) => {
+  if (!value) return nowLocalDateTimeString().slice(0, 16);
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value).slice(0, 16);
+  const local = new Date(parsed.getTime() - parsed.getTimezoneOffset() * 60 * 1000);
+  return local.toISOString().slice(0, 16);
+};
+
+const getRecordSourceId = (row) => row?.source_id || row?.payload?.source_id || row?.payload?.client_id;
+
 const sanitizeForm = (form) => {
   const litros = parseDecimalInput(form.litros);
   const valorTotal = parseDecimalInput(form.valor_total);
@@ -109,6 +119,11 @@ export default function CombustivelPage({ onSaved }) {
   const [fuelHistory, setFuelHistory] = useState([]);
   const [createForm, setCreateForm] = useState(() => newEmptyForm(user?.veiculo_id));
   const [createLoading, setCreateLoading] = useState(false);
+  const [createSuccess, setCreateSuccess] = useState(false);
+  const [formVisible, setFormVisible] = useState(false);
+  const [editingSourceId, setEditingSourceId] = useState(null);
+  const [selectedRecord, setSelectedRecord] = useState(null);
+  const [activeGraphPoint, setActiveGraphPoint] = useState(null);
 
   const vehicleOptions = useMemo(() => {
     const byId = new Map();
@@ -222,6 +237,32 @@ export default function CombustivelPage({ onSaved }) {
   }, [fuelHistory]);
 
   const lastFiveFuelRecords = useMemo(() => fuelHistory.slice(0, 5), [fuelHistory]);
+  const latestFuelRecord = lastFiveFuelRecords[0] || null;
+
+  const startNewCreate = () => {
+    setEditingSourceId(null);
+    setCreateForm(newEmptyForm(user?.veiculo_id));
+    setCreateSuccess(false);
+    setFormVisible(true);
+  };
+
+  const startEdit = (row) => {
+    const payload = row?.payload || {};
+    const sourceId = getRecordSourceId(row);
+    if (!sourceId) return;
+    setEditingSourceId(sourceId);
+    setCreateForm({
+      data: toInputDateTime(payload?.data || payload?.recorded_at_client || row?.updatedAt),
+      litros: String(payload?.litros ?? ""),
+      valor_total: String(payload?.valor_total ?? ""),
+      tipo_combustivel: payload?.tipo_combustivel || "Diesel",
+      horimetro: String(payload?.horimetro ?? ""),
+      hodometro: String(payload?.hodometro ?? ""),
+      veiculo_id: Number(payload?.veiculo_id || user?.veiculo_id) || undefined,
+    });
+    setCreateSuccess(false);
+    setFormVisible(true);
+  };
 
   const submitCreate = async (e) => {
     e.preventDefault();
@@ -231,8 +272,9 @@ export default function CombustivelPage({ onSaved }) {
       return;
     }
     setCreateLoading(true);
+    setCreateSuccess(false);
     try {
-      const sourceId = generateId();
+      const sourceId = editingSourceId || generateId();
       const payload = {
         source_id: sourceId,
         client_id: sourceId,
@@ -243,10 +285,16 @@ export default function CombustivelPage({ onSaved }) {
         emitToast(extractApiErrorMessage(result.error) || "Falha ao salvar abastecimento.", "error");
         return;
       }
-      setCreateForm(newEmptyForm(user?.veiculo_id));
       onSaved?.(result.status);
       await refreshHistory();
-      emitToast("Abastecimento salvo com sucesso.", "success");
+      setCreateSuccess(true);
+      emitToast(editingSourceId ? "Abastecimento atualizado com sucesso." : "Abastecimento salvo com sucesso.", "success");
+      window.setTimeout(() => {
+        setCreateSuccess(false);
+        setCreateForm(newEmptyForm(user?.veiculo_id));
+        setEditingSourceId(null);
+        setFormVisible(false);
+      }, 1300);
     } catch (err) {
       emitToast(extractApiErrorMessage(err) || "Falha ao salvar abastecimento.", "error");
     } finally {
@@ -258,10 +306,11 @@ export default function CombustivelPage({ onSaved }) {
   if (error) return <div className="fc-card p-4 text-sm text-red-300">{error}</div>;
 
   const maxGraphValue = Math.max(...graphData.map((item) => item.total), 1);
+  const selectedGraphPoint = activeGraphPoint || graphData.at(-1) || null;
 
   return (
-    <div className="space-y-4 pb-28">
-      <section className="fc-card space-y-3 p-4">
+    <div className="fc-fuel-page fc-stagger space-y-4 pb-28 pt-1">
+      <section className="fc-card fc-fuel-panel space-y-3 p-4">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-lg font-semibold text-white">Combustível</h2>
           <span className="fc-chip">Atividade: Combustível</span>
@@ -269,31 +318,49 @@ export default function CombustivelPage({ onSaved }) {
         <p className="text-sm text-slate-400">Motorista: {user?.nome} | Equipamento: {user?.veiculo_nome || "-"}</p>
       </section>
 
-      <section className="fc-card space-y-3 p-4">
+      <section className="fc-card fc-fuel-panel space-y-3 p-4">
         <p className="text-sm font-semibold text-slate-100">Dashboard rápido</p>
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-          <div className="rounded-lg border border-slate-700/80 bg-slate-900/60 p-2.5">
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+          <div className="fc-fuel-kpi rounded-lg border border-slate-700/80 bg-slate-900/60 p-2.5">
             <p className="text-[11px] text-slate-400">Total dia</p>
             <p className="mt-1 text-lg font-semibold text-white">{formatMoneyBr(fuelDashboard.totalDia)}</p>
           </div>
-          <div className="rounded-lg border border-slate-700/80 bg-slate-900/60 p-2.5">
+          <div className="fc-fuel-kpi rounded-lg border border-slate-700/80 bg-slate-900/60 p-2.5">
             <p className="text-[11px] text-slate-400">Total semana</p>
             <p className="mt-1 text-lg font-semibold text-white">{formatMoneyBr(fuelDashboard.totalSemana)}</p>
           </div>
-          <div className="rounded-lg border border-slate-700/80 bg-slate-900/60 p-2.5">
+          <div className="fc-fuel-kpi rounded-lg border border-slate-700/80 bg-slate-900/60 p-2.5">
             <p className="text-[11px] text-slate-400">Média R$/L</p>
             <p className="mt-1 text-lg font-semibold text-white">{formatMoneyBr(fuelDashboard.mediaLitro)}</p>
           </div>
+          <div className="fc-fuel-kpi rounded-lg border border-slate-700/80 bg-slate-900/60 p-2.5">
+            <p className="text-[11px] text-slate-400">Último abastecimento</p>
+            <p className="mt-1 text-sm font-semibold text-white">
+              {latestFuelRecord ? formatDateTimeBr(latestFuelRecord?.payload?.data || latestFuelRecord?.payload?.recorded_at_client || latestFuelRecord?.updatedAt) : "Sem registros"}
+            </p>
+          </div>
         </div>
         <div className="rounded-xl border border-slate-700/80 bg-slate-900/50 p-3">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-300">Últimos 7 dias (R$)</p>
+          <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-300">Últimos 7 dias (R$)</p>
+            {selectedGraphPoint ? (
+              <div className="rounded-md border border-slate-600/80 bg-slate-900/85 px-2 py-1 text-[11px] text-slate-200">
+                Dia {selectedGraphPoint.label}: {formatMoneyBr(selectedGraphPoint.total)}
+              </div>
+            ) : null}
+          </div>
           <div className="flex h-24 items-end gap-2">
             {graphData.map((point) => (
               <div key={point.ymd} className="flex min-w-0 flex-1 flex-col items-center gap-1">
-                <div className="text-[10px] text-slate-400">{point.total > 0 ? Math.round(point.total) : "-"}</div>
-                <div className="flex h-16 w-full items-end rounded-md bg-slate-800/80 p-1">
+                <button
+                  type="button"
+                  className="flex h-16 w-full items-end rounded-md bg-slate-800/80 p-1 transition hover:bg-slate-700/80"
+                  onClick={() => setActiveGraphPoint(point)}
+                  onTouchStart={() => setActiveGraphPoint(point)}
+                  aria-label={`Dia ${point.label}, total ${formatMoneyBr(point.total)}`}
+                >
                   <div className="w-full rounded-sm bg-blue-500/80" style={{ height: `${Math.max(6, Math.round((point.total / maxGraphValue) * 100))}%` }} />
-                </div>
+                </button>
                 <div className="text-[10px] text-slate-500">{point.label}</div>
               </div>
             ))}
@@ -301,48 +368,97 @@ export default function CombustivelPage({ onSaved }) {
         </div>
       </section>
 
-      <section className="fc-card space-y-3 p-4">
-        <p className="text-sm font-semibold text-slate-100">Novo abastecimento</p>
-        <form onSubmit={submitCreate} className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <FormField label="Data">
-            <input type="datetime-local" className={inputClass} value={createForm.data} onChange={(e) => setCreateForm((prev) => ({ ...prev, data: e.target.value }))} />
-          </FormField>
-          <FormField label="Tipo combustível">
-            <select className={inputClass} value={createForm.tipo_combustivel} onChange={(e) => setCreateForm((prev) => ({ ...prev, tipo_combustivel: e.target.value }))}>
-              <option>Diesel</option>
-              <option>Gasolina</option>
-              <option>Etanol</option>
-            </select>
-          </FormField>
-          <FormField label="Veículo">
-            <select className={inputClass} value={createForm.veiculo_id ?? ""} onChange={(e) => setCreateForm((prev) => ({ ...prev, veiculo_id: e.target.value ? Number(e.target.value) : undefined }))} disabled={vehiclesLoading}>
-              <option value="">{vehiclesLoading ? "Carregando veículos..." : "Selecione um veículo"}</option>
-              {vehicleOptions.map((vehicle) => (
-                <option key={vehicle.id} value={vehicle.id}>{vehicle.nome} - {vehicle.placa || "Sem placa"}</option>
-              ))}
-            </select>
-          </FormField>
-          <FormField label="Quantidade (L)">
-            <input type="number" min="0" step="0.01" inputMode="decimal" className={inputClass} value={createForm.litros} onChange={(e) => setCreateForm((prev) => ({ ...prev, litros: e.target.value }))} />
-          </FormField>
-          <FormField label="Valor total (R$)">
-            <input type="number" min="0" step="0.01" inputMode="decimal" className={inputClass} value={createForm.valor_total} onChange={(e) => setCreateForm((prev) => ({ ...prev, valor_total: e.target.value }))} />
-          </FormField>
-          <FormField label="Horímetro">
-            <input className={inputClass} value={createForm.horimetro} onChange={(e) => setCreateForm((prev) => ({ ...prev, horimetro: e.target.value }))} />
-          </FormField>
-          <FormField label="Hodômetro">
-            <input className={inputClass} value={createForm.hodometro} onChange={(e) => setCreateForm((prev) => ({ ...prev, hodometro: e.target.value }))} />
-          </FormField>
-          <div className="md:col-span-2">
-            <button type="submit" className={primaryButtonClass} disabled={createLoading}>
-              {createLoading ? "Salvando..." : "Salvar abastecimento"}
-            </button>
-          </div>
-        </form>
+      <section className="fc-card fc-fuel-panel space-y-3 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-semibold text-slate-100">Registro de abastecimento</p>
+          <button type="button" className="fc-btn btn-primary fc-fuel-cta rounded-lg px-4 py-2 text-sm" onClick={startNewCreate}>
+            + Novo abastecimento
+          </button>
+        </div>
+
+        {formVisible ? (
+          <form onSubmit={submitCreate} className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="fc-op-section md:col-span-2">
+              <p className="fc-op-section-title">Bloco 1 - Dados automáticos</p>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <FormField label="Data (auto)">
+                  <input type="datetime-local" className={inputClass} value={createForm.data} onChange={(e) => setCreateForm((prev) => ({ ...prev, data: e.target.value }))} />
+                </FormField>
+                <FormField label="Veículo (auto selecionado)">
+                  <select className={inputClass} value={createForm.veiculo_id ?? ""} onChange={(e) => setCreateForm((prev) => ({ ...prev, veiculo_id: e.target.value ? Number(e.target.value) : undefined }))} disabled={vehiclesLoading}>
+                    <option value="">{vehiclesLoading ? "Carregando veículos..." : "Selecione um veículo"}</option>
+                    {vehicleOptions.map((vehicle) => (
+                      <option key={vehicle.id} value={vehicle.id}>{vehicle.nome} - {vehicle.placa || "Sem placa"}</option>
+                    ))}
+                  </select>
+                </FormField>
+                <FormField label="Tipo combustível">
+                  <select className={inputClass} value={createForm.tipo_combustivel} onChange={(e) => setCreateForm((prev) => ({ ...prev, tipo_combustivel: e.target.value }))}>
+                    <option>Diesel</option>
+                    <option>Gasolina</option>
+                    <option>Etanol</option>
+                  </select>
+                </FormField>
+              </div>
+            </div>
+
+            <div className="fc-op-section md:col-span-2">
+              <p className="fc-op-section-title">Bloco 2 - Principal</p>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <FormField label="Litros">
+                  <input type="number" min="0" step="0.01" inputMode="decimal" className={inputClass} value={createForm.litros} onChange={(e) => setCreateForm((prev) => ({ ...prev, litros: e.target.value }))} />
+                </FormField>
+                <FormField label="Valor total (R$)">
+                  <input type="number" min="0" step="0.01" inputMode="decimal" className={inputClass} value={createForm.valor_total} onChange={(e) => setCreateForm((prev) => ({ ...prev, valor_total: e.target.value }))} />
+                </FormField>
+              </div>
+            </div>
+
+            <div className="fc-op-section md:col-span-2">
+              <p className="fc-op-section-title">Bloco 3 - Opcional</p>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <FormField label="Hodômetro">
+                  <input className={inputClass} value={createForm.hodometro} onChange={(e) => setCreateForm((prev) => ({ ...prev, hodometro: e.target.value }))} />
+                </FormField>
+                <FormField label="Horímetro">
+                  <input className={inputClass} value={createForm.horimetro} onChange={(e) => setCreateForm((prev) => ({ ...prev, horimetro: e.target.value }))} />
+                </FormField>
+              </div>
+            </div>
+
+            <div className="md:col-span-2 flex flex-wrap gap-2">
+              <button
+                type="submit"
+                className={`${primaryButtonClass} transition-all duration-300 ${createSuccess ? "animate-pulse border-emerald-300 bg-emerald-500/90" : ""}`}
+                disabled={createLoading}
+              >
+                {createLoading
+                  ? "Salvando..."
+                  : createSuccess
+                  ? "✔ Abastecimento registrado"
+                  : editingSourceId
+                  ? "Salvar edição"
+                  : "Salvar abastecimento"}
+              </button>
+              <button
+                type="button"
+                className="fc-btn btn-secondary rounded-lg px-4 py-2 text-sm"
+                onClick={() => {
+                  setFormVisible(false);
+                  setEditingSourceId(null);
+                  setCreateSuccess(false);
+                }}
+              >
+                Fechar formulário
+              </button>
+            </div>
+          </form>
+        ) : (
+          <p className="text-sm text-slate-400">Toque em <strong>+ Novo abastecimento</strong> para registrar uma nova operação.</p>
+        )}
       </section>
 
-      <section className="fc-card space-y-3 p-4">
+      <section className="fc-card fc-fuel-panel space-y-3 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm font-semibold text-slate-100">Últimos 5 registros</p>
           <Link to="/app/historico" className="fc-btn btn-secondary rounded-lg px-3 py-2 text-xs">
@@ -355,9 +471,14 @@ export default function CombustivelPage({ onSaved }) {
           <div className="space-y-2">
             {lastFiveFuelRecords.map((row) => {
               const payload = row?.payload || {};
-              const sourceId = row?.source_id || payload?.source_id;
+              const sourceId = getRecordSourceId(row);
               return (
-                <article key={String(sourceId)} className="rounded-xl border border-slate-800 bg-slate-950/55 p-3 text-sm">
+                <button
+                  key={String(sourceId)}
+                  type="button"
+                  className="fc-fuel-record w-full rounded-xl border border-slate-800 bg-slate-950/55 p-3 text-left text-sm transition hover:border-slate-600"
+                  onClick={() => setSelectedRecord(row)}
+                >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="font-semibold text-slate-100">
                       {payload?.veiculo_nome || "Veículo"} {payload?.placa ? `| ${payload.placa}` : ""}
@@ -372,12 +493,53 @@ export default function CombustivelPage({ onSaved }) {
                     <p><strong>Total:</strong> {formatMoneyBr(payload?.valor_total || 0)}</p>
                     <p><strong>R$/L:</strong> {formatMoneyBr((Number(payload?.valor_total || 0) / Number(payload?.litros || 0)) || 0)}</p>
                   </div>
-                </article>
+                  <div className="mt-2 flex gap-2">
+                    <span className="fc-chip">Visualizar</span>
+                    <span className="fc-chip">Editar</span>
+                  </div>
+                </button>
               );
             })}
           </div>
         )}
       </section>
+
+      {selectedRecord ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/75 p-3 sm:items-center" role="dialog" aria-modal="true">
+          <div className="fc-card w-full max-w-lg space-y-3 p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-slate-100">Detalhes do abastecimento</p>
+              <button type="button" className="fc-btn btn-secondary rounded-lg px-3 py-1.5 text-xs" onClick={() => setSelectedRecord(null)}>
+                Fechar
+              </button>
+            </div>
+            <div className="grid grid-cols-1 gap-2 text-sm text-slate-200">
+              <p><strong>Data:</strong> {formatDateTimeBr(selectedRecord?.payload?.data || selectedRecord?.payload?.recorded_at_client || selectedRecord?.updatedAt)}</p>
+              <p><strong>Veículo:</strong> {selectedRecord?.payload?.veiculo_nome || user?.veiculo_nome || "-"}</p>
+              <p><strong>Tipo:</strong> {selectedRecord?.payload?.tipo_combustivel || "-"}</p>
+              <p><strong>Litros:</strong> {Number(selectedRecord?.payload?.litros || 0).toFixed(2)} L</p>
+              <p><strong>Valor:</strong> {formatMoneyBr(selectedRecord?.payload?.valor_total || 0)}</p>
+              <p><strong>Hodômetro:</strong> {selectedRecord?.payload?.hodometro ?? "Não informado"}</p>
+              <p><strong>Horímetro:</strong> {selectedRecord?.payload?.horimetro ?? "Não informado"}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="fc-btn btn-primary rounded-lg px-4 py-2 text-sm"
+                onClick={() => {
+                  startEdit(selectedRecord);
+                  setSelectedRecord(null);
+                }}
+              >
+                Editar este registro
+              </button>
+              <button type="button" className="fc-btn btn-secondary rounded-lg px-4 py-2 text-sm" onClick={() => setSelectedRecord(null)}>
+                Voltar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
