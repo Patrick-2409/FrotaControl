@@ -250,7 +250,6 @@ export default function ParteDiariaPage({ onSaved }) {
             ...(draft.checklist || {}),
           },
         });
-        setFormVisible(true);
       }
     } catch (err) {
       console.error(err);
