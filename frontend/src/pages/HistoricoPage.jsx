@@ -60,6 +60,19 @@ const monthLabelPtBr = (monthKey) => {
   return label.charAt(0).toUpperCase() + label.slice(1);
 };
 
+const dayLabelPtBr = (dayKey) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dayKey)) return "Data não informada";
+  const parsed = new Date(`${dayKey}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return dayKey;
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: OPERATION_TIMEZONE,
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(parsed);
+};
+
 const compactFuelCardData = (row) => {
   const payload = row?.payload || {};
   const litros = Number(payload?.litros || 0);
@@ -93,6 +106,7 @@ export default function HistoricoPage({ reloadKey }) {
   const [selectedVehicle, setSelectedVehicle] = useState("all");
   const [visibleMonths, setVisibleMonths] = useState(3);
   const [openMonthKey, setOpenMonthKey] = useState(null);
+  const [openDayKey, setOpenDayKey] = useState(null);
   const [editingRow, setEditingRow] = useState(null);
   const [editForm, setEditForm] = useState(newEditForm());
   const [editingLoading, setEditingLoading] = useState(false);
@@ -165,11 +179,26 @@ export default function HistoricoPage({ reloadKey }) {
       .sort((a, b) => b[0].localeCompare(a[0]))
       .map(([monthKey, monthRows]) => {
         const year = monthKey === "sem-data" ? "Sem ano" : monthKey.slice(0, 4);
+        const dayMap = new Map();
+        for (const row of monthRows) {
+          const instant = parseOperationalInstant(getFolderAnchorRaw(row));
+          const dayKey = instant ? dayKeyInOpsTz(instant) : "sem-data";
+          if (!dayMap.has(dayKey)) dayMap.set(dayKey, []);
+          dayMap.get(dayKey).push(row);
+        }
+        const days = Array.from(dayMap.entries())
+          .sort((a, b) => b[0].localeCompare(a[0]))
+          .map(([dayKey, items]) => ({
+            dayKey,
+            dayLabel: dayKey === "sem-data" ? "Data não informada" : dayLabelPtBr(dayKey),
+            items,
+          }));
         return {
           monthKey,
           year,
           monthLabel: monthKey === "sem-data" ? "Data não informada" : monthLabelPtBr(monthKey),
           items: monthRows,
+          days,
         };
       });
   }, [filteredRows]);
@@ -222,7 +251,16 @@ export default function HistoricoPage({ reloadKey }) {
   };
 
   const toggleMonth = (monthKey) => {
-    setOpenMonthKey((prev) => (prev === monthKey ? null : monthKey));
+    setOpenMonthKey((prev) => {
+      const next = prev === monthKey ? null : monthKey;
+      setOpenDayKey(null);
+      return next;
+    });
+  };
+
+  const toggleDay = (monthKey, dayKey) => {
+    const scopedKey = `${monthKey}|${dayKey}`;
+    setOpenDayKey((prev) => (prev === scopedKey ? null : scopedKey));
   };
 
   useEffect(() => {
@@ -256,6 +294,7 @@ export default function HistoricoPage({ reloadKey }) {
   useEffect(() => {
     setVisibleMonths(3);
     setOpenMonthKey(null);
+    setOpenDayKey(null);
   }, [selectedYear, selectedType, selectedVehicle]);
 
   useEffect(() => {
@@ -488,89 +527,94 @@ export default function HistoricoPage({ reloadKey }) {
             }`}
           >
             <div className="space-y-4 border-l-2 border-slate-800 pl-3 sm:pl-4">
-              {Object.entries(
-                group.items.reduce((acc, item) => {
-                  const key = String(item?.module || "outros");
-                  if (!acc[key]) acc[key] = [];
-                  acc[key].push(item);
-                  return acc;
-                }, {})
-              ).map(([moduleKey, activityItems]) => (
-                <section key={`${group.monthKey}-${moduleKey}`} className="rounded-xl border border-slate-800/80 bg-slate-900/30 p-3">
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg">{typeMeta[moduleKey]?.icon || "📄"}</span>
-                      <p className="text-sm font-semibold text-slate-100">{typeMeta[moduleKey]?.label || moduleKey}</p>
+              {group.days.map((dayGroup) => {
+                const scopedDayKey = `${group.monthKey}|${dayGroup.dayKey}`;
+                return (
+                  <section key={scopedDayKey} className="rounded-xl border border-slate-800/80 bg-slate-900/30 p-3">
+                    <button
+                      type="button"
+                      onClick={() => toggleDay(group.monthKey, dayGroup.dayKey)}
+                      aria-expanded={openDayKey === scopedDayKey}
+                      className="mb-3 flex w-full flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-700/80 bg-slate-900/70 px-3 py-2 text-left transition hover:border-blue-500/40"
+                    >
+                      <p className="truncate text-sm font-semibold text-slate-100">📅 {dayGroup.dayLabel}</p>
+                      <span className="rounded-full border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-300">
+                        {dayGroup.items.length} registro(s)
+                      </span>
+                    </button>
+
+                    <div
+                      className={`overflow-hidden transition-all duration-300 ${
+                        openDayKey === scopedDayKey ? "max-h-[3400px] opacity-100" : "max-h-0 opacity-0 pointer-events-none"
+                      }`}
+                    >
+                      <div className="space-y-3">
+                        {dayGroup.items.map((row, idx) => {
+                          const statusMeta = getStatusMeta(row.status);
+                          const fuelCompact = row.module === "combustiveis" ? compactFuelCardData(row) : null;
+                          return (
+                            <article
+                              key={`${group.monthKey}-${dayGroup.dayKey}-${row.module}-${row.source_id || idx}`}
+                              className="rounded-xl border border-slate-800 bg-slate-950/55 p-4"
+                            >
+                              <div className="mb-2 flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xl">{typeMeta[row.module]?.icon || "📄"}</span>
+                                  <span
+                                    className={`rounded-full border px-2 py-1 text-xs font-semibold ${typeMeta[row.module]?.badge || "border-slate-700 bg-slate-800 text-slate-200"}`}
+                                  >
+                                    {typeMeta[row.module]?.label || row.module}
+                                  </span>
+                                </div>
+                                <span className={`rounded-full px-2 py-1 text-xs ${statusMeta.className}`}>
+                                  {statusMeta.label}
+                                </span>
+                              </div>
+                              <div className="grid gap-1 text-sm text-slate-300">
+                                {fuelCompact ? (
+                                  <>
+                                    <p><strong>Data e hora:</strong> {fuelCompact.dateLabel}</p>
+                                    <p><strong>Litros:</strong> {fuelCompact.litros.toFixed(2)} L</p>
+                                    <p><strong>Valor total:</strong> {fuelCompact.valorTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+                                    <p><strong>Valor/L:</strong> {fuelCompact.valorLitro.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+                                    <p><strong>Veículo:</strong> {fuelCompact.vehicleLabel}{fuelCompact.plateLabel ? ` | ${fuelCompact.plateLabel}` : ""}</p>
+                                  </>
+                                ) : (
+                                  <>
+                                    <p><strong>Data:</strong> {formatRowDate(row)}</p>
+                                    <p><strong>Registrado em:</strong> {formatRegisteredAt(row)}</p>
+                                    <p><strong>Veículo:</strong> {row.payload?.veiculo_nome || row.payload?.equipamento || row.payload?.placa || "Não informado"}</p>
+                                  </>
+                                )}
+                              </div>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <button
+                                  onClick={() => setSelectedRow(row)}
+                                  className="fc-btn btn-secondary rounded-lg px-4 py-2 text-sm"
+                                >
+                                  Visualizar
+                                </button>
+                                <button
+                                  onClick={() => onDelete(row)}
+                                  className="fc-btn rounded-lg border border-red-600/70 bg-red-900/20 px-4 py-2 text-sm text-red-200"
+                                >
+                                  Excluir
+                                </button>
+                                <button
+                                  onClick={() => onEdit(row)}
+                                  className="fc-btn btn-primary rounded-lg px-4 py-2 text-sm"
+                                >
+                                  Editar
+                                </button>
+                              </div>
+                            </article>
+                          );
+                        })}
+                      </div>
                     </div>
-                    <span className="rounded-full border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-300">
-                      {activityItems.length} registro(s)
-                    </span>
-                  </div>
-                  <div className="space-y-3">
-                    {activityItems.map((row, idx) => {
-                      const statusMeta = getStatusMeta(row.status);
-                      const fuelCompact = row.module === "combustiveis" ? compactFuelCardData(row) : null;
-                      return (
-                        <article
-                          key={`${group.monthKey}-${row.module}-${row.source_id || idx}`}
-                          className="rounded-xl border border-slate-800 bg-slate-950/55 p-4"
-                        >
-                          <div className="mb-2 flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xl">{typeMeta[row.module]?.icon || "📄"}</span>
-                              <span
-                                className={`rounded-full border px-2 py-1 text-xs font-semibold ${typeMeta[row.module]?.badge || "border-slate-700 bg-slate-800 text-slate-200"}`}
-                              >
-                                {typeMeta[row.module]?.label || row.module}
-                              </span>
-                            </div>
-                            <span className={`rounded-full px-2 py-1 text-xs ${statusMeta.className}`}>
-                              {statusMeta.label}
-                            </span>
-                          </div>
-                          <div className="grid gap-1 text-sm text-slate-300">
-                            {fuelCompact ? (
-                              <>
-                                <p><strong>Data e hora:</strong> {fuelCompact.dateLabel}</p>
-                                <p><strong>Litros:</strong> {fuelCompact.litros.toFixed(2)} L</p>
-                                <p><strong>Valor total:</strong> {fuelCompact.valorTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
-                                <p><strong>Valor/L:</strong> {fuelCompact.valorLitro.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
-                                <p><strong>Veículo:</strong> {fuelCompact.vehicleLabel}{fuelCompact.plateLabel ? ` | ${fuelCompact.plateLabel}` : ""}</p>
-                              </>
-                            ) : (
-                              <>
-                                <p><strong>Data:</strong> {formatRowDate(row)}</p>
-                                <p><strong>Registrado em:</strong> {formatRegisteredAt(row)}</p>
-                                <p><strong>Veículo:</strong> {row.payload?.veiculo_nome || row.payload?.equipamento || row.payload?.placa || "Não informado"}</p>
-                              </>
-                            )}
-                          </div>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <button
-                              onClick={() => setSelectedRow(row)}
-                              className="fc-btn btn-secondary rounded-lg px-4 py-2 text-sm"
-                            >
-                              Visualizar
-                            </button>
-                            <button
-                              onClick={() => onDelete(row)}
-                              className="fc-btn rounded-lg border border-red-600/70 bg-red-900/20 px-4 py-2 text-sm text-red-200"
-                            >
-                              Excluir
-                            </button>
-                            <button
-                              onClick={() => onEdit(row)}
-                              className="fc-btn btn-primary rounded-lg px-4 py-2 text-sm"
-                            >
-                              Editar
-                            </button>
-                          </div>
-                        </article>
-                      );
-                    })}
-                  </div>
-                </section>
-              ))}
+                  </section>
+                );
+              })}
             </div>
           </div>
         </section>
