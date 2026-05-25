@@ -118,6 +118,7 @@ export default function CombustivelPage({ onSaved }) {
   const [vehiclesLoading, setVehiclesLoading] = useState(true);
   const [fuelHistory, setFuelHistory] = useState([]);
   const [createForm, setCreateForm] = useState(() => newEmptyForm(user?.veiculo_id));
+  const [formVisible, setFormVisible] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
   const [createSuccess, setCreateSuccess] = useState(false);
   const [editingSourceId, setEditingSourceId] = useState(null);
@@ -236,11 +237,16 @@ export default function CombustivelPage({ onSaved }) {
   }, [fuelHistory]);
 
   const lastFiveFuelRecords = useMemo(() => fuelHistory.slice(0, 5), [fuelHistory]);
-  const startCreate = useCallback(() => {
+  const resetCreateForm = useCallback(() => {
     setEditingSourceId(null);
     setCreateForm(newEmptyForm(user?.veiculo_id));
     setCreateSuccess(false);
   }, [user?.veiculo_id]);
+
+  const openCreateForm = useCallback(() => {
+    resetCreateForm();
+    setFormVisible(true);
+  }, [resetCreateForm]);
 
   const startEdit = (row) => {
     const payload = row?.payload || {};
@@ -257,6 +263,7 @@ export default function CombustivelPage({ onSaved }) {
       veiculo_id: Number(payload?.veiculo_id || user?.veiculo_id) || undefined,
     });
     setCreateSuccess(false);
+    setFormVisible(true);
   };
 
   const submitCreate = async (e) => {
@@ -296,7 +303,8 @@ export default function CombustivelPage({ onSaved }) {
         emitToast("✔ Abastecimento registrado", "success");
         window.setTimeout(() => {
           setCreateSuccess(false);
-          startCreate();
+          resetCreateForm();
+          setFormVisible(false);
         }, 1400);
         return;
       }
@@ -318,7 +326,8 @@ export default function CombustivelPage({ onSaved }) {
       emitToast("✔ Abastecimento registrado", "success");
       window.setTimeout(() => {
         setCreateSuccess(false);
-        startCreate();
+        resetCreateForm();
+        setFormVisible(false);
       }, 1400);
     } catch (err) {
       emitToast(extractApiErrorMessage(err) || "Falha ao salvar abastecimento.", "error");
@@ -408,59 +417,74 @@ export default function CombustivelPage({ onSaved }) {
       <section className="fc-card fc-fuel-panel space-y-3 p-4">
         <div className="flex items-center justify-between gap-2">
           <p className="text-sm font-semibold text-slate-100">Novo abastecimento</p>
-          {editingSourceId ? (
-            <button type="button" className="fc-btn btn-secondary rounded-lg px-3 py-2 text-xs" onClick={startCreate}>
-              Cancelar edição
+          {!formVisible ? (
+            <button type="button" className="fc-btn btn-primary rounded-lg px-3 py-2 text-xs" onClick={openCreateForm}>
+              + Novo abastecimento
             </button>
-          ) : null}
-        </div>
-        <form onSubmit={submitCreate} className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <FormField label="Data automática">
-            <input type="datetime-local" className={inputClass} value={createForm.data} onChange={(e) => setCreateForm((prev) => ({ ...prev, data: e.target.value }))} />
-          </FormField>
-          <FormField label="Tipo combustível">
-            <select className={inputClass} value={createForm.tipo_combustivel} onChange={(e) => setCreateForm((prev) => ({ ...prev, tipo_combustivel: e.target.value }))}>
-              <option>Diesel</option>
-              <option>Gasolina</option>
-              <option>Etanol</option>
-            </select>
-          </FormField>
-          <FormField label="Veículo">
-            <select className={inputClass} value={createForm.veiculo_id ?? ""} onChange={(e) => setCreateForm((prev) => ({ ...prev, veiculo_id: e.target.value ? Number(e.target.value) : undefined }))} disabled={vehiclesLoading}>
-              <option value="">{vehiclesLoading ? "Carregando veículos..." : "Selecione um veículo"}</option>
-              {vehicleOptions.map((vehicle) => (
-                <option key={vehicle.id} value={vehicle.id}>{vehicle.nome} - {vehicle.placa || "Sem placa"}</option>
-              ))}
-            </select>
-          </FormField>
-          <FormField label="Litros">
-            <input type="number" min="0" step="0.01" inputMode="decimal" className={inputClass} value={createForm.litros} onChange={(e) => setCreateForm((prev) => ({ ...prev, litros: e.target.value }))} />
-          </FormField>
-          <FormField label="Valor total">
-            <input type="number" min="0" step="0.01" inputMode="decimal" className={inputClass} value={createForm.valor_total} onChange={(e) => setCreateForm((prev) => ({ ...prev, valor_total: e.target.value }))} />
-          </FormField>
-          <FormField label="Horímetro">
-            <input className={inputClass} value={createForm.horimetro} onChange={(e) => setCreateForm((prev) => ({ ...prev, horimetro: e.target.value }))} />
-          </FormField>
-          <FormField label="Hodômetro">
-            <input className={inputClass} value={createForm.hodometro} onChange={(e) => setCreateForm((prev) => ({ ...prev, hodometro: e.target.value }))} />
-          </FormField>
-          <div className="md:col-span-2">
+          ) : (
             <button
-              type="submit"
-              className={`${primaryButtonClass} h-[52px] py-0 transition-all duration-300 ${createSuccess ? "border-emerald-300 bg-emerald-500/90" : ""}`}
-              disabled={createLoading}
+              type="button"
+              className="fc-btn btn-secondary rounded-lg px-3 py-2 text-xs"
+              onClick={() => {
+                resetCreateForm();
+                setFormVisible(false);
+              }}
             >
-              {createLoading
-                ? "Salvando..."
-                : createSuccess
-                ? "✔ Abastecimento registrado"
-                : editingSourceId
-                ? "Salvar edição"
-                : "Salvar abastecimento"}
+              {editingSourceId ? "Cancelar edição" : "Fechar formulário"}
             </button>
-          </div>
-        </form>
+          )}
+        </div>
+        {formVisible ? (
+          <form onSubmit={submitCreate} className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <FormField label="Data automática">
+              <input type="datetime-local" className={inputClass} value={createForm.data} onChange={(e) => setCreateForm((prev) => ({ ...prev, data: e.target.value }))} />
+            </FormField>
+            <FormField label="Tipo combustível">
+              <select className={inputClass} value={createForm.tipo_combustivel} onChange={(e) => setCreateForm((prev) => ({ ...prev, tipo_combustivel: e.target.value }))}>
+                <option>Diesel</option>
+                <option>Gasolina</option>
+                <option>Etanol</option>
+              </select>
+            </FormField>
+            <FormField label="Veículo">
+              <select className={inputClass} value={createForm.veiculo_id ?? ""} onChange={(e) => setCreateForm((prev) => ({ ...prev, veiculo_id: e.target.value ? Number(e.target.value) : undefined }))} disabled={vehiclesLoading}>
+                <option value="">{vehiclesLoading ? "Carregando veículos..." : "Selecione um veículo"}</option>
+                {vehicleOptions.map((vehicle) => (
+                  <option key={vehicle.id} value={vehicle.id}>{vehicle.nome} - {vehicle.placa || "Sem placa"}</option>
+                ))}
+              </select>
+            </FormField>
+            <FormField label="Litros">
+              <input type="number" min="0" step="0.01" inputMode="decimal" className={inputClass} value={createForm.litros} onChange={(e) => setCreateForm((prev) => ({ ...prev, litros: e.target.value }))} />
+            </FormField>
+            <FormField label="Valor total">
+              <input type="number" min="0" step="0.01" inputMode="decimal" className={inputClass} value={createForm.valor_total} onChange={(e) => setCreateForm((prev) => ({ ...prev, valor_total: e.target.value }))} />
+            </FormField>
+            <FormField label="Horímetro">
+              <input className={inputClass} value={createForm.horimetro} onChange={(e) => setCreateForm((prev) => ({ ...prev, horimetro: e.target.value }))} />
+            </FormField>
+            <FormField label="Hodômetro">
+              <input className={inputClass} value={createForm.hodometro} onChange={(e) => setCreateForm((prev) => ({ ...prev, hodometro: e.target.value }))} />
+            </FormField>
+            <div className="md:col-span-2">
+              <button
+                type="submit"
+                className={`${primaryButtonClass} h-[52px] py-0 transition-all duration-300 ${createSuccess ? "border-emerald-300 bg-emerald-500/90" : ""}`}
+                disabled={createLoading}
+              >
+                {createLoading
+                  ? "Salvando..."
+                  : createSuccess
+                  ? "✔ Abastecimento registrado"
+                  : editingSourceId
+                  ? "Salvar edição"
+                  : "Salvar abastecimento"}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <p className="text-sm text-slate-400">Toque em <strong>+ Novo abastecimento</strong> para abrir o formulário.</p>
+        )}
       </section>
 
       <section className="fc-card fc-fuel-panel space-y-3 p-4">
