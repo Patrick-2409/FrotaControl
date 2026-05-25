@@ -94,7 +94,7 @@ export default function MotoristaLayout({ children, onSync, pendingCount, online
             />
             <div className="min-w-0">
               <div className="mb-1 flex items-center gap-2">
-                <SystemLogo variant="minimal" className="rounded-md opacity-90" alt="FrotaControl" />
+                <SystemLogo variant="minimal" className="rounded-md opacity-90" alt="FrotaMax" />
                 <p className="text-xs uppercase tracking-wide text-blue-300">App Motorista</p>
               </div>
               <h1 className="truncate text-base font-semibold text-white sm:text-lg">{user?.nome}</h1>

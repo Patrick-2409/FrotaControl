@@ -42,7 +42,7 @@ function BIDashboardShell({
             </span>
           </summary>
           <div className="border-t border-zinc-800/80 px-4 py-3 text-xs leading-relaxed text-zinc-500">
-            Planeado para evolução do FrotaControl: BI avançado com cubos e bookmarks, analytics de frota em tempo
+            Planeado para evolução do FrotaMax: BI avançado com cubos e bookmarks, analytics de frota em tempo
             quase real, modelos de previsão de consumo e produtividade, e assistência operacional — sem alteração de
             contratos nesta versão.
           </div>

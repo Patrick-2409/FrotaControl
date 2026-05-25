@@ -61,7 +61,7 @@ export default function SuperAdminLoginPage() {
           <SystemLogo variant="auth" />
         </div>
         <h1 className="mb-1 text-2xl font-bold text-white">Administração da plataforma</h1>
-        <p className="mb-5 text-sm text-slate-400">Gestão central das empresas que utilizam o FrotaControl</p>
+        <p className="mb-5 text-sm text-slate-400">Gestão central das empresas que utilizam o FrotaMax</p>
 
         <FormField label="Login (CPF, e-mail ou ID)">
           <input
@@ -69,7 +69,7 @@ export default function SuperAdminLoginPage() {
             value={form.login}
             onChange={(e) => setForm({ ...form, login: e.target.value })}
             autoComplete="username"
-            placeholder="Ex.: 123.456.789-00, admin@frotacontrol.com ou USR-000001"
+            placeholder="Ex.: 123.456.789-00, admin@frotamax.com ou USR-000001"
             aria-invalid={Boolean(error)}
           />
         </FormField>

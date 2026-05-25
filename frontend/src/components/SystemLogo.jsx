@@ -5,11 +5,11 @@ const sizes = {
   minimal: "h-6 w-6",
 };
 
-export default function SystemLogo({ variant = "auth", className = "", alt = "Logo FrotaControl" }) {
+export default function SystemLogo({ variant = "auth", className = "", alt = "Logo FrotaMax" }) {
   const sizeClass = sizes[variant] || sizes.auth;
   return (
     <img
-      src="/frotacontrol-logo.png"
+      src="/frotamax-logo.png"
       alt={alt}
       className={`${sizeClass} rounded-2xl object-contain ${className}`.trim()}
     />

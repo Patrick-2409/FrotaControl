@@ -2,7 +2,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
   appId: "com.frotacontrol.app",
-  appName: "FrotaControl",
+  appName: "FrotaMax",
   webDir: "dist",
   bundledWebRuntime: false,
 };

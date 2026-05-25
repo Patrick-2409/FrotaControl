@@ -46,7 +46,7 @@ export default function LandingPage() {
           <p className="mt-3 inline-flex rounded-full border border-blue-400/30 bg-blue-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-blue-300">
             Plataforma logística
           </p>
-          <h1 className="mt-2 text-4xl font-bold tracking-tight text-white md:text-5xl">FrotaControl</h1>
+          <h1 className="mt-2 text-4xl font-bold tracking-tight text-white md:text-5xl">FrotaMax</h1>
           <p className="mt-1 max-w-2xl text-lg font-semibold tracking-wide text-slate-100 md:text-2xl">
             Automação - Organização - Eficiência
           </p>
