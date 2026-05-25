@@ -14,6 +14,20 @@ const fmtMoney = (n) =>
 const fmtLitros = (n) =>
   Number(n || 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 1 });
 const fmtInt = (n) => Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
+const fmtDelta = (n) => `${n > 0 ? "+" : ""}${fmtPct(n)}%`;
+
+const getTrendDirection = (value, positiveThreshold = 2, negativeThreshold = -2) => {
+  if (!Number.isFinite(value)) return "neutral";
+  if (value >= positiveThreshold) return "positive";
+  if (value <= negativeThreshold) return "negative";
+  return "neutral";
+};
+
+const trendArrow = (direction) => {
+  if (direction === "positive") return "↑";
+  if (direction === "negative") return "↓";
+  return "→";
+};
 
 function MetricRow({ label, value, highlight = false }) {
   return (
@@ -28,11 +42,11 @@ function MetricRow({ label, value, highlight = false }) {
 
 function PeriodoHeader({ periodo, setPeriodo }) {
   return (
-    <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="mb-5 flex flex-col gap-3 sm:mb-6 sm:flex-row sm:items-center sm:justify-between">
       <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
         Período: {periodoResumoLabel(periodo)}
       </p>
-      <ExecutivePeriodoToggle periodo={periodo} onChange={setPeriodo} />
+      <ExecutivePeriodoToggle periodo={periodo} onChange={setPeriodo} className="sm:justify-end" />
     </div>
   );
 }
@@ -62,12 +76,45 @@ export default function EmpresaExecutiveDashboardPage() {
 
   const { transporte, combustivel, parteDiaria, frota, pessoas } = summary;
   const periodoHint = periodoResumoLabel(periodo);
+  const transporteDelta = (transporte.atingimento ?? 100) - 100;
+  const transporteTrend = getTrendDirection(transporteDelta, 4, -4);
+  const transporteProgress = Number.isFinite(transporte.atingimento)
+    ? transporte.atingimento
+    : transporte.metaTotal > 0
+      ? (transporte.toneladas / transporte.metaTotal) * 100
+      : 50;
+
+  const combLitros = Number(combustivel.litros || 0);
+  const combMedia = Number(combustivel.media || 0);
+  const valorPorLitro = combLitros > 0 ? combustivel.valor / combLitros : 0;
+  const combDeltaBase = combMedia > 0 ? ((valorPorLitro - combMedia) / combMedia) * 100 : 0;
+  const combustivelDelta = Number.isFinite(combDeltaBase) ? -combDeltaBase : 0;
+  const combustivelTrend = getTrendDirection(combustivelDelta, 1.5, -1.5);
+  const combustivelProgress = combMedia > 0
+    ? Math.max(0, Math.min(100, (combMedia / Math.max(valorPorLitro, 0.01)) * 100))
+    : 48;
+
+  const lancamentosPorMotorista = pessoas.motoristasAtivos > 0
+    ? (parteDiaria.registros / pessoas.motoristasAtivos) * 100
+    : 0;
+  const parteDiariaDelta = lancamentosPorMotorista - 100;
+  const parteDiariaTrend = getTrendDirection(parteDiariaDelta, 10, -15);
+
+  const frotaDeltaBase = frota.veiculosAtivos > 0
+    ? ((frota.veiculosAtivos - pessoas.motoristasAtivos) / frota.veiculosAtivos) * 100
+    : 0;
+  const frotaTrend = getTrendDirection(frotaDeltaBase, 8, -8);
+
+  const pessoasDeltaBase = pessoas.motoristasAtivos > 0
+    ? ((pessoas.motoristasAtivos - frota.veiculosAtivos) / pessoas.motoristasAtivos) * 100
+    : 0;
+  const pessoasTrend = getTrendDirection(pessoasDeltaBase, 8, -8);
 
   return (
     <BIDashboardShell
       eyebrow="Indicadores"
       title="Executivo"
-      lead="Visão consolidada da operação. Use o filtro global para alterar o período de todos os módulos."
+      lead="Visão consolidada e acionável por módulo. Toque em qualquer card para abrir a área correspondente."
       showRoadmap={false}
     >
       <PeriodoHeader periodo={periodo} setPeriodo={setPeriodo} />
@@ -78,12 +125,23 @@ export default function EmpresaExecutiveDashboardPage() {
         </p>
       ) : null}
 
-      <section
-        className="grid gap-4"
-        style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}
-        aria-label="Resumo por módulo"
-      >
-        <ExecutiveModuleCard title="Transporte" to="/empresa/transporte" accent="amber">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-label="Resumo por módulo">
+        <ExecutiveModuleCard
+          title="Transporte"
+          to="/empresa/transporte"
+          accent="amber"
+          value={`${fmtTon(transporte.toneladas)} t`}
+          trendDirection={transporteTrend}
+          trendText={transporte.atingimento != null ? `${trendArrow(transporteTrend)} ${fmtDelta(transporteDelta)}` : "→ sem meta"}
+          trendLabel={periodo === "semana" ? "Comparativo com meta semanal" : "Faixa operacional"}
+          subtitle={periodo === "semana" ? "Produção acumulada no período" : `Produção de ${periodoHint.toLowerCase()}`}
+          progress={transporteProgress}
+          miniSeries={[
+            transporte.metaTotal || 0,
+            transporte.toneladas || 0,
+            Math.max(transporte.toneladas || 0, transporte.metaTotal || 0) * 0.85,
+          ]}
+        >
           <MetricRow label="Toneladas" value={`${fmtTon(transporte.toneladas)} t`} highlight />
           <MetricRow
             label="Atingimento"
@@ -99,7 +157,18 @@ export default function EmpresaExecutiveDashboardPage() {
           )}
         </ExecutiveModuleCard>
 
-        <ExecutiveModuleCard title="Combustível" to="/empresa/combustivel" accent="blue">
+        <ExecutiveModuleCard
+          title="Combustível"
+          to="/empresa/combustivel"
+          accent="blue"
+          value={fmtMoney(combustivel.valor)}
+          trendDirection={combustivelTrend}
+          trendText={`${trendArrow(combustivelTrend)} ${fmtDelta(combustivelDelta)}`}
+          trendLabel="Eficiência estimada por litro no período"
+          subtitle="Menor custo por litro mantém operação saudável"
+          progress={combustivelProgress}
+          miniSeries={[combustivel.litros || 0, combustivel.valor || 0, valorPorLitro || 0]}
+        >
           <MetricRow label="Valor" value={fmtMoney(combustivel.valor)} highlight />
           <MetricRow label="Litros" value={`${fmtLitros(combustivel.litros)} L`} />
           <MetricRow
@@ -108,17 +177,54 @@ export default function EmpresaExecutiveDashboardPage() {
           />
         </ExecutiveModuleCard>
 
-        <ExecutiveModuleCard title="Parte diária" to="/empresa/parte-diaria" accent="emerald">
+        <ExecutiveModuleCard
+          title="Parte diária"
+          to="/empresa/parte-diaria"
+          accent="emerald"
+          value={fmtInt(parteDiaria.registros)}
+          trendDirection={parteDiariaTrend}
+          trendText={`${trendArrow(parteDiariaTrend)} ${fmtDelta(parteDiariaDelta)}`}
+          trendLabel="Cobertura de lançamentos por motorista"
+          subtitle={`Lançamentos de ${periodoHint.toLowerCase()}`}
+          progress={lancamentosPorMotorista}
+          miniSeries={[
+            pessoas.motoristasAtivos || 0,
+            parteDiaria.registros || 0,
+            Math.max(parteDiaria.registros || 0, pessoas.motoristasAtivos || 0),
+          ]}
+        >
           <MetricRow label="Registros" value={fmtInt(parteDiaria.registros)} highlight />
           <p className="text-xs text-zinc-500">Lançamentos de parte diária — {periodoHint.toLowerCase()}.</p>
         </ExecutiveModuleCard>
 
-        <ExecutiveModuleCard title="Frota" to="/empresa/frota" accent="zinc">
+        <ExecutiveModuleCard
+          title="Frota"
+          to="/empresa/frota"
+          accent="zinc"
+          value={fmtInt(frota.veiculosAtivos)}
+          trendDirection={frotaTrend}
+          trendText={`${trendArrow(frotaTrend)} ${fmtDelta(frotaDeltaBase)}`}
+          trendLabel="Relação entre veículos ativos e equipe"
+          subtitle={`Atividade da frota em ${periodoHint.toLowerCase()}`}
+          progress={frota.veiculosAtivos > 0 ? (Math.min(pessoas.motoristasAtivos, frota.veiculosAtivos) / frota.veiculosAtivos) * 100 : 0}
+          miniSeries={[frota.veiculosAtivos || 0, pessoas.motoristasAtivos || 0, parteDiaria.registros || 0]}
+        >
           <MetricRow label="Veículos ativos" value={fmtInt(frota.veiculosAtivos)} highlight />
           <p className="text-xs text-zinc-500">Veículos com movimento — {periodoHint.toLowerCase()}.</p>
         </ExecutiveModuleCard>
 
-        <ExecutiveModuleCard title="Pessoas" to="/empresa/pessoas" accent="violet">
+        <ExecutiveModuleCard
+          title="Pessoas"
+          to="/empresa/pessoas"
+          accent="violet"
+          value={fmtInt(pessoas.motoristasAtivos)}
+          trendDirection={pessoasTrend}
+          trendText={`${trendArrow(pessoasTrend)} ${fmtDelta(pessoasDeltaBase)}`}
+          trendLabel="Disponibilidade frente aos ativos da frota"
+          subtitle={`Motoristas com atividade em ${periodoHint.toLowerCase()}`}
+          progress={pessoas.motoristasAtivos > 0 ? (Math.min(frota.veiculosAtivos, pessoas.motoristasAtivos) / pessoas.motoristasAtivos) * 100 : 0}
+          miniSeries={[pessoas.motoristasAtivos || 0, frota.veiculosAtivos || 0, transporte.toneladas || 0]}
+        >
           <MetricRow label="Motoristas ativos" value={fmtInt(pessoas.motoristasAtivos)} highlight />
           <p className="text-xs text-zinc-500">Com lançamento — {periodoHint.toLowerCase()}.</p>
         </ExecutiveModuleCard>

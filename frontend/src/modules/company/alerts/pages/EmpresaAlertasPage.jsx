@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../../../../services/api";
 import { emitToast } from "../../../../services/uiEvents";
@@ -21,6 +21,36 @@ const sevLabel = (s) => {
   if (s === "warning") return "Atenção";
   if (s === "info") return "Informação";
   return s;
+};
+
+const sevOrder = { critical: 0, warning: 1, info: 2 };
+
+const sevPanel = (s) => {
+  if (s === "critical") return "border-rose-500/50 bg-rose-950/25";
+  if (s === "warning") return "border-amber-500/50 bg-amber-950/20";
+  return "border-sky-500/40 bg-sky-950/15";
+};
+
+const sevIcon = (s) => {
+  if (s === "critical") return "🚨";
+  if (s === "warning") return "⚠️";
+  return "ℹ️";
+};
+
+const routeByCategory = {
+  transporte: "/empresa/transporte",
+  combustivel: "/empresa/combustivel",
+  frota: "/empresa/frota",
+  pessoas: "/empresa/pessoas",
+};
+
+const actionLabel = (item) => {
+  if (item.severity === "critical") return "Resolver agora";
+  if (item.category === "transporte") return "Ver transporte";
+  if (item.category === "combustivel") return "Ver combustível";
+  if (item.category === "frota") return "Ver frota";
+  if (item.category === "pessoas") return "Ver equipe";
+  return "Ver detalhes";
 };
 
 export default function EmpresaAlertasPage() {
@@ -65,6 +95,15 @@ export default function EmpresaAlertasPage() {
   if (loading && !feed) return <ScreenLoading message="Carregando alertas…" />;
 
   const items = feed?.items || [];
+  const sortedItems = useMemo(
+    () =>
+      [...items].sort((a, b) => {
+        const severityRank = (sevOrder[a.severity] ?? 9) - (sevOrder[b.severity] ?? 9);
+        if (severityRank !== 0) return severityRank;
+        return new Date(b.last_seen_at || 0).getTime() - new Date(a.last_seen_at || 0).getTime();
+      }),
+    [items]
+  );
   const unread = items.filter((i) => !i.read).length;
   const channels = feed?.future_channels || {};
 
@@ -73,15 +112,12 @@ export default function EmpresaAlertasPage() {
       <header className="fc-card border-zinc-800/90 p-5">
         <p className="fc-erp-eyebrow text-zinc-400">Monitorização</p>
         <h1 className="mt-1 text-xl font-semibold tracking-tight text-zinc-50 sm:text-2xl">Central de alertas</h1>
-        <p className="mt-2 max-w-3xl text-sm text-zinc-400">
-          Alertas gerados automaticamente a partir da operação. A lista é atualizada de tempos a tempos para manter o
-          sistema rápido e estável.
-        </p>
+        <p className="mt-2 max-w-3xl text-sm text-zinc-400">Alertas da operação com prioridade e ação direta por módulo.</p>
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => loadAll()}
-            className="fc-btn rounded-lg border border-zinc-600 bg-zinc-900 px-3 py-2 text-xs font-semibold text-zinc-200"
+            className="fc-btn fc-btn-empresa-secondary rounded-lg border border-zinc-600 bg-zinc-900 px-3 py-2 text-xs font-semibold text-zinc-200"
           >
             Atualizar agora
           </button>
@@ -96,7 +132,7 @@ export default function EmpresaAlertasPage() {
                   emitToast(e?.response?.data?.message || "Falha.", "error");
                 }
               }}
-              className="fc-btn fc-btn-empresa-accent rounded-lg px-3 py-2 text-xs font-semibold"
+              className="fc-btn fc-btn-empresa-primary rounded-lg px-3 py-2 text-xs font-semibold"
             >
               Marcar visíveis como lidos
             </button>
@@ -114,17 +150,22 @@ export default function EmpresaAlertasPage() {
         </div>
         {!items.length ? (
           <div className="mt-4">
-            <EmptyState title="Sem alertas" description="Nenhuma regra disparou para o estado atual da operação." compact />
+            <EmptyState title="Sem alertas" description="Nenhuma regra foi disparada para o estado atual." compact />
           </div>
         ) : (
-          <ul className="mt-4 space-y-2">
-            {items.map((it) => (
+          <ul className="mt-4 space-y-2.5">
+            {sortedItems.map((it) => (
               <li
                 key={it.alert_key}
-                className={`rounded-xl border border-zinc-800/90 bg-zinc-950/40 p-4 ${it.read ? "opacity-70" : ""}`}
+                className={`rounded-xl border p-4 transition ${
+                  it.read ? "opacity-75" : ""
+                } ${sevPanel(it.severity)}`}
               >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-zinc-700/80 bg-zinc-900/70 text-sm">
+                      {sevIcon(it.severity)}
+                    </span>
                     <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${sevBadge(it.severity)}`}>
                       {sevLabel(it.severity)}
                     </span>
@@ -134,7 +175,7 @@ export default function EmpresaAlertasPage() {
                     <button
                       type="button"
                       onClick={() => markRead([it.alert_key])}
-                      className="text-xs font-semibold text-sky-400 hover:text-sky-300"
+                      className="fc-btn fc-btn-empresa-secondary rounded-md border border-zinc-700 px-2.5 py-1 text-[11px] font-semibold text-sky-300 hover:text-sky-200"
                     >
                       Marcar lido
                     </button>
@@ -144,6 +185,21 @@ export default function EmpresaAlertasPage() {
                 </div>
                 <h3 className="mt-2 text-base font-semibold text-zinc-100">{it.title}</h3>
                 <p className="mt-1 text-sm text-zinc-400">{it.body}</p>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                  <Link
+                    to={routeByCategory[it.category] || "/empresa/dashboard"}
+                    className={`fc-btn rounded-lg px-3 py-2 text-xs font-semibold ${
+                      it.severity === "critical"
+                        ? "fc-btn-empresa-alert border border-rose-400/55 bg-rose-500/20 text-rose-100"
+                        : "fc-btn-empresa-primary border border-sky-400/45 bg-sky-500/20 text-sky-100"
+                    }`}
+                  >
+                    {actionLabel(it)}
+                  </Link>
+                  <span className="text-[11px] text-zinc-500">
+                    {it.last_seen_at ? new Date(it.last_seen_at).toLocaleString("pt-BR") : "Atualizado agora"}
+                  </span>
+                </div>
               </li>
             ))}
           </ul>
