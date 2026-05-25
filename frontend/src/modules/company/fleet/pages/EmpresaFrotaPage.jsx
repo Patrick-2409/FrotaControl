@@ -5,6 +5,7 @@ import BIDashboardShell from "../../bi/components/BIDashboardShell";
 import BIKpiCard from "../../bi/components/BIKpiCard";
 import EmpresaModuleErrorPanel from "../../shared/components/EmpresaModuleErrorPanel";
 import { useEmpresaFleet } from "../hooks/useEmpresaFleet";
+import AccordionSection from "../../shared/components/AccordionSection";
 
 function statusBadgeClass(s) {
   switch (s) {
@@ -87,7 +88,14 @@ export default function EmpresaFrotaPage() {
           ))}
         </div>
       ) : (
-        <section className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Indicadores de frota">
+        <AccordionSection
+          id="frota-dashboard-rapido"
+          title="Dashboard rápido"
+          description="Visão consolidada de disponibilidade, documentos e manutenção."
+          defaultOpenDesktop
+          defaultOpenMobile
+        >
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Indicadores de frota">
           <BIKpiCard
             label="Total / disponíveis"
             value={`${fl.fmtInt(fl.summary?.total_veiculos)} / ${fl.fmtInt(fl.summary?.disponiveis_operacao)}`}
@@ -116,10 +124,18 @@ export default function EmpresaFrotaPage() {
             hint="Baseado em abastecimentos com hodômetro."
           />
         </section>
+        </AccordionSection>
       )}
 
       {fl.summary && (
-        <section className="mt-4 grid gap-3 md:grid-cols-3">
+        <AccordionSection
+          id="frota-indicadores-secundarios"
+          title="Indicadores complementares"
+          description="Sinais operacionais para apoio à decisão."
+          defaultOpenDesktop={false}
+          defaultOpenMobile={false}
+        >
+        <section className="grid gap-3 md:grid-cols-3">
           <article className="fc-card border-zinc-800/70 p-4">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Sem movimento (14 dias)</p>
             <p className="mt-2 text-xl font-semibold tabular-nums text-zinc-100">
@@ -143,9 +159,17 @@ export default function EmpresaFrotaPage() {
             </ul>
           </article>
         </section>
+        </AccordionSection>
       )}
 
-      <section className="mt-8 rounded-xl border border-zinc-800/90 bg-zinc-950/40 p-4 sm:p-5" aria-label="Telemetria futura">
+      <AccordionSection
+        id="frota-integracoes"
+        title="Integrações futuras"
+        description="Status da preparação de telemetria."
+        defaultOpenDesktop={false}
+        defaultOpenMobile={false}
+      >
+      <section className="rounded-xl border border-zinc-800/90 bg-zinc-950/40 p-4 sm:p-5" aria-label="Telemetria futura">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Integrações planeadas</p>
         <p className="mt-2 text-sm text-zinc-400">
           GPS, telemetria, rastreamento e sensores — estrutura de dados preparada em{" "}
@@ -153,8 +177,16 @@ export default function EmpresaFrotaPage() {
           (sem transmissão em tempo real nesta versão).
         </p>
       </section>
+      </AccordionSection>
 
-      <section className="mt-8" aria-label="Lista de veículos">
+      <AccordionSection
+        id="frota-lista-veiculos"
+        title="Lista de veículos"
+        description="Tabela paginada para manter a navegação leve no mobile."
+        defaultOpenDesktop={false}
+        defaultOpenMobile={false}
+      >
+      <section aria-label="Lista de veículos">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <h2 className="text-lg font-semibold text-zinc-100">Veículos</h2>
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
@@ -282,6 +314,7 @@ export default function EmpresaFrotaPage() {
           </>
         )}
       </section>
+      </AccordionSection>
 
       {fl.panelOpen ? (
         <div

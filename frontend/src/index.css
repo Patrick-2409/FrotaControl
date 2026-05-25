@@ -302,6 +302,11 @@ textarea:focus-visible,
   filter: brightness(1.05);
 }
 
+.fc-theme-empresa .fc-btn {
+  min-height: 48px;
+  border-radius: 0.7rem;
+}
+
 /* ERP — cards KPI com hover discreto (desktop) */
 .fc-theme-empresa .fc-erp-kpi-card {
   transition: border-color 180ms ease, box-shadow 220ms ease, transform 200ms ease;
@@ -491,6 +496,11 @@ textarea:focus-visible,
 @media (max-width: 639px) {
   .fc-theme-empresa .fc-erp-module-card {
     min-height: 9.25rem;
+  }
+
+  .fc-theme-empresa .fc-card {
+    padding-left: 0.95rem;
+    padding-right: 0.95rem;
   }
 }
 

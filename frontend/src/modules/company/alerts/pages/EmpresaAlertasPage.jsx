@@ -4,6 +4,7 @@ import api from "../../../../services/api";
 import { emitToast } from "../../../../services/uiEvents";
 import { ScreenLoading } from "../../../../components/LoadingState";
 import EmptyState from "../../../../components/EmptyState";
+import AccordionSection from "../../shared/components/AccordionSection";
 
 const sevBadge = (s) => {
   if (s === "critical") return "border-rose-500/50 bg-rose-950/40 text-rose-100";
@@ -106,6 +107,21 @@ export default function EmpresaAlertasPage() {
   );
   const unread = items.filter((i) => !i.read).length;
   const channels = feed?.future_channels || {};
+  const groupedHistory = useMemo(() => {
+    const bucket = new Map();
+    history.forEach((row) => {
+      const dt = row?.last_seen_at ? new Date(row.last_seen_at) : null;
+      const key = dt && !Number.isNaN(dt.getTime())
+        ? `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`
+        : "sem-data";
+      const label = key === "sem-data"
+        ? "Sem data"
+        : dt.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+      if (!bucket.has(key)) bucket.set(key, { key, label, items: [] });
+      bucket.get(key).items.push(row);
+    });
+    return [...bucket.values()];
+  }, [history]);
 
   return (
     <div className="space-y-8">
@@ -140,7 +156,14 @@ export default function EmpresaAlertasPage() {
         </div>
       </header>
 
-      <section className="fc-card border-zinc-800/90 p-4 sm:p-5">
+      <AccordionSection
+        id="alertas-ativos"
+        title="Alertas ativos"
+        description="Críticos aparecem primeiro para priorizar ação."
+        defaultOpenDesktop
+        defaultOpenMobile
+      >
+        <section>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">Alertas ativos</h2>
           <span className="text-xs text-zinc-500">
@@ -204,9 +227,17 @@ export default function EmpresaAlertasPage() {
             ))}
           </ul>
         )}
-      </section>
+        </section>
+      </AccordionSection>
 
-      <section className="fc-card border-zinc-800/90 p-4 sm:p-5">
+      <AccordionSection
+        id="alertas-historico"
+        title="Histórico guardado"
+        description="Eventos recentes, inclusive alertas já resolvidos."
+        defaultOpenDesktop={false}
+        defaultOpenMobile={false}
+      >
+        <section>
         <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">Histórico guardado</h2>
         <p className="mt-1 text-xs text-zinc-500">Últimos eventos da empresa, inclusive alertas que já deixaram de estar ativos.</p>
         {histLoading ? (
@@ -216,28 +247,46 @@ export default function EmpresaAlertasPage() {
         ) : !history.length ? (
           <p className="mt-4 text-sm text-zinc-500">Ainda não há histórico guardado.</p>
         ) : (
-          <ul className="mt-4 divide-y divide-zinc-800/80 rounded-xl border border-zinc-800/80">
-            {history.map((row) => (
-              <li key={row.id ?? `${row.alert_key}-${row.last_seen_at}`} className="flex flex-wrap items-start justify-between gap-2 px-3 py-3">
-                <div>
-                  <p className="text-sm font-medium text-zinc-200">{row.title}</p>
-                  <p className="text-xs text-zinc-500">{row.body}</p>
-                </div>
-                <div className="text-right text-[11px] text-zinc-600">
-                  <span className={`mr-2 inline-block rounded border px-1.5 py-0.5 ${sevBadge(row.severity)}`}>
-                    {sevLabel(row.severity)}
-                  </span>
-                  <span>{row.is_active ? "ativo" : "inativo"}</span>
-                  <br />
-                  <time dateTime={row.last_seen_at}>{new Date(row.last_seen_at).toLocaleString("pt-BR")}</time>
-                </div>
-              </li>
+          <div className="mt-4 space-y-3">
+            {groupedHistory.map((group, index) => (
+              <details key={group.key} open={index === 0} className="rounded-xl border border-zinc-800/80 bg-zinc-950/35">
+                <summary className="cursor-pointer list-none px-3 py-2.5 text-sm font-semibold capitalize text-zinc-300 marker:content-none [&::-webkit-details-marker]:hidden">
+                  {group.label} <span className="text-xs font-normal text-zinc-500">({group.items.length})</span>
+                </summary>
+                <ul className="divide-y divide-zinc-800/80 border-t border-zinc-800/70">
+                  {group.items.map((row) => (
+                    <li key={row.id ?? `${row.alert_key}-${row.last_seen_at}`} className="flex flex-wrap items-start justify-between gap-2 px-3 py-3">
+                      <div>
+                        <p className="text-sm font-medium text-zinc-200">{row.title}</p>
+                        <p className="text-xs text-zinc-500">{row.body}</p>
+                      </div>
+                      <div className="text-right text-[11px] text-zinc-600">
+                        <span className={`mr-2 inline-block rounded border px-1.5 py-0.5 ${sevBadge(row.severity)}`}>
+                          {sevLabel(row.severity)}
+                        </span>
+                        <span>{row.is_active ? "ativo" : "inativo"}</span>
+                        <br />
+                        <time dateTime={row.last_seen_at}>{new Date(row.last_seen_at).toLocaleString("pt-BR")}</time>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </details>
             ))}
-          </ul>
+          </div>
         )}
-      </section>
+        </section>
+      </AccordionSection>
 
-      <section className="fc-card border border-dashed border-zinc-700/80 bg-zinc-950/30 p-4 sm:p-5">
+      <AccordionSection
+        id="alertas-canais-futuros"
+        title="Canais futuros"
+        description="Preparação para push, e-mail, WhatsApp e SMS."
+        defaultOpenDesktop={false}
+        defaultOpenMobile={false}
+        className="border border-dashed border-zinc-700/80 bg-zinc-950/30"
+      >
+        <section>
         <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Canais futuros</h2>
         <p className="mt-1 text-xs text-zinc-600">
           Notificações por aplicativo, e-mail, WhatsApp ou SMS poderão ser ligadas no futuro; por agora mostramos só o
@@ -255,7 +304,8 @@ export default function EmpresaAlertasPage() {
         <p className="mt-4 text-xs text-zinc-600">
           Voltar ao <Link className="text-sky-400 hover:underline" to="/empresa/dashboard">dashboard</Link>.
         </p>
-      </section>
+        </section>
+      </AccordionSection>
     </div>
   );
 }

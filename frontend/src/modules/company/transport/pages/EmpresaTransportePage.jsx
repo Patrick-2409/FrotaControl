@@ -8,6 +8,7 @@ import TransportPlanExecutadoPizza from "../components/TransportPlanExecutadoPiz
 import { TransportProvider } from "../../contexts/TransportContext";
 import { useTransportMetrics } from "../../hooks/useTransportMetrics";
 import EmpresaModuleErrorPanel from "../../shared/components/EmpresaModuleErrorPanel";
+import AccordionSection from "../../shared/components/AccordionSection";
 
 const fmtInt = (n) => Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 const fmtTon = (n) =>
@@ -135,8 +136,13 @@ function EmpresaTransportePageContent() {
         </div>
       ) : null}
 
-      <section
-        className={`fc-card overflow-hidden rounded-2xl border-2 p-6 sm:p-8 ${
+      <AccordionSection
+        id="transporte-resumo-rapido"
+        title="Dashboard rápido"
+        description="Produção total e divisão por material no período."
+        defaultOpenDesktop
+        defaultOpenMobile
+        className={`overflow-hidden rounded-2xl border-2 ${
           tr.comparacao && tr.metaPlanejadaTotal > 0
             ? pctTotal >= 100
               ? "border-emerald-500/35 bg-emerald-950/20"
@@ -145,8 +151,8 @@ function EmpresaTransportePageContent() {
                 : "border-rose-500/35 bg-rose-950/15"
             : "border-zinc-700 bg-zinc-950/80"
         }`}
-        aria-label="Total de toneladas no período"
       >
+        <section className="p-2 sm:p-3" aria-label="Total de toneladas no período">
         <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Total no período filtrado</p>
         {tr.viagensLoading ? (
           <div className="mt-4">
@@ -181,9 +187,18 @@ function EmpresaTransportePageContent() {
             </div>
           </>
         )}
-      </section>
+        </section>
+      </AccordionSection>
 
-      <section className="fc-erp-panel space-y-5 rounded-2xl p-5 lg:p-7" aria-labelledby="transporte-porto-title">
+      <AccordionSection
+        id="transporte-filtros"
+        title="Filtros e material"
+        description="Ajuste período e tipo de material sem perder contexto."
+        defaultOpenDesktop
+        defaultOpenMobile={false}
+        className="fc-erp-panel space-y-5 rounded-2xl"
+      >
+        <section className="p-1" aria-labelledby="transporte-porto-title">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <h2 id="transporte-porto-title" className="fc-erp-h1 text-lg text-zinc-100 md:text-xl">
             Período e material
@@ -233,9 +248,17 @@ function EmpresaTransportePageContent() {
         {!tr.viagensLoading && tr.viagensResumo && totalToneladasPeriodo <= 0 ? (
           <p className="text-sm text-zinc-500">Sem toneladas com capacidade registada neste período.</p>
         ) : null}
-      </section>
+        </section>
+      </AccordionSection>
 
-      <BIChartCard title="Planejado vs executado" className="mt-2" bodyClassName="min-h-[10rem]">
+      <AccordionSection
+        id="transporte-planejado-executado"
+        title="Planejado vs executado"
+        description="Comparativo visual de metas e produção."
+        defaultOpenDesktop
+        defaultOpenMobile={false}
+      >
+        <BIChartCard title="Planejado vs executado" className="mt-1" bodyClassName="min-h-[10rem]">
         {tr.comparLoading ? (
           <SkeletonRows rows={3} />
         ) : tr.comparError ? (
@@ -289,9 +312,17 @@ function EmpresaTransportePageContent() {
         ) : (
           <p className="text-sm text-zinc-500">Comparativo indisponível.</p>
         )}
-      </BIChartCard>
+        </BIChartCard>
+      </AccordionSection>
 
-      <section className="fc-card border-zinc-800/90 p-5 lg:p-6" aria-labelledby="hist-semanal">
+      <AccordionSection
+        id="transporte-historico"
+        title="Histórico semanal"
+        description="Evolução diária e ritmo da operação."
+        defaultOpenDesktop={false}
+        defaultOpenMobile={false}
+      >
+        <section aria-labelledby="hist-semanal">
         <h3 id="hist-semanal" className="text-base font-semibold text-zinc-100">
           {historicoTitle}
         </h3>
@@ -360,9 +391,17 @@ function EmpresaTransportePageContent() {
             </tbody>
           </table>
         </div>
-      </section>
+        </section>
+      </AccordionSection>
 
-      <section className="fc-card border-zinc-800/90 p-5 lg:p-6" aria-labelledby="planejamento-form">
+      <AccordionSection
+        id="transporte-planejamento"
+        title="Planejamento"
+        description="Defina metas e período de forma centralizada."
+        defaultOpenDesktop={false}
+        defaultOpenMobile={false}
+      >
+        <section aria-labelledby="planejamento-form">
         <h3 id="planejamento-form" className="text-base font-semibold text-zinc-100">
           Planejamento
         </h3>
@@ -444,7 +483,8 @@ function EmpresaTransportePageContent() {
             </button>
           </div>
         </form>
-      </section>
+        </section>
+      </AccordionSection>
 
       <div className="flex flex-wrap gap-3">
         <Link

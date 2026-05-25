@@ -4,6 +4,7 @@ import ExecutiveModuleCard from "../components/ExecutiveModuleCard";
 import ExecutivePeriodoToggle from "../components/ExecutivePeriodoToggle";
 import { useEmpresaExecutiveStats } from "../hooks/useEmpresaExecutiveStats";
 import { periodoResumoLabel } from "../lib/executivePeriodStorage";
+import AccordionSection from "../../shared/components/AccordionSection";
 
 const fmtTon = (n) =>
   Number(n || 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
@@ -125,7 +126,14 @@ export default function EmpresaExecutiveDashboardPage() {
         </p>
       ) : null}
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-label="Resumo por módulo">
+      <AccordionSection
+        id="exec-resumo-modulos"
+        title="Dashboard rápido por módulo"
+        description="Toque no card para abrir o módulo correspondente."
+        defaultOpenDesktop
+        defaultOpenMobile
+      >
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-label="Resumo por módulo">
         <ExecutiveModuleCard
           title="Transporte"
           to="/empresa/transporte"
@@ -228,7 +236,8 @@ export default function EmpresaExecutiveDashboardPage() {
           <MetricRow label="Motoristas ativos" value={fmtInt(pessoas.motoristasAtivos)} highlight />
           <p className="text-xs text-zinc-500">Com lançamento — {periodoHint.toLowerCase()}.</p>
         </ExecutiveModuleCard>
-      </section>
+        </section>
+      </AccordionSection>
     </BIDashboardShell>
   );
 }

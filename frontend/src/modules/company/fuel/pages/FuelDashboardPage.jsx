@@ -12,6 +12,7 @@ import FuelFilters from "../components/FuelFilters";
 import FuelMetricsCards from "../components/FuelMetricsCards";
 import FuelVehicleTable from "../components/FuelVehicleTable";
 import FuelAbastecimentosList from "../components/FuelAbastecimentosList";
+import AccordionSection from "../../shared/components/AccordionSection";
 
 function FuelDashboardContent() {
   const fuel = useFuelMetrics();
@@ -64,10 +65,14 @@ function FuelDashboardContent() {
         </div>
       ) : null}
 
-      <section
-        className="fc-card border-zinc-800/90 p-5 sm:p-6 lg:p-8"
-        aria-labelledby="fuel-module-title"
+      <AccordionSection
+        id="combustivel-dashboard"
+        title="Dashboard e filtros"
+        description="Resumo do consumo com filtros por período, motorista e veículo."
+        defaultOpenDesktop
+        defaultOpenMobile
       >
+        <section aria-labelledby="fuel-module-title">
         <h2 id="fuel-module-title" className="sr-only">
           Painel de combustível
         </h2>
@@ -156,28 +161,43 @@ function FuelDashboardContent() {
             </button>
           </div>
         )}
-      </section>
+        </section>
+      </AccordionSection>
 
       {!fuel.loading ? (
-        <div className="mt-8">
+        <AccordionSection
+          id="combustivel-abastecimentos"
+          title="Lista de abastecimentos"
+          description="Registros recentes no período selecionado."
+          defaultOpenDesktop={false}
+          defaultOpenMobile={false}
+        >
           <FuelAbastecimentosList rows={fuel.abastecimentos} loading={fuel.abastecimentosLoading} />
-        </div>
+        </AccordionSection>
       ) : null}
 
-      <div className="flex flex-wrap gap-3 border-t border-zinc-800 pt-8">
-        <Link
-          to="/empresa/dashboard"
-          className="fc-btn inline-flex rounded-md border border-zinc-700 bg-zinc-900/80 px-4 py-3 text-center text-sm font-semibold text-zinc-200 hover:bg-zinc-800"
-        >
-          Painel executivo
-        </Link>
-        <Link
-          to="/empresa/transporte"
-          className="fc-btn inline-flex rounded-md border border-zinc-700 bg-zinc-900/80 px-4 py-3 text-sm font-semibold text-zinc-200 hover:bg-zinc-800"
-        >
-          Transporte
-        </Link>
-      </div>
+      <AccordionSection
+        id="combustivel-acoes-rapidas"
+        title="Ações rápidas"
+        description="Navegação para módulos mais usados."
+        defaultOpenDesktop={false}
+        defaultOpenMobile={false}
+      >
+        <div className="flex flex-wrap gap-3">
+          <Link
+            to="/empresa/dashboard"
+            className="fc-btn fc-btn-empresa-secondary inline-flex rounded-md border border-zinc-700 bg-zinc-900/80 px-4 py-3 text-center text-sm font-semibold text-zinc-200 hover:bg-zinc-800"
+          >
+            Painel executivo
+          </Link>
+          <Link
+            to="/empresa/transporte"
+            className="fc-btn fc-btn-empresa-secondary inline-flex rounded-md border border-zinc-700 bg-zinc-900/80 px-4 py-3 text-sm font-semibold text-zinc-200 hover:bg-zinc-800"
+          >
+            Transporte
+          </Link>
+        </div>
+      </AccordionSection>
     </BIDashboardShell>
   );
 }

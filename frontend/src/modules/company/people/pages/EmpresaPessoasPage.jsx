@@ -13,6 +13,7 @@ import { useEmpresaPeople } from "../hooks/useEmpresaPeople";
 import { CNH_CATEGORIAS, cnhBadgeClass, cnhStatusLabel, getCnhStatus } from "../../../../utils/cnhStatus";
 import { foraRankingMotivo, splitTransportRanking } from "../../../../utils/peopleRanking";
 import { foraControleProducaoLabel } from "../../../../utils/riscoOperacional";
+import AccordionSection from "../../shared/components/AccordionSection";
 
 function roleLabel(r) {
   const m = { MOTORISTA: "Motorista", APONTADOR: "Apontador", ADMIN_EMPRESA: "Administrador" };
@@ -198,7 +199,14 @@ export default function EmpresaPessoasPage() {
           </div>
         </section>
       ) : (
-        <section className="mt-6 space-y-3" aria-label="Indicadores de pessoas">
+        <AccordionSection
+          id="pessoas-dashboard-rapido"
+          title="Dashboard rápido"
+          description="Indicadores críticos de pessoas, CNH e risco operacional."
+          defaultOpenDesktop
+          defaultOpenMobile
+        >
+        <section className="space-y-3" aria-label="Indicadores de pessoas">
           <div className={KPI_GRID}>
             <ExecutiveKpiCard
               icon="🚛"
@@ -265,10 +273,18 @@ export default function EmpresaPessoasPage() {
             />
           </div>
         </section>
+        </AccordionSection>
       )}
 
       {p.summary?.por_status && (
-        <section className="mt-4 fc-card border-zinc-800/70 p-4">
+        <AccordionSection
+          id="pessoas-status-operacional"
+          title="Status operacional"
+          description="Distribuição atual de motoristas e apontadores por status."
+          defaultOpenDesktop={false}
+          defaultOpenMobile={false}
+        >
+        <section className="fc-card border-zinc-800/70 p-4">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Status operacional (motoristas e apontadores)</p>
           <ul className="mt-2 flex flex-wrap gap-2 text-xs text-zinc-300">
             {Object.entries(p.summary.por_status).map(([k, v]) => (
@@ -278,9 +294,17 @@ export default function EmpresaPessoasPage() {
             ))}
           </ul>
         </section>
+        </AccordionSection>
       )}
 
-      <section className="mt-10 space-y-8" aria-label="Ranking de transporte">
+      <AccordionSection
+        id="pessoas-ranking"
+        title="Ranking e cobertura de transporte"
+        description="Quem está no ranking de produção e quem ficou fora."
+        defaultOpenDesktop={false}
+        defaultOpenMobile={false}
+      >
+      <section className="space-y-8" aria-label="Ranking de transporte">
         {p.prodError ? (
           <EmpresaModuleErrorPanel
             title="Ranking indisponível"
@@ -346,8 +370,16 @@ export default function EmpresaPessoasPage() {
           </>
         )}
       </section>
+      </AccordionSection>
 
-      <section id="lista-pessoas" className="mt-10 scroll-mt-6" aria-label="Lista de pessoas">
+      <AccordionSection
+        id="pessoas-lista"
+        title="Gestão de pessoas"
+        description="Lista e edição de perfis com foco em operação de campo."
+        defaultOpenDesktop={false}
+        defaultOpenMobile={false}
+      >
+      <section id="lista-pessoas" className="scroll-mt-6" aria-label="Lista de pessoas">
         <div className="flex flex-col gap-4">
           <div>
             <h2 className="text-lg font-semibold text-zinc-100">Gestão de pessoas</h2>
@@ -577,6 +609,7 @@ export default function EmpresaPessoasPage() {
           </>
         ) : null}
       </section>
+      </AccordionSection>
 
       {p.panelOpen && p.selected ? (
         <div

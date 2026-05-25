@@ -13,6 +13,7 @@ import { useOperationalExport } from "../../../../hooks/useOperationalExport";
 import { useReportsHubPersistence } from "../useReportsHubPersistence";
 import { inputClass } from "../../../../components/FormField";
 import { emitToast } from "../../../../services/uiEvents";
+import AccordionSection from "../../shared/components/AccordionSection";
 
 const PREVIEW_RECORD_LIMIT = 100;
 const DEBOUNCE_MS = 380;
@@ -365,7 +366,15 @@ export default function EmpresaRelatoriosPage() {
         </aside>
 
         <div className="min-w-0 space-y-6">
-          <section className="fc-card border-zinc-800/90 p-4 print:hidden">
+          <AccordionSection
+            id="relatorios-filtros"
+            title="Filtros e configuração"
+            description="Escolha tipo, período e filtros antes de gerar o relatório."
+            defaultOpenDesktop
+            defaultOpenMobile
+            className="print:hidden"
+          >
+            <section>
             <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Etapa 1 — Tipo de relatório</h2>
             <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
               {REPORT_TYPES.map((reportType) => (
@@ -443,9 +452,18 @@ export default function EmpresaRelatoriosPage() {
                 Limpar filtros
               </button>
             </div>
-          </section>
+            </section>
+          </AccordionSection>
 
-          <section className="fc-card border-zinc-800/90 p-3 print:border-0 print:shadow-none sm:p-4">
+          <AccordionSection
+            id="relatorios-preview"
+            title="Preview do relatório"
+            description="Pré-visualização com seleção de itens para exportação."
+            defaultOpenDesktop
+            defaultOpenMobile={false}
+            className="print:border-0 print:shadow-none"
+          >
+            <section>
             <h2 className="mb-3 text-sm font-semibold text-zinc-200 print:hidden">Preview do relatório</h2>
             {previewError ? (
               <p className="rounded-lg border border-red-800/60 bg-red-950/30 px-4 py-3 text-sm text-red-200">{previewError}</p>
@@ -536,9 +554,18 @@ export default function EmpresaRelatoriosPage() {
                 )}
               </>
             )}
-          </section>
+            </section>
+          </AccordionSection>
 
-          <section className="fc-card border-zinc-800/90 p-4 print:hidden">
+          <AccordionSection
+            id="relatorios-exportacao"
+            title="Exportação"
+            description="Gere PDF/Excel com os registros selecionados."
+            defaultOpenDesktop={false}
+            defaultOpenMobile={false}
+            className="print:hidden"
+          >
+            <section>
             <h2 className="text-sm font-semibold text-zinc-200">Exportação</h2>
             <p className="mt-1 text-xs text-zinc-500">
               Tipo: <strong>{tipoExportLabel}</strong> • Período: <strong>{periodoExportLabel}</strong>
@@ -575,7 +602,8 @@ export default function EmpresaRelatoriosPage() {
             {!hasDataToExport ? (
               <p className="mt-2 text-xs text-zinc-500">Nenhum dado disponível para exportar com os filtros atuais.</p>
             ) : null}
-          </section>
+            </section>
+          </AccordionSection>
         </div>
       </div>
       {detailRow ? (

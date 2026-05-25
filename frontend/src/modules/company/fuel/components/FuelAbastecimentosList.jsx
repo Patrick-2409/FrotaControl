@@ -41,6 +41,21 @@ function FuelAbastecimentoCard({ row }) {
 
 function FuelAbastecimentosList({ rows, loading }) {
   const groups = useMemo(() => groupAbastecimentosByDay(rows), [rows]);
+  const monthGroups = useMemo(() => {
+    const monthMap = new Map();
+    groups.forEach((group) => {
+      const monthKey = String(group.dayKey || "").slice(0, 7);
+      const validMonth = /^\d{4}-\d{2}$/.test(monthKey);
+      const label = validMonth
+        ? new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(new Date(`${monthKey}-01T12:00:00`))
+        : "Sem período";
+      if (!monthMap.has(monthKey)) {
+        monthMap.set(monthKey, { monthKey, monthLabel: label, days: [] });
+      }
+      monthMap.get(monthKey).days.push(group);
+    });
+    return [...monthMap.values()];
+  }, [groups]);
 
   if (loading) {
     return (
@@ -70,21 +85,34 @@ function FuelAbastecimentosList({ rows, loading }) {
         </p>
       </div>
 
-      <div className="space-y-6 p-4 sm:p-5">
-        {groups.map((group) => (
-          <div key={group.dayKey}>
-            <h3 className="flex items-center gap-2 border-b border-zinc-800/80 pb-2 text-sm font-semibold text-zinc-200">
-              <span aria-hidden className="text-base leading-none">
-                📅
+      <div className="space-y-4 p-4 sm:p-5">
+        {monthGroups.map((month, monthIndex) => (
+          <details key={month.monthKey || `month-${monthIndex}`} open={monthIndex === 0} className="rounded-lg border border-zinc-800/80 bg-zinc-950/30">
+            <summary className="cursor-pointer select-none list-none px-3 py-2.5 text-sm font-semibold capitalize text-zinc-200 marker:content-none [&::-webkit-details-marker]:hidden">
+              <span className="inline-flex items-center gap-2">
+                <span aria-hidden>🗓️</span>
+                {month.monthLabel}
+                <span className="text-xs font-normal text-zinc-500">({month.days.reduce((acc, d) => acc + d.items.length, 0)} registros)</span>
               </span>
-              {group.dayLabel}
-            </h3>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              {group.items.map((row) => (
-                <FuelAbastecimentoCard key={row.id ?? row.source_id} row={row} />
+            </summary>
+            <div className="space-y-5 border-t border-zinc-800/70 p-3 sm:p-4">
+              {month.days.map((group) => (
+                <div key={group.dayKey}>
+                  <h3 className="flex items-center gap-2 border-b border-zinc-800/80 pb-2 text-sm font-semibold text-zinc-200">
+                    <span aria-hidden className="text-base leading-none">
+                      📅
+                    </span>
+                    {group.dayLabel}
+                  </h3>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    {group.items.map((row) => (
+                      <FuelAbastecimentoCard key={row.id ?? row.source_id} row={row} />
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
-          </div>
+          </details>
         ))}
       </div>
     </section>

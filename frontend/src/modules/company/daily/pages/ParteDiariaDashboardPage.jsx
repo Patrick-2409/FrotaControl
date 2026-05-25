@@ -15,6 +15,7 @@ import ParteDiariaRecordsTable from "../components/ParteDiariaRecordsTable";
 import ParteDiariaResumoStrip from "../components/ParteDiariaResumoStrip";
 import ParteDiariaDayChart from "../components/ParteDiariaDayChart";
 import ParteDiariaMotoristaRanking from "../components/ParteDiariaMotoristaRanking";
+import AccordionSection from "../../shared/components/AccordionSection";
 
 function ParteDiariaDashboardInner() {
   const {
@@ -77,11 +78,13 @@ function ParteDiariaDashboardInner() {
         </div>
       </header>
 
-      <section className="fc-card border-zinc-800/90 p-6 lg:p-8" aria-labelledby="pd-module-wrap">
-        <h2 id="pd-module-wrap" className="sr-only">
-          Conteúdo da parte diária
-        </h2>
-
+      <AccordionSection
+        id="parte-diaria-filtros"
+        title="Filtros e contexto"
+        description="Defina o período e os filtros locais para análise."
+        defaultOpenDesktop
+        defaultOpenMobile
+      >
         <ParteDiariaFilters
           filtro={filtro}
           onFiltroChange={onFiltroChange}
@@ -91,9 +94,17 @@ function ParteDiariaDashboardInner() {
           statusLocal={statusLocal}
           onStatusLocalChange={setStatusLocal}
         />
+      </AccordionSection>
 
-        {!loadError && !loading ? (
-          <div className="mt-6 space-y-6">
+      {!loadError && !loading ? (
+        <AccordionSection
+          id="parte-diaria-dashboard-rapido"
+          title="Dashboard rápido"
+          description="Visão resumida de volume, horas e atividade por motorista."
+          defaultOpenDesktop
+          defaultOpenMobile={false}
+        >
+          <div className="space-y-6">
             <ParteDiariaResumoStrip
               total={total}
               mediaHorasNum={snapshotInsights.mediaHorasSnapshot}
@@ -116,56 +127,71 @@ function ParteDiariaDashboardInner() {
               </div>
             </div>
           </div>
-        ) : null}
+        </AccordionSection>
+      ) : null}
 
-        {loadError && !loading ? (
-          <div className="mt-6">
+      {loadError && !loading ? (
+        <div className="mt-6">
             <EmpresaModuleErrorPanel
               title="Registros indisponíveis"
               description={loadError}
               onRetry={retryLoad}
             />
-          </div>
-        ) : null}
+        </div>
+      ) : null}
 
-        {loading ? (
-          <div className="mt-6">
-            <SkeletonRows rows={4} />
-          </div>
-        ) : (
-          <>
-            <div className="mt-6">
+      {loading ? (
+        <div className="mt-6">
+          <SkeletonRows rows={4} />
+        </div>
+      ) : (
+        <>
+          <AccordionSection
+            id="parte-diaria-indicadores"
+            title="Indicadores operacionais"
+            description="Status, horímetro, checklist e ocorrências."
+            defaultOpenDesktop={false}
+            defaultOpenMobile={false}
+          >
+            <div className="space-y-8">
               <ParteDiariaStatusCards total={total} rowsOnPage={displayRows.length} aggregates={aggregates} />
-            </div>
 
-            <div className="mt-8 grid min-w-0 gap-6 lg:grid-cols-2 lg:items-start">
-              <ParteDiariaHorimetroSection aggregates={aggregates} />
-              <ParteDiariaChecklistSection aggregates={aggregates} />
-            </div>
+              <div className="grid min-w-0 gap-6 lg:grid-cols-2 lg:items-start">
+                <ParteDiariaHorimetroSection aggregates={aggregates} />
+                <ParteDiariaChecklistSection aggregates={aggregates} />
+              </div>
 
-            <div className="mt-8">
               <ParteDiariaOcorrenciasSection
                 ocorrenciasPreview={ocorrenciasPreview}
                 totalComTexto={aggregates.comObservacaoOuParada}
               />
             </div>
+          </AccordionSection>
 
+          <AccordionSection
+            id="parte-diaria-registros"
+            title="Registros detalhados"
+            description="Tabela paginada para reduzir rolagem extensa."
+            defaultOpenDesktop={false}
+            defaultOpenMobile={false}
+          >
+          <>
             {!rows.length ? (
-              <div className="mt-8">
+              <div>
                 <EmptyState
                   title="Nenhum registro de parte diária"
                   description="Ajuste o período ou o filtro de motorista, ou aguarde novos lançamentos no app."
                 />
               </div>
             ) : !displayRows.length ? (
-              <div className="mt-8">
+              <div>
                 <EmptyState
                   title="Nenhuma linha corresponde aos filtros locais"
                   description="Experimente outro equipamento, local ou estado, ou limpe estes filtros extra."
                 />
               </div>
             ) : (
-              <div className="mt-8 min-w-0">
+              <div className="min-w-0">
                 <ParteDiariaRecordsTable rows={displayRows} />
                 <PaginationControls
                   page={page}
@@ -176,8 +202,9 @@ function ParteDiariaDashboardInner() {
               </div>
             )}
           </>
-        )}
-      </section>
+          </AccordionSection>
+        </>
+      )}
     </div>
   );
 }
