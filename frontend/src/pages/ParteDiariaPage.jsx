@@ -108,6 +108,14 @@ const getDailyHours = (row) => {
   const total = fim - ini;
   return Number.isFinite(total) ? total : 0;
 };
+const getDailyKm = (row) => {
+  const payload = row?.payload || {};
+  if (Number.isFinite(Number(payload?.total_km))) return Number(payload.total_km);
+  const ini = Number(payload?.hodometro_inicio || 0);
+  const fim = Number(payload?.hodometro_fim || 0);
+  const total = fim - ini;
+  return Number.isFinite(total) ? total : 0;
+};
 const getRecordSourceId = (row) => row?.source_id || row?.payload?.source_id || row?.payload?.client_id;
 
 export default function ParteDiariaPage({ onSaved }) {
@@ -341,17 +349,28 @@ export default function ParteDiariaPage({ onSaved }) {
     const weekStart = addDays(today, -6);
     let totalHoje = 0;
     let totalSemana = 0;
+    let kmHoje = 0;
+    let kmSemana = 0;
     for (const row of dailyHistory) {
       const raw = row?.payload?.data || row?.payload?.recorded_at_client || row?.updatedAt;
       const ymd = operationYmd(raw);
       const horas = getDailyHours(row);
-      if (ymd === today) totalHoje += horas;
-      if (ymd >= weekStart && ymd <= today) totalSemana += horas;
+      const kms = getDailyKm(row);
+      if (ymd === today) {
+        totalHoje += horas;
+        kmHoje += kms;
+      }
+      if (ymd >= weekStart && ymd <= today) {
+        totalSemana += horas;
+        kmSemana += kms;
+      }
     }
     return {
       totalHoje,
       totalSemana,
       mediaDiaSemana: totalSemana / 7,
+      kmHoje,
+      kmSemana,
     };
   }, [dailyHistory]);
 
@@ -549,7 +568,7 @@ export default function ParteDiariaPage({ onSaved }) {
             Ver histórico completo
           </Link>
         </div>
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
           <div className="rounded-lg border border-slate-700/80 bg-slate-900/60 p-2.5">
             <p className="text-[11px] text-slate-400">Horas hoje</p>
             <p className="mt-1 text-lg font-semibold text-white">{todayDashboard.totalHoje.toFixed(2)} h</p>
@@ -561,6 +580,12 @@ export default function ParteDiariaPage({ onSaved }) {
           <div className="rounded-lg border border-slate-700/80 bg-slate-900/60 p-2.5">
             <p className="text-[11px] text-slate-400">Média dia (7d)</p>
             <p className="mt-1 text-lg font-semibold text-white">{todayDashboard.mediaDiaSemana.toFixed(2)} h</p>
+          </div>
+          <div className="rounded-lg border border-slate-700/80 bg-slate-900/60 p-2.5">
+            <p className="text-[11px] text-slate-400">KM hoje / semana</p>
+            <p className="mt-1 text-lg font-semibold text-white">
+              {todayDashboard.kmHoje.toFixed(1)} / {todayDashboard.kmSemana.toFixed(1)}
+            </p>
           </div>
         </div>
         <div className="rounded-xl border border-slate-700/80 bg-slate-900/50 p-3">
