@@ -124,6 +124,7 @@ export default function CombustivelPage({ onSaved }) {
   const [editingSourceId, setEditingSourceId] = useState(null);
   const [deleteLoadingId, setDeleteLoadingId] = useState("");
   const [activeGraphPoint, setActiveGraphPoint] = useState(null);
+  const [recentVisible, setRecentVisible] = useState(false);
 
   const vehicleOptions = useMemo(() => {
     const byId = new Map();
@@ -488,50 +489,63 @@ export default function CombustivelPage({ onSaved }) {
       </section>
 
       <section className="fc-card fc-fuel-panel space-y-3 p-4">
-        <p className="text-sm font-semibold text-slate-100">Últimos registros</p>
-        {lastFiveFuelRecords.length === 0 ? (
-          <p className="text-sm text-slate-400">Ainda não há abastecimentos recentes.</p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-semibold text-slate-100">Últimos registros</p>
+          <button
+            type="button"
+            className="fc-btn btn-secondary rounded-lg px-3 py-2 text-xs"
+            onClick={() => setRecentVisible((prev) => !prev)}
+          >
+            {recentVisible ? "Ocultar registros" : "Ver últimos registros"}
+          </button>
+        </div>
+        {recentVisible ? (
+          lastFiveFuelRecords.length === 0 ? (
+            <p className="text-sm text-slate-400">Ainda não há abastecimentos recentes.</p>
+          ) : (
+            <div className="space-y-2">
+              {lastFiveFuelRecords.map((row) => {
+                const payload = row?.payload || {};
+                const sourceId = getRecordSourceId(row);
+                return (
+                  <article
+                    key={String(sourceId)}
+                    className="fc-fuel-record w-full rounded-xl border border-slate-800 bg-slate-950/55 p-3 text-left text-sm transition hover:border-slate-600"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-semibold text-slate-100 text-sm">
+                        {payload?.veiculo_nome || "Veículo"} {payload?.placa ? `| ${payload.placa}` : ""}
+                      </p>
+                      <span className="rounded-full border border-slate-600 px-2 py-1 text-[11px] text-slate-300">
+                        {row?.status === "synced" ? "Sincronizado" : "Pendente"}
+                      </span>
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-300">
+                      <p><strong>Data:</strong> {formatDateTimeBr(payload?.data || payload?.recorded_at_client || row?.updatedAt)}</p>
+                      <p><strong>Litros:</strong> {Number(payload?.litros || 0).toFixed(2)} L</p>
+                      <p><strong>Total:</strong> {formatMoneyBr(payload?.valor_total || 0)}</p>
+                      <p><strong>R$/L:</strong> {formatMoneyBr((Number(payload?.valor_total || 0) / Number(payload?.litros || 0)) || 0)}</p>
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      <button type="button" className="fc-btn btn-secondary rounded-lg px-3 py-1.5 text-xs" onClick={() => startEdit(row)}>
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        className="fc-btn rounded-lg border border-red-500/55 bg-red-900/15 px-3 py-1.5 text-xs text-red-200"
+                        onClick={() => void onDeleteRecord(row)}
+                        disabled={deleteLoadingId === sourceId}
+                      >
+                        {deleteLoadingId === sourceId ? "Excluindo..." : "Excluir"}
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )
         ) : (
-          <div className="space-y-2">
-            {lastFiveFuelRecords.map((row) => {
-              const payload = row?.payload || {};
-              const sourceId = getRecordSourceId(row);
-              return (
-                <article
-                  key={String(sourceId)}
-                  className="fc-fuel-record w-full rounded-xl border border-slate-800 bg-slate-950/55 p-3 text-left text-sm transition hover:border-slate-600"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="font-semibold text-slate-100 text-sm">
-                      {payload?.veiculo_nome || "Veículo"} {payload?.placa ? `| ${payload.placa}` : ""}
-                    </p>
-                    <span className="rounded-full border border-slate-600 px-2 py-1 text-[11px] text-slate-300">
-                      {row?.status === "synced" ? "Sincronizado" : "Pendente"}
-                    </span>
-                  </div>
-                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-300">
-                    <p><strong>Data:</strong> {formatDateTimeBr(payload?.data || payload?.recorded_at_client || row?.updatedAt)}</p>
-                    <p><strong>Litros:</strong> {Number(payload?.litros || 0).toFixed(2)} L</p>
-                    <p><strong>Total:</strong> {formatMoneyBr(payload?.valor_total || 0)}</p>
-                    <p><strong>R$/L:</strong> {formatMoneyBr((Number(payload?.valor_total || 0) / Number(payload?.litros || 0)) || 0)}</p>
-                  </div>
-                  <div className="mt-3 flex gap-2">
-                    <button type="button" className="fc-btn btn-secondary rounded-lg px-3 py-1.5 text-xs" onClick={() => startEdit(row)}>
-                      Editar
-                    </button>
-                    <button
-                      type="button"
-                      className="fc-btn rounded-lg border border-red-500/55 bg-red-900/15 px-3 py-1.5 text-xs text-red-200"
-                      onClick={() => void onDeleteRecord(row)}
-                      disabled={deleteLoadingId === sourceId}
-                    >
-                      {deleteLoadingId === sourceId ? "Excluindo..." : "Excluir"}
-                    </button>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
+          <p className="text-sm text-slate-400">Os registros recentes ficam ocultos para reduzir poluição visual.</p>
         )}
       </section>
     </div>
