@@ -3,6 +3,11 @@ const { resolveEmpresaScopeWrite } = require("../domain/tenantContext");
 const { analyzeOperationalData } = require("../services/intelligenceAnalysisService");
 const { generateIntelligenceReport } = require("../services/intelligenceAiService");
 const { generateIntelligencePdf } = require("../services/intelligencePdfService");
+const { buildContext, toIsoDate } = require("../services/inteligencia/common");
+const { analisarCombustivel } = require("../services/inteligencia/combustivel");
+const { analisarTransporte } = require("../services/inteligencia/transporte");
+const { analisarFrota } = require("../services/inteligencia/frota");
+const { gerarResumoExecutivo } = require("../services/inteligencia/resumoExecutivo");
 
 const parseOptionalPositiveInt = (value) => {
   if (value == null || String(value).trim() === "") return null;
@@ -172,18 +177,25 @@ const getIntelligenceOverview = async (req, res) => {
       });
     }
 
-    const analysis = await analyzeOperationalData({
+    const ctx = buildContext({
       empresaId,
       periodo: payload.periodo,
       veiculoId: payload.veiculoId,
       motoristaId: payload.motoristaId,
       tipoAnalise: payload.tipoAnalise,
     });
+    const combustivel = await analisarCombustivel(ctx);
+    console.log("[INTELIGENCIA][combustivel]", combustivel);
+    const transporte = await analisarTransporte(ctx);
+    console.log("[INTELIGENCIA][transporte]", transporte);
+    const frota = await analisarFrota({ ...ctx, activeVehicleIds: transporte.support?.activeVehicleIds || new Set() });
+    console.log("[INTELIGENCIA][frota]", frota);
+    const resumo = gerarResumoExecutivo({ combustivel, transporte, frota });
 
-    const consumo_por_veiculo = analysis.graficos?.consumoPorVeiculo || [];
-    const custo_por_periodo = analysis.graficos?.custoPorPeriodo || [];
-    const consumo_vs_producao = analysis.graficos?.consumoVsProducao || [];
-    const indicadores = analysis.indicadores || SAFE_EMPTY_OVERVIEW.indicadores;
+    const consumo_por_veiculo = combustivel.graficos?.consumoPorVeiculo || [];
+    const custo_por_periodo = combustivel.graficos?.custoPorPeriodo || [];
+    const consumo_vs_producao = transporte.graficos?.consumoVsProducao || [];
+    const indicadores = resumo.indicadores || SAFE_EMPTY_OVERVIEW.indicadores;
     const veiculosConsiderados = Number(indicadores?.veiculosConsiderados || 0);
     const vazio = !consumo_por_veiculo.length && !custo_por_periodo.length && !consumo_vs_producao.length;
 
@@ -191,18 +203,32 @@ const getIntelligenceOverview = async (req, res) => {
       return res.status(200).json({
         ...SAFE_EMPTY_OVERVIEW,
         mensagem: "Nenhum dado encontrado para o período",
-        periodo: analysis.periodo,
-        tipoAnalise: analysis.tipoAnalise,
-        filtros: analysis.filtros,
+        periodo: {
+          tipo: ctx.periodo,
+          inicio: toIsoDate(new Date(ctx.bounds.start)),
+          fim: toIsoDate(new Date(ctx.bounds.endInclusive)),
+        },
+        tipoAnalise: ctx.tipoAnalise,
+        filtros: {
+          veiculoId: ctx.veiculoId,
+          motoristaId: ctx.motoristaId,
+        },
         indicadores,
         erro_debug: false,
       });
     }
 
     return res.status(200).json({
-      periodo: analysis.periodo,
-      tipoAnalise: analysis.tipoAnalise,
-      filtros: analysis.filtros,
+      periodo: {
+        tipo: ctx.periodo,
+        inicio: toIsoDate(new Date(ctx.bounds.start)),
+        fim: toIsoDate(new Date(ctx.bounds.endInclusive)),
+      },
+      tipoAnalise: ctx.tipoAnalise,
+      filtros: {
+        veiculoId: ctx.veiculoId,
+        motoristaId: ctx.motoristaId,
+      },
       vazio: false,
       mensagem: "",
       consumo_por_veiculo,

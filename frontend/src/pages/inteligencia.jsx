@@ -227,6 +227,42 @@ export default function InteligenciaPage() {
     };
   }, [resumoOperacional]);
 
+  const moduloCombustivel = useMemo(
+    () => ({
+      consumoTotal: resumoOperacional.totalLitros,
+      custoTotal: resumoOperacional.totalValor,
+      precoMedio: resumoOperacional.precoMedio,
+      insight:
+        resumoOperacional.totalLitros > 0
+          ? "Consumo registrado no período selecionado."
+          : "Sem consumo registrado no período selecionado.",
+    }),
+    [resumoOperacional]
+  );
+
+  const moduloTransporte = useMemo(
+    () => ({
+      viagens: resumoOperacional.totalViagens,
+      insight:
+        resumoOperacional.totalViagens > 0
+          ? "Há produção registrada no recorte atual."
+          : "0 viagens registradas no período.",
+    }),
+    [resumoOperacional]
+  );
+
+  const moduloFrota = useMemo(
+    () => ({
+      veiculosAtivos: resumoOperacional.veiculosAtivos,
+      veiculosOciosos: resumoOperacional.veiculosOciosos,
+      insight:
+        resumoOperacional.veiculosOciosos > 0
+          ? `${fmtNumber(resumoOperacional.veiculosOciosos)} veículo(s) ocioso(s) no período.`
+          : "Sem ociosidade relevante no recorte atual.",
+    }),
+    [resumoOperacional]
+  );
+
   const periodoLabel = useMemo(() => {
     const inicio = analysis?.periodo?.inicio;
     const fim = analysis?.periodo?.fim;
@@ -424,58 +460,60 @@ export default function InteligenciaPage() {
           ) : (
             <section className="transition-all duration-300">
               <div className="grid grid-cols-1 gap-3">
-              <article
-                className={`rounded-xl border p-4 ${
-                  statusGeral.tone === "critical"
-                    ? "border-red-900/80 bg-red-950/25"
-                    : statusGeral.tone === "warning"
-                      ? "border-amber-900/80 bg-amber-950/20"
-                      : statusGeral.tone === "ok"
-                        ? "border-emerald-900/80 bg-emerald-950/20"
-                        : "border-zinc-800/90 bg-zinc-950/50"
-                }`}
-              >
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">1. Status geral</p>
-                <div className="mt-2 inline-flex rounded-full border border-current px-3 py-1 text-xs font-semibold">
-                  {statusGeral.label}
-                </div>
-                <p className="mt-2 text-sm text-zinc-200">{statusGeral.detail}</p>
-              </article>
-
-              <InsightCard title="2. Diagnóstico principal" tone={statusGeral.tone === "critical" ? "critical" : "default"}>
-                <p className="font-medium">{diagnosticoPrincipal}</p>
-              </InsightCard>
-
-              <InsightCard title="3. Impacto financeiro" tone={impactoFinanceiro.exposicaoSemProducao > 0 ? "warning" : "default"}>
-                <div className="space-y-1">
-                  <p>
-                    <span className="text-zinc-400">Custo total:</span> {fmtCurrency(impactoFinanceiro.custoTotal)}
-                  </p>
-                  <p>
-                    <span className="text-zinc-400">Preço médio:</span>{" "}
-                    {impactoFinanceiro.precoMedio != null ? fmtCurrency(impactoFinanceiro.precoMedio) : "Sem base"}
-                  </p>
-                  <p>
-                    <span className="text-zinc-400">Consumo:</span> {fmtNumber(impactoFinanceiro.litros)} L
-                  </p>
-                  {impactoFinanceiro.exposicaoSemProducao > 0 ? (
-                    <p className="text-amber-300">
-                      Exposição sem produção: {fmtCurrency(impactoFinanceiro.exposicaoSemProducao)}
+                <InsightCard title="1. Combustível" tone={impactoFinanceiro.exposicaoSemProducao > 0 ? "warning" : "default"}>
+                  <div className="space-y-1">
+                    <p>
+                      <span className="text-zinc-400">Consumo total:</span> {fmtNumber(moduloCombustivel.consumoTotal)} L
                     </p>
-                  ) : null}
-                </div>
-              </InsightCard>
-
-              <InsightCard title="4. Ações recomendadas" tone="default">
-                <div className="space-y-1">
-                  {acoesRecomendadas.slice(0, 4).map((item) => (
-                    <p key={item} className="text-sm">
-                      - {item}
+                    <p>
+                      <span className="text-zinc-400">Custo total:</span> {fmtCurrency(moduloCombustivel.custoTotal)}
                     </p>
-                  ))}
-                </div>
-              </InsightCard>
-            </div>
+                    <p>
+                      <span className="text-zinc-400">Preço médio:</span>{" "}
+                      {moduloCombustivel.precoMedio != null ? fmtCurrency(moduloCombustivel.precoMedio) : "Sem base"}
+                    </p>
+                    <p className="text-zinc-300">{moduloCombustivel.insight}</p>
+                  </div>
+                </InsightCard>
+
+                <InsightCard title="2. Transporte" tone={moduloTransporte.viagens === 0 ? "warning" : "ok"}>
+                  <div className="space-y-1">
+                    <p>
+                      <span className="text-zinc-400">Viagens:</span> {fmtNumber(moduloTransporte.viagens)}
+                    </p>
+                    <p className="text-zinc-300">{moduloTransporte.insight}</p>
+                  </div>
+                </InsightCard>
+
+                <InsightCard title="3. Frota" tone={moduloFrota.veiculosOciosos > 0 ? "warning" : "ok"}>
+                  <div className="space-y-1">
+                    <p>
+                      <span className="text-zinc-400">Veículos ativos:</span> {fmtNumber(moduloFrota.veiculosAtivos)}
+                    </p>
+                    <p>
+                      <span className="text-zinc-400">Veículos ociosos:</span> {fmtNumber(moduloFrota.veiculosOciosos)}
+                    </p>
+                    <p className="text-zinc-300">{moduloFrota.insight}</p>
+                  </div>
+                </InsightCard>
+
+                <InsightCard title="4. Resumo executivo" tone={statusGeral.tone === "critical" ? "critical" : "default"}>
+                  <div className="space-y-2">
+                    <div className="inline-flex rounded-full border border-current px-3 py-1 text-xs font-semibold">
+                      Status: {statusGeral.label}
+                    </div>
+                    <p className="text-sm text-zinc-300">{statusGeral.detail}</p>
+                    <p className="font-medium">{diagnosticoPrincipal}</p>
+                    <div className="space-y-1">
+                      {acoesRecomendadas.slice(0, 3).map((item) => (
+                        <p key={item} className="text-sm">
+                          - {item}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                </InsightCard>
+              </div>
             </section>
           )}
         </AccordionSection>

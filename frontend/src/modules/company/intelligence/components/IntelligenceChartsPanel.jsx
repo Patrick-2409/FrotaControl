@@ -25,7 +25,7 @@ function ChartCard({ title, subtitle, children, className = "" }) {
 function ChartEmptyState() {
   return (
     <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-zinc-800 bg-zinc-950/60 px-3 text-center text-xs text-zinc-500">
-      Sem dados para o período selecionado
+      Sem dados suficientes no período
     </div>
   );
 }
@@ -152,18 +152,15 @@ function BarsFallbackChart({ data }) {
 }
 
 function FallbackChartsPanel({ pieData, lineData, barData }) {
+  const hasComparativePieData = Array.isArray(pieData) && pieData.length > 1;
   return (
     <>
-      <ChartCard title="Consumo por veículo" subtitle="Participação no período">
-        {hasRows(pieData) ? (
-          <>
-            <PieFallbackChart data={pieData} />
-            <PieLegend data={pieData} />
-          </>
-        ) : (
-          <ChartEmptyState />
-        )}
-      </ChartCard>
+      {hasComparativePieData ? (
+        <ChartCard title="Consumo por veículo" subtitle="Participação no período">
+          <PieFallbackChart data={pieData} />
+          <PieLegend data={pieData} />
+        </ChartCard>
+      ) : null}
 
       <ChartCard title="Custo por período" subtitle="Evolução do custo operacional">
         {hasRows(lineData) ? <LineFallbackChart data={lineData} /> : <ChartEmptyState />}
