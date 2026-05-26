@@ -67,9 +67,12 @@ function getRange(periodo) {
 
 const rangeFromPeriodo = (periodo) => {
   const [start, end] = getRange(periodo);
+  const endDate = new Date(end);
+  const endInclusive = new Date(endDate.getTime() - 1);
   return {
     start: safeIsoFromDate(start) || new Date(0).toISOString(),
     end: safeIsoFromDate(end) || new Date().toISOString(),
+    endInclusive: safeIsoFromDate(endInclusive) || new Date().toISOString(),
   };
 };
 
@@ -93,23 +96,22 @@ const analyzeOperationalData = async ({
   }
 
   const bounds = rangeFromPeriodo(periodo);
+  console.log("PERIODO:", bounds.start, bounds.endInclusive);
   const parsedEmpresaId = Number(empresaId);
   const parsedVeiculoId = Number.isFinite(Number(veiculoId)) && Number(veiculoId) > 0 ? Number(veiculoId) : null;
   const parsedMotoristaId =
     Number.isFinite(Number(motoristaId)) && Number(motoristaId) > 0 ? Number(motoristaId) : null;
 
-  const baseParams = [parsedEmpresaId, bounds.start, bounds.end, parsedVeiculoId, parsedMotoristaId];
+  const baseParams = [parsedEmpresaId, bounds.start, bounds.endInclusive, parsedVeiculoId, parsedMotoristaId];
   const filtrosCombustivel = `
     c.empresa_id = $1
-    AND COALESCE(c.recorded_at_client, c.data) >= $2::timestamptz
-    AND COALESCE(c.recorded_at_client, c.data) < $3::timestamptz
+    AND COALESCE(c.recorded_at_client, c.data) BETWEEN $2::timestamptz AND $3::timestamptz
     AND ($4::int IS NULL OR c.veiculo_id = $4)
     AND ($5::int IS NULL OR c.usuario_id = $5)
   `;
   const filtrosViagens = `
     vi.empresa_id = $1
-    AND vi.marcacao >= $2::timestamptz
-    AND vi.marcacao < $3::timestamptz
+    AND vi.marcacao BETWEEN $2::timestamptz AND $3::timestamptz
     AND ($4::int IS NULL OR vi.veiculo_id = $4)
     AND ($5::int IS NULL OR vi.motorista_id = $5)
   `;
@@ -146,8 +148,7 @@ const analyzeOperationalData = async ({
       `SELECT COUNT(*)::int AS total_parte_diaria
        FROM parte_diaria pd
        WHERE pd.empresa_id = $1
-         AND COALESCE(pd.recorded_at_client, pd.data) >= $2::timestamptz
-         AND COALESCE(pd.recorded_at_client, pd.data) < $3::timestamptz
+         AND COALESCE(pd.recorded_at_client, pd.data) BETWEEN $2::timestamptz AND $3::timestamptz
          AND ($4::int IS NULL OR pd.veiculo_id = $4)
          AND ($5::int IS NULL OR pd.usuario_id = $5)`,
       baseParams
@@ -198,13 +199,14 @@ const analyzeOperationalData = async ({
     safeCombustivelQuery(
       "pieFuelRows",
       `SELECT
+         c.veiculo_id AS veiculo_id,
          COALESCE(v.nome, 'Sem nome') AS nome,
          COALESCE(v.placa, '-') AS placa,
          COALESCE(SUM(c.litros), 0)::double precision AS litros
        FROM combustiveis c
        LEFT JOIN veiculos v ON v.id = c.veiculo_id AND v.empresa_id = c.empresa_id
        WHERE ${filtrosCombustivel}
-       GROUP BY v.nome, v.placa
+       GROUP BY c.veiculo_id, v.nome, v.placa
       ORDER BY litros DESC`,
       baseParams
     ),
@@ -252,6 +254,16 @@ const analyzeOperationalData = async ({
   const totalLitros = toNumber(fuel.total_litros);
   const totalValor = toNumber(fuel.total_valor);
   const precoMedio = safeDivide(totalValor, totalLitros);
+  const combustivelRows = pieFuelRows.rows || [];
+  console.log("COMBUSTIVEL RAW:", combustivelRows);
+  if (!combustivelRows.length) {
+    console.warn("⚠ Nenhum dado de combustível encontrado");
+  }
+  const veiculosUnicos = new Set(
+    combustivelRows.map((row) => Number(row.veiculo_id)).filter((id) => Number.isFinite(id) && id > 0)
+  );
+  const veiculosConsiderados = veiculosUnicos.size;
+  console.log("VEICULOS FINAIS:", veiculosConsiderados);
 
   const totalViagens = toNumber(viagemAgg.rows[0]?.total_viagens);
   const totalParteDiaria = toNumber(parteDiariaAgg.rows[0]?.total_parte_diaria);
@@ -281,7 +293,7 @@ const analyzeOperationalData = async ({
     periodo: {
       tipo: PERIODOS.has(periodo) ? periodo : "mes",
       inicio: toIsoDate(new Date(bounds.start)),
-      fim: toIsoDate(new Date(new Date(bounds.end).getTime() - 1)),
+      fim: toIsoDate(new Date(bounds.endInclusive)),
     },
     tipoAnalise,
     filtros: {
@@ -296,6 +308,7 @@ const analyzeOperationalData = async ({
       totalParteDiaria,
       veiculosAtivos,
       veiculosOciosos,
+      veiculosConsiderados,
     },
     insights: {
       operacaoParada,
@@ -311,6 +324,7 @@ const analyzeOperationalData = async ({
       consumoPorVeiculo: (pieFuelRows.rows || []).map((row) => ({
         veiculo: `${row.nome} (${row.placa})`,
         litros: toNumber(row.litros),
+        veiculo_id: row.veiculo_id == null ? null : Number(row.veiculo_id),
       })),
       custoPorPeriodo: (lineCostRows.rows || [])
         .map((row) => {

@@ -30,6 +30,7 @@ const SAFE_EMPTY_OVERVIEW = {
     totalViagens: 0,
     veiculosAtivos: 0,
     veiculosOciosos: 0,
+    veiculosConsiderados: 0,
     totalParteDiaria: 0,
   },
 };
@@ -180,11 +181,13 @@ const getIntelligenceOverview = async (req, res) => {
     const custo_por_periodo = analysis.graficos?.custoPorPeriodo || [];
     const consumo_vs_producao = analysis.graficos?.consumoVsProducao || [];
     const indicadores = analysis.indicadores || SAFE_EMPTY_OVERVIEW.indicadores;
+    const veiculosConsiderados = Number(indicadores?.veiculosConsiderados || 0);
     const vazio = !consumo_por_veiculo.length && !custo_por_periodo.length && !consumo_vs_producao.length;
 
-    if (vazio) {
+    if (vazio || veiculosConsiderados === 0) {
       return res.status(200).json({
         ...SAFE_EMPTY_OVERVIEW,
+        mensagem: "Nenhum dado encontrado para o período",
         periodo: analysis.periodo,
         tipoAnalise: analysis.tipoAnalise,
         filtros: analysis.filtros,
@@ -198,6 +201,7 @@ const getIntelligenceOverview = async (req, res) => {
       tipoAnalise: analysis.tipoAnalise,
       filtros: analysis.filtros,
       vazio: false,
+      mensagem: "",
       consumo_por_veiculo,
       custo_por_periodo,
       consumo_vs_producao,

@@ -326,7 +326,7 @@ export default function InteligenciaPage() {
           total: consumoPorVeiculo.length + custoPorPeriodo.length + consumoVsProducao.length,
         },
         periodo_aplicado: data?.periodo || { tipo: activeFilters?.periodo || "mes" },
-        veiculos_considerados: consumoPorVeiculo.length,
+        veiculos_considerados: Number(rawIndicadores?.veiculosConsiderados || 0),
       });
 
       setOverview(normalizedOverview);
