@@ -379,6 +379,38 @@ const aggregateAlerts = async (empresaId) => {
   };
 };
 
+const buildReadyInsights = (dataset) => {
+  const fuel = dataset.combustivel || {};
+  const transport = dataset.transporte || {};
+  const daily = dataset.parte_diaria || {};
+  const ranking = Array.isArray(fuel.ranking_consumo) ? fuel.ranking_consumo : [];
+  const topVehicle = ranking[0] || null;
+  const totalLiters = toNumber(fuel.total_litros);
+  const topSharePct =
+    topVehicle && totalLiters > 0 ? toPct((toNumber(topVehicle.litros) / totalLiters) * 100, 1) : null;
+
+  const idleVehicles = Array.isArray(transport.veiculos_ociosos) ? transport.veiculos_ociosos : [];
+  const totalTrips = toNumber(transport.viagens);
+  const totalTons = toNumber(transport.total_toneladas);
+  const totalDailyRecords = toNumber(daily?.producao_total?.registros);
+
+  const operationStopped = totalTrips === 0 && totalTons === 0 && totalDailyRecords === 0;
+  const fuelWithoutProduction = toNumber(fuel.total_litros) > 0 && totalTons === 0;
+
+  return {
+    veiculo_mais_consumo: topVehicle
+      ? {
+          nome: topVehicle.veiculo,
+          litros: toNumber(topVehicle.litros),
+          participacao_pct: topSharePct,
+        }
+      : null,
+    veiculos_ociosos: idleVehicles,
+    operacao_parada: operationStopped,
+    consumo_sem_producao: fuelWithoutProduction,
+  };
+};
+
 const buildDataset = async (empresaId, periodo) => {
   const bounds = rangeFromPeriodo(periodo);
   const [company, combustivel, transporte, frota, parteDiaria, alertas] = await Promise.all([
@@ -389,7 +421,7 @@ const buildDataset = async (empresaId, periodo) => {
     aggregateDaily(empresaId, bounds),
     aggregateAlerts(empresaId),
   ]);
-  return {
+  const dataset = {
     empresa: { id: empresaId, nome: company?.nome || `Empresa ${empresaId}`, logo_url: company?.logo_url || null },
     periodo: { tipo: periodo, inicio: bounds.startDate, fim: bounds.endDate, gerado_em: new Date().toISOString() },
     combustivel,
@@ -398,6 +430,8 @@ const buildDataset = async (empresaId, periodo) => {
     parte_diaria: parteDiaria,
     alertas,
   };
+  dataset.insights_prontos = buildReadyInsights(dataset);
+  return dataset;
 };
 
 const aiPrompt = `
@@ -409,12 +443,14 @@ Inclua:
 
 1. Resumo executivo
 2. Classificação da saúde da operação (Saudável, Atenção ou Crítico)
-3. Principais gargalos
-4. Análise de combustível
-5. Análise de transporte
-6. Análise da frota
-7. Pontos de atenção prioritários
-8. Recomendações práticas
+3. Problema principal
+4. Dados chave
+5. Responsável principal (veículo/equipe)
+6. Principais gargalos
+7. Análise de combustível
+8. Análise de transporte
+9. Análise da frota
+10. Ações práticas imediatas
 
 Regras:
 - linguagem simples
@@ -422,17 +458,22 @@ Regras:
 - foco em decisão
 - não usar termos técnicos complexos
 - não inventar dados
+- usar números concretos sempre que possível
+- usar os insights_prontos para apontar responsáveis
+- proibido responder com frases vagas como "é necessário melhorar" ou "é importante revisar"
 
 Responda somente em JSON válido com a estrutura:
 {
   "resumo_executivo": "texto",
   "saude_operacao": "Saudável|Atenção|Crítico",
+  "problema_principal": "texto objetivo com número",
+  "dados_chave": ["..."],
+  "responsavel_principal": "veículo/equipe com justificativa",
   "gargalos": ["..."],
   "analise_combustivel": "texto",
   "analise_transporte": "texto",
   "analise_frota": "texto",
-  "pontos_prioritarios": ["..."],
-  "recomendacoes": ["..."]
+  "acoes": ["..."]
 }
 `.trim();
 
@@ -462,17 +503,82 @@ const normalizeHealth = (value) => {
 
 const ensureList = (value) => (Array.isArray(value) ? value.map((v) => String(v || "").trim()).filter(Boolean) : []);
 
-const sanitizeAiResult = (value) => {
+const GENERIC_PATTERNS = [
+  /é necessário melhorar/i,
+  /é importante revisar/i,
+  /deve[- ]?se melhorar/i,
+  /recomenda[- ]?se melhorar/i,
+  /monitorar melhor/i,
+];
+
+const looksGeneric = (text) => {
+  const raw = String(text || "").trim();
+  if (!raw) return true;
+  return GENERIC_PATTERNS.some((rx) => rx.test(raw));
+};
+
+const fallbackResponsavel = (dataset) => {
+  const top = dataset?.insights_prontos?.veiculo_mais_consumo;
+  if (top?.nome) {
+    const pctText = top.participacao_pct != null ? `${fmtNum(top.participacao_pct, 1)}%` : "participação relevante";
+    return `${top.nome} concentra ${pctText} do consumo de combustível no período.`;
+  }
+  const idle = dataset?.insights_prontos?.veiculos_ociosos || [];
+  if (idle.length) return `Veículos ociosos identificados: ${idle.slice(0, 2).join(" e ")}.`;
+  return "Dados insuficientes para análise";
+};
+
+const fallbackProblem = (dataset) => {
+  if (dataset?.insights_prontos?.consumo_sem_producao) {
+    return "Consumo de combustível ocorreu sem produção registrada no período.";
+  }
+  const idleCount = dataset?.insights_prontos?.veiculos_ociosos?.length || 0;
+  if (idleCount > 0) return `${idleCount} veículos estão ociosos no período.`;
+  if (dataset?.insights_prontos?.operacao_parada) {
+    return "Operação parada: sem viagens e sem produção no período.";
+  }
+  return "Dados insuficientes para análise";
+};
+
+const fallbackKeyData = (dataset) => {
+  const fuel = dataset.combustivel || {};
+  const transport = dataset.transporte || {};
+  return [
+    `Total gasto: ${fmtMoney(fuel.total_gasto)}`,
+    `Total litros: ${fmtNum(fuel.total_litros, 1)} L`,
+    `Toneladas: ${fmtNum(transport.total_toneladas, 1)}`,
+    `Viagens: ${fmtNum(transport.viagens)}`,
+  ];
+};
+
+const ensureConcreteText = (text, fallback) => {
+  const raw = String(text || "").trim();
+  if (!raw) return fallback;
+  if (looksGeneric(raw) && !/\d/.test(raw)) return fallback;
+  return raw;
+};
+
+const sanitizeAiResult = (value, dataset) => {
   const src = value && typeof value === "object" ? value : {};
+  const fallbackData = fallbackKeyData(dataset);
+  const fallbackProblemText = fallbackProblem(dataset);
+  const fallbackResponsavelText = fallbackResponsavel(dataset);
+  const fallbackActions = [
+    "Atuar imediatamente nos itens de maior impacto de custo e produtividade.",
+    "Rebalancear veículos ociosos para frentes com demanda ativa.",
+    "Bloquear consumo sem produção até validação operacional.",
+  ];
   return {
-    resumo_executivo: String(src.resumo_executivo || "").trim(),
+    resumo_executivo: ensureConcreteText(src.resumo_executivo, fallbackProblemText),
     saude_operacao: normalizeHealth(src.saude_operacao),
-    gargalos: ensureList(src.gargalos),
-    analise_combustivel: String(src.analise_combustivel || "").trim(),
-    analise_transporte: String(src.analise_transporte || "").trim(),
-    analise_frota: String(src.analise_frota || "").trim(),
-    pontos_prioritarios: ensureList(src.pontos_prioritarios),
-    recomendacoes: ensureList(src.recomendacoes),
+    problema_principal: ensureConcreteText(src.problema_principal, fallbackProblemText),
+    dados_chave: ensureList(src.dados_chave).length ? ensureList(src.dados_chave) : fallbackData,
+    responsavel_principal: ensureConcreteText(src.responsavel_principal, fallbackResponsavelText),
+    gargalos: ensureList(src.gargalos).length ? ensureList(src.gargalos) : [fallbackProblemText],
+    analise_combustivel: ensureConcreteText(src.analise_combustivel, fallbackData[0]),
+    analise_transporte: ensureConcreteText(src.analise_transporte, fallbackData[2]),
+    analise_frota: ensureConcreteText(src.analise_frota, fallbackResponsavelText),
+    acoes: ensureList(src.acoes).length ? ensureList(src.acoes) : fallbackActions,
   };
 };
 
@@ -509,7 +615,7 @@ const callOpenAi = async (dataset) => {
     const content = payload?.choices?.[0]?.message?.content || "";
     const parsed = extractJson(content);
     if (!parsed) throw new Error("Resposta da IA fora do formato JSON.");
-    return { result: sanitizeAiResult(parsed), model };
+    return { result: sanitizeAiResult(parsed, dataset), model };
   } finally {
     clearTimeout(timer);
   }
@@ -523,9 +629,11 @@ const fallbackFromDataset = (dataset) => {
   const hasCritical = alerts.some((a) => String(a.criticidade) === "critical");
   const health = hasCritical ? "Crítico" : alerts.length ? "Atenção" : "Saudável";
   return {
-    resumo_executivo:
-      "Análise automática em modo de contingência: operação consolidada com foco em custo, produtividade e utilização de ativos.",
+    resumo_executivo: `Operação com ${toNumber(transport.viagens)} viagens e ${toNumber(transport.total_toneladas)} toneladas no período.`,
     saude_operacao: health,
+    problema_principal: fallbackProblem(dataset),
+    dados_chave: fallbackKeyData(dataset),
+    responsavel_principal: fallbackResponsavel(dataset),
     gargalos: [
       `Veículos ociosos: ${toNumber(fleet.ociosos)}.`,
       `Variação combustível vs histórico: ${fuel.vs_historico_pct == null ? "indisponível" : `${fuel.vs_historico_pct}%`}.`,
@@ -534,11 +642,10 @@ const fallbackFromDataset = (dataset) => {
     analise_combustivel: `Total gasto ${toNumber(fuel.total_gasto).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}, com média de preço ${fuel.media_preco == null ? "indisponível" : `R$ ${fuel.media_preco.toFixed(2)}/L`}.`,
     analise_transporte: `Foram registadas ${toNumber(transport.viagens)} viagens e ${toNumber(transport.total_toneladas)} toneladas no período.`,
     analise_frota: `Frota com ${toNumber(fleet.em_uso)} veículos em uso de um total de ${toNumber(fleet.total_veiculos)}.`,
-    pontos_prioritarios: alerts.slice(0, 4).map((a) => a.titulo),
-    recomendacoes: [
-      "Atuar nos pontos críticos primeiro e acompanhar diariamente até estabilizar.",
-      "Revisar alocação de veículos com baixa utilização.",
-      "Monitorar preço de combustível para evitar aumento contínuo de custo.",
+    acoes: [
+      "Realocar imediatamente veículos ociosos para frentes com demanda ativa.",
+      "Revisar os abastecimentos com maior participação no consumo total.",
+      "Bloquear consumo sem produção até validação do apontamento operacional.",
     ],
   };
 };
@@ -890,7 +997,8 @@ const buildHtmlReport = async ({ dataset, ai }) => {
     toNumber(dataset.frota?.total_veiculos) > 0;
 
   const criticalNow = [
-    ...ensureList(ai.pontos_prioritarios),
+    ...ensureList(ai.acoes),
+    ai.problema_principal,
     ...ensureList(ai.gargalos).filter((x) => /crit|urg|risco|atras|vencid/i.test(x)),
     ...dataset.alertas.lista.filter((a) => a.criticidade === "critical").map((a) => a.titulo),
   ];
@@ -995,6 +1103,9 @@ const buildHtmlReport = async ({ dataset, ai }) => {
     <section class="section">
       <h2>2. 🧠 Resumo Executivo</h2>
       <p>${esc(ai.resumo_executivo)}</p>
+      <div class="inline-note"><strong>Problema principal:</strong> ${esc(ai.problema_principal || INSUFFICIENT_DATA_TEXT)}</div>
+      <div class="inline-note"><strong>Responsável:</strong> ${esc(ai.responsavel_principal || INSUFFICIENT_DATA_TEXT)}</div>
+      ${ai.dados_chave?.length ? `<div class="inline-note"><strong>Dados chave:</strong></div>${bullets(ai.dados_chave)}` : ""}
     </section>
 
     <section class="section">
@@ -1053,8 +1164,8 @@ const buildHtmlReport = async ({ dataset, ai }) => {
     }
 
     ${
-      ai.recomendacoes.length
-        ? `<section class="section"><h2>8. 💡 Recomendações</h2>${bullets(ai.recomendacoes)}</section>`
+      ai.acoes.length
+        ? `<section class="section"><h2>8. 💡 Ações</h2>${bullets(ai.acoes)}</section>`
         : ""
     }
 
@@ -1111,10 +1222,10 @@ const fallbackPdf = ({ dataset, ai }) =>
     doc.moveDown(0.7);
     doc.font("Helvetica-Bold").fontSize(11).text("Resumo Executivo");
     doc.font("Helvetica").fontSize(10).text(ai.resumo_executivo || "Operação consolidada.");
-    if (ai.recomendacoes.length) {
+    if (ai.acoes.length) {
       doc.moveDown(0.5);
-      doc.font("Helvetica-Bold").fontSize(11).text("Recomendações");
-      ai.recomendacoes.forEach((item) => doc.font("Helvetica").fontSize(10).text(`- ${item}`));
+      doc.font("Helvetica-Bold").fontSize(11).text("Ações");
+      ai.acoes.forEach((item) => doc.font("Helvetica").fontSize(10).text(`- ${item}`));
     }
     doc.moveDown(1.2);
     doc.font("Helvetica-Oblique").fontSize(9).fillColor("#6b7280").text("Relatório gerado automaticamente pelo FrotaMax", {
