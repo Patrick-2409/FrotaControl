@@ -82,8 +82,8 @@ export default function IntelligenceChartsPanel({
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={lineData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
-              <XAxis dataKey="periodo" stroke="#a1a1aa" fontSize={12} />
-              <YAxis stroke="#a1a1aa" fontSize={12} />
+              <XAxis dataKey="periodo" stroke="#a1a1aa" fontSize={12} scale="point" />
+              <YAxis stroke="#a1a1aa" fontSize={12} scale="linear" />
               <Tooltip
                 contentStyle={{ background: "#09090b", border: "1px solid #27272a", borderRadius: 10 }}
                 labelStyle={{ color: "#d4d4d8" }}
@@ -101,8 +101,8 @@ export default function IntelligenceChartsPanel({
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={barData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
-              <XAxis dataKey="periodo" stroke="#a1a1aa" fontSize={12} />
-              <YAxis stroke="#a1a1aa" fontSize={12} />
+              <XAxis dataKey="periodo" stroke="#a1a1aa" fontSize={12} scale="band" />
+              <YAxis stroke="#a1a1aa" fontSize={12} scale="linear" />
               <Tooltip
                 contentStyle={{ background: "#09090b", border: "1px solid #27272a", borderRadius: 10 }}
                 labelStyle={{ color: "#d4d4d8" }}
