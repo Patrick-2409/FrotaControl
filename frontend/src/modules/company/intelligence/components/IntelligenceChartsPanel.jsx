@@ -1,3 +1,21 @@
+import { Component } from "react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+
+const ENABLE_RECHARTS = String(import.meta.env.VITE_ENABLE_RECHARTS || "").trim().toLowerCase() === "true";
 const PIE_COLORS = ["#2563eb", "#16a34a", "#ca8a04", "#dc2626", "#6b7280"];
 
 const DEFAULT_PIE_DATA = [
@@ -36,6 +54,26 @@ function ChartCard({ title, subtitle, children, className = "" }) {
       <div className="mt-4 h-64 w-full sm:h-72">{children}</div>
     </article>
   );
+}
+
+class ChartErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch() {
+    // fallback visual em caso de erro runtime dos gráficos
+  }
+
+  render() {
+    if (this.state.hasError) return this.props.fallback;
+    return this.props.children;
+  }
 }
 
 function PieLegend({ data }) {
@@ -139,6 +177,88 @@ function BarsFallbackChart({ data }) {
   );
 }
 
+function RechartsChartsPanel({ pieData, lineData, barData }) {
+  return (
+    <>
+      <ChartCard title="Consumo por veículo" subtitle="Participação no período">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={94} innerRadius={42}>
+              {pieData.map((entry, index) => (
+                <Cell key={`pie-cell-${entry.name}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+              ))}
+            </Pie>
+            <Tooltip
+              contentStyle={{ background: "#09090b", border: "1px solid #27272a", borderRadius: 10 }}
+              labelStyle={{ color: "#d4d4d8" }}
+            />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+          </PieChart>
+        </ResponsiveContainer>
+      </ChartCard>
+
+      <ChartCard title="Custo por período" subtitle="Evolução do custo operacional">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={lineData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+            <XAxis dataKey="periodo" stroke="#a1a1aa" fontSize={12} />
+            <YAxis stroke="#a1a1aa" fontSize={12} />
+            <Tooltip
+              contentStyle={{ background: "#09090b", border: "1px solid #27272a", borderRadius: 10 }}
+              labelStyle={{ color: "#d4d4d8" }}
+            />
+            <Line type="monotone" dataKey="custo" stroke="#2563eb" strokeWidth={3} dot={{ r: 3 }} />
+          </LineChart>
+        </ResponsiveContainer>
+      </ChartCard>
+
+      <ChartCard
+        title="Consumo vs produção"
+        subtitle="Comparativo consolidado por período"
+        className="lg:col-span-2"
+      >
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={barData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+            <XAxis dataKey="periodo" stroke="#a1a1aa" fontSize={12} />
+            <YAxis stroke="#a1a1aa" fontSize={12} />
+            <Tooltip
+              contentStyle={{ background: "#09090b", border: "1px solid #27272a", borderRadius: 10 }}
+              labelStyle={{ color: "#d4d4d8" }}
+            />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+            <Bar dataKey="consumo" name="Consumo" fill="#ca8a04" radius={[6, 6, 0, 0]} />
+            <Bar dataKey="producao" name="Produção" fill="#16a34a" radius={[6, 6, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </ChartCard>
+    </>
+  );
+}
+
+function FallbackChartsPanel({ pieData, lineData, barData }) {
+  return (
+    <>
+      <ChartCard title="Consumo por veículo" subtitle="Participação no período">
+        <PieFallbackChart data={pieData} />
+        <PieLegend data={pieData} />
+      </ChartCard>
+
+      <ChartCard title="Custo por período" subtitle="Evolução do custo operacional">
+        <LineFallbackChart data={lineData} />
+      </ChartCard>
+
+      <ChartCard
+        title="Consumo vs produção"
+        subtitle="Comparativo consolidado por período"
+        className="lg:col-span-2"
+      >
+        <BarsFallbackChart data={barData} />
+      </ChartCard>
+    </>
+  );
+}
+
 export default function IntelligenceChartsPanel({
   pieData = DEFAULT_PIE_DATA,
   lineData = DEFAULT_LINE_DATA,
@@ -153,22 +273,13 @@ export default function IntelligenceChartsPanel({
       </p>
 
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <ChartCard title="Consumo por veículo" subtitle="Participação no período">
-          <PieFallbackChart data={pieData} />
-          <PieLegend data={pieData} />
-        </ChartCard>
-
-        <ChartCard title="Custo por período" subtitle="Evolução do custo operacional">
-          <LineFallbackChart data={lineData} />
-        </ChartCard>
-
-        <ChartCard
-          title="Consumo vs produção"
-          subtitle="Comparativo consolidado por período"
-          className="lg:col-span-2"
-        >
-          <BarsFallbackChart data={barData} />
-        </ChartCard>
+        <ChartErrorBoundary fallback={<FallbackChartsPanel pieData={pieData} lineData={lineData} barData={barData} />}>
+          {ENABLE_RECHARTS ? (
+            <RechartsChartsPanel pieData={pieData} lineData={lineData} barData={barData} />
+          ) : (
+            <FallbackChartsPanel pieData={pieData} lineData={lineData} barData={barData} />
+          )}
+        </ChartErrorBoundary>
       </div>
     </section>
   );
