@@ -50,10 +50,12 @@ const parseAndBuildAnalysis = async (req) => {
   });
 
   const relatorio = await generateIntelligenceReport({
+    empresaId: Number(empresaId),
     indicadores: analysis.indicadores,
     insights: analysis.insights,
     periodo: analysis.periodo,
     tipoAnalise: analysis.tipoAnalise,
+    filtros: analysis.filtros,
   });
 
   return {
