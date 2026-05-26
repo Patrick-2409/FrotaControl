@@ -696,6 +696,44 @@ const verticalBarSvg = (series, title, valueKey, color = COLORS.green) => {
 </svg>`;
 };
 
+const dualBarSvg = (series, title) => {
+  if (!Array.isArray(series) || series.length === 0) return emptyChartSvg(title);
+  const width = 720;
+  const height = 220;
+  const padX = 36;
+  const padY = 24;
+  const chartW = width - padX * 2;
+  const chartH = height - padY * 2;
+  const valuesA = series.map((p) => toNumber(p.toneladas, NaN)).filter((v) => Number.isFinite(v));
+  const valuesB = series.map((p) => toNumber(p.viagens, NaN)).filter((v) => Number.isFinite(v));
+  if (!valuesA.length && !valuesB.length) return emptyChartSvg(title);
+  const maxY = yDomain([...valuesA, ...valuesB]);
+  const groupW = chartW / Math.max(1, series.length);
+  const barW = Math.max(3, groupW / 2 - 6);
+  const bars = series
+    .map((p, i) => {
+      const baseX = padX + i * groupW + 2;
+      const valueA = toNumber(p.toneladas, 0);
+      const valueB = toNumber(p.viagens, 0);
+      const hA = (chartH * valueA) / maxY;
+      const hB = (chartH * valueB) / maxY;
+      const yA = padY + chartH - hA;
+      const yB = padY + chartH - hB;
+      return `
+        <rect x="${baseX}" y="${yA}" width="${barW}" height="${hA}" rx="4" fill="${COLORS.green}" opacity="0.9" />
+        <rect x="${baseX + barW + 3}" y="${yB}" width="${barW}" height="${hB}" rx="4" fill="${COLORS.blue}" opacity="0.9" />
+      `;
+    })
+    .join("");
+  return `
+<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${esc(title)}">
+  <rect x="0" y="0" width="${width}" height="${height}" rx="10" fill="${COLORS.white}" />
+  ${bars}
+  <circle cx="${width - 170}" cy="20" r="5" fill="${COLORS.green}" /><text x="${width - 160}" y="24" fill="${COLORS.gray}" font-size="11" font-family="Inter, Arial, sans-serif">Toneladas</text>
+  <circle cx="${width - 88}" cy="20" r="5" fill="${COLORS.blue}" /><text x="${width - 78}" y="24" fill="${COLORS.gray}" font-size="11" font-family="Inter, Arial, sans-serif">Viagens</text>
+</svg>`;
+};
+
 const horizontalBarSvg = (series, title) => {
   if (!Array.isArray(series) || series.length === 0) return emptyChartSvg(title);
   const width = 720;
@@ -751,7 +789,7 @@ const buildHtmlReport = ({ dataset, ai }) => {
   const health = healthClass(ai.saude_operacao);
   const generatedAt = new Date(dataset.periodo.gerado_em).toLocaleString("pt-BR");
   const fuelChart = lineChartSvg(dataset.combustivel.serie_custo_dia, "Custo combustível por dia");
-  const transportChart = verticalBarSvg(dataset.transporte.serie_dia, "Toneladas por dia", "toneladas", COLORS.green);
+  const transportChart = dualBarSvg(dataset.transporte.serie_dia, "Toneladas e viagens por dia");
   const fleetChart = horizontalBarSvg(dataset.frota.utilizacao_por_veiculo, "Utilização por veículo");
 
   const criticalNow = [
@@ -767,6 +805,26 @@ const buildHtmlReport = ({ dataset, ai }) => {
       <div class="kpi"><span>Total litros</span><strong>${esc(fmtNum(dataset.combustivel.total_litros, 1))} L</strong></div>
       <div class="kpi"><span>Média preço</span><strong>${dataset.combustivel.media_preco == null ? "—" : `R$ ${esc(fmtNum(dataset.combustivel.media_preco, 2))}/L`}</strong></div>
       <div class="kpi"><span>Vs frota</span><strong>${dataset.combustivel.vs_frota_pct == null ? "—" : `${esc(fmtNum(dataset.combustivel.vs_frota_pct, 1))}%`}</strong></div>
+      <div class="kpi"><span>Vs histórico</span><strong>${dataset.combustivel.vs_historico_pct == null ? "—" : `${esc(fmtNum(dataset.combustivel.vs_historico_pct, 1))}%`}</strong></div>
+    </div>
+  `;
+
+  const transportKpis = `
+    <div class="kpis">
+      <div class="kpi"><span>Total toneladas</span><strong>${esc(fmtNum(dataset.transporte.total_toneladas, 1))}</strong></div>
+      <div class="kpi"><span>Total viagens</span><strong>${esc(fmtNum(dataset.transporte.viagens))}</strong></div>
+      <div class="kpi"><span>Produtividade</span><strong>${esc(fmtNum(dataset.transporte.produtividade_media_viagens_por_veiculo, 2))}</strong></div>
+      <div class="kpi"><span>Veículos ativos</span><strong>${esc(fmtNum(dataset.transporte.veiculos_ativos))}</strong></div>
+      <div class="kpi"><span>Veículos ociosos</span><strong>${esc(fmtNum(dataset.transporte.veiculos_ociosos?.length || 0))}</strong></div>
+    </div>
+  `;
+
+  const fleetKpis = `
+    <div class="kpis">
+      <div class="kpi"><span>Total veículos</span><strong>${esc(fmtNum(dataset.frota.total_veiculos))}</strong></div>
+      <div class="kpi"><span>Em uso</span><strong>${esc(fmtNum(dataset.frota.em_uso))}</strong></div>
+      <div class="kpi"><span>Ociosos</span><strong>${esc(fmtNum(dataset.frota.ociosos))}</strong></div>
+      <div class="kpi"><span>Baixa performance</span><strong>${esc(fmtNum(dataset.frota.baixa_performance?.length || 0))}</strong></div>
     </div>
   `;
 
@@ -792,6 +850,7 @@ const buildHtmlReport = ({ dataset, ai }) => {
     .kpi { border: 1px solid #e5e7eb; border-radius: 10px; background: #fff; padding: 8px 10px; }
     .kpi span { display: block; color: #6b7280; font-size: 11px; margin-bottom: 4px; }
     .kpi strong { font-size: 14px; color: #111827; }
+    .inline-note { margin-top: 8px; color: #6b7280; font-size: 12px; }
     ul { margin: 0; padding-left: 20px; }
     li { margin: 5px 0; font-size: 13px; color: #1f2937; }
     .chart { margin-top: 8px; border: 1px solid #e5e7eb; border-radius: 12px; padding: 8px; background: #fff; }
@@ -825,18 +884,40 @@ const buildHtmlReport = ({ dataset, ai }) => {
       <h2>3. ⛽ Combustível</h2>
       ${fuelKpis}
       <p>${esc(ai.analise_combustivel)}</p>
+      ${
+        dataset.combustivel.ranking_consumo?.length
+          ? `<div class="inline-note">Maiores consumos: ${esc(
+              dataset.combustivel.ranking_consumo
+                .slice(0, 3)
+                .map((r) => `${r.veiculo} (${fmtNum(r.litros, 1)} L)`)
+                .join(" • ")
+            )}</div>`
+          : ""
+      }
       <div class="chart">${fuelChart}</div>
     </section>
 
     <section class="section">
       <h2>4. 🚛 Transporte</h2>
+      ${transportKpis}
       <p>${esc(ai.analise_transporte)}</p>
+      ${
+        dataset.transporte.veiculos_ociosos?.length
+          ? `<div class="inline-note">Ociosos: ${esc(dataset.transporte.veiculos_ociosos.slice(0, 3).join(" • "))}</div>`
+          : ""
+      }
       <div class="chart">${transportChart}</div>
     </section>
 
     <section class="section">
       <h2>5. 🚜 Frota</h2>
+      ${fleetKpis}
       <p>${esc(ai.analise_frota)}</p>
+      ${
+        dataset.frota.baixa_performance?.length
+          ? `<div class="inline-note">Baixa performance: ${esc(dataset.frota.baixa_performance.slice(0, 3).join(" • "))}</div>`
+          : ""
+      }
       <div class="chart">${fleetChart}</div>
     </section>
 
