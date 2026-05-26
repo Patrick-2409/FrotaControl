@@ -19,10 +19,12 @@ const hasRows = (rows) => Array.isArray(rows) && rows.length > 0;
 
 function ChartCard({ title, subtitle, children, className = "" }) {
   return (
-    <article className={`rounded-xl border border-zinc-800/90 bg-zinc-950/50 p-4 sm:p-5 ${className}`}>
+    <article className={`rounded-xl border border-zinc-800/90 bg-zinc-950/50 p-4 ${className}`}>
       <p className="text-sm font-semibold text-zinc-100">{title}</p>
       {subtitle ? <p className="mt-1 text-xs text-zinc-400">{subtitle}</p> : null}
-      <div className="mt-4 h-64 w-full sm:h-72">{children}</div>
+      <div className="mt-3 h-56 w-full overflow-x-auto sm:h-64">
+        <div className="h-full min-w-[340px]">{children}</div>
+      </div>
     </article>
   );
 }
@@ -30,7 +32,7 @@ function ChartCard({ title, subtitle, children, className = "" }) {
 function ChartEmptyState() {
   return (
     <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-zinc-800 bg-zinc-950/60 px-3 text-center text-xs text-zinc-500">
-      Sem dados no filtro selecionado.
+      Sem dados para o período selecionado
     </div>
   );
 }

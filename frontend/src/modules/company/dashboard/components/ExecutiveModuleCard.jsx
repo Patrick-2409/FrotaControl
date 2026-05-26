@@ -83,16 +83,16 @@ export default function ExecutiveModuleCard({
       className={`fc-erp-module-card fc-erp-module-card--interactive fc-card flex h-full flex-col rounded-xl border p-4 sm:p-5 ${accentClass}`}
     >
       <header className="mb-2 flex items-center justify-between gap-3">
-        <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.12em] text-zinc-100">
+        <h3 className="flex min-w-0 items-center gap-2 text-xs font-bold uppercase tracking-[0.12em] text-zinc-100">
           <span>{title}</span>
           {tooltipText ? <TooltipInfo text={tooltipText} /> : null}
         </h3>
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
+        <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
           {to ? "Abrir módulo" : "Somente leitura"}
         </span>
       </header>
 
-      <p className="text-2xl font-bold tracking-tight text-zinc-50 sm:text-3xl">{value}</p>
+      <p className="break-words text-xl font-bold tracking-tight text-zinc-50 sm:text-3xl">{value}</p>
 
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
         <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${trendStyle.badge}`}>

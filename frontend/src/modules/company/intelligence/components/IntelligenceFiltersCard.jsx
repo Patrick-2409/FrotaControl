@@ -19,18 +19,21 @@ export default function IntelligenceFiltersCard({
   onChange,
   vehicleOptions = [],
   driverOptions = [],
+  embedded = false,
 }) {
   const onFieldChange = (field) => (event) => {
     onChange((prev) => ({ ...prev, [field]: event.target.value }));
   };
 
   return (
-    <section className="fc-card border-zinc-800/80 p-4 sm:p-5">
-      <p className="fc-erp-eyebrow">Filtros</p>
-      <h2 className="mt-1 text-lg font-semibold text-zinc-100">Configuração da análise</h2>
-      <p className="mt-2 text-sm text-zinc-400">Defina o contexto da leitura operacional antes de gerar o relatório.</p>
+    <section className={embedded ? "" : "fc-card border-zinc-800/80 p-4 sm:p-5"}>
+      {!embedded ? <p className="fc-erp-eyebrow">Filtros</p> : null}
+      {!embedded ? <h2 className="mt-1 text-lg font-semibold text-zinc-100">Configuração da análise</h2> : null}
+      {!embedded ? (
+        <p className="mt-2 text-sm text-zinc-400">Defina o contexto da leitura operacional antes de gerar o relatório.</p>
+      ) : null}
 
-      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className={`${embedded ? "" : "mt-4"} grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4`}>
         <label className="block">
           <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-400">Período</span>
           <select className={inputClass} value={filters.periodo} onChange={onFieldChange("periodo")}>

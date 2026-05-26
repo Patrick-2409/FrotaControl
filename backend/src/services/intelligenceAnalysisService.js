@@ -152,8 +152,7 @@ const analyzeOperationalData = async ({
        LEFT JOIN veiculos v ON v.id = c.veiculo_id AND v.empresa_id = c.empresa_id
        WHERE ${filtrosCombustivel}
        GROUP BY v.nome, v.placa
-       ORDER BY litros DESC
-       LIMIT 8`,
+      ORDER BY litros DESC`,
       baseParams
     ),
     pool.query(

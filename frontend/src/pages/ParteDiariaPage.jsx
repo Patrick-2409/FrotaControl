@@ -561,10 +561,10 @@ export default function ParteDiariaPage({ onSaved }) {
 
   return (
     <div className="space-y-4 pb-28">
-      <section className="fc-card space-y-3 p-4">
-        <div className="flex items-center justify-between gap-2">
+      <section className="fc-card space-y-3 p-4 sm:p-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm font-semibold text-slate-100">Dashboard rápido</p>
-          <Link to="/app/historico" className="fc-btn btn-secondary rounded-lg px-3 py-2 text-xs">
+          <Link to="/app/historico" className="fc-btn btn-secondary w-full rounded-lg px-3 py-2 text-center text-xs sm:w-auto">
             Ver histórico completo
           </Link>
         </div>
@@ -590,29 +590,31 @@ export default function ParteDiariaPage({ onSaved }) {
         </div>
         <div className="rounded-xl border border-slate-700/80 bg-slate-900/50 p-3">
           <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-300">Últimos 7 dias (horas)</p>
-          <div className="flex h-24 items-end gap-2">
-            {chartData.map((point) => (
-              <div key={point.ymd} className="flex min-w-0 flex-1 flex-col items-center gap-1">
-                <div className="text-[10px] text-slate-400">{point.total > 0 ? point.total.toFixed(1) : "-"}</div>
-                <div className="flex h-16 w-full items-end rounded-md bg-slate-800/80 p-1">
-                  <div className="w-full rounded-sm bg-blue-500/80" style={{ height: `${Math.max(6, Math.round((point.total / maxGraphValue) * 100))}%` }} />
+          <div className="overflow-x-auto">
+            <div className="flex h-24 min-w-[340px] items-end gap-2 sm:min-w-0">
+              {chartData.map((point) => (
+                <div key={point.ymd} className="flex min-w-[36px] flex-1 flex-col items-center gap-1">
+                  <div className="text-[10px] text-slate-400">{point.total > 0 ? point.total.toFixed(1) : "-"}</div>
+                  <div className="flex h-16 w-full items-end rounded-md bg-slate-800/80 p-1">
+                    <div className="w-full rounded-sm bg-blue-500/80" style={{ height: `${Math.max(6, Math.round((point.total / maxGraphValue) * 100))}%` }} />
+                  </div>
+                  <div className="text-[10px] text-slate-500">{point.label}</div>
                 </div>
-                <div className="text-[10px] text-slate-500">{point.label}</div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="fc-card space-y-3 p-4">
-        <div className="flex items-center justify-between gap-2">
+      <section className="fc-card space-y-3 p-4 sm:p-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm font-semibold text-slate-100">Nova parte diária</p>
           {!formVisible ? (
-            <button type="button" className="fc-btn btn-primary rounded-lg px-3 py-2 text-xs" onClick={() => { resetForCreate(); setFormVisible(true); }}>
+            <button type="button" className="fc-btn btn-primary w-full rounded-lg px-3 py-2 text-xs sm:w-auto" onClick={() => { resetForCreate(); setFormVisible(true); }}>
               + Nova parte diária
             </button>
           ) : (
-            <button type="button" className="fc-btn btn-secondary rounded-lg px-3 py-2 text-xs" onClick={() => { resetForCreate(); setFormVisible(false); }}>
+            <button type="button" className="fc-btn btn-secondary w-full rounded-lg px-3 py-2 text-xs sm:w-auto" onClick={() => { resetForCreate(); setFormVisible(false); }}>
               {editingSourceId ? "Cancelar edição" : "Fechar formulário"}
             </button>
           )}
@@ -857,10 +859,10 @@ export default function ParteDiariaPage({ onSaved }) {
         )}
       </section>
 
-      <section className="fc-card space-y-3 p-4">
-        <div className="flex items-center justify-between gap-2">
+      <section className="fc-card space-y-3 p-4 sm:p-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm font-semibold text-slate-100">Últimos registros</p>
-          <button type="button" className="fc-btn btn-secondary rounded-lg px-3 py-2 text-xs" onClick={() => setRecentVisible((prev) => !prev)}>
+          <button type="button" className="fc-btn btn-secondary w-full rounded-lg px-3 py-2 text-xs sm:w-auto" onClick={() => setRecentVisible((prev) => !prev)}>
             {recentVisible ? "Ocultar registros" : "Ver últimos registros"}
           </button>
         </div>
@@ -886,13 +888,13 @@ export default function ParteDiariaPage({ onSaved }) {
                       <p><strong>Período:</strong> {payload?.periodo || "-"}</p>
                       <p><strong>Local:</strong> {payload?.local || "-"}</p>
                     </div>
-                    <div className="mt-3 flex gap-2">
-                      <button type="button" className="fc-btn btn-secondary rounded-lg px-3 py-1.5 text-xs" onClick={() => startEditRecord(row)}>
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                      <button type="button" className="fc-btn btn-secondary w-full rounded-lg px-3 py-1.5 text-xs sm:w-auto" onClick={() => startEditRecord(row)}>
                         Editar
                       </button>
                       <button
                         type="button"
-                        className="fc-btn rounded-lg border border-red-500/55 bg-red-900/15 px-3 py-1.5 text-xs text-red-200"
+                        className="fc-btn w-full rounded-lg border border-red-500/55 bg-red-900/15 px-3 py-1.5 text-xs text-red-200 sm:w-auto"
                         onClick={() => void onDeleteRecord(row)}
                         disabled={deleteLoadingId === sourceId}
                       >

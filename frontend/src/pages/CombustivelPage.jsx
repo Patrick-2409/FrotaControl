@@ -362,10 +362,10 @@ export default function CombustivelPage({ onSaved }) {
 
   return (
     <div className="fc-fuel-page fc-stagger space-y-4 pb-28 pt-1">
-      <section className="fc-card fc-fuel-panel space-y-3 p-4">
-        <div className="flex items-center justify-between gap-2">
+      <section className="fc-card fc-fuel-panel space-y-3 p-4 sm:p-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm font-semibold text-slate-100">Dashboard</p>
-          <Link to="/app/historico" className="fc-btn btn-secondary rounded-lg px-3 py-2 text-xs">
+          <Link to="/app/historico" className="fc-btn btn-secondary w-full rounded-lg px-3 py-2 text-center text-xs sm:w-auto">
             Ver histórico completo
           </Link>
         </div>
@@ -396,36 +396,38 @@ export default function CombustivelPage({ onSaved }) {
               </div>
             ) : null}
           </div>
-          <div className="flex h-24 items-end gap-2">
-            {graphData.map((point) => (
-              <div key={point.ymd} className="flex min-w-0 flex-1 flex-col items-center gap-1">
-                <button
-                  type="button"
-                  className="flex h-16 w-full items-end rounded-md bg-slate-800/80 p-1 transition hover:bg-slate-700/80"
-                  onClick={() => setActiveGraphPoint(point)}
-                  onTouchStart={() => setActiveGraphPoint(point)}
-                  aria-label={`Dia ${point.label}, total ${formatMoneyBr(point.total)}`}
-                >
-                  <div className="w-full rounded-sm bg-blue-500/80" style={{ height: `${Math.max(6, Math.round((point.total / maxGraphValue) * 100))}%` }} />
-                </button>
-                <div className="text-[10px] text-slate-500">{point.label}</div>
-              </div>
-            ))}
+          <div className="overflow-x-auto">
+            <div className="flex h-24 min-w-[340px] items-end gap-2 sm:min-w-0">
+              {graphData.map((point) => (
+                <div key={point.ymd} className="flex min-w-[36px] flex-1 flex-col items-center gap-1">
+                  <button
+                    type="button"
+                    className="flex h-16 w-full items-end rounded-md bg-slate-800/80 p-1 transition hover:bg-slate-700/80"
+                    onClick={() => setActiveGraphPoint(point)}
+                    onTouchStart={() => setActiveGraphPoint(point)}
+                    aria-label={`Dia ${point.label}, total ${formatMoneyBr(point.total)}`}
+                  >
+                    <div className="w-full rounded-sm bg-blue-500/80" style={{ height: `${Math.max(6, Math.round((point.total / maxGraphValue) * 100))}%` }} />
+                  </button>
+                  <div className="text-[10px] text-slate-500">{point.label}</div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="fc-card fc-fuel-panel space-y-3 p-4">
-        <div className="flex items-center justify-between gap-2">
+      <section className="fc-card fc-fuel-panel space-y-3 p-4 sm:p-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm font-semibold text-slate-100">Novo abastecimento</p>
           {!formVisible ? (
-            <button type="button" className="fc-btn btn-primary rounded-lg px-3 py-2 text-xs" onClick={openCreateForm}>
+            <button type="button" className="fc-btn btn-primary w-full rounded-lg px-3 py-2 text-xs sm:w-auto" onClick={openCreateForm}>
               + Novo abastecimento
             </button>
           ) : (
             <button
               type="button"
-              className="fc-btn btn-secondary rounded-lg px-3 py-2 text-xs"
+              className="fc-btn btn-secondary w-full rounded-lg px-3 py-2 text-xs sm:w-auto"
               onClick={() => {
                 resetCreateForm();
                 setFormVisible(false);
@@ -488,12 +490,12 @@ export default function CombustivelPage({ onSaved }) {
         )}
       </section>
 
-      <section className="fc-card fc-fuel-panel space-y-3 p-4">
-        <div className="flex items-center justify-between gap-2">
+      <section className="fc-card fc-fuel-panel space-y-3 p-4 sm:p-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm font-semibold text-slate-100">Últimos registros</p>
           <button
             type="button"
-            className="fc-btn btn-secondary rounded-lg px-3 py-2 text-xs"
+            className="fc-btn btn-secondary w-full rounded-lg px-3 py-2 text-xs sm:w-auto"
             onClick={() => setRecentVisible((prev) => !prev)}
           >
             {recentVisible ? "Ocultar registros" : "Ver últimos registros"}
@@ -526,13 +528,13 @@ export default function CombustivelPage({ onSaved }) {
                       <p><strong>Total:</strong> {formatMoneyBr(payload?.valor_total || 0)}</p>
                       <p><strong>R$/L:</strong> {formatMoneyBr((Number(payload?.valor_total || 0) / Number(payload?.litros || 0)) || 0)}</p>
                     </div>
-                    <div className="mt-3 flex gap-2">
-                      <button type="button" className="fc-btn btn-secondary rounded-lg px-3 py-1.5 text-xs" onClick={() => startEdit(row)}>
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                      <button type="button" className="fc-btn btn-secondary w-full rounded-lg px-3 py-1.5 text-xs sm:w-auto" onClick={() => startEdit(row)}>
                         Editar
                       </button>
                       <button
                         type="button"
-                        className="fc-btn rounded-lg border border-red-500/55 bg-red-900/15 px-3 py-1.5 text-xs text-red-200"
+                        className="fc-btn w-full rounded-lg border border-red-500/55 bg-red-900/15 px-3 py-1.5 text-xs text-red-200 sm:w-auto"
                         onClick={() => void onDeleteRecord(row)}
                         disabled={deleteLoadingId === sourceId}
                       >

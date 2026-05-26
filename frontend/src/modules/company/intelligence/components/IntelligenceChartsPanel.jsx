@@ -14,10 +14,12 @@ const hasRows = (rows) => Array.isArray(rows) && rows.length > 0;
 
 function ChartCard({ title, subtitle, children, className = "" }) {
   return (
-    <article className={`rounded-xl border border-zinc-800/90 bg-zinc-950/50 p-4 sm:p-5 ${className}`}>
+    <article className={`rounded-xl border border-zinc-800/90 bg-zinc-950/50 p-4 ${className}`}>
       <p className="text-sm font-semibold text-zinc-100">{title}</p>
       {subtitle ? <p className="mt-1 text-xs text-zinc-400">{subtitle}</p> : null}
-      <div className="mt-4 h-64 w-full sm:h-72">{children}</div>
+      <div className="mt-3 h-56 w-full overflow-x-auto sm:h-64">
+        <div className="h-full min-w-[340px]">{children}</div>
+      </div>
     </article>
   );
 }
@@ -25,7 +27,7 @@ function ChartCard({ title, subtitle, children, className = "" }) {
 function ChartEmptyState() {
   return (
     <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-zinc-800 bg-zinc-950/60 px-3 text-center text-xs text-zinc-500">
-      Sem dados no filtro selecionado.
+      Sem dados para o período selecionado
     </div>
   );
 }
@@ -185,6 +187,7 @@ export default function IntelligenceChartsPanel({
   lineData = [],
   barData = [],
   loading = false,
+  embedded = false,
 }) {
   const [RechartsChartsPanel, setRechartsChartsPanel] = useState(null);
   const [rechartsFailed, setRechartsFailed] = useState(false);
@@ -213,19 +216,28 @@ export default function IntelligenceChartsPanel({
 
   const canUseRecharts = ENABLE_RECHARTS && !rechartsFailed && typeof RechartsChartsPanel === "function";
 
-  return (
-    <section className="fc-card border-zinc-800/80 p-4 sm:p-5">
-      <p className="fc-erp-eyebrow">Gráficos</p>
-      <h2 className="mt-1 text-lg font-semibold text-zinc-100">Visão visual da operação</h2>
-      <p className="mt-2 text-sm text-zinc-400">
-        Distribuição de consumo, evolução de custo e comparação entre consumo e produção.
-      </p>
+  const content = (
+    <>
+      {!embedded ? <p className="fc-erp-eyebrow">Gráficos</p> : null}
+      {!embedded ? <h2 className="mt-1 text-lg font-semibold text-zinc-100">Visão visual da operação</h2> : null}
+      {!embedded ? (
+        <p className="mt-2 text-sm text-zinc-400">
+          Distribuição de consumo, evolução de custo e comparação entre consumo e produção.
+        </p>
+      ) : null}
 
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className={`${embedded ? "" : "mt-4"} grid grid-cols-1 gap-3 lg:grid-cols-2`}>
         <ChartErrorBoundary fallback={<FallbackChartsPanel pieData={pieData} lineData={lineData} barData={barData} />}>
           {loading ? (
-            <article className="rounded-xl border border-zinc-800/90 bg-zinc-950/50 p-4 text-sm text-zinc-400 lg:col-span-2">
-              Carregando dados reais dos gráficos...
+            <article className="rounded-xl border border-zinc-800/90 bg-zinc-950/50 p-4 lg:col-span-2">
+              <div className="animate-pulse space-y-3">
+                <div className="h-4 w-44 rounded bg-zinc-800/80" />
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                  <div className="h-56 rounded-xl border border-zinc-800/80 bg-zinc-900/80" />
+                  <div className="h-56 rounded-xl border border-zinc-800/80 bg-zinc-900/80" />
+                </div>
+                <div className="h-56 rounded-xl border border-zinc-800/80 bg-zinc-900/80" />
+              </div>
             </article>
           ) : canUseRecharts ? (
             <RechartsChartsPanel pieData={pieData} lineData={lineData} barData={barData} />
@@ -234,6 +246,9 @@ export default function IntelligenceChartsPanel({
           )}
         </ChartErrorBoundary>
       </div>
-    </section>
+    </>
   );
+
+  if (embedded) return content;
+  return <section className="fc-card border-zinc-800/80 p-4 sm:p-5">{content}</section>;
 }

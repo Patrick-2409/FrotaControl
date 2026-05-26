@@ -131,9 +131,9 @@ export default function EmpresaExecutiveDashboardPage() {
         title="Dashboard rápido por módulo"
         description="Toque no card para abrir o módulo correspondente."
         defaultOpenDesktop
-        defaultOpenMobile
+        defaultOpenMobile={false}
       >
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-label="Resumo por módulo">
+        <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="Resumo por módulo">
         <ExecutiveModuleCard
           title="Transporte"
           to="/empresa/transporte"
