@@ -8,34 +8,56 @@ const toNumber = (value, fallback = 0) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+const safeDivide = (numerator, denominator) => {
+  const d = Number(denominator);
+  if (!Number.isFinite(d) || d === 0) return 0;
+  const n = Number(numerator);
+  return Number.isFinite(n) ? n / d : 0;
+};
+
 const toIsoDate = (date) => date.toISOString().slice(0, 10);
+const safeIsoFromDate = (value) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+};
 
-const rangeFromPeriodo = (periodo, anchor = new Date()) => {
+const startOfDay = (date) => new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0, 0));
+const endExclusiveOfDay = (date) =>
+  new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1, 0, 0, 0, 0));
+const startOfMonth = (date) => new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1, 0, 0, 0, 0));
+const endExclusiveOfMonth = (date) => new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1, 0, 0, 0, 0));
+const startOfYear = (date) => new Date(Date.UTC(date.getUTCFullYear(), 0, 1, 0, 0, 0, 0));
+const endExclusiveOfYear = (date) => new Date(Date.UTC(date.getUTCFullYear() + 1, 0, 1, 0, 0, 0, 0));
+const startOfWeek = (date) => {
+  const start = startOfDay(date);
+  const dow = start.getUTCDay();
+  const offsetToMonday = (dow + 6) % 7;
+  start.setUTCDate(start.getUTCDate() - offsetToMonday);
+  return start;
+};
+const endExclusiveOfWeek = (date) => {
+  const start = startOfWeek(date);
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 7);
+  return end;
+};
+
+function getRange(periodo) {
+  const now = new Date();
   const p = PERIODOS.has(periodo) ? periodo : "mes";
-  const y = anchor.getUTCFullYear();
-  const m = anchor.getUTCMonth();
-  const d = anchor.getUTCDate();
-  const startDay = new Date(Date.UTC(y, m, d, 0, 0, 0, 0));
-  const endDay = new Date(Date.UTC(y, m, d + 1, 0, 0, 0, 0));
+  if (p === "dia") return [startOfDay(now), endExclusiveOfDay(now)];
+  if (p === "semana") return [startOfWeek(now), endExclusiveOfWeek(now)];
+  if (p === "ano") return [startOfYear(now), endExclusiveOfYear(now)];
+  return [startOfMonth(now), endExclusiveOfMonth(now)];
+}
 
-  if (p === "dia") return { start: startDay.toISOString(), end: endDay.toISOString() };
-  if (p === "semana") {
-    const dow = startDay.getUTCDay();
-    const offsetToMonday = (dow + 6) % 7;
-    const start = new Date(startDay);
-    start.setUTCDate(start.getUTCDate() - offsetToMonday);
-    const end = new Date(start);
-    end.setUTCDate(end.getUTCDate() + 7);
-    return { start: start.toISOString(), end: end.toISOString() };
-  }
-  if (p === "ano") {
-    const start = new Date(Date.UTC(y, 0, 1, 0, 0, 0, 0));
-    const end = new Date(Date.UTC(y + 1, 0, 1, 0, 0, 0, 0));
-    return { start: start.toISOString(), end: end.toISOString() };
-  }
-  const start = new Date(Date.UTC(y, m, 1, 0, 0, 0, 0));
-  const end = new Date(Date.UTC(y, m + 1, 1, 0, 0, 0, 0));
-  return { start: start.toISOString(), end: end.toISOString() };
+const rangeFromPeriodo = (periodo) => {
+  const [start, end] = getRange(periodo);
+  return {
+    start: safeIsoFromDate(start) || new Date(0).toISOString(),
+    end: safeIsoFromDate(end) || new Date().toISOString(),
+  };
 };
 
 const analyzeOperationalData = async ({
@@ -82,6 +104,7 @@ const analyzeOperationalData = async ({
   const [
     fuelAgg,
     viagemAgg,
+    parteDiariaAgg,
     activeVehiclesRows,
     vehiclesScopeRows,
     topFuelRows,
@@ -101,6 +124,16 @@ const analyzeOperationalData = async ({
       `SELECT COUNT(*)::int AS total_viagens
        FROM viagens vi
        WHERE ${filtrosViagens}`,
+      baseParams
+    ),
+    pool.query(
+      `SELECT COUNT(*)::int AS total_parte_diaria
+       FROM parte_diaria pd
+       WHERE pd.empresa_id = $1
+         AND COALESCE(pd.recorded_at_client, pd.data) >= $2::timestamptz
+         AND COALESCE(pd.recorded_at_client, pd.data) < $3::timestamptz
+         AND ($4::int IS NULL OR pd.veiculo_id = $4)
+         AND ($5::int IS NULL OR pd.usuario_id = $5)`,
       baseParams
     ),
     pool.query(
@@ -196,9 +229,10 @@ const analyzeOperationalData = async ({
   const fuel = fuelAgg.rows[0] || {};
   const totalLitros = toNumber(fuel.total_litros);
   const totalValor = toNumber(fuel.total_valor);
-  const precoMedio = totalLitros > 0 ? totalValor / totalLitros : null;
+  const precoMedio = safeDivide(totalValor, totalLitros);
 
   const totalViagens = toNumber(viagemAgg.rows[0]?.total_viagens);
+  const totalParteDiaria = toNumber(parteDiariaAgg.rows[0]?.total_parte_diaria);
   const activeVehiclesSet = new Set(activeVehiclesRows.rows.map((row) => Number(row.veiculo_id)).filter(Number.isFinite));
   const scopedVehicles = vehiclesScopeRows.rows || [];
   const veiculosAtivos = scopedVehicles.length
@@ -237,6 +271,7 @@ const analyzeOperationalData = async ({
       totalValor,
       precoMedio,
       totalViagens,
+      totalParteDiaria,
       veiculosAtivos,
       veiculosOciosos,
     },
@@ -255,15 +290,27 @@ const analyzeOperationalData = async ({
         veiculo: `${row.nome} (${row.placa})`,
         litros: toNumber(row.litros),
       })),
-      custoPorPeriodo: (lineCostRows.rows || []).map((row) => ({
-        periodo: toIsoDate(new Date(row.dia)),
-        custo: toNumber(row.custo),
-      })),
-      consumoVsProducao: (consumoVsProducaoRows.rows || []).map((row) => ({
-        periodo: toIsoDate(new Date(row.dia)),
-        consumo: toNumber(row.consumo),
-        producao: toNumber(row.producao),
-      })),
+      custoPorPeriodo: (lineCostRows.rows || [])
+        .map((row) => {
+          const diaIso = safeIsoFromDate(row.dia);
+          if (!diaIso) return null;
+          return {
+            periodo: toIsoDate(new Date(diaIso)),
+            custo: toNumber(row.custo),
+          };
+        })
+        .filter(Boolean),
+      consumoVsProducao: (consumoVsProducaoRows.rows || [])
+        .map((row) => {
+          const diaIso = safeIsoFromDate(row.dia);
+          if (!diaIso) return null;
+          return {
+            periodo: toIsoDate(new Date(diaIso)),
+            consumo: toNumber(row.consumo),
+            producao: toNumber(row.producao),
+          };
+        })
+        .filter(Boolean),
     },
   };
 };

@@ -17,18 +17,46 @@ const bodySchema = z.object({
   tipoAnalise: z.enum(["geral", "combustivel", "transporte", "frota"]).optional(),
 });
 
-const parseAnalysisPayload = (req) => {
+const SAFE_EMPTY_OVERVIEW = {
+  vazio: true,
+  consumo_por_veiculo: [],
+  custo_por_periodo: [],
+  consumo_vs_producao: [],
+  indicadores: {
+    totalLitros: 0,
+    totalValor: 0,
+    precoMedio: 0,
+    totalViagens: 0,
+    veiculosAtivos: 0,
+    veiculosOciosos: 0,
+    totalParteDiaria: 0,
+  },
+};
+
+const parseAnalysisPayload = (req, { allowFallback = false } = {}) => {
   const empresaId = resolveEmpresaScopeWrite(req);
   if (!empresaId) {
     const err = new Error("empresa_id é obrigatório para análise operacional.");
     err.statusCode = 400;
-    throw err;
+    if (!allowFallback) throw err;
+    return {
+      empresaId: null,
+      payload: {
+        periodo: "mes",
+        veiculoId: null,
+        motoristaId: null,
+        tipoAnalise: "geral",
+      },
+    };
   }
 
+  const queryPeriodo = req.query?.periodo;
+  const queryVeiculo = req.query?.veiculo ?? req.query?.veiculoId;
+  const queryMotorista = req.query?.motorista ?? req.query?.motoristaId;
   const rawPayload = {
-    periodo: req.body?.periodo ?? req.query?.periodo,
-    veiculoId: req.body?.veiculoId ?? req.query?.veiculoId,
-    motoristaId: req.body?.motoristaId ?? req.query?.motoristaId,
+    periodo: req.body?.periodo ?? queryPeriodo ?? "mes",
+    veiculoId: req.body?.veiculoId ?? queryVeiculo ?? null,
+    motoristaId: req.body?.motoristaId ?? queryMotorista ?? null,
     tipoAnalise: req.body?.tipoAnalise ?? req.query?.tipoAnalise,
   };
 
@@ -36,7 +64,16 @@ const parseAnalysisPayload = (req) => {
   if (!parsedBody.success) {
     const err = new Error(parsedBody.error.issues.map((item) => item.message).join(" ") || "Payload inválido.");
     err.statusCode = 400;
-    throw err;
+    if (!allowFallback) throw err;
+    return {
+      empresaId: Number(empresaId),
+      payload: {
+        periodo: "mes",
+        veiculoId: null,
+        motoristaId: null,
+        tipoAnalise: "geral",
+      },
+    };
   }
 
   const payload = parsedBody.data;
@@ -119,7 +156,11 @@ const exportarPdfInteligencia = async (req, res) => {
 
 const getIntelligenceOverview = async (req, res) => {
   try {
-    const { empresaId, payload } = parseAnalysisPayload(req);
+    const { empresaId, payload } = parseAnalysisPayload(req, { allowFallback: true });
+    if (!empresaId) {
+      return res.json(SAFE_EMPTY_OVERVIEW);
+    }
+
     const analysis = await analyzeOperationalData({
       empresaId,
       periodo: payload.periodo,
@@ -128,22 +169,35 @@ const getIntelligenceOverview = async (req, res) => {
       tipoAnalise: payload.tipoAnalise,
     });
 
+    const consumo_por_veiculo = analysis.graficos?.consumoPorVeiculo || [];
+    const custo_por_periodo = analysis.graficos?.custoPorPeriodo || [];
+    const consumo_vs_producao = analysis.graficos?.consumoVsProducao || [];
+    const indicadores = analysis.indicadores || SAFE_EMPTY_OVERVIEW.indicadores;
+    const vazio = !consumo_por_veiculo.length && !custo_por_periodo.length && !consumo_vs_producao.length;
+
+    if (vazio) {
+      return res.json({
+        ...SAFE_EMPTY_OVERVIEW,
+        periodo: analysis.periodo,
+        tipoAnalise: analysis.tipoAnalise,
+        filtros: analysis.filtros,
+        indicadores,
+      });
+    }
+
     return res.json({
       periodo: analysis.periodo,
       tipoAnalise: analysis.tipoAnalise,
       filtros: analysis.filtros,
-      consumo_por_veiculo: analysis.graficos?.consumoPorVeiculo || [],
-      custo_por_periodo: analysis.graficos?.custoPorPeriodo || [],
-      consumo_vs_producao: analysis.graficos?.consumoVsProducao || [],
-      indicadores: analysis.indicadores || {},
+      vazio: false,
+      consumo_por_veiculo,
+      custo_por_periodo,
+      consumo_vs_producao,
+      indicadores,
     });
   } catch (error) {
-    const statusCode = error?.statusCode && Number.isInteger(error.statusCode) ? error.statusCode : 500;
-    return res.status(statusCode).json({
-      success: false,
-      error: error?.message || "Falha ao carregar overview da inteligência.",
-      message: error?.message || "Falha ao carregar overview da inteligência.",
-    });
+    console.error("[INTELIGENCIA][ERROR]", error);
+    return res.json(SAFE_EMPTY_OVERVIEW);
   }
 };
 
