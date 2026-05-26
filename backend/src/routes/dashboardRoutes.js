@@ -24,6 +24,9 @@ const {
   notificationsHistory,
   notificationsRead,
 } = require("../controllers/notificationsController");
+const {
+  generateOperationalAnalysisPdfHandler,
+} = require("../controllers/operationalAiController");
 
 const router = express.Router();
 
@@ -32,6 +35,7 @@ router.get("/alertas", asyncHandler(dashboardAlertas));
 router.get("/notifications/feed", asyncHandler(notificationsFeed));
 router.get("/notifications/history", asyncHandler(notificationsHistory));
 router.post("/notifications/read", asyncHandler(notificationsRead));
+router.get("/operational-ai/report.pdf", asyncHandler(generateOperationalAnalysisPdfHandler));
 router.get("/planejamento/atual", asyncHandler(getPlanejamentoAtualHandler));
 router.post("/planejamento", asyncHandler(postPlanejamento));
 router.get("/viagens/comparacao", asyncHandler(getViagensComparacao));

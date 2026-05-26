@@ -1,6 +1,8 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { Link } from "react-router-dom";
 import SkeletonRows from "../../../../components/SkeletonRows";
+import api, { extractApiErrorMessage, getFriendlyApiErrorMessage } from "../../../../services/api";
+import { emitToast } from "../../../../services/uiEvents";
 import BIDashboardShell from "../../bi/components/BIDashboardShell";
 import BIChartCard from "../../bi/components/BIChartCard";
 import { FuelProvider } from "../../contexts/FuelContext";
@@ -16,6 +18,7 @@ import AccordionSection from "../../shared/components/AccordionSection";
 
 function FuelDashboardContent() {
   const fuel = useFuelMetrics();
+  const [aiLoading, setAiLoading] = useState(false);
 
   const verPeriodoMes = useCallback(() => {
     fuel.setPeriodo("mes");
@@ -25,6 +28,39 @@ function FuelDashboardContent() {
     fuel.clearLoadError();
     void fuel.refetch();
   }, [fuel]);
+
+  const onGenerateOperationalAnalysis = useCallback(async () => {
+    if (aiLoading) return;
+    setAiLoading(true);
+    try {
+      const response = await api.get("/dashboard/operational-ai/report.pdf", {
+        params: { periodo: fuel.periodo },
+        responseType: "blob",
+        timeout: 120_000,
+      });
+      const blob = response?.data instanceof Blob ? response.data : new Blob([response?.data], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      const now = new Date();
+      const fileDate = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+      anchor.href = url;
+      anchor.download = `analise-operacional-${fuel.periodo}-${fileDate}.pdf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+      const cacheHeader = response?.headers?.["x-operational-ai-cache"];
+      if (String(cacheHeader || "").toUpperCase() === "HIT") {
+        emitToast("Análise carregada do cache e PDF descarregado.");
+      } else {
+        emitToast("Análise completa gerada com sucesso. PDF descarregado.");
+      }
+    } catch (error) {
+      emitToast(getFriendlyApiErrorMessage(error) || extractApiErrorMessage(error) || "Falha ao gerar análise completa.", "error");
+    } finally {
+      setAiLoading(false);
+    }
+  }, [aiLoading, fuel.periodo]);
 
   return (
     <BIDashboardShell
@@ -184,6 +220,18 @@ function FuelDashboardContent() {
         defaultOpenMobile={false}
       >
         <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={onGenerateOperationalAnalysis}
+            disabled={aiLoading}
+            className={`fc-btn inline-flex items-center justify-center rounded-md px-4 py-3 text-sm font-semibold transition ${
+              aiLoading
+                ? "cursor-wait border border-zinc-700 bg-zinc-900/70 text-zinc-400"
+                : "fc-btn-empresa-primary border border-sky-400/45 bg-sky-500/20 text-sky-100 hover:bg-sky-500/30"
+            }`}
+          >
+            {aiLoading ? "Gerando análise completa..." : "Gerar análise completa da operação"}
+          </button>
           <Link
             to="/empresa/dashboard"
             className="fc-btn fc-btn-empresa-secondary inline-flex rounded-md border border-zinc-700 bg-zinc-900/80 px-4 py-3 text-center text-sm font-semibold text-zinc-200 hover:bg-zinc-800"
