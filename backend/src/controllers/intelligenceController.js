@@ -17,7 +17,7 @@ const bodySchema = z.object({
   tipoAnalise: z.enum(["geral", "combustivel", "transporte", "frota"]).optional(),
 });
 
-const parseAndBuildAnalysis = async (req) => {
+const parseAnalysisPayload = (req) => {
   const empresaId = resolveEmpresaScopeWrite(req);
   if (!empresaId) {
     const err = new Error("empresa_id é obrigatório para análise operacional.");
@@ -40,13 +40,26 @@ const parseAndBuildAnalysis = async (req) => {
   }
 
   const payload = parsedBody.data;
+  return {
+    empresaId: Number(empresaId),
+    payload: {
+      periodo: payload.periodo || "mes",
+      veiculoId: parseOptionalPositiveInt(payload.veiculoId),
+      motoristaId: parseOptionalPositiveInt(payload.motoristaId),
+      tipoAnalise: payload.tipoAnalise || "geral",
+    },
+  };
+};
+
+const parseAndBuildAnalysis = async (req) => {
+  const { empresaId, payload } = parseAnalysisPayload(req);
 
   const analysis = await analyzeOperationalData({
-    empresaId: Number(empresaId),
-    periodo: payload.periodo || "mes",
-    veiculoId: parseOptionalPositiveInt(payload.veiculoId),
-    motoristaId: parseOptionalPositiveInt(payload.motoristaId),
-    tipoAnalise: payload.tipoAnalise || "geral",
+    empresaId,
+    periodo: payload.periodo,
+    veiculoId: payload.veiculoId,
+    motoristaId: payload.motoristaId,
+    tipoAnalise: payload.tipoAnalise,
   });
 
   const relatorio = await generateIntelligenceReport({
@@ -59,7 +72,7 @@ const parseAndBuildAnalysis = async (req) => {
   });
 
   return {
-    empresaId: Number(empresaId),
+    empresaId,
     analysis,
     relatorio,
   };
@@ -104,7 +117,38 @@ const exportarPdfInteligencia = async (req, res) => {
   }
 };
 
+const getIntelligenceOverview = async (req, res) => {
+  try {
+    const { empresaId, payload } = parseAnalysisPayload(req);
+    const analysis = await analyzeOperationalData({
+      empresaId,
+      periodo: payload.periodo,
+      veiculoId: payload.veiculoId,
+      motoristaId: payload.motoristaId,
+      tipoAnalise: payload.tipoAnalise,
+    });
+
+    return res.json({
+      periodo: analysis.periodo,
+      tipoAnalise: analysis.tipoAnalise,
+      filtros: analysis.filtros,
+      consumo_por_veiculo: analysis.graficos?.consumoPorVeiculo || [],
+      custo_por_periodo: analysis.graficos?.custoPorPeriodo || [],
+      consumo_vs_producao: analysis.graficos?.consumoVsProducao || [],
+      indicadores: analysis.indicadores || {},
+    });
+  } catch (error) {
+    const statusCode = error?.statusCode && Number.isInteger(error.statusCode) ? error.statusCode : 500;
+    return res.status(statusCode).json({
+      success: false,
+      error: error?.message || "Falha ao carregar overview da inteligência.",
+      message: error?.message || "Falha ao carregar overview da inteligência.",
+    });
+  }
+};
+
 module.exports = {
   analisarOperacao,
   exportarPdfInteligencia,
+  getIntelligenceOverview,
 };

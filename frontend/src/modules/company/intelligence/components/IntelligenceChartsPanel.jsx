@@ -3,33 +3,14 @@ import { Component, useEffect, useState } from "react";
 const ENABLE_RECHARTS = String(import.meta.env.VITE_ENABLE_RECHARTS || "").trim().toLowerCase() === "true";
 const PIE_COLORS = ["#2563eb", "#16a34a", "#ca8a04", "#dc2626", "#6b7280"];
 
-const DEFAULT_PIE_DATA = [
-  { name: "Escavadeira 01", value: 420 },
-  { name: "Caminhão 02", value: 350 },
-  { name: "Pa Carregadeira 03", value: 260 },
-  { name: "Trator 04", value: 190 },
-];
-
-const DEFAULT_LINE_DATA = [
-  { periodo: "S1", custo: 11200 },
-  { periodo: "S2", custo: 9800 },
-  { periodo: "S3", custo: 10450 },
-  { periodo: "S4", custo: 9360 },
-];
-
-const DEFAULT_BAR_DATA = [
-  { periodo: "S1", consumo: 980, producao: 1020 },
-  { periodo: "S2", consumo: 860, producao: 910 },
-  { periodo: "S3", consumo: 910, producao: 880 },
-  { periodo: "S4", consumo: 840, producao: 970 },
-];
-
 const fmt = (value) => Number(value || 0).toLocaleString("pt-BR");
 
 const maxFrom = (values) => {
   const max = Math.max(...values, 0);
   return max <= 0 ? 1 : max;
 };
+
+const hasRows = (rows) => Array.isArray(rows) && rows.length > 0;
 
 function ChartCard({ title, subtitle, children, className = "" }) {
   return (
@@ -38,6 +19,14 @@ function ChartCard({ title, subtitle, children, className = "" }) {
       {subtitle ? <p className="mt-1 text-xs text-zinc-400">{subtitle}</p> : null}
       <div className="mt-4 h-64 w-full sm:h-72">{children}</div>
     </article>
+  );
+}
+
+function ChartEmptyState() {
+  return (
+    <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-zinc-800 bg-zinc-950/60 px-3 text-center text-xs text-zinc-500">
+      Sem dados no filtro selecionado.
+    </div>
   );
 }
 
@@ -166,12 +155,18 @@ function FallbackChartsPanel({ pieData, lineData, barData }) {
   return (
     <>
       <ChartCard title="Consumo por veículo" subtitle="Participação no período">
-        <PieFallbackChart data={pieData} />
-        <PieLegend data={pieData} />
+        {hasRows(pieData) ? (
+          <>
+            <PieFallbackChart data={pieData} />
+            <PieLegend data={pieData} />
+          </>
+        ) : (
+          <ChartEmptyState />
+        )}
       </ChartCard>
 
       <ChartCard title="Custo por período" subtitle="Evolução do custo operacional">
-        <LineFallbackChart data={lineData} />
+        {hasRows(lineData) ? <LineFallbackChart data={lineData} /> : <ChartEmptyState />}
       </ChartCard>
 
       <ChartCard
@@ -179,16 +174,17 @@ function FallbackChartsPanel({ pieData, lineData, barData }) {
         subtitle="Comparativo consolidado por período"
         className="lg:col-span-2"
       >
-        <BarsFallbackChart data={barData} />
+        {hasRows(barData) ? <BarsFallbackChart data={barData} /> : <ChartEmptyState />}
       </ChartCard>
     </>
   );
 }
 
 export default function IntelligenceChartsPanel({
-  pieData = DEFAULT_PIE_DATA,
-  lineData = DEFAULT_LINE_DATA,
-  barData = DEFAULT_BAR_DATA,
+  pieData = [],
+  lineData = [],
+  barData = [],
+  loading = false,
 }) {
   const [RechartsChartsPanel, setRechartsChartsPanel] = useState(null);
   const [rechartsFailed, setRechartsFailed] = useState(false);
@@ -227,7 +223,11 @@ export default function IntelligenceChartsPanel({
 
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ChartErrorBoundary fallback={<FallbackChartsPanel pieData={pieData} lineData={lineData} barData={barData} />}>
-          {canUseRecharts ? (
+          {loading ? (
+            <article className="rounded-xl border border-zinc-800/90 bg-zinc-950/50 p-4 text-sm text-zinc-400 lg:col-span-2">
+              Carregando dados reais dos gráficos...
+            </article>
+          ) : canUseRecharts ? (
             <RechartsChartsPanel pieData={pieData} lineData={lineData} barData={barData} />
           ) : (
             <FallbackChartsPanel pieData={pieData} lineData={lineData} barData={barData} />
