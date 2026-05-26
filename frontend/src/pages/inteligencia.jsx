@@ -317,14 +317,21 @@ export default function InteligenciaPage() {
     }
   }, []);
 
-  const onGenerateAnalysis = useCallback(async () => {
+  const gerarAnalise = useCallback(async () => {
     setAnalysisLoading(true);
     setAnalysisError("");
     try {
-      const payload = buildApiFilters(filters);
-      const { data } = await api.post("/inteligencia/analisar", payload);
+      const apiFilters = buildApiFilters(filters);
+      const payload = {
+        periodo: apiFilters.periodo,
+        veiculo_id: apiFilters.veiculoId ?? null,
+        motorista_id: apiFilters.motoristaId ?? null,
+        tipo_analise: apiFilters.tipoAnalise,
+      };
+      const { data } = await api.post("/inteligencia/gerar", payload);
       setAnalysis(data || null);
     } catch (error) {
+      console.error("Erro ao gerar análise:", error);
       setAnalysis(null);
       setAnalysisError(
         getFriendlyApiErrorMessage(error) ||
@@ -392,7 +399,7 @@ export default function InteligenciaPage() {
             <button
               type="button"
               className="fc-btn fc-btn-empresa-primary w-full rounded-md px-4 py-3 text-sm font-semibold transition-all duration-300"
-              onClick={onGenerateAnalysis}
+              onClick={gerarAnalise}
               disabled={analysisLoading}
             >
               {analysisLoading ? "Gerando análise..." : "Gerar Análise Inteligente"}

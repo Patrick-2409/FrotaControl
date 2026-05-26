@@ -55,11 +55,14 @@ const parseAnalysisPayload = (req, { allowFallback = false } = {}) => {
   const queryPeriodo = req.query?.periodo;
   const queryVeiculo = req.query?.veiculo ?? req.query?.veiculoId;
   const queryMotorista = req.query?.motorista ?? req.query?.motoristaId;
+  const bodyVeiculo = req.body?.veiculoId ?? req.body?.veiculo_id;
+  const bodyMotorista = req.body?.motoristaId ?? req.body?.motorista_id;
+  const bodyTipoAnalise = req.body?.tipoAnalise ?? req.body?.tipo_analise;
   const rawPayload = {
     periodo: req.body?.periodo ?? queryPeriodo ?? "mes",
-    veiculoId: req.body?.veiculoId ?? queryVeiculo ?? null,
-    motoristaId: req.body?.motoristaId ?? queryMotorista ?? null,
-    tipoAnalise: req.body?.tipoAnalise ?? req.query?.tipoAnalise,
+    veiculoId: bodyVeiculo ?? queryVeiculo ?? null,
+    motoristaId: bodyMotorista ?? queryMotorista ?? null,
+    tipoAnalise: bodyTipoAnalise ?? req.query?.tipoAnalise ?? req.query?.tipo_analise,
   };
 
   const parsedBody = bodySchema.safeParse(rawPayload);
