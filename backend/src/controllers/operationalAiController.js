@@ -1,10 +1,20 @@
 const { z } = require("zod");
 const { resolveEmpresaScope } = require("../domain/tenantContext");
-const { generateOperationalAnalysisPdf } = require("../services/operationalAiAnalysisService");
+const { generateExecutivePdf } = require("../services/operationalAiExecutiveService");
 
 const periodoSchema = z.enum(["dia", "semana", "mes", "ano"]).optional();
 
-const generateOperationalAnalysisPdfHandler = async (req, res) => {
+const parsePeriodo = (req) => {
+  const fromBody = req.body?.periodo != null ? String(req.body.periodo).trim().toLowerCase() : undefined;
+  const fromQuery = req.query?.periodo != null ? String(req.query.periodo).trim().toLowerCase() : undefined;
+  const parsed = periodoSchema.safeParse(fromBody || fromQuery || undefined);
+  if (!parsed.success) {
+    return { ok: false };
+  }
+  return { ok: true, value: parsed.data || "mes" };
+};
+
+const sendPdf = async (req, res) => {
   const empresaId = resolveEmpresaScope(req);
   if (!empresaId) {
     return res.status(400).json({
@@ -14,10 +24,8 @@ const generateOperationalAnalysisPdfHandler = async (req, res) => {
     });
   }
 
-  const parsed = periodoSchema.safeParse(
-    req.query.periodo != null ? String(req.query.periodo).trim().toLowerCase() : undefined
-  );
-  if (!parsed.success) {
+  const parsedPeriodo = parsePeriodo(req);
+  if (!parsedPeriodo.ok) {
     return res.status(400).json({
       success: false,
       error: "Período inválido.",
@@ -25,11 +33,11 @@ const generateOperationalAnalysisPdfHandler = async (req, res) => {
     });
   }
 
-  const periodo = parsed.data || "mes";
+  const periodo = parsedPeriodo.value;
   const userId = req.user?.sub ? Number(req.user.sub) : null;
 
   try {
-    const result = await generateOperationalAnalysisPdf({
+    const result = await generateExecutivePdf({
       empresaId: Number(empresaId),
       userId: Number.isFinite(userId) ? userId : null,
       periodo,
@@ -56,7 +64,11 @@ const generateOperationalAnalysisPdfHandler = async (req, res) => {
   }
 };
 
+const generateOperationalAnalysisPdfHandler = async (req, res) => sendPdf(req, res);
+const postAiReportHandler = async (req, res) => sendPdf(req, res);
+
 module.exports = {
   generateOperationalAnalysisPdfHandler,
+  postAiReportHandler,
 };
 

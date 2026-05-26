@@ -16,6 +16,7 @@ const adminRoutes = require("./routes/adminRoutes");
 const userProfileRoutes = require("./routes/userProfileRoutes");
 const apontadorRoutes = require("./routes/apontadorRoutes");
 const devRoutes = require("./routes/devRoutes");
+const aiRoutes = require("./routes/aiRoutes");
 const { authMiddleware, requireRole } = require("./middleware/authMiddleware");
 const { requireAccountActive } = require("./middleware/accountActiveMiddleware");
 const { errorMiddleware } = require("./middleware/errorMiddleware");
@@ -184,6 +185,13 @@ app.use(
   requireAccountActive,
   requireRole("ADMIN_EMPRESA", "SUPER_ADMIN"),
   dashboardRoutes
+);
+app.use(
+  "/api/ai",
+  authMiddleware,
+  requireAccountActive,
+  requireRole("ADMIN_EMPRESA", "SUPER_ADMIN"),
+  aiRoutes
 );
 app.use(
   "/api/dashboard/export",

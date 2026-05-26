@@ -33,8 +33,7 @@ function FuelDashboardContent() {
     if (aiLoading) return;
     setAiLoading(true);
     try {
-      const response = await api.get("/dashboard/operational-ai/report.pdf", {
-        params: { periodo: fuel.periodo },
+      const response = await api.post("/ai/report", { periodo: fuel.periodo }, {
         responseType: "blob",
         timeout: 120_000,
       });
