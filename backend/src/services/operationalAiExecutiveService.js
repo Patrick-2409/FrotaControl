@@ -1,4 +1,6 @@
 const crypto = require("crypto");
+const fs = require("fs/promises");
+const path = require("path");
 const PDFDocument = require("pdfkit");
 const { pool } = require("../db");
 const fuelSvc = require("./fuelService");
@@ -21,6 +23,7 @@ const COLORS = {
 
 let tablesReadyPromise = null;
 let puppeteerModule = null;
+const INSUFFICIENT_DATA_TEXT = "Dados insuficientes para análise";
 
 const toNumber = (value, fallback = 0) => {
   const parsed = Number(value);
@@ -629,6 +632,87 @@ const fmtNum = (value, digits = 0) =>
     ? toNumber(value).toLocaleString("pt-BR", { minimumFractionDigits: digits, maximumFractionDigits: digits })
     : "—";
 
+const isPresentNumber = (value) => value !== null && value !== undefined && Number.isFinite(Number(value));
+const orInsufficient = (text) => (String(text || "").trim() ? String(text).trim() : INSUFFICIENT_DATA_TEXT);
+
+const formatMetric = (value, formatter) => {
+  if (!isPresentNumber(value)) return INSUFFICIENT_DATA_TEXT;
+  return formatter(value);
+};
+
+const getBaseUrl = () => {
+  const configured = String(process.env.PUBLIC_BASE_URL || process.env.BACKEND_PUBLIC_URL || "")
+    .trim()
+    .replace(/\/+$/, "");
+  if (configured) return configured;
+  return `http://127.0.0.1:${process.env.PORT || 4000}`;
+};
+
+const extToMime = (ext) => {
+  const normalized = String(ext || "").toLowerCase().replace(".", "");
+  if (normalized === "jpg" || normalized === "jpeg") return "image/jpeg";
+  if (normalized === "webp") return "image/webp";
+  if (normalized === "svg") return "image/svg+xml";
+  return "image/png";
+};
+
+const resolveUploadsPath = (logoUrl) => {
+  if (!logoUrl) return null;
+  let pathname = String(logoUrl).trim();
+  try {
+    if (/^https?:\/\//i.test(pathname)) {
+      pathname = new URL(pathname).pathname;
+    }
+  } catch {
+    return null;
+  }
+  const normalized = pathname.replace(/\\/g, "/");
+  if (!normalized.includes("/uploads/") && !normalized.startsWith("uploads/")) return null;
+  const uploadsPath = normalized.includes("/uploads/")
+    ? normalized.slice(normalized.toLowerCase().indexOf("/uploads/") + 1)
+    : normalized;
+  const root = path.resolve(__dirname, "../../");
+  const localPath = path.resolve(root, uploadsPath);
+  const uploadsRoot = path.resolve(root, "uploads");
+  if (!localPath.startsWith(uploadsRoot)) return null;
+  return localPath;
+};
+
+const resolveLogoDataUrl = async (logoUrl) => {
+  if (!logoUrl) return "";
+  const localPath = resolveUploadsPath(logoUrl);
+  if (localPath) {
+    try {
+      const buffer = await fs.readFile(localPath);
+      const ext = path.extname(localPath).replace(".", "").toLowerCase();
+      return `data:${extToMime(ext)};base64,${buffer.toString("base64")}`;
+    } catch {
+      // fallback HTTP abaixo
+    }
+  }
+  let url = String(logoUrl).trim();
+  if (!/^https?:\/\//i.test(url)) {
+    url = new URL(url.startsWith("/") ? url : `/${url}`, getBaseUrl()).toString();
+  }
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return "";
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+    const ext = contentType.includes("jpeg")
+      ? "jpeg"
+      : contentType.includes("webp")
+        ? "webp"
+        : contentType.includes("svg")
+          ? "svg"
+          : "png";
+    return `data:${extToMime(ext)};base64,${buffer.toString("base64")}`;
+  } catch {
+    return "";
+  }
+};
+
 const yDomain = (values) => {
   const clean = values.filter((v) => Number.isFinite(v));
   const max = clean.length ? Math.max(...clean) : 0;
@@ -785,12 +869,25 @@ const bullets = (items) => {
   return `<ul>${safe.map((item) => `<li>${esc(item)}</li>`).join("")}</ul>`;
 };
 
-const buildHtmlReport = ({ dataset, ai }) => {
+const buildHtmlReport = async ({ dataset, ai }) => {
   const health = healthClass(ai.saude_operacao);
   const generatedAt = new Date(dataset.periodo.gerado_em).toLocaleString("pt-BR");
   const fuelChart = lineChartSvg(dataset.combustivel.serie_custo_dia, "Custo combustível por dia");
   const transportChart = dualBarSvg(dataset.transporte.serie_dia, "Toneladas e viagens por dia");
   const fleetChart = horizontalBarSvg(dataset.frota.utilizacao_por_veiculo, "Utilização por veículo");
+  const logoSrc = await resolveLogoDataUrl(dataset?.empresa?.logo_url);
+
+  const fuelDataReady =
+    (Array.isArray(dataset.combustivel?.serie_custo_dia) && dataset.combustivel.serie_custo_dia.length > 0) ||
+    toNumber(dataset.combustivel?.total_litros) > 0 ||
+    toNumber(dataset.combustivel?.total_gasto) > 0;
+  const transportDataReady =
+    (Array.isArray(dataset.transporte?.serie_dia) && dataset.transporte.serie_dia.length > 0) ||
+    toNumber(dataset.transporte?.viagens) > 0 ||
+    toNumber(dataset.transporte?.total_toneladas) > 0;
+  const fleetDataReady =
+    (Array.isArray(dataset.frota?.utilizacao_por_veiculo) && dataset.frota.utilizacao_por_veiculo.length > 0) ||
+    toNumber(dataset.frota?.total_veiculos) > 0;
 
   const criticalNow = [
     ...ensureList(ai.pontos_prioritarios),
@@ -799,36 +896,53 @@ const buildHtmlReport = ({ dataset, ai }) => {
   ];
   const priorityImmediate = Array.from(new Set(criticalNow)).slice(0, 8);
 
-  const fuelKpis = `
+  const fuelKpisTemplate = `
     <div class="kpis">
-      <div class="kpi"><span>Total gasto</span><strong>${esc(fmtMoney(dataset.combustivel.total_gasto))}</strong></div>
-      <div class="kpi"><span>Total litros</span><strong>${esc(fmtNum(dataset.combustivel.total_litros, 1))} L</strong></div>
-      <div class="kpi"><span>Média preço</span><strong>${dataset.combustivel.media_preco == null ? "—" : `R$ ${esc(fmtNum(dataset.combustivel.media_preco, 2))}/L`}</strong></div>
-      <div class="kpi"><span>Vs frota</span><strong>${dataset.combustivel.vs_frota_pct == null ? "—" : `${esc(fmtNum(dataset.combustivel.vs_frota_pct, 1))}%`}</strong></div>
-      <div class="kpi"><span>Vs histórico</span><strong>${dataset.combustivel.vs_historico_pct == null ? "—" : `${esc(fmtNum(dataset.combustivel.vs_historico_pct, 1))}%`}</strong></div>
+      <div class="kpi"><span>Total gasto</span><strong>{{TOTAL_GASTO}}</strong></div>
+      <div class="kpi"><span>Total litros</span><strong>{{TOTAL_LITROS}}</strong></div>
+      <div class="kpi"><span>Média preço</span><strong>{{MEDIA_PRECO}}</strong></div>
+      <div class="kpi"><span>Vs frota</span><strong>{{VS_FROTA}}</strong></div>
+      <div class="kpi"><span>Vs histórico</span><strong>{{VS_HISTORICO}}</strong></div>
     </div>
   `;
 
-  const transportKpis = `
+  const transportKpisTemplate = `
     <div class="kpis">
-      <div class="kpi"><span>Total toneladas</span><strong>${esc(fmtNum(dataset.transporte.total_toneladas, 1))}</strong></div>
-      <div class="kpi"><span>Total viagens</span><strong>${esc(fmtNum(dataset.transporte.viagens))}</strong></div>
-      <div class="kpi"><span>Produtividade</span><strong>${esc(fmtNum(dataset.transporte.produtividade_media_viagens_por_veiculo, 2))}</strong></div>
-      <div class="kpi"><span>Veículos ativos</span><strong>${esc(fmtNum(dataset.transporte.veiculos_ativos))}</strong></div>
-      <div class="kpi"><span>Veículos ociosos</span><strong>${esc(fmtNum(dataset.transporte.veiculos_ociosos?.length || 0))}</strong></div>
+      <div class="kpi"><span>Total toneladas</span><strong>{{TONELADAS}}</strong></div>
+      <div class="kpi"><span>Total viagens</span><strong>{{VIAGENS}}</strong></div>
+      <div class="kpi"><span>Produtividade</span><strong>{{PRODUTIVIDADE}}</strong></div>
+      <div class="kpi"><span>Veículos ativos</span><strong>{{VEICULOS_ATIVOS}}</strong></div>
+      <div class="kpi"><span>Veículos ociosos</span><strong>{{VEICULOS_OCIOSOS}}</strong></div>
     </div>
   `;
 
-  const fleetKpis = `
+  const fleetKpisTemplate = `
     <div class="kpis">
-      <div class="kpi"><span>Total veículos</span><strong>${esc(fmtNum(dataset.frota.total_veiculos))}</strong></div>
-      <div class="kpi"><span>Em uso</span><strong>${esc(fmtNum(dataset.frota.em_uso))}</strong></div>
-      <div class="kpi"><span>Ociosos</span><strong>${esc(fmtNum(dataset.frota.ociosos))}</strong></div>
-      <div class="kpi"><span>Baixa performance</span><strong>${esc(fmtNum(dataset.frota.baixa_performance?.length || 0))}</strong></div>
+      <div class="kpi"><span>Total veículos</span><strong>{{FROTA_TOTAL}}</strong></div>
+      <div class="kpi"><span>Em uso</span><strong>{{FROTA_EM_USO}}</strong></div>
+      <div class="kpi"><span>Ociosos</span><strong>{{FROTA_OCIOSOS}}</strong></div>
+      <div class="kpi"><span>Baixa performance</span><strong>{{FROTA_BAIXA_PERFORMANCE}}</strong></div>
     </div>
   `;
 
-  return `<!doctype html>
+  const placeholders = {
+    "{{TOTAL_GASTO}}": esc(formatMetric(dataset.combustivel?.total_gasto, fmtMoney)),
+    "{{TOTAL_LITROS}}": esc(formatMetric(dataset.combustivel?.total_litros, (v) => `${fmtNum(v, 1)} L`)),
+    "{{MEDIA_PRECO}}": esc(formatMetric(dataset.combustivel?.media_preco, (v) => `R$ ${fmtNum(v, 2)}/L`)),
+    "{{VS_FROTA}}": esc(formatMetric(dataset.combustivel?.vs_frota_pct, (v) => `${fmtNum(v, 1)}%`)),
+    "{{VS_HISTORICO}}": esc(formatMetric(dataset.combustivel?.vs_historico_pct, (v) => `${fmtNum(v, 1)}%`)),
+    "{{TONELADAS}}": esc(formatMetric(dataset.transporte?.total_toneladas, (v) => fmtNum(v, 1))),
+    "{{VIAGENS}}": esc(formatMetric(dataset.transporte?.viagens, (v) => fmtNum(v))),
+    "{{PRODUTIVIDADE}}": esc(formatMetric(dataset.transporte?.produtividade_media_viagens_por_veiculo, (v) => fmtNum(v, 2))),
+    "{{VEICULOS_ATIVOS}}": esc(formatMetric(dataset.transporte?.veiculos_ativos, (v) => fmtNum(v))),
+    "{{VEICULOS_OCIOSOS}}": esc(formatMetric(dataset.transporte?.veiculos_ociosos?.length, (v) => fmtNum(v))),
+    "{{FROTA_TOTAL}}": esc(formatMetric(dataset.frota?.total_veiculos, (v) => fmtNum(v))),
+    "{{FROTA_EM_USO}}": esc(formatMetric(dataset.frota?.em_uso, (v) => fmtNum(v))),
+    "{{FROTA_OCIOSOS}}": esc(formatMetric(dataset.frota?.ociosos, (v) => fmtNum(v))),
+    "{{FROTA_BAIXA_PERFORMANCE}}": esc(formatMetric(dataset.frota?.baixa_performance?.length, (v) => fmtNum(v))),
+  };
+
+  let html = `<!doctype html>
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8" />
@@ -860,9 +974,12 @@ const buildHtmlReport = ({ dataset, ai }) => {
 <body>
   <div class="page">
     <header class="header">
-      <div>
+      <div style="display:flex;align-items:center;gap:12px;">
+        ${logoSrc ? `<img src="${esc(logoSrc)}" alt="Logo da empresa" style="width:68px;height:68px;object-fit:contain;border-radius:10px;border:1px solid #e5e7eb;background:#fff;padding:4px;" />` : ""}
+        <div>
         <h1>Relatório Executivo Operacional</h1>
         <div style="font-size:12px;color:#475569;">${esc(dataset.empresa.nome)} • ${esc(dataset.periodo.inicio)} até ${esc(dataset.periodo.fim)}</div>
+      </div>
       </div>
       <div class="meta">
         <div>Período: ${esc(dataset.periodo.tipo)}</div>
@@ -882,8 +999,8 @@ const buildHtmlReport = ({ dataset, ai }) => {
 
     <section class="section">
       <h2>3. ⛽ Combustível</h2>
-      ${fuelKpis}
-      <p>${esc(ai.analise_combustivel)}</p>
+      ${fuelKpisTemplate}
+      <p>${esc(fuelDataReady ? orInsufficient(ai.analise_combustivel) : INSUFFICIENT_DATA_TEXT)}</p>
       ${
         dataset.combustivel.ranking_consumo?.length
           ? `<div class="inline-note">Maiores consumos: ${esc(
@@ -899,8 +1016,8 @@ const buildHtmlReport = ({ dataset, ai }) => {
 
     <section class="section">
       <h2>4. 🚛 Transporte</h2>
-      ${transportKpis}
-      <p>${esc(ai.analise_transporte)}</p>
+      ${transportKpisTemplate}
+      <p>${esc(transportDataReady ? orInsufficient(ai.analise_transporte) : INSUFFICIENT_DATA_TEXT)}</p>
       ${
         dataset.transporte.veiculos_ociosos?.length
           ? `<div class="inline-note">Ociosos: ${esc(dataset.transporte.veiculos_ociosos.slice(0, 3).join(" • "))}</div>`
@@ -911,8 +1028,8 @@ const buildHtmlReport = ({ dataset, ai }) => {
 
     <section class="section">
       <h2>5. 🚜 Frota</h2>
-      ${fleetKpis}
-      <p>${esc(ai.analise_frota)}</p>
+      ${fleetKpisTemplate}
+      <p>${esc(fleetDataReady ? orInsufficient(ai.analise_frota) : INSUFFICIENT_DATA_TEXT)}</p>
       ${
         dataset.frota.baixa_performance?.length
           ? `<div class="inline-note">Baixa performance: ${esc(dataset.frota.baixa_performance.slice(0, 3).join(" • "))}</div>`
@@ -951,6 +1068,11 @@ const buildHtmlReport = ({ dataset, ai }) => {
   </div>
 </body>
 </html>`;
+
+  for (const [key, value] of Object.entries(placeholders)) {
+    html = html.replaceAll(key, value);
+  }
+  return html;
 };
 
 const getPuppeteer = () => {
@@ -1091,7 +1213,7 @@ const runAnalysis = async ({ empresaId, userId, periodo }) => {
 
 const generateExecutivePdf = async ({ empresaId, userId, periodo }) => {
   const analysis = await runAnalysis({ empresaId, userId, periodo });
-  const html = buildHtmlReport({ dataset: analysis.dataset, ai: analysis.ai });
+  const html = await buildHtmlReport({ dataset: analysis.dataset, ai: analysis.ai });
   let buffer = null;
   try {
     buffer = await renderPdfFromHtml(html);
