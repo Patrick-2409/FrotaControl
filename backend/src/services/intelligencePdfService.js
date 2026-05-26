@@ -1,5 +1,6 @@
 const fs = require("fs/promises");
 const path = require("path");
+const PDFDocument = require("pdfkit");
 const { getCompanyById } = require("../models/companyModel");
 
 let puppeteerModule = null;
@@ -354,10 +355,107 @@ const renderPdfFromHtml = async (html) => {
   }
 };
 
+const shouldFallbackToPdfKit = (error) => {
+  const message = String(error?.message || "").toLowerCase();
+  return (
+    message.includes("could not find chrome") ||
+    message.includes("failed to launch") ||
+    message.includes("browser was not found") ||
+    message.includes("spawn") ||
+    message.includes("enoent")
+  );
+};
+
+const generatePdfWithPdfKit = async ({ company, analysis, report }) =>
+  new Promise((resolve, reject) => {
+    try {
+      const indicators = analysis?.indicadores || {};
+      const insights = analysis?.insights || {};
+      const health = healthFromInsights(insights);
+      const doc = new PDFDocument({
+        size: "A4",
+        margin: 36,
+        info: {
+          Title: "Central de Inteligência Operacional",
+          Author: "FrotaMax",
+        },
+      });
+
+      const chunks = [];
+      doc.on("data", (chunk) => chunks.push(chunk));
+      doc.on("end", () => resolve(Buffer.concat(chunks)));
+      doc.on("error", reject);
+
+      const generatedAt = new Date().toLocaleString("pt-BR");
+      doc.fontSize(20).fillColor("#0f172a").text("Central de Inteligência Operacional");
+      doc.moveDown(0.2);
+      doc
+        .fontSize(11)
+        .fillColor("#475569")
+        .text(`${company?.nome || "Empresa"} • ${analysis?.periodo?.inicio || "-"} até ${analysis?.periodo?.fim || "-"}`);
+      doc.text(`Tipo: ${analysis?.tipoAnalise || "geral"} • Gerado em: ${generatedAt}`);
+
+      doc.moveDown(0.8);
+      doc.fontSize(14).fillColor("#111827").text("Status da operação");
+      doc.moveDown(0.2);
+      doc.fontSize(18).fillColor(health.color).text(health.label);
+
+      doc.moveDown(0.8);
+      doc.fontSize(14).fillColor("#111827").text("Indicadores");
+      doc.moveDown(0.3);
+      doc.fontSize(11).fillColor("#1f2937");
+      doc.text(`• Total litros: ${fmtNum(indicators.totalLitros, 1)} L`);
+      doc.text(`• Total valor: ${fmtMoney(indicators.totalValor)}`);
+      doc.text(`• Preço médio: ${indicators.precoMedio == null ? "—" : `R$ ${fmtNum(indicators.precoMedio, 2)}/L`}`);
+      doc.text(`• Total viagens: ${fmtNum(indicators.totalViagens)}`);
+      doc.text(`• Veículos ativos: ${fmtNum(indicators.veiculosAtivos)}`);
+      doc.text(`• Veículos ociosos: ${fmtNum(indicators.veiculosOciosos)}`);
+
+      doc.moveDown(0.8);
+      doc.fontSize(14).fillColor("#111827").text("Análise IA");
+      doc.moveDown(0.3);
+      doc.fontSize(11).fillColor("#1f2937");
+      doc.text(`Problema principal: ${report?.problemaPrincipal || "Dados insuficientes para análise"}`);
+      doc.moveDown(0.3);
+      doc.text(`Análise: ${report?.analise || "Dados insuficientes para análise"}`);
+
+      doc.moveDown(0.6);
+      doc.fontSize(12).fillColor("#111827").text("Riscos");
+      doc.moveDown(0.2);
+      const riscos = Array.isArray(report?.riscos) && report.riscos.length ? report.riscos : ["Sem riscos específicos identificados."];
+      riscos.forEach((item) => doc.fontSize(11).fillColor("#1f2937").text(`• ${item}`));
+
+      doc.moveDown(0.6);
+      doc.fontSize(12).fillColor("#111827").text("Ações recomendadas");
+      doc.moveDown(0.2);
+      const acoes = Array.isArray(report?.acoes) && report.acoes.length ? report.acoes : ["Reavaliar filtros e gerar novo diagnóstico."];
+      acoes.forEach((item) => doc.fontSize(11).fillColor("#1f2937").text(`• ${item}`));
+
+      doc.moveDown(0.8);
+      doc
+        .fontSize(10)
+        .fillColor("#6b7280")
+        .text("Observação técnica: PDF gerado em modo de compatibilidade (sem Chromium).", { align: "left" });
+
+      doc.end();
+    } catch (error) {
+      reject(error);
+    }
+  });
+
 const generateIntelligencePdf = async ({ empresaId, analysis, report }) => {
   const company = await getCompanyById(empresaId);
   const html = await buildHtmlReport({ company, analysis, report });
-  const buffer = await renderPdfFromHtml(html);
+  let buffer;
+  try {
+    buffer = await renderPdfFromHtml(html);
+  } catch (error) {
+    if (!shouldFallbackToPdfKit(error)) {
+      throw error;
+    }
+    console.warn("[INTELIGENCIA][PDF] Puppeteer indisponível, usando fallback PDFKit:", error?.message || error);
+    buffer = await generatePdfWithPdfKit({ company, analysis, report });
+  }
   const companySlug = String(company?.nome || "empresa")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
