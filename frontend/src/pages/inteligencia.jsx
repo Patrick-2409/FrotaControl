@@ -1,6 +1,7 @@
 import { useState } from "react";
 import BIDashboardShell from "../modules/company/bi/components/BIDashboardShell";
 import IntelligenceFiltersCard from "../modules/company/intelligence/components/IntelligenceFiltersCard";
+import IntelligenceChartsPanel from "../modules/company/intelligence/components/IntelligenceChartsPanel";
 
 const DEFAULT_FILTERS = {
   periodo: "mes",
@@ -46,6 +47,8 @@ export default function InteligenciaPage() {
             Gerar Análise Inteligente
           </button>
         </section>
+
+        <IntelligenceChartsPanel />
 
         <section className="fc-card border-zinc-800/80 p-4 sm:p-5">
           <p className="fc-erp-eyebrow">Resultado</p>
