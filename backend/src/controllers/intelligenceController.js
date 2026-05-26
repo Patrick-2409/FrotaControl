@@ -1,6 +1,7 @@
 const { z } = require("zod");
 const { resolveEmpresaScopeWrite } = require("../domain/tenantContext");
 const { analyzeOperationalData } = require("../services/intelligenceAnalysisService");
+const { generateIntelligenceReport } = require("../services/intelligenceAiService");
 
 const parseOptionalPositiveInt = (value) => {
   if (value == null || String(value).trim() === "") return null;
@@ -45,7 +46,17 @@ const analisarOperacao = async (req, res) => {
     tipoAnalise: payload.tipoAnalise || "geral",
   });
 
-  return res.json(result);
+  const relatorio = await generateIntelligenceReport({
+    indicadores: result.indicadores,
+    insights: result.insights,
+    periodo: result.periodo,
+    tipoAnalise: result.tipoAnalise,
+  });
+
+  return res.json({
+    ...result,
+    relatorio,
+  });
 };
 
 module.exports = {
