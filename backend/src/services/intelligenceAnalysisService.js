@@ -8,6 +8,19 @@ const toNumber = (value, fallback = 0) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+const emptyResult = () => ({ rows: [] });
+const safeQuery = async (label, sql, params) => {
+  try {
+    return await pool.query(sql, params);
+  } catch (error) {
+    console.error(label, error);
+    return emptyResult();
+  }
+};
+const safeCombustivelQuery = (label, sql, params) => safeQuery(`ERRO COMBUSTIVEL: ${label}`, sql, params);
+const safeTransporteQuery = (label, sql, params) => safeQuery(`ERRO TRANSPORTE: ${label}`, sql, params);
+const safeParteDiariaQuery = (label, sql, params) => safeQuery(`ERRO PARTE_DIARIA: ${label}`, sql, params);
+
 const safeDivide = (numerator, denominator) => {
   const d = Number(denominator);
   if (!Number.isFinite(d) || d === 0) return 0;
@@ -112,7 +125,8 @@ const analyzeOperationalData = async ({
     lineCostRows,
     consumoVsProducaoRows,
   ] = await Promise.all([
-    pool.query(
+    safeCombustivelQuery(
+      "fuelAgg",
       `SELECT
          COALESCE(SUM(c.litros), 0)::double precision AS total_litros,
          COALESCE(SUM(c.valor_total), 0)::double precision AS total_valor
@@ -120,13 +134,15 @@ const analyzeOperationalData = async ({
        WHERE ${filtrosCombustivel}`,
       baseParams
     ),
-    pool.query(
+    safeTransporteQuery(
+      "viagemAgg",
       `SELECT COUNT(*)::int AS total_viagens
        FROM viagens vi
        WHERE ${filtrosViagens}`,
       baseParams
     ),
-    pool.query(
+    safeParteDiariaQuery(
+      "parteDiariaAgg",
       `SELECT COUNT(*)::int AS total_parte_diaria
        FROM parte_diaria pd
        WHERE pd.empresa_id = $1
@@ -136,14 +152,16 @@ const analyzeOperationalData = async ({
          AND ($5::int IS NULL OR pd.usuario_id = $5)`,
       baseParams
     ),
-    pool.query(
+    safeTransporteQuery(
+      "activeVehiclesRows",
       `SELECT DISTINCT vi.veiculo_id
        FROM viagens vi
        WHERE ${filtrosViagens}
          AND vi.veiculo_id IS NOT NULL`,
       baseParams
     ),
-    pool.query(
+    safeTransporteQuery(
+      "vehiclesScopeRows",
       `SELECT v.id, COALESCE(v.nome, 'Sem nome') AS nome, COALESCE(v.placa, '-') AS placa
        FROM veiculos v
        WHERE v.empresa_id = $1
@@ -161,7 +179,8 @@ const analyzeOperationalData = async ({
        ORDER BY v.nome`,
       baseParams
     ),
-    pool.query(
+    safeCombustivelQuery(
+      "topFuelRows",
       `SELECT
          c.veiculo_id,
          COALESCE(v.nome, 'Sem nome') AS nome,
@@ -176,7 +195,8 @@ const analyzeOperationalData = async ({
        LIMIT 1`,
       baseParams
     ),
-    pool.query(
+    safeCombustivelQuery(
+      "pieFuelRows",
       `SELECT
          COALESCE(v.nome, 'Sem nome') AS nome,
          COALESCE(v.placa, '-') AS placa,
@@ -188,7 +208,8 @@ const analyzeOperationalData = async ({
       ORDER BY litros DESC`,
       baseParams
     ),
-    pool.query(
+    safeCombustivelQuery(
+      "lineCostRows",
       `SELECT
          DATE(COALESCE(c.recorded_at_client, c.data)) AS dia,
          COALESCE(SUM(c.valor_total), 0)::double precision AS custo
@@ -198,7 +219,8 @@ const analyzeOperationalData = async ({
        ORDER BY dia`,
       baseParams
     ),
-    pool.query(
+    safeTransporteQuery(
+      "consumoVsProducaoRows",
       `WITH consumo AS (
          SELECT
            DATE(COALESCE(c.recorded_at_client, c.data)) AS dia,

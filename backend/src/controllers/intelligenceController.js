@@ -22,6 +22,7 @@ const SAFE_EMPTY_OVERVIEW = {
   consumo_por_veiculo: [],
   custo_por_periodo: [],
   consumo_vs_producao: [],
+  erro_debug: false,
   indicadores: {
     totalLitros: 0,
     totalValor: 0,
@@ -156,9 +157,15 @@ const exportarPdfInteligencia = async (req, res) => {
 
 const getIntelligenceOverview = async (req, res) => {
   try {
+    const { periodo = "mes", veiculo = null, motorista = null } = req.query || {};
+    console.log("PARAMS:", req.query || {});
+
     const { empresaId, payload } = parseAnalysisPayload(req, { allowFallback: true });
     if (!empresaId) {
-      return res.json(SAFE_EMPTY_OVERVIEW);
+      return res.status(200).json({
+        ...SAFE_EMPTY_OVERVIEW,
+        filtros_recebidos: { periodo, veiculo, motorista },
+      });
     }
 
     const analysis = await analyzeOperationalData({
@@ -176,16 +183,17 @@ const getIntelligenceOverview = async (req, res) => {
     const vazio = !consumo_por_veiculo.length && !custo_por_periodo.length && !consumo_vs_producao.length;
 
     if (vazio) {
-      return res.json({
+      return res.status(200).json({
         ...SAFE_EMPTY_OVERVIEW,
         periodo: analysis.periodo,
         tipoAnalise: analysis.tipoAnalise,
         filtros: analysis.filtros,
         indicadores,
+        erro_debug: false,
       });
     }
 
-    return res.json({
+    return res.status(200).json({
       periodo: analysis.periodo,
       tipoAnalise: analysis.tipoAnalise,
       filtros: analysis.filtros,
@@ -196,8 +204,16 @@ const getIntelligenceOverview = async (req, res) => {
       indicadores,
     });
   } catch (error) {
-    console.error("[INTELIGENCIA][ERROR]", error);
-    return res.json(SAFE_EMPTY_OVERVIEW);
+    console.error("🔥 ERRO REAL INTELIGENCIA:");
+    console.error(error);
+    console.error(error?.stack);
+    return res.status(200).json({
+      ...SAFE_EMPTY_OVERVIEW,
+      erro: true,
+      erro_debug: true,
+      mensagem: error?.message || "Falha no overview de inteligência.",
+      stack: error?.stack || null,
+    });
   }
 };
 
