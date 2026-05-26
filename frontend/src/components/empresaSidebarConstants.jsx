@@ -1,7 +1,12 @@
 /* eslint-disable react-refresh/only-export-components -- configuração e ícones da sidebar admin empresa */
+import { Brain } from "lucide-react";
+
 /** Ícones SVG neutros — mesma linguagem visual em todo o admin empresa. */
 export function EmpresaMenuIcon({ type }) {
   const iconClass = "h-4 w-4";
+  if (type === "brain") {
+    return <Brain className={iconClass} aria-hidden="true" />;
+  }
   if (type === "bell") {
     return (
       <svg viewBox="0 0 24 24" fill="none" className={iconClass} aria-hidden="true">
@@ -175,6 +180,11 @@ export const EMPRESA_SIDEBAR_SECTIONS = filterEmpresaSidebarSections([
     id: "pessoas",
     title: "Pessoas",
     items: [{ to: "/empresa/pessoas", label: "Gestão de pessoas", icon: "people", exact: false }],
+  },
+  {
+    id: "inteligencia",
+    title: null,
+    items: [{ to: "/inteligencia", label: "Inteligência", icon: "brain", exact: false }],
   },
   {
     id: "relatorios",
