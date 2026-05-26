@@ -4,6 +4,7 @@ import IntelligenceFiltersCard from "../modules/company/intelligence/components/
 import IntelligenceChartsPanel from "../modules/company/intelligence/components/IntelligenceChartsPanel";
 import AccordionSection from "../modules/company/shared/components/AccordionSection";
 import api, { extractApiErrorMessage, getFriendlyApiErrorMessage } from "../services/api";
+import { emitToast } from "../services/uiEvents";
 
 const DEFAULT_FILTERS = {
   periodo: "mes",
@@ -59,6 +60,51 @@ const compactDate = (isoDate) => {
   return `${d}/${m}/${y}`;
 };
 
+const getFilenameFromDisposition = (contentDisposition, fallback = "inteligencia-operacional.pdf") => {
+  const raw = String(contentDisposition || "");
+  const utf8Match = raw.match(/filename\*\s*=\s*UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]).replace(/["']/g, "").trim() || fallback;
+    } catch {
+      return utf8Match[1].replace(/["']/g, "").trim() || fallback;
+    }
+  }
+  const simpleMatch = raw.match(/filename\s*=\s*"?([^";]+)"?/i);
+  return simpleMatch?.[1]?.trim() || fallback;
+};
+
+const parseBlobErrorMessage = async (error, fallback) => {
+  const maybeBlob = error?.response?.data;
+  if (maybeBlob instanceof Blob) {
+    try {
+      const raw = await maybeBlob.text();
+      const parsed = JSON.parse(raw);
+      return parsed?.message || parsed?.error || fallback;
+    } catch {
+      return fallback;
+    }
+  }
+  return getFriendlyApiErrorMessage(error) || extractApiErrorMessage(error) || fallback;
+};
+
+const triggerPdfDownload = (url, filename) => {
+  if (!url) return false;
+  try {
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename || "inteligencia-operacional.pdf";
+    link.rel = "noopener";
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 function SummarySkeleton() {
   return (
     <section className="rounded-xl border border-zinc-800/80 bg-zinc-950/40 p-4 sm:p-5">
@@ -100,6 +146,8 @@ export default function InteligenciaPage() {
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [overviewError, setOverviewError] = useState("");
   const [analysisError, setAnalysisError] = useState("");
+  const [pdfDownloadUrl, setPdfDownloadUrl] = useState("");
+  const [pdfFilename, setPdfFilename] = useState("inteligencia-operacional.pdf");
 
   const hasOperationalData = useMemo(() => {
     const indicadores = overview?.indicadores || {};
@@ -366,18 +414,49 @@ export default function InteligenciaPage() {
       };
       const { data } = await api.post("/inteligencia/gerar", payload);
       setAnalysis(data || null);
+
+      const pdfResponse = await api.post("/inteligencia/pdf", payload, {
+        responseType: "blob",
+        skipGlobalErrorToast: true,
+      });
+      const nextFilename = getFilenameFromDisposition(
+        pdfResponse?.headers?.["content-disposition"],
+        `inteligencia-${apiFilters.periodo || "mes"}.pdf`
+      );
+      const blobUrl = URL.createObjectURL(pdfResponse.data);
+      setPdfDownloadUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return blobUrl;
+      });
+      setPdfFilename(nextFilename);
+
+      const downloaded = triggerPdfDownload(blobUrl, nextFilename);
+      if (downloaded) {
+        emitToast("Análise gerada e PDF baixado com sucesso.");
+      } else {
+        emitToast("PDF gerado. Toque em 'Baixar PDF agora'.", "warning");
+      }
     } catch (error) {
       console.error("Erro ao gerar análise:", error);
       setAnalysis(null);
-      setAnalysisError(
-        getFriendlyApiErrorMessage(error) ||
-          extractApiErrorMessage(error) ||
-          "Falha ao gerar análise inteligente."
-      );
+      const friendlyMessage = await parseBlobErrorMessage(error, "Falha ao gerar análise inteligente.");
+      setAnalysisError(friendlyMessage);
+      emitToast(friendlyMessage, "error");
     } finally {
       setAnalysisLoading(false);
     }
   }, [filters]);
+
+  const baixarPdfAgora = useCallback(() => {
+    if (!pdfDownloadUrl) {
+      emitToast("Gere uma análise antes de baixar o PDF.", "warning");
+      return;
+    }
+    const downloaded = triggerPdfDownload(pdfDownloadUrl, pdfFilename);
+    if (!downloaded) {
+      window.open(pdfDownloadUrl, "_blank", "noopener,noreferrer");
+    }
+  }, [pdfDownloadUrl, pdfFilename]);
 
   useEffect(() => {
     void loadFiltersOptions();
@@ -386,6 +465,13 @@ export default function InteligenciaPage() {
   useEffect(() => {
     void loadOverview(filters);
   }, [filters, loadOverview]);
+
+  useEffect(
+    () => () => {
+      if (pdfDownloadUrl) URL.revokeObjectURL(pdfDownloadUrl);
+    },
+    [pdfDownloadUrl]
+  );
 
   const onFiltersChange = useCallback((updater) => {
     setFilters((prev) => {
@@ -438,7 +524,15 @@ export default function InteligenciaPage() {
               onClick={gerarAnalise}
               disabled={analysisLoading}
             >
-              {analysisLoading ? "Gerando análise..." : "Gerar Análise Inteligente"}
+              {analysisLoading ? "Gerando análise e PDF..." : "Gerar Análise Inteligente"}
+            </button>
+            <button
+              type="button"
+              className="fc-btn w-full rounded-md border border-zinc-700 px-4 py-3 text-sm font-semibold text-zinc-100 transition-all duration-300 hover:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={baixarPdfAgora}
+              disabled={analysisLoading || !pdfDownloadUrl}
+            >
+              Baixar PDF agora
             </button>
             {analysisError ? <p className="text-sm text-red-400">{analysisError}</p> : null}
           </div>
