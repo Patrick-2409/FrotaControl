@@ -34,7 +34,11 @@ const EmpresaFrotaPage = lazy(() => import("./modules/company/fleet/pages/Empres
 const EmpresaPessoasPage = lazy(() => import("./modules/company/people/pages/EmpresaPessoasPage"));
 const EmpresaRelatoriosPage = lazy(() => import("./modules/company/reports/pages/EmpresaRelatoriosPage"));
 const EmpresaAlertasPage = lazy(() => import("./modules/company/alerts/pages/EmpresaAlertasPage"));
-const InteligenciaPage = lazy(() => import("./pages/inteligencia"));
+const InteligenciaPage = lazy(() =>
+  import("./pages/inteligencia").then((module) => ({
+    default: module.default,
+  }))
+);
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
