@@ -79,7 +79,16 @@ const analyzeOperationalData = async ({
     AND ($5::int IS NULL OR vi.motorista_id = $5)
   `;
 
-  const [fuelAgg, viagemAgg, activeVehiclesRows, vehiclesScopeRows, topFuelRows] = await Promise.all([
+  const [
+    fuelAgg,
+    viagemAgg,
+    activeVehiclesRows,
+    vehiclesScopeRows,
+    topFuelRows,
+    pieFuelRows,
+    lineCostRows,
+    consumoVsProducaoRows,
+  ] = await Promise.all([
     pool.query(
       `SELECT
          COALESCE(SUM(c.litros), 0)::double precision AS total_litros,
@@ -132,6 +141,55 @@ const analyzeOperationalData = async ({
        GROUP BY c.veiculo_id, v.nome, v.placa
        ORDER BY total_litros DESC
        LIMIT 1`,
+      baseParams
+    ),
+    pool.query(
+      `SELECT
+         COALESCE(v.nome, 'Sem nome') AS nome,
+         COALESCE(v.placa, '-') AS placa,
+         COALESCE(SUM(c.litros), 0)::double precision AS litros
+       FROM combustiveis c
+       LEFT JOIN veiculos v ON v.id = c.veiculo_id AND v.empresa_id = c.empresa_id
+       WHERE ${filtrosCombustivel}
+       GROUP BY v.nome, v.placa
+       ORDER BY litros DESC
+       LIMIT 8`,
+      baseParams
+    ),
+    pool.query(
+      `SELECT
+         DATE(COALESCE(c.recorded_at_client, c.data)) AS dia,
+         COALESCE(SUM(c.valor_total), 0)::double precision AS custo
+       FROM combustiveis c
+       WHERE ${filtrosCombustivel}
+       GROUP BY DATE(COALESCE(c.recorded_at_client, c.data))
+       ORDER BY dia`,
+      baseParams
+    ),
+    pool.query(
+      `WITH consumo AS (
+         SELECT
+           DATE(COALESCE(c.recorded_at_client, c.data)) AS dia,
+           COALESCE(SUM(c.litros), 0)::double precision AS consumo
+         FROM combustiveis c
+         WHERE ${filtrosCombustivel}
+         GROUP BY DATE(COALESCE(c.recorded_at_client, c.data))
+       ),
+       producao AS (
+         SELECT
+           DATE(vi.marcacao) AS dia,
+           COUNT(*)::double precision AS producao
+         FROM viagens vi
+         WHERE ${filtrosViagens}
+         GROUP BY DATE(vi.marcacao)
+       )
+       SELECT
+         COALESCE(consumo.dia, producao.dia) AS dia,
+         COALESCE(consumo.consumo, 0)::double precision AS consumo,
+         COALESCE(producao.producao, 0)::double precision AS producao
+       FROM consumo
+       FULL OUTER JOIN producao ON producao.dia = consumo.dia
+       ORDER BY dia`,
       baseParams
     ),
   ]);
@@ -192,6 +250,21 @@ const analyzeOperationalData = async ({
         placa: row.placa,
       })),
       veiculoDestaque,
+    },
+    graficos: {
+      consumoPorVeiculo: (pieFuelRows.rows || []).map((row) => ({
+        veiculo: `${row.nome} (${row.placa})`,
+        litros: toNumber(row.litros),
+      })),
+      custoPorPeriodo: (lineCostRows.rows || []).map((row) => ({
+        periodo: toIsoDate(new Date(row.dia)),
+        custo: toNumber(row.custo),
+      })),
+      consumoVsProducao: (consumoVsProducaoRows.rows || []).map((row) => ({
+        periodo: toIsoDate(new Date(row.dia)),
+        consumo: toNumber(row.consumo),
+        producao: toNumber(row.producao),
+      })),
     },
   };
 };
