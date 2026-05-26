@@ -65,7 +65,7 @@ function SummarySkeleton() {
       <div className="animate-pulse space-y-3">
         <div className="h-4 w-36 rounded bg-zinc-800/80" />
         <div className="h-9 w-2/3 rounded bg-zinc-800/70" />
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3">
           <div className="h-28 rounded-xl border border-zinc-800/80 bg-zinc-900/80" />
           <div className="h-28 rounded-xl border border-zinc-800/80 bg-zinc-900/80" />
           <div className="h-28 rounded-xl border border-zinc-800/80 bg-zinc-900/80" />
@@ -131,17 +131,6 @@ export default function InteligenciaPage() {
     }),
     [overview]
   );
-
-  const indicadorTexto = useMemo(() => {
-    const indicadores = overview?.indicadores || {};
-    return [
-      `${fmtNumber(indicadores.totalLitros)} L`,
-      `${fmtCurrency(indicadores.totalValor)}`,
-      `${fmtNumber(indicadores.totalViagens)} viagens`,
-      `${fmtNumber(indicadores.veiculosAtivos)} veículos ativos`,
-      `${fmtNumber(indicadores.veiculosOciosos)} ociosos`,
-    ].join(" · ");
-  }, [overview]);
 
   const resumoOperacional = useMemo(() => {
     const indicadores = overview?.indicadores || {};
@@ -211,20 +200,6 @@ export default function InteligenciaPage() {
       return "Recorte sem movimentação operacional para diagnóstico de risco.";
     }
     return "Operação com comportamento regular no recorte atual, sem anomalia crítica detectada.";
-  }, [analysis, resumoOperacional]);
-
-  const gargalos = useMemo(() => {
-    const relatorio = analysis?.relatorio || null;
-    if (Array.isArray(relatorio?.riscos) && relatorio.riscos.length) return relatorio.riscos;
-    const fallback = [];
-    if (resumoOperacional.totalViagens === 0 && resumoOperacional.totalLitros > 0) {
-      fallback.push("Consumo sem produção: custo operacional sem retorno.");
-    }
-    if (resumoOperacional.veiculosOciosos > 0) {
-      fallback.push(`${fmtNumber(resumoOperacional.veiculosOciosos)} veículo(s) sem uso no período.`);
-    }
-    if (!fallback.length) fallback.push("Nenhum gargalo crítico identificado no recorte atual.");
-    return fallback;
   }, [analysis, resumoOperacional]);
 
   const acoesRecomendadas = useMemo(() => {
@@ -393,7 +368,7 @@ export default function InteligenciaPage() {
           id="inteligencia-filtros"
           title="Filtros operacionais"
           description="Período, veículo, motorista e tipo de análise"
-          defaultOpenDesktop={true}
+          defaultOpenDesktop={false}
           defaultOpenMobile={false}
           contentClassName="!p-0"
         >
@@ -406,30 +381,32 @@ export default function InteligenciaPage() {
           />
         </AccordionSection>
 
-        <section className="fc-card border-zinc-800/80 p-4 sm:p-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="fc-erp-eyebrow">Análise executiva</p>
-              <p className="mt-1 text-sm text-zinc-400">Atualize o diagnóstico e as ações com base no recorte atual.</p>
-            </div>
+        <AccordionSection
+          id="inteligencia-geracao"
+          title="Gerar análise"
+          description="Atualize o diagnóstico para o recorte selecionado"
+          defaultOpenDesktop={false}
+          defaultOpenMobile={false}
+        >
+          <div className="flex flex-col gap-3">
             <button
               type="button"
-              className="fc-btn fc-btn-empresa-primary w-full rounded-md px-4 py-3 text-sm font-semibold transition-all duration-300 sm:w-auto"
+              className="fc-btn fc-btn-empresa-primary w-full rounded-md px-4 py-3 text-sm font-semibold transition-all duration-300"
               onClick={onGenerateAnalysis}
               disabled={analysisLoading}
             >
               {analysisLoading ? "Gerando análise..." : "Gerar Análise Inteligente"}
             </button>
+            {analysisError ? <p className="text-sm text-red-400">{analysisError}</p> : null}
           </div>
-          {analysisError ? <p className="mt-3 text-sm text-red-400">{analysisError}</p> : null}
-        </section>
+        </AccordionSection>
 
         <AccordionSection
           id="inteligencia-resumo"
           title="Leitura executiva"
           description={periodoLabel}
-          defaultOpenDesktop={true}
-          defaultOpenMobile={true}
+          defaultOpenDesktop={false}
+          defaultOpenMobile={false}
         >
           {overviewLoading ? (
             <SummarySkeleton />
@@ -439,7 +416,7 @@ export default function InteligenciaPage() {
             </section>
           ) : (
             <section className="transition-all duration-300">
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3">
               <article
                 className={`rounded-xl border p-4 ${
                   statusGeral.tone === "critical"
@@ -462,7 +439,7 @@ export default function InteligenciaPage() {
                 <p className="font-medium">{diagnosticoPrincipal}</p>
               </InsightCard>
 
-              <InsightCard title="4. Impacto financeiro" tone={impactoFinanceiro.exposicaoSemProducao > 0 ? "warning" : "default"}>
+              <InsightCard title="3. Impacto financeiro" tone={impactoFinanceiro.exposicaoSemProducao > 0 ? "warning" : "default"}>
                 <div className="space-y-1">
                   <p>
                     <span className="text-zinc-400">Custo total:</span> {fmtCurrency(impactoFinanceiro.custoTotal)}
@@ -482,17 +459,7 @@ export default function InteligenciaPage() {
                 </div>
               </InsightCard>
 
-              <InsightCard title="3. Gargalos" tone={gargalos[0]?.includes("Nenhum gargalo") ? "ok" : "warning"}>
-                <div className="space-y-1">
-                  {gargalos.slice(0, 4).map((item) => (
-                    <p key={item} className="text-sm">
-                      - {item}
-                    </p>
-                  ))}
-                </div>
-              </InsightCard>
-
-              <InsightCard title="5. Ações recomendadas" tone="default">
+              <InsightCard title="4. Ações recomendadas" tone="default">
                 <div className="space-y-1">
                   {acoesRecomendadas.slice(0, 4).map((item) => (
                     <p key={item} className="text-sm">
@@ -500,10 +467,6 @@ export default function InteligenciaPage() {
                     </p>
                   ))}
                 </div>
-              </InsightCard>
-
-              <InsightCard title="Indicadores rápidos" tone="default">
-                <p className="break-words">{indicadorTexto}</p>
               </InsightCard>
             </div>
             </section>
@@ -514,9 +477,9 @@ export default function InteligenciaPage() {
 
         <AccordionSection
           id="inteligencia-graficos"
-          title="6. Gráficos de apoio"
+          title="5. Gráficos de apoio"
           description="Visual para consumo, custo e produção"
-          defaultOpenDesktop={true}
+          defaultOpenDesktop={false}
           defaultOpenMobile={false}
         >
           <IntelligenceChartsPanel

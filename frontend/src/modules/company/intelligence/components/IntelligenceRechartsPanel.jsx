@@ -22,9 +22,7 @@ function ChartCard({ title, subtitle, children, className = "" }) {
     <article className={`rounded-xl border border-zinc-800/90 bg-zinc-950/50 p-4 ${className}`}>
       <p className="text-sm font-semibold text-zinc-100">{title}</p>
       {subtitle ? <p className="mt-1 text-xs text-zinc-400">{subtitle}</p> : null}
-      <div className="mt-3 h-56 w-full overflow-x-auto sm:h-64">
-        <div className="h-full min-w-[340px]">{children}</div>
-      </div>
+      <div className="mt-3 h-[220px] max-h-[220px] w-full overflow-hidden">{children}</div>
     </article>
   );
 }
