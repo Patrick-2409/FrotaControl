@@ -94,8 +94,6 @@ export default function EmpresaAlertasPage() {
     await loadAll();
   };
 
-  if (loading && !feed) return <ScreenLoading message="Carregando alertas…" />;
-
   const items = feed?.items || [];
   const sortedItems = useMemo(
     () =>
@@ -123,6 +121,8 @@ export default function EmpresaAlertasPage() {
     });
     return [...bucket.values()];
   }, [history]);
+
+  if (loading && !feed) return <ScreenLoading message="Carregando alertas…" />;
 
   return (
     <div className="space-y-8">
