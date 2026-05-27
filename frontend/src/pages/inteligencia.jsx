@@ -164,6 +164,7 @@ export default function InteligenciaPage() {
   const chartData = useMemo(
     () => ({
       pieData: (overview?.consumo_por_veiculo || []).map((item) => ({
+        veiculo_id: item?.veiculo_id ?? item?.veiculoId ?? item?.veiculo ?? "sem-id",
         name: item?.veiculo || "Sem veículo",
         value: toNumber(item?.litros),
       })),

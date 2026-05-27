@@ -1,5 +1,5 @@
 import { Component, useEffect, useState } from "react";
-import { CHART_COLORS, COLORS } from "../utils/chartColors";
+import { CHART_COLORS, getColorById } from "../utils/chartColors";
 
 const ENABLE_RECHARTS = String(import.meta.env.VITE_ENABLE_RECHARTS || "").trim().toLowerCase() === "true";
 
@@ -59,23 +59,26 @@ class ChartErrorBoundary extends Component {
 function PieLegend({ data }) {
   return (
     <div className="mt-3 grid grid-cols-1 gap-1">
-      {data.map((item, index) => (
-        <div key={`legend-${item.name}`} className="flex items-center gap-2 text-xs">
-          <span
-            className="inline-block h-2.5 w-2.5 rounded-full"
-            style={{ backgroundColor: COLORS[index % COLORS.length] }}
-            aria-hidden
-          />
-          <span
-            className="truncate font-medium"
-            title={item.name}
-            style={{ color: COLORS[index % COLORS.length] }}
-          >
-            {compactLabel(item.name)}
-          </span>
-          <span className="ml-auto tabular-nums text-zinc-400">{fmt(item.value)}</span>
-        </div>
-      ))}
+      {data.map((item, index) => {
+        const color = getColorById(item?.veiculo_id ?? item?.name ?? index);
+        return (
+          <div key={`legend-${item.name}`} className="flex items-center gap-2 text-xs">
+            <span
+              className="inline-block h-2.5 w-2.5 rounded-full"
+              style={{ backgroundColor: color }}
+              aria-hidden
+            />
+            <span
+              className="truncate font-medium"
+              title={item.name}
+              style={{ color }}
+            >
+              {compactLabel(item.name)}
+            </span>
+            <span className="ml-auto tabular-nums text-zinc-400">{fmt(item.value)}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -87,7 +90,7 @@ function PieFallbackChart({ data }) {
     const value = Number(item.value || 0);
     const angle = total > 0 ? (value / total) * 360 : 0;
     const segment = {
-      color: COLORS[index % COLORS.length],
+      color: getColorById(item?.veiculo_id ?? item?.name ?? index),
       from: currentAngle,
       to: currentAngle + angle,
     };

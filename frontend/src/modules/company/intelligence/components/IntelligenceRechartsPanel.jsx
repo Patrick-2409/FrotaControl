@@ -13,7 +13,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { CHART_COLORS, CHART_TOOLTIP_STYLE, COLORS } from "../utils/chartColors";
+import { CHART_COLORS, CHART_TOOLTIP_STYLE, getColorById } from "../utils/chartColors";
 
 const hasRows = (rows) => Array.isArray(rows) && rows.length > 0;
 const compactTick = (value) => String(value || "").slice(0, 7);
@@ -54,7 +54,7 @@ function PieLegendList({ data }) {
   return (
     <div className="mt-2 grid grid-cols-1 gap-1 px-1">
       {data.map((item, index) => {
-        const color = COLORS[index % COLORS.length];
+        const color = getColorById(item?.veiculo_id ?? item?.name ?? index);
         return (
           <div key={`pie-legend-${index}`} className="flex items-center gap-2 text-xs">
             <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} aria-hidden />
@@ -78,9 +78,19 @@ export default function IntelligenceRechartsPanel({ pieData, lineData, barData }
           <div className="h-full min-w-[360px] sm:min-w-full">
             <ResponsiveContainer width="100%" height="82%">
               <PieChart>
-                <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={104} innerRadius={46}>
+                <Pie
+                  data={pieData}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={104}
+                  innerRadius={46}
+                  stroke="#0B1220"
+                  strokeWidth={2}
+                >
                   {pieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    <Cell key={`cell-${index}`} fill={getColorById(entry?.veiculo_id ?? entry?.name ?? index)} />
                   ))}
                 </Pie>
                 <Tooltip {...CHART_TOOLTIP_STYLE} />
