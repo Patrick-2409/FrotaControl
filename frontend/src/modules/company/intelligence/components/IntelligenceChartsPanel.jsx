@@ -1,7 +1,7 @@
 import { Component, useEffect, useState } from "react";
+import { CHART_COLORS, COLORS } from "../utils/chartColors";
 
 const ENABLE_RECHARTS = String(import.meta.env.VITE_ENABLE_RECHARTS || "").trim().toLowerCase() === "true";
-const PIE_COLORS = ["#2563eb", "#16a34a", "#ca8a04", "#dc2626", "#6b7280"];
 
 const fmt = (value) => Number(value || 0).toLocaleString("pt-BR");
 
@@ -17,7 +17,9 @@ function ChartCard({ title, subtitle, children, className = "" }) {
     <article className={`rounded-xl border border-zinc-800/90 bg-zinc-950/50 p-4 ${className}`}>
       <p className="text-sm font-semibold text-zinc-100">{title}</p>
       {subtitle ? <p className="mt-1 text-xs text-zinc-400">{subtitle}</p> : null}
-      <div className="mt-3 h-[220px] max-h-[220px] w-full overflow-hidden">{children}</div>
+      <div className="mt-3 h-[220px] max-h-[220px] w-full overflow-x-auto overflow-y-hidden">
+        <div className="h-full min-w-[340px] sm:min-w-full">{children}</div>
+      </div>
     </article>
   );
 }
@@ -57,7 +59,7 @@ function PieLegend({ data }) {
         <div key={`legend-${item.name}`} className="flex items-center gap-2 text-xs text-zinc-300">
           <span
             className="inline-block h-2.5 w-2.5 rounded-full"
-            style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }}
+            style={{ backgroundColor: COLORS[index % COLORS.length] }}
             aria-hidden
           />
           <span className="truncate">{item.name}</span>
@@ -75,7 +77,7 @@ function PieFallbackChart({ data }) {
     const value = Number(item.value || 0);
     const angle = total > 0 ? (value / total) * 360 : 0;
     const segment = {
-      color: PIE_COLORS[index % PIE_COLORS.length],
+      color: COLORS[index % COLORS.length],
       from: currentAngle,
       to: currentAngle + angle,
     };
@@ -93,6 +95,14 @@ function PieFallbackChart({ data }) {
         }}
         aria-label="Consumo por veículo"
       />
+    </div>
+  );
+}
+
+function PieSingleDataInfo() {
+  return (
+    <div className="flex h-full items-center justify-center rounded-lg border border-zinc-700 bg-zinc-900/60 px-3 text-center text-xs text-zinc-200">
+      Somente um veículo no período: gráfico de participação ocultado para priorizar leitura objetiva.
     </div>
   );
 }
@@ -115,7 +125,7 @@ function LineFallbackChart({ data }) {
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="h-full w-full">
       <rect x="0" y="0" width={width} height={height} rx="10" fill="#09090b" stroke="#27272a" />
-      <polyline fill="none" stroke="#2563eb" strokeWidth="3" points={points} />
+      <polyline fill="none" stroke={CHART_COLORS.line} strokeWidth="3" points={points} />
     </svg>
   );
 }
@@ -133,13 +143,13 @@ function BarsFallbackChart({ data }) {
           <div key={`bar-${item.periodo}`} className="flex min-w-0 flex-1 flex-col items-center gap-2">
             <div className="flex h-44 w-full items-end justify-center gap-1">
               <div
-                className="w-3 rounded-t bg-amber-600"
-                style={{ height: `${Math.max(consumoPct, 4)}%` }}
+                className="w-3 rounded-t"
+                style={{ backgroundColor: CHART_COLORS.consumo, height: `${Math.max(consumoPct, 4)}%` }}
                 title={`Consumo ${fmt(item.consumo)}`}
               />
               <div
-                className="w-3 rounded-t bg-emerald-600"
-                style={{ height: `${Math.max(producaoPct, 4)}%` }}
+                className="w-3 rounded-t"
+                style={{ backgroundColor: CHART_COLORS.producao, height: `${Math.max(producaoPct, 4)}%` }}
                 title={`Produção ${fmt(item.producao)}`}
               />
             </div>
@@ -152,13 +162,18 @@ function BarsFallbackChart({ data }) {
 }
 
 function FallbackChartsPanel({ pieData, lineData, barData }) {
-  const hasComparativePieData = Array.isArray(pieData) && pieData.length > 1;
+  const pieLength = Array.isArray(pieData) ? pieData.length : 0;
+  const hasComparativePieData = pieLength > 1;
   return (
     <>
       {hasComparativePieData ? (
         <ChartCard title="Consumo por veículo" subtitle="Participação no período">
           <PieFallbackChart data={pieData} />
           <PieLegend data={pieData} />
+        </ChartCard>
+      ) : pieLength === 1 ? (
+        <ChartCard title="Consumo por veículo" subtitle="Participação no período">
+          <PieSingleDataInfo />
         </ChartCard>
       ) : null}
 
