@@ -18,6 +18,19 @@ if ("serviceWorker" in navigator) {
   });
 }
 
+const PRELOAD_RELOAD_KEY = "fc_vite_preload_reload_once";
+window.addEventListener("vite:preloadError", (event) => {
+  event.preventDefault();
+  try {
+    const alreadyReloaded = sessionStorage.getItem(PRELOAD_RELOAD_KEY) === "1";
+    if (alreadyReloaded) return;
+    sessionStorage.setItem(PRELOAD_RELOAD_KEY, "1");
+  } catch {
+    // Se sessionStorage falhar, ainda tentamos recuperar com reload simples.
+  }
+  window.location.reload();
+});
+
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <BrowserRouter>

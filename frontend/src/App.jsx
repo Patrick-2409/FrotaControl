@@ -10,8 +10,27 @@ import { ScreenLoading } from "./components/LoadingState";
 import { countPending, syncPending } from "./services/syncService";
 import { generateId } from "./utils/id";
 
+const CHUNK_RELOAD_KEY = "fc_chunk_reload_once";
+const isChunkLoadError = (error) => {
+  const message = String(error?.message || "").toLowerCase();
+  return message.includes("failed to fetch dynamically imported module") || message.includes("importing a module script failed");
+};
+
 const importWithRetry = (factory, retries = 2, delayMs = 350) =>
   factory().catch((error) => {
+    if (isChunkLoadError(error)) {
+      try {
+        const alreadyReloaded = sessionStorage.getItem(CHUNK_RELOAD_KEY) === "1";
+        if (!alreadyReloaded) {
+          sessionStorage.setItem(CHUNK_RELOAD_KEY, "1");
+          window.location.reload();
+          return new Promise(() => {});
+        }
+      } catch {
+        window.location.reload();
+        return new Promise(() => {});
+      }
+    }
     if (retries <= 0) throw error;
     return new Promise((resolve) => {
       setTimeout(() => resolve(importWithRetry(factory, retries - 1, delayMs)), delayMs);
