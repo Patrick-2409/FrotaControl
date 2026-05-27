@@ -123,13 +123,13 @@ function SummarySkeleton() {
 
 function InsightCard({ title, children, tone = "default" }) {
   const toneMap = {
-    default: "border-zinc-800/90 bg-zinc-950/50",
-    critical: "border-red-900/80 bg-red-950/25",
-    warning: "border-amber-900/80 bg-amber-950/20",
-    ok: "border-emerald-900/80 bg-emerald-950/20",
+    default: "card-info",
+    critical: "card-danger border-red-900/80 bg-red-950/25",
+    warning: "card-warning border-amber-900/80 bg-amber-950/20",
+    ok: "card-info border-emerald-900/80 bg-emerald-950/20",
   };
   return (
-    <article className={`rounded-xl border p-4 transition-all duration-300 ${toneMap[tone] || toneMap.default}`}>
+    <article className={`card rounded-xl p-4 ${toneMap[tone] || toneMap.default}`}>
       <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">{title}</p>
       <div className="mt-2 text-sm text-zinc-200">{children}</div>
     </article>
@@ -553,7 +553,7 @@ export default function InteligenciaPage() {
             </section>
           ) : (
             <section className="transition-all duration-300">
-              <div className="grid grid-cols-1 gap-3">
+              <div className="grid grid-cols-1 gap-4 sm:gap-5">
                 <InsightCard title="1. Combustível" tone={impactoFinanceiro.exposicaoSemProducao > 0 ? "warning" : "default"}>
                   <div className="space-y-1">
                     <p>

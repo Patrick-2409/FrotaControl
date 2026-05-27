@@ -33,6 +33,12 @@ const sevPanel = (s) => {
   return "border-sky-500/40 bg-sky-950/15";
 };
 
+const sevCardVariant = (s) => {
+  if (s === "critical") return "card-danger";
+  if (s === "warning") return "card-warning";
+  return "card-info";
+};
+
 const sevIcon = (s) => {
   if (s === "critical") return "🚨";
   if (s === "warning") return "⚠️";
@@ -179,13 +185,13 @@ export default function EmpresaAlertasPage() {
             <EmptyState title="Sem alertas" description="Nenhuma regra foi disparada para o estado atual." compact />
           </div>
         ) : (
-          <ul className="mt-4 space-y-2.5">
+          <ul className="mt-4 space-y-3.5">
             {sortedItems.map((it) => (
               <li
                 key={it.alert_key}
-                className={`rounded-xl border p-4 transition ${
+                className={`card rounded-xl p-4 ${
                   it.read ? "opacity-75" : ""
-                } ${sevPanel(it.severity)}`}
+                } ${sevPanel(it.severity)} ${sevCardVariant(it.severity)}`}
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="flex min-w-0 flex-wrap items-center gap-2">

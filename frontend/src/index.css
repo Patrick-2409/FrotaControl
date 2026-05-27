@@ -57,20 +57,50 @@ body {
 }
 
 .fc-card {
-  border: 1px solid #1f2937;
+  border: 1.5px solid #374151;
   background-color: #111827;
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-  transition: background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+  border-radius: 14px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  transition: background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
 }
 
 .fc-card:hover {
-  background-color: #273449;
+  border-color: #4b5563;
+  transform: translateY(-2px);
+}
+
+.card {
+  background-color: #111827;
+  border: 1.5px solid #374151;
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  transition: border-color 180ms ease, transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.card:hover {
+  border-color: #4b5563;
+  transform: translateY(-2px);
 }
 
 .card-highlight,
 .fc-card-highlight {
   background-color: #1f2937;
+}
+
+.card-info,
+.fc-card-info {
+  border-left: 4px solid #3b82f6;
+}
+
+.card-warning,
+.fc-card-warning {
+  border-left: 4px solid #f59e0b;
+}
+
+.card-danger,
+.fc-card-danger {
+  border-left: 4px solid #ef4444;
 }
 
 .titulo {
@@ -247,10 +277,10 @@ textarea:focus-visible,
 }
 
 .fc-theme-empresa .fc-card {
-  border-color: #1f2937;
-  border-radius: 12px;
+  border-color: #374151;
+  border-radius: 14px;
   background: #111827;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
 }
 
 .fc-theme-empresa .fc-page {
