@@ -11,6 +11,10 @@ const maxFrom = (values) => {
 };
 
 const hasRows = (rows) => Array.isArray(rows) && rows.length > 0;
+const compactLabel = (value) => {
+  const text = String(value || "");
+  return text.length > 18 ? `${text.slice(0, 18)}...` : text;
+};
 
 function ChartCard({ title, subtitle, children, className = "" }) {
   return (
@@ -56,13 +60,19 @@ function PieLegend({ data }) {
   return (
     <div className="mt-3 grid grid-cols-1 gap-1">
       {data.map((item, index) => (
-        <div key={`legend-${item.name}`} className="flex items-center gap-2 text-xs text-zinc-300">
+        <div key={`legend-${item.name}`} className="flex items-center gap-2 text-xs">
           <span
             className="inline-block h-2.5 w-2.5 rounded-full"
             style={{ backgroundColor: COLORS[index % COLORS.length] }}
             aria-hidden
           />
-          <span className="truncate">{item.name}</span>
+          <span
+            className="truncate font-medium"
+            title={item.name}
+            style={{ color: COLORS[index % COLORS.length] }}
+          >
+            {compactLabel(item.name)}
+          </span>
           <span className="ml-auto tabular-nums text-zinc-400">{fmt(item.value)}</span>
         </div>
       ))}
@@ -87,7 +97,7 @@ function PieFallbackChart({ data }) {
   return (
     <div className="flex h-full items-center justify-center">
       <div
-        className="h-40 w-40 rounded-full border border-zinc-700/70"
+        className="h-44 w-44 rounded-full border border-zinc-700/70 sm:h-40 sm:w-40"
         style={{
           background: `conic-gradient(${segments
             .map((seg) => `${seg.color} ${seg.from}deg ${seg.to}deg`)

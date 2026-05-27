@@ -17,6 +17,10 @@ import { CHART_COLORS, CHART_TOOLTIP_STYLE, COLORS } from "../utils/chartColors"
 
 const hasRows = (rows) => Array.isArray(rows) && rows.length > 0;
 const compactTick = (value) => String(value || "").slice(0, 7);
+const compactLabel = (value) => {
+  const text = String(value || "");
+  return text.length > 18 ? `${text.slice(0, 18)}...` : text;
+};
 
 function ChartCard({ title, subtitle, children, className = "" }) {
   return (
@@ -46,6 +50,24 @@ function PieSingleDataInfo() {
   );
 }
 
+function PieLegendList({ data }) {
+  return (
+    <div className="mt-2 grid grid-cols-1 gap-1 px-1">
+      {data.map((item, index) => {
+        const color = COLORS[index % COLORS.length];
+        return (
+          <div key={`pie-legend-${index}`} className="flex items-center gap-2 text-xs">
+            <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} aria-hidden />
+            <span title={item.name} className="truncate font-medium" style={{ color }}>
+              {compactLabel(item.name)}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function IntelligenceRechartsPanel({ pieData, lineData, barData }) {
   const pieLength = Array.isArray(pieData) ? pieData.length : 0;
   const hasComparativePieData = pieLength > 1;
@@ -53,17 +75,19 @@ export default function IntelligenceRechartsPanel({ pieData, lineData, barData }
     <>
       {hasComparativePieData ? (
         <ChartCard title="Consumo por veículo" subtitle="Participação no período">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={94} innerRadius={42}>
-                {pieData.map((entry, index) => (
-                  <Cell key={`pie-cell-${entry.name}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip {...CHART_TOOLTIP_STYLE} />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-            </PieChart>
-          </ResponsiveContainer>
+          <div className="h-full min-w-[360px] sm:min-w-full">
+            <ResponsiveContainer width="100%" height="82%">
+              <PieChart>
+                <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={104} innerRadius={46}>
+                  {pieData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip {...CHART_TOOLTIP_STYLE} />
+              </PieChart>
+            </ResponsiveContainer>
+            <PieLegendList data={pieData} />
+          </div>
         </ChartCard>
       ) : pieLength === 1 ? (
         <ChartCard title="Consumo por veículo" subtitle="Participação no período">
