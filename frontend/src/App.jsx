@@ -10,6 +10,14 @@ import { ScreenLoading } from "./components/LoadingState";
 import { countPending, syncPending } from "./services/syncService";
 import { generateId } from "./utils/id";
 
+const importWithRetry = (factory, retries = 2, delayMs = 350) =>
+  factory().catch((error) => {
+    if (retries <= 0) throw error;
+    return new Promise((resolve) => {
+      setTimeout(() => resolve(importWithRetry(factory, retries - 1, delayMs)), delayMs);
+    });
+  });
+
 const HomePage = lazy(() => import("./pages/HomePage"));
 const RomaneioPage = lazy(() => import("./pages/RomaneioPage"));
 const CombustivelPage = lazy(() => import("./pages/CombustivelPage"));
@@ -35,9 +43,11 @@ const EmpresaPessoasPage = lazy(() => import("./modules/company/people/pages/Emp
 const EmpresaRelatoriosPage = lazy(() => import("./modules/company/reports/pages/EmpresaRelatoriosPage"));
 const EmpresaAlertasPage = lazy(() => import("./modules/company/alerts/pages/EmpresaAlertasPage"));
 const InteligenciaPage = lazy(() =>
-  import("./pages/inteligencia").then((module) => ({
-    default: module.default,
-  }))
+  importWithRetry(() =>
+    import("./pages/inteligencia").then((module) => ({
+      default: module.default,
+    }))
+  )
 );
 
 function Protected({ children }) {
@@ -357,7 +367,7 @@ function App() {
         />
 
         <Route
-          path="/inteligencia"
+          path="/inteligencia/*"
           element={
             <Protected>
               <ProtectedDashboard>

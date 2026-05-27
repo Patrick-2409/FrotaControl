@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import BIDashboardShell from "../modules/company/bi/components/BIDashboardShell";
 import IntelligenceFiltersCard from "../modules/company/intelligence/components/IntelligenceFiltersCard";
 import IntelligenceChartsPanel from "../modules/company/intelligence/components/IntelligenceChartsPanel";
@@ -15,6 +16,7 @@ const DEFAULT_FILTERS = {
 
 const DEFAULT_VEHICLE_OPTIONS = [{ value: "todos", label: "Todos os veículos" }];
 const DEFAULT_DRIVER_OPTIONS = [{ value: "todos", label: "Todos os motoristas" }];
+const INTELIGENCIA_SECTIONS = ["executivo", "combustivel", "frota", "transporte"];
 
 const EMPTY_OVERVIEW = {
   consumo_por_veiculo: [],
@@ -105,6 +107,55 @@ const triggerPdfDownload = (url, filename) => {
   }
 };
 
+function Sparkline({ data = [], tone = "default" }) {
+  const values = (Array.isArray(data) ? data : []).map((v) => Number(v)).filter((v) => Number.isFinite(v));
+  if (!values.length) {
+    return <div className="h-10 rounded-md bg-zinc-900/60" />;
+  }
+  const width = 120;
+  const height = 32;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const points = values
+    .map((v, i) => {
+      const x = (i / Math.max(1, values.length - 1)) * (width - 2) + 1;
+      const y = height - ((v - min) / span) * (height - 4) - 2;
+      return `${x},${y}`;
+    })
+    .join(" ");
+  const strokeByTone = {
+    positive: "#10B981",
+    warning: "#F59E0B",
+    danger: "#EF4444",
+    default: "#3B82F6",
+  };
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="h-10 w-full">
+      <polyline fill="none" stroke={strokeByTone[tone] || strokeByTone.default} strokeWidth="2.5" points={points} />
+    </svg>
+  );
+}
+
+function ExecutiveKpiCard({ title, value, subtitle, tone = "default", sparkline = [] }) {
+  const toneClass = {
+    positive: "card-info border-emerald-700/50",
+    warning: "card-warning border-amber-700/50",
+    danger: "card-danger border-red-700/50",
+    default: "card-info",
+  };
+  return (
+    <article className={`card rounded-xl p-4 ${toneClass[tone] || toneClass.default}`}>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">{title}</p>
+      <p className="mt-2 text-2xl font-bold leading-tight text-zinc-50">{value}</p>
+      {subtitle ? <p className="mt-1 text-xs text-zinc-400">{subtitle}</p> : null}
+      <div className="mt-3">
+        <Sparkline data={sparkline} tone={tone} />
+      </div>
+    </article>
+  );
+}
+
 function SummarySkeleton() {
   return (
     <section className="rounded-xl border border-zinc-800/80 bg-zinc-950/40 p-4 sm:p-5">
@@ -137,6 +188,8 @@ function InsightCard({ title, children, tone = "default" }) {
 }
 
 export default function InteligenciaPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [vehicleOptions, setVehicleOptions] = useState(DEFAULT_VEHICLE_OPTIONS);
   const [driverOptions, setDriverOptions] = useState(DEFAULT_DRIVER_OPTIONS);
@@ -148,6 +201,11 @@ export default function InteligenciaPage() {
   const [analysisError, setAnalysisError] = useState("");
   const [pdfDownloadUrl, setPdfDownloadUrl] = useState("");
   const [pdfFilename, setPdfFilename] = useState("inteligencia-operacional.pdf");
+  const currentPathSection = String(location.pathname || "")
+    .split("/")
+    .filter(Boolean)
+    .slice(-1)[0];
+  const activeSection = INTELIGENCIA_SECTIONS.includes(currentPathSection) ? currentPathSection : "executivo";
 
   const hasOperationalData = useMemo(() => {
     const indicadores = overview?.indicadores || {};
@@ -312,6 +370,63 @@ export default function InteligenciaPage() {
     [resumoOperacional]
   );
 
+  const executiveCards = useMemo(() => {
+    const sparkCusto = chartData.lineData.map((item) => item.custo);
+    const sparkProdutividade = chartData.barData.map((item) => item.producao);
+    const sparkConsumo = chartData.barData.map((item) => item.consumo);
+    const eficiencia = resumoOperacional.totalLitros > 0
+      ? resumoOperacional.totalViagens / resumoOperacional.totalLitros
+      : 0;
+
+    const alertasAtivos =
+      (statusGeral.label === "Crítico" ? 1 : 0) +
+      (moduloFrota.veiculosOciosos > 0 ? 1 : 0) +
+      (moduloTransporte.viagens === 0 && moduloCombustivel.consumoTotal > 0 ? 1 : 0);
+
+    return [
+      {
+        id: "status",
+        title: "Status da operação",
+        value: statusGeral.label,
+        subtitle: statusGeral.detail,
+        tone: statusGeral.tone === "critical" ? "danger" : statusGeral.tone === "warning" ? "warning" : "positive",
+        sparkline: sparkProdutividade.length ? sparkProdutividade : sparkConsumo,
+      },
+      {
+        id: "custo",
+        title: "Custo total",
+        value: fmtCurrency(resumoOperacional.totalValor),
+        subtitle: "Consolidado no período filtrado",
+        tone: resumoOperacional.totalValor > 0 ? "warning" : "default",
+        sparkline: sparkCusto,
+      },
+      {
+        id: "eficiencia",
+        title: "Eficiência combustível",
+        value: `${eficiencia.toLocaleString("pt-BR", { maximumFractionDigits: 3 })} viagens/L`,
+        subtitle: "Relação entre viagens e litros consumidos",
+        tone: eficiencia > 0.1 ? "positive" : eficiencia > 0 ? "warning" : "danger",
+        sparkline: sparkConsumo,
+      },
+      {
+        id: "prod",
+        title: "Produtividade",
+        value: `${fmtNumber(resumoOperacional.totalViagens)} viagens`,
+        subtitle: "Produção operacional no período",
+        tone: resumoOperacional.totalViagens > 0 ? "positive" : "warning",
+        sparkline: sparkProdutividade,
+      },
+      {
+        id: "alertas",
+        title: "Alertas",
+        value: fmtNumber(alertasAtivos),
+        subtitle: "Sinais críticos e pontos de atenção",
+        tone: alertasAtivos > 1 ? "danger" : alertasAtivos === 1 ? "warning" : "positive",
+        sparkline: [alertasAtivos, moduloFrota.veiculosOciosos, resumoOperacional.totalViagens, resumoOperacional.totalLitros],
+      },
+    ];
+  }, [chartData, moduloCombustivel.consumoTotal, moduloFrota.veiculosOciosos, moduloTransporte.viagens, resumoOperacional, statusGeral]);
+
   const periodoLabel = useMemo(() => {
     const inicio = analysis?.periodo?.inicio;
     const fim = analysis?.periodo?.fim;
@@ -377,6 +492,8 @@ export default function InteligenciaPage() {
           totalViagens: consumoVsProducao.length ? totalViagensGraficos : toNumber(rawIndicadores.totalViagens),
         },
       };
+
+      console.log("[INTELIGENCIA] dados reais:", normalizedOverview);
 
       console.info("[INTELIGENCIA] dados carregados:", {
         quantidade_registros: {
@@ -474,6 +591,11 @@ export default function InteligenciaPage() {
     [pdfDownloadUrl]
   );
 
+  useEffect(() => {
+    if (INTELIGENCIA_SECTIONS.includes(currentPathSection)) return;
+    navigate("/inteligencia/executivo", { replace: true });
+  }, [currentPathSection, navigate]);
+
   const onFiltersChange = useCallback((updater) => {
     setFilters((prev) => {
       const next = typeof updater === "function" ? updater(prev) : updater;
@@ -508,6 +630,40 @@ export default function InteligenciaPage() {
             driverOptions={driverOptions}
             embedded
           />
+        </AccordionSection>
+
+        <AccordionSection
+          id="inteligencia-modulos"
+          title="Módulos da inteligência"
+          description="Executivo, combustível, frota e transporte"
+          defaultOpenDesktop
+          defaultOpenMobile
+        >
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {INTELIGENCIA_SECTIONS.map((section) => {
+              const labels = {
+                executivo: "Executivo",
+                combustivel: "Combustível",
+                frota: "Frota",
+                transporte: "Transporte",
+              };
+              const active = activeSection === section;
+              return (
+                <button
+                  key={section}
+                  type="button"
+                  onClick={() => navigate(`/inteligencia/${section}`)}
+                  className={`fc-btn rounded-md border px-3 py-2 text-sm font-semibold ${
+                    active
+                      ? "border-sky-500/70 bg-sky-900/30 text-sky-100"
+                      : "border-zinc-700 bg-zinc-900/60 text-zinc-300"
+                  }`}
+                >
+                  {labels[section]}
+                </button>
+              );
+            })}
+          </div>
         </AccordionSection>
 
         <AccordionSection
@@ -553,61 +709,87 @@ export default function InteligenciaPage() {
             </section>
           ) : (
             <section className="transition-all duration-300">
-              <div className="grid grid-cols-1 gap-4 sm:gap-5">
-                <InsightCard title="1. Combustível" tone={impactoFinanceiro.exposicaoSemProducao > 0 ? "warning" : "default"}>
-                  <div className="space-y-1">
-                    <p>
-                      <span className="text-zinc-400">Consumo total:</span> {fmtNumber(moduloCombustivel.consumoTotal)} L
-                    </p>
-                    <p>
-                      <span className="text-zinc-400">Custo total:</span> {fmtCurrency(moduloCombustivel.custoTotal)}
-                    </p>
-                    <p>
-                      <span className="text-zinc-400">Preço médio:</span>{" "}
-                      {moduloCombustivel.precoMedio != null ? fmtCurrency(moduloCombustivel.precoMedio) : "Sem base"}
-                    </p>
-                    <p className="text-zinc-300">{moduloCombustivel.insight}</p>
+              {activeSection === "executivo" ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    {executiveCards.map((card) => (
+                      <ExecutiveKpiCard
+                        key={card.id}
+                        title={card.title}
+                        value={card.value}
+                        subtitle={card.subtitle}
+                        tone={card.tone}
+                        sparkline={card.sparkline}
+                      />
+                    ))}
                   </div>
-                </InsightCard>
-
-                <InsightCard title="2. Transporte" tone={moduloTransporte.viagens === 0 ? "warning" : "ok"}>
-                  <div className="space-y-1">
-                    <p>
-                      <span className="text-zinc-400">Viagens:</span> {fmtNumber(moduloTransporte.viagens)}
-                    </p>
-                    <p className="text-zinc-300">{moduloTransporte.insight}</p>
-                  </div>
-                </InsightCard>
-
-                <InsightCard title="3. Frota" tone={moduloFrota.veiculosOciosos > 0 ? "warning" : "ok"}>
-                  <div className="space-y-1">
-                    <p>
-                      <span className="text-zinc-400">Veículos ativos:</span> {fmtNumber(moduloFrota.veiculosAtivos)}
-                    </p>
-                    <p>
-                      <span className="text-zinc-400">Veículos ociosos:</span> {fmtNumber(moduloFrota.veiculosOciosos)}
-                    </p>
-                    <p className="text-zinc-300">{moduloFrota.insight}</p>
-                  </div>
-                </InsightCard>
-
-                <InsightCard title="4. Resumo executivo" tone={statusGeral.tone === "critical" ? "critical" : "default"}>
-                  <div className="space-y-2">
-                    <div className="inline-flex rounded-full border border-current px-3 py-1 text-xs font-semibold">
-                      Status: {statusGeral.label}
+                  <InsightCard title="Diagnóstico e ação recomendada" tone={statusGeral.tone === "critical" ? "critical" : "default"}>
+                    <div className="space-y-2">
+                      <div className="inline-flex rounded-full border border-current px-3 py-1 text-xs font-semibold">
+                        Status: {statusGeral.label}
+                      </div>
+                      <p className="text-sm text-zinc-300">{statusGeral.detail}</p>
+                      <p className="font-medium">{diagnosticoPrincipal}</p>
+                      <div className="space-y-1">
+                        {acoesRecomendadas.slice(0, 3).map((item) => (
+                          <p key={item} className="text-sm">
+                            - {item}
+                          </p>
+                        ))}
+                      </div>
                     </div>
-                    <p className="text-sm text-zinc-300">{statusGeral.detail}</p>
-                    <p className="font-medium">{diagnosticoPrincipal}</p>
+                  </InsightCard>
+                </div>
+              ) : null}
+
+              {activeSection === "combustivel" ? (
+                <div className="grid grid-cols-1 gap-4 sm:gap-5">
+                  <InsightCard title="Combustível" tone={impactoFinanceiro.exposicaoSemProducao > 0 ? "warning" : "default"}>
                     <div className="space-y-1">
-                      {acoesRecomendadas.slice(0, 3).map((item) => (
-                        <p key={item} className="text-sm">
-                          - {item}
-                        </p>
-                      ))}
+                      <p>
+                        <span className="text-zinc-400">Consumo total:</span> {fmtNumber(moduloCombustivel.consumoTotal)} L
+                      </p>
+                      <p>
+                        <span className="text-zinc-400">Custo total:</span> {fmtCurrency(moduloCombustivel.custoTotal)}
+                      </p>
+                      <p>
+                        <span className="text-zinc-400">Preço médio:</span>{" "}
+                        {moduloCombustivel.precoMedio != null ? fmtCurrency(moduloCombustivel.precoMedio) : "Sem base"}
+                      </p>
+                      <p className="text-zinc-300">{moduloCombustivel.insight}</p>
                     </div>
-                  </div>
-                </InsightCard>
-              </div>
+                  </InsightCard>
+                </div>
+              ) : null}
+
+              {activeSection === "transporte" ? (
+                <div className="grid grid-cols-1 gap-4 sm:gap-5">
+                  <InsightCard title="Transporte" tone={moduloTransporte.viagens === 0 ? "warning" : "ok"}>
+                    <div className="space-y-1">
+                      <p>
+                        <span className="text-zinc-400">Viagens:</span> {fmtNumber(moduloTransporte.viagens)}
+                      </p>
+                      <p className="text-zinc-300">{moduloTransporte.insight}</p>
+                    </div>
+                  </InsightCard>
+                </div>
+              ) : null}
+
+              {activeSection === "frota" ? (
+                <div className="grid grid-cols-1 gap-4 sm:gap-5">
+                  <InsightCard title="Frota" tone={moduloFrota.veiculosOciosos > 0 ? "warning" : "ok"}>
+                    <div className="space-y-1">
+                      <p>
+                        <span className="text-zinc-400">Veículos ativos:</span> {fmtNumber(moduloFrota.veiculosAtivos)}
+                      </p>
+                      <p>
+                        <span className="text-zinc-400">Veículos ociosos:</span> {fmtNumber(moduloFrota.veiculosOciosos)}
+                      </p>
+                      <p className="text-zinc-300">{moduloFrota.insight}</p>
+                    </div>
+                  </InsightCard>
+                </div>
+              ) : null}
             </section>
           )}
         </AccordionSection>
@@ -616,15 +798,23 @@ export default function InteligenciaPage() {
 
         <AccordionSection
           id="inteligencia-graficos"
-          title="5. Gráficos de apoio"
-          description="Visual para consumo, custo e produção"
+          title="Gráficos de apoio"
+          description={
+            activeSection === "combustivel"
+              ? "Consumo por veículo e custo por período"
+              : activeSection === "transporte"
+                ? "Consumo vs produção por período"
+                : activeSection === "executivo"
+                  ? "Leitura visual consolidada dos principais indicadores"
+                  : "Visão de apoio para o módulo selecionado"
+          }
           defaultOpenDesktop={false}
           defaultOpenMobile={false}
         >
           <IntelligenceChartsPanel
-            pieData={chartData.pieData}
-            lineData={chartData.lineData}
-            barData={chartData.barData}
+            pieData={activeSection === "frota" || activeSection === "transporte" ? [] : chartData.pieData}
+            lineData={activeSection === "frota" || activeSection === "transporte" ? [] : chartData.lineData}
+            barData={activeSection === "frota" || activeSection === "combustivel" ? [] : chartData.barData}
             loading={overviewLoading}
             embedded
           />
