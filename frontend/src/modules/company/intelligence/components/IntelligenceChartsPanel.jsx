@@ -15,14 +15,23 @@ const compactLabel = (value) => {
   const text = String(value || "");
   return text.length > 18 ? `${text.slice(0, 18)}...` : text;
 };
-
-function ChartCard({ title, subtitle, children, className = "" }) {
+function ChartCard({ title, subtitle, helpText, children, className = "" }) {
   return (
     <article className={`rounded-xl border border-zinc-800/90 bg-zinc-950/50 p-4 ${className}`}>
-      <p className="text-sm font-semibold text-zinc-100">{title}</p>
+      <p className="flex items-center gap-2 text-sm font-semibold text-zinc-100">
+        <span>{title}</span>
+        {helpText ? (
+          <span
+            className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-zinc-600 text-[10px] text-zinc-300"
+            title={helpText}
+          >
+            i
+          </span>
+        ) : null}
+      </p>
       {subtitle ? <p className="mt-1 text-xs text-zinc-400">{subtitle}</p> : null}
-      <div className="mt-3 h-[220px] max-h-[220px] w-full overflow-x-auto overflow-y-hidden">
-        <div className="h-full min-w-[340px] sm:min-w-full">{children}</div>
+      <div className="mt-3 h-[260px] w-full overflow-hidden sm:h-[240px]">
+        <div className="h-full w-full">{children}</div>
       </div>
     </article>
   );
@@ -57,12 +66,22 @@ class ChartErrorBoundary extends Component {
 }
 
 function PieLegend({ data }) {
+  const total = (Array.isArray(data) ? data : []).reduce((acc, item) => acc + Number(item?.value || 0), 0);
+  const maxValue = Math.max(...(Array.isArray(data) ? data : []).map((item) => Number(item?.value || 0)), 0);
   return (
     <div className="mt-3 grid grid-cols-1 gap-1">
       {data.map((item, index) => {
         const color = getColorById(item?.veiculo_id ?? item?.name ?? index);
+        const value = Number(item?.value || 0);
+        const pct = total > 0 ? (value / total) * 100 : 0;
+        const isTop = value === maxValue && maxValue > 0;
         return (
-          <div key={`legend-${item.name}`} className="flex items-center gap-2 text-xs">
+          <div
+            key={`legend-${item.name}`}
+            className={`grid grid-cols-[10px_minmax(0,1fr)_auto_auto] items-center gap-2 rounded-md px-2 py-1 text-xs ${
+              isTop ? "border border-emerald-600/40 bg-emerald-950/20" : ""
+            }`}
+          >
             <span
               className="inline-block h-2.5 w-2.5 rounded-full"
               style={{ backgroundColor: color }}
@@ -75,7 +94,10 @@ function PieLegend({ data }) {
             >
               {compactLabel(item.name)}
             </span>
-            <span className="ml-auto tabular-nums text-zinc-400">{fmt(item.value)}</span>
+            <span className="tabular-nums text-zinc-300">{fmt(value)} L</span>
+            <span className="tabular-nums text-zinc-400">
+              {Number(pct).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%
+            </span>
           </div>
         );
       })}
@@ -180,7 +202,11 @@ function FallbackChartsPanel({ pieData, lineData, barData }) {
   return (
     <>
       {hasComparativePieData ? (
-        <ChartCard title="Consumo por veículo" subtitle="Participação no período">
+        <ChartCard
+          title="Consumo por veículo"
+          subtitle="Participação percentual por veículo no período."
+          helpText="Mostra quais veículos concentram maior consumo e participação."
+        >
           <PieFallbackChart data={pieData} />
           <PieLegend data={pieData} />
         </ChartCard>
@@ -190,13 +216,18 @@ function FallbackChartsPanel({ pieData, lineData, barData }) {
         </ChartCard>
       ) : null}
 
-      <ChartCard title="Custo por período" subtitle="Evolução do custo operacional">
+      <ChartCard
+        title="Custo por período"
+        subtitle="Linha temporal de custo para leitura de tendência."
+        helpText="Use para identificar aceleração de custo ao longo das datas."
+      >
         {hasRows(lineData) ? <LineFallbackChart data={lineData} /> : <ChartEmptyState />}
       </ChartCard>
 
       <ChartCard
         title="Consumo vs produção"
-        subtitle="Comparativo consolidado por período"
+        subtitle="Comparativo lado a lado por data real."
+        helpText="Consumo em vermelho e produção em verde para leitura direta de eficiência."
         className="lg:col-span-2"
       >
         {hasRows(barData) ? <BarsFallbackChart data={barData} /> : <ChartEmptyState />}
@@ -237,6 +268,14 @@ export default function IntelligenceChartsPanel({
     };
   }, []);
 
+  useEffect(() => {
+    console.log("[INTELIGENCIA] dados gráficos:", {
+      consumo_por_veiculo: pieData,
+      custo_por_periodo: lineData,
+      consumo_vs_producao: barData,
+    });
+  }, [pieData, lineData, barData]);
+
   const canUseRecharts = ENABLE_RECHARTS && !rechartsFailed && typeof RechartsChartsPanel === "function";
 
   const content = (
@@ -249,7 +288,7 @@ export default function IntelligenceChartsPanel({
         </p>
       ) : null}
 
-      <div className={`${embedded ? "" : "mt-4"} grid grid-cols-1 gap-3 lg:grid-cols-2`}>
+      <div className={`${embedded ? "" : "mt-4"} grid grid-cols-1 gap-4 lg:grid-cols-2`}>
         <ChartErrorBoundary fallback={<FallbackChartsPanel pieData={pieData} lineData={lineData} barData={barData} />}>
           {loading ? (
             <article className="rounded-xl border border-zinc-800/90 bg-zinc-950/50 p-4 lg:col-span-2">

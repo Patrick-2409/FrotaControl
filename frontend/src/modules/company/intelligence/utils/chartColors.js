@@ -5,10 +5,6 @@ const BASE_COLORS = [
   "#EF4444",
   "#8B5CF6",
   "#06B6D4",
-  "#F97316",
-  "#84CC16",
-  "#EC4899",
-  "#14B8A6",
 ];
 
 export const COLORS = BASE_COLORS;
@@ -25,7 +21,7 @@ export function getColorById(id) {
 
 export const CHART_COLORS = {
   line: "#3B82F6",
-  consumo: "#F59E0B",
+  consumo: "#EF4444",
   producao: "#10B981",
 };
 
