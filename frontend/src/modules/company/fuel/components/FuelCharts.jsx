@@ -28,7 +28,7 @@ function FuelCharts({ pie, compact }) {
                   style={{ backgroundColor: s.color }}
                   aria-hidden
                 />
-                <span className="min-w-0 flex-1 truncate" title={s.label}>
+                <span className="min-w-0 flex-1 truncate font-medium" title={s.label} style={{ color: s.color }}>
                   {s.label}
                 </span>
                 <span className="shrink-0 tabular-nums text-zinc-500">{fmtPct(s.pct)}%</span>
