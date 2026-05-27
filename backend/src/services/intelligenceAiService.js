@@ -104,17 +104,72 @@ const ensureConcreteText = (text, fallback) => {
   return raw;
 };
 
+const ensureModuleAnalysis = (raw, data) => {
+  const source = raw && typeof raw === "object" ? raw : {};
+  const transporteDisponivel = Boolean(data?.indicadores?.dadosTransporteDisponiveis);
+  return {
+    combustivel: ensureConcreteText(
+      source.combustivel,
+      `Consumo total ${toNumber(data?.indicadores?.totalLitros).toFixed(1)} L e custo total R$ ${toNumber(data?.indicadores?.totalValor).toFixed(2)}.`
+    ),
+    transporte: ensureConcreteText(
+      source.transporte,
+      transporteDisponivel
+        ? `Produção de ${toNumber(data?.indicadores?.totalViagensTransporte)} viagem(ns) com consumo dedicado de ${toNumber(
+            data?.indicadores?.totalLitrosTransporte
+          ).toFixed(1)} L.`
+        : "Dados insuficientes de transporte para análise de produção."
+    ),
+    frota: ensureConcreteText(
+      source.frota,
+      `${toNumber(data?.indicadores?.veiculosAtivos)} veículo(s) ativo(s) e ${toNumber(data?.indicadores?.veiculosOciosos)} ocioso(s).`
+    ),
+  };
+};
+
 const sanitizeResponse = (raw, data) => {
-  const problemaPrincipal = ensureConcreteText(raw?.problema_principal, fallbackProblem(data));
-  const analise = ensureConcreteText(raw?.analise, fallbackAnalise(data));
-  const riscos = ensureList(raw?.riscos).map((item) => ensureConcreteText(item, "")).filter(Boolean);
-  const acoes = ensureList(raw?.acoes).map((item) => ensureConcreteText(item, "")).filter(Boolean);
+  const resumoExecutivo = ensureConcreteText(
+    raw?.resumo_executivo,
+    `Resumo executivo: ${fallbackAnalise(data)}`
+  );
+  const diagnosticoDetalhado = ensureConcreteText(
+    raw?.diagnostico_detalhado || raw?.problema_principal,
+    fallbackProblem(data)
+  );
+  const analiseModulos = ensureModuleAnalysis(raw?.analise_modulos, data);
+  const impactoFinanceiro = ensureConcreteText(
+    raw?.impacto_financeiro,
+    `Impacto financeiro atual de R$ ${toNumber(data?.indicadores?.totalValor).toFixed(2)} no período analisado.`
+  );
+  const calculosUtilizados = ensureList(raw?.calculos_utilizados)
+    .map((item) => ensureConcreteText(item, ""))
+    .filter(Boolean);
+  const riscos = ensureList(raw?.riscos_operacionais || raw?.riscos)
+    .map((item) => ensureConcreteText(item, ""))
+    .filter(Boolean);
+  const acoes = ensureList(raw?.acoes_recomendadas || raw?.acoes)
+    .map((item) => ensureConcreteText(item, ""))
+    .filter(Boolean);
+  const problemaPrincipal = diagnosticoDetalhado;
+  const analise = [resumoExecutivo, analiseModulos.combustivel, analiseModulos.transporte, analiseModulos.frota, impactoFinanceiro]
+    .filter(Boolean)
+    .join(" ");
 
   return {
     problemaPrincipal,
     analise,
     riscos: riscos.length ? riscos : fallbackRiscos(data),
     acoes: acoes.length ? acoes : fallbackAcoes(data),
+    resumoExecutivo,
+    diagnosticoDetalhado,
+    analiseModulos,
+    impactoFinanceiro,
+    calculosUtilizados: calculosUtilizados.length
+      ? calculosUtilizados
+      : [
+          "Preço médio = total valor / total litros",
+          "Eficiência de combustível = km rodados / litros consumidos (quando km disponível)",
+        ],
   };
 };
 
@@ -137,12 +192,19 @@ const extractJson = (text) => {
 
 const buildStructuredText = (report) => {
   return [
-    `PROBLEMA PRINCIPAL: ${report.problemaPrincipal}`,
-    `ANÁLISE: ${report.analise}`,
-    `RISCOS:`,
+    `RESUMO EXECUTIVO: ${report.resumoExecutivo || report.analise}`,
+    `DIAGNÓSTICO DETALHADO: ${report.diagnosticoDetalhado || report.problemaPrincipal}`,
+    `ANÁLISE POR MÓDULO:`,
+    `- Combustível: ${report?.analiseModulos?.combustivel || "Dados insuficientes para combustível."}`,
+    `- Transporte: ${report?.analiseModulos?.transporte || "Dados insuficientes para transporte."}`,
+    `- Frota: ${report?.analiseModulos?.frota || "Dados insuficientes para frota."}`,
+    `IMPACTO FINANCEIRO: ${report.impactoFinanceiro || "Dados insuficientes."}`,
+    `RISCOS OPERACIONAIS:`,
     ...report.riscos.map((item) => `- ${item}`),
-    `AÇÕES:`,
+    `AÇÕES RECOMENDADAS:`,
     ...report.acoes.map((item) => `- ${item}`),
+    `CÁLCULOS UTILIZADOS:`,
+    ...(Array.isArray(report.calculosUtilizados) ? report.calculosUtilizados : []).map((item) => `- ${item}`),
   ].join("\n");
 };
 
@@ -255,22 +317,54 @@ const runWithFunctionTimeout = async (promiseFactory, timeoutMs) => {
 };
 
 const generateIntelligenceReport = async (data) => {
+  const dataContext = {
+    periodo: data?.periodo || null,
+    tipoAnalise: data?.tipoAnalise || null,
+    filtros: data?.filtros || null,
+    indicadores: data?.indicadores || {},
+    insights: data?.insights || {},
+    regra_contexto: {
+      transporte_tem_producao: true,
+      apoio_sem_producao: true,
+      dados_transporte_disponiveis: Boolean(data?.indicadores?.dadosTransporteDisponiveis),
+      analise_producao_ignorada: Boolean(data?.insights?.analiseProducaoIgnorada),
+    },
+  };
   const prompt = [
-    "Você é um especialista em operações logísticas.",
-    "Receberá indicadores e insights reais da operação.",
-    "Objetivo: retornar diagnóstico direto, com foco em decisão.",
+    "Você é um analista sênior de operações e logística.",
+    "Sua função é gerar um relatório executivo baseado EXCLUSIVAMENTE nos dados fornecidos.",
     "Responda somente JSON válido no formato:",
     "{",
-    '  "problema_principal": "texto objetivo com números",',
-    '  "analise": "texto objetivo com números",',
-    '  "riscos": ["item 1", "item 2"],',
-    '  "acoes": ["ação 1", "ação 2"]',
+    '  "resumo_executivo": "texto executivo e objetivo com base numérica",',
+    '  "diagnostico_detalhado": "problema principal + causa com base numérica",',
+    '  "analise_modulos": {',
+    '    "combustivel": "análise específica com números e sem generalização",',
+    '    "transporte": "análise específica com números e sem assumir produção para apoio",',
+    '    "frota": "análise específica com números"',
+    "  },",
+    '  "impacto_financeiro": "impacto objetivo com valores e cálculo explícito",',
+    '  "riscos_operacionais": ["risco específico com evidência numérica"],',
+    '  "acoes_recomendadas": ["ação objetiva, específica e executável"],',
+    '  "calculos_utilizados": ["Preço médio = total valor / total litros"]',
     "}",
-    "Regras obrigatórias:",
-    "- Não usar frases genéricas.",
-    "- Não inventar dados.",
-    "- Usar números concretos sempre que disponíveis.",
-    "- Máximo de 2 frases por campo textual.",
+    "REGRAS OBRIGATÓRIAS:",
+    "1) NÃO misturar contextos operacionais.",
+    "- Veículos de transporte possuem produção (viagens).",
+    "- Veículos de apoio NÃO possuem produção.",
+    "- Nunca atribuir produção a veículos de apoio.",
+    "2) Validar coerência dos dados antes de analisar.",
+    "- Se houver consumo sem produção, verificar se é veículo de apoio.",
+    "- Não classificar automaticamente como problema quando for apoio.",
+    "3) Separar análise por módulo: Combustível, Transporte e Frota.",
+    "4) Explicar TODOS os cálculos utilizados com fórmula explícita.",
+    "5) Gerar relatório estruturado com: Resumo executivo, Diagnóstico detalhado, Análise por módulo, Impacto financeiro, Riscos operacionais e Ações recomendadas.",
+    "6) Sempre justificar conclusões com base numérica.",
+    "7) Se dados forem insuficientes, declarar explicitamente e não inventar análise.",
+    "8) Linguagem executiva, clara e profissional.",
+    "9) Evitar frases genéricas como 'avaliar situação' e 'melhorar processo'.",
+    "10) Ser específico e objetivo.",
+    "IMPORTANTE: Se não houver dados de transporte, declarar 'dados insuficientes para transporte' e ignorar inferências de produção.",
+    "No campo calculos_utilizados inclua fórmulas realmente usadas na análise.",
   ].join("\n");
 
   const empresaId = Number(data?.empresaId);
@@ -336,7 +430,7 @@ const generateIntelligenceReport = async (data) => {
             temperature: 0.1,
             messages: [
               { role: "system", content: prompt },
-              { role: "user", content: `Dados da operação:\n${JSON.stringify(data)}` },
+              { role: "user", content: `DADOS:\n${JSON.stringify(dataContext)}` },
             ],
           }),
         }),

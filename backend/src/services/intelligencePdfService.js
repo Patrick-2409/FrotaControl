@@ -36,6 +36,48 @@ const fmtMoney = (value) =>
     ? Number(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
     : "—";
 
+const ensureText = (value, fallback = "Dados insuficientes para análise.") => {
+  const raw = String(value || "").trim();
+  return raw || fallback;
+};
+
+const ensureList = (value, fallback = []) => {
+  if (!Array.isArray(value)) return fallback;
+  const list = value.map((item) => String(item || "").trim()).filter(Boolean);
+  return list.length ? list : fallback;
+};
+
+const resolveExecutiveReport = (report = {}) => {
+  const resumoExecutivo = ensureText(report?.resumoExecutivo || report?.resumo_executivo, ensureText(report?.analise));
+  const diagnosticoDetalhado = ensureText(
+    report?.diagnosticoDetalhado || report?.diagnostico_detalhado,
+    ensureText(report?.problemaPrincipal)
+  );
+  const analiseModulos = report?.analiseModulos || report?.analise_modulos || {};
+  const moduloCombustivel = ensureText(analiseModulos?.combustivel, "Dados insuficientes de combustível para análise.");
+  const moduloTransporte = ensureText(analiseModulos?.transporte, "Dados insuficientes de transporte para análise.");
+  const moduloFrota = ensureText(analiseModulos?.frota, "Dados insuficientes de frota para análise.");
+  const impactoFinanceiro = ensureText(report?.impactoFinanceiro || report?.impacto_financeiro, "Impacto financeiro indisponível.");
+  const riscos = ensureList(report?.riscos || report?.riscos_operacionais, ["Sem riscos específicos identificados."]);
+  const acoes = ensureList(report?.acoes || report?.acoes_recomendadas, ["Reavaliar filtros e gerar novo diagnóstico."]);
+  const calculos = ensureList(report?.calculosUtilizados || report?.calculos_utilizados, [
+    "Preço médio = total valor / total litros",
+    "Eficiência = km rodados / litros consumidos (quando km disponível)",
+  ]);
+
+  return {
+    resumoExecutivo,
+    diagnosticoDetalhado,
+    moduloCombustivel,
+    moduloTransporte,
+    moduloFrota,
+    impactoFinanceiro,
+    riscos,
+    acoes,
+    calculos,
+  };
+};
+
 const resolveUploadsPath = (logoUrl) => {
   if (!logoUrl) return null;
   let pathname = String(logoUrl).trim();
@@ -253,6 +295,7 @@ const buildHtmlReport = async ({ company, analysis, report }) => {
   const generatedAt = new Date().toLocaleString("pt-BR");
   const indicators = analysis?.indicadores || {};
   const charts = analysis?.graficos || {};
+  const executivo = resolveExecutiveReport(report);
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -314,13 +357,19 @@ const buildHtmlReport = async ({ company, analysis, report }) => {
     </section>
 
     <section class="section">
-      <h2>Análise IA</h2>
-      <p><strong>Problema principal:</strong> ${esc(report?.problemaPrincipal || "Dados insuficientes para análise")}</p>
-      <p style="margin-top:8px;"><strong>Análise:</strong> ${esc(report?.analise || "Dados insuficientes para análise")}</p>
-      <p style="margin-top:10px;"><strong>Riscos:</strong></p>
-      <ul>${(report?.riscos || []).map((item) => `<li>${esc(item)}</li>`).join("")}</ul>
-      <p style="margin-top:10px;"><strong>Ações:</strong></p>
-      <ul>${(report?.acoes || []).map((item) => `<li>${esc(item)}</li>`).join("")}</ul>
+      <h2>Resumo Executivo</h2>
+      <p>${esc(executivo.resumoExecutivo)}</p>
+      <p style="margin-top:10px;"><strong>Diagnóstico detalhado:</strong> ${esc(executivo.diagnosticoDetalhado)}</p>
+      <p style="margin-top:10px;"><strong>Análise por módulo - Combustível:</strong> ${esc(executivo.moduloCombustivel)}</p>
+      <p style="margin-top:8px;"><strong>Análise por módulo - Transporte:</strong> ${esc(executivo.moduloTransporte)}</p>
+      <p style="margin-top:8px;"><strong>Análise por módulo - Frota:</strong> ${esc(executivo.moduloFrota)}</p>
+      <p style="margin-top:10px;"><strong>Impacto financeiro:</strong> ${esc(executivo.impactoFinanceiro)}</p>
+      <p style="margin-top:10px;"><strong>Riscos operacionais:</strong></p>
+      <ul>${executivo.riscos.map((item) => `<li>${esc(item)}</li>`).join("")}</ul>
+      <p style="margin-top:10px;"><strong>Ações recomendadas:</strong></p>
+      <ul>${executivo.acoes.map((item) => `<li>${esc(item)}</li>`).join("")}</ul>
+      <p style="margin-top:10px;"><strong>Cálculos utilizados:</strong></p>
+      <ul>${executivo.calculos.map((item) => `<li>${esc(item)}</li>`).join("")}</ul>
     </section>
 
     <section class="section">
@@ -372,6 +421,7 @@ const generatePdfWithPdfKit = async ({ company, analysis, report }) =>
       const indicators = analysis?.indicadores || {};
       const insights = analysis?.insights || {};
       const health = healthFromInsights(insights);
+      const executivo = resolveExecutiveReport(report);
       const doc = new PDFDocument({
         size: "A4",
         margin: 36,
@@ -412,24 +462,42 @@ const generatePdfWithPdfKit = async ({ company, analysis, report }) =>
       doc.text(`• Veículos ociosos: ${fmtNum(indicators.veiculosOciosos)}`);
 
       doc.moveDown(0.8);
-      doc.fontSize(14).fillColor("#111827").text("Análise IA");
+      doc.fontSize(14).fillColor("#111827").text("Resumo Executivo");
       doc.moveDown(0.3);
       doc.fontSize(11).fillColor("#1f2937");
-      doc.text(`Problema principal: ${report?.problemaPrincipal || "Dados insuficientes para análise"}`);
+      doc.text(`Resumo: ${executivo.resumoExecutivo}`);
       doc.moveDown(0.3);
-      doc.text(`Análise: ${report?.analise || "Dados insuficientes para análise"}`);
+      doc.text(`Diagnóstico detalhado: ${executivo.diagnosticoDetalhado}`);
 
       doc.moveDown(0.6);
-      doc.fontSize(12).fillColor("#111827").text("Riscos");
+      doc.fontSize(12).fillColor("#111827").text("Análise por módulo");
       doc.moveDown(0.2);
-      const riscos = Array.isArray(report?.riscos) && report.riscos.length ? report.riscos : ["Sem riscos específicos identificados."];
+      doc.fontSize(11).fillColor("#1f2937");
+      doc.text(`• Combustível: ${executivo.moduloCombustivel}`);
+      doc.text(`• Transporte: ${executivo.moduloTransporte}`);
+      doc.text(`• Frota: ${executivo.moduloFrota}`);
+
+      doc.moveDown(0.6);
+      doc.fontSize(12).fillColor("#111827").text("Impacto financeiro");
+      doc.moveDown(0.2);
+      doc.fontSize(11).fillColor("#1f2937").text(executivo.impactoFinanceiro);
+
+      doc.moveDown(0.6);
+      doc.fontSize(12).fillColor("#111827").text("Riscos operacionais");
+      doc.moveDown(0.2);
+      const riscos = executivo.riscos;
       riscos.forEach((item) => doc.fontSize(11).fillColor("#1f2937").text(`• ${item}`));
 
       doc.moveDown(0.6);
       doc.fontSize(12).fillColor("#111827").text("Ações recomendadas");
       doc.moveDown(0.2);
-      const acoes = Array.isArray(report?.acoes) && report.acoes.length ? report.acoes : ["Reavaliar filtros e gerar novo diagnóstico."];
+      const acoes = executivo.acoes;
       acoes.forEach((item) => doc.fontSize(11).fillColor("#1f2937").text(`• ${item}`));
+
+      doc.moveDown(0.6);
+      doc.fontSize(12).fillColor("#111827").text("Cálculos utilizados");
+      doc.moveDown(0.2);
+      executivo.calculos.forEach((item) => doc.fontSize(11).fillColor("#1f2937").text(`• ${item}`));
 
       doc.moveDown(0.8);
       doc
