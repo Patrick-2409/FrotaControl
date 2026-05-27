@@ -1082,14 +1082,6 @@ textarea:focus-visible,
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
 
-.fc-bi-roadmap summary:hover {
-  color: #d4d4d8;
-}
-
-.fc-bi-roadmap[open] {
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
-}
-
 .fc-bi-chart-card {
   overflow: hidden;
 }

@@ -63,7 +63,7 @@ function EmpresaTransportePageContent() {
 
   if (pageLoading) {
     return (
-      <BIDashboardShell eyebrow="Indicadores" title="Transporte" lead="" showRoadmap={false}>
+      <BIDashboardShell eyebrow="Indicadores" title="Transporte" lead="">
         <div className="fc-card p-8">
           <SkeletonRows rows={5} />
         </div>
@@ -73,7 +73,7 @@ function EmpresaTransportePageContent() {
 
   if (!prod.loading && !prod.stats && prod.statsError) {
     return (
-      <BIDashboardShell eyebrow="Indicadores" title="Transporte" lead="" showRoadmap={false}>
+      <BIDashboardShell eyebrow="Indicadores" title="Transporte" lead="">
         <EmpresaModuleErrorPanel
           title="Indicadores de transporte indisponíveis"
           description={prod.statsError}
@@ -85,7 +85,7 @@ function EmpresaTransportePageContent() {
 
   if (!prod.stats) {
     return (
-      <BIDashboardShell eyebrow="Indicadores" title="Transporte" lead="" showRoadmap={false}>
+      <BIDashboardShell eyebrow="Indicadores" title="Transporte" lead="">
         <EmpresaModuleErrorPanel
           title="Transporte"
           description="Não foi possível carregar os indicadores. Confirme se continua ligado e tente outra vez."

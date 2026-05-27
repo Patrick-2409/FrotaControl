@@ -3,7 +3,6 @@ import BIModuleSwitcher from "./BIModuleSwitcher";
 
 /**
  * Invólucro visual tipo painel BI (SAP Analytics / industrial).
- * Roadmap (não implementado): drill-down federado, IA operacional, previsão de consumo/produtividade.
  */
 function BIDashboardShell({
   eyebrow,
@@ -11,7 +10,6 @@ function BIDashboardShell({
   lead,
   headerAside,
   children,
-  showRoadmap = true,
 }) {
   return (
     <div className="fc-bi-dashboard-root fc-erp-workspace">
@@ -31,23 +29,6 @@ function BIDashboardShell({
           ) : null}
         </div>
       </header>
-
-      {showRoadmap ? (
-        <details className="fc-bi-roadmap group rounded-lg border border-zinc-800/80 bg-zinc-950/40">
-          <summary className="cursor-pointer list-none px-4 py-3 text-xs font-semibold text-zinc-400 marker:content-none [&::-webkit-details-marker]:hidden">
-            <span className="inline-flex items-center gap-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-sky-500/80" aria-hidden />
-              Roadmap analytics &amp; IA operacional
-              <span className="text-[10px] font-normal uppercase tracking-wide text-zinc-600">futuro</span>
-            </span>
-          </summary>
-          <div className="border-t border-zinc-800/80 px-4 py-3 text-xs leading-relaxed text-zinc-500">
-            Planeado para evolução do FrotaMax: BI avançado com cubos e bookmarks, analytics de frota em tempo
-            quase real, modelos de previsão de consumo e produtividade, e assistência operacional — sem alteração de
-            contratos nesta versão.
-          </div>
-        </details>
-      ) : null}
 
       {children}
     </div>

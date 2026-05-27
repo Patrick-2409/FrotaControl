@@ -1,6 +1,5 @@
 /**
  * Funções puras para escalas e janelas de gráficos (testáveis, sem DOM).
- * Roadmap: séries temporais longas, previsão de consumo/produtividade (fora de escopo atual).
  */
 
 export function maxWithFloor(values, floor = 0) {

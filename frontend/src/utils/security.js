@@ -1,6 +1,6 @@
 /**
  * Sanitização defensiva de texto livre (formulários, notas).
- * Não substitui validação no servidor. Reduz risco de XSS se valor for re-injetado em HTML no futuro.
+ * Não substitui validação no servidor. Reduz risco de XSS se valor for re-injetado em HTML.
  */
 export function sanitizePlainText(value, maxLen = 8000) {
   if (value == null) return "";

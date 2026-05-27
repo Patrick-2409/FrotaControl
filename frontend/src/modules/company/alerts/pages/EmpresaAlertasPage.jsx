@@ -105,7 +105,6 @@ export default function EmpresaAlertasPage() {
     [items]
   );
   const unread = items.filter((i) => !i.read).length;
-  const channels = feed?.future_channels || {};
   const groupedHistory = useMemo(() => {
     const bucket = new Map();
     history.forEach((row) => {
@@ -286,34 +285,6 @@ export default function EmpresaAlertasPage() {
         </section>
       </AccordionSection>
 
-      <AccordionSection
-        id="alertas-canais-futuros"
-        title="Canais futuros"
-        description="Preparação para push, e-mail, WhatsApp e SMS."
-        defaultOpenDesktop={false}
-        defaultOpenMobile={false}
-        className="border border-dashed border-zinc-700/80 bg-zinc-950/30"
-      >
-        <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Canais futuros</h2>
-        <p className="mt-1 text-xs text-zinc-600">
-          Notificações por aplicativo, e-mail, WhatsApp ou SMS poderão ser ligadas no futuro; por agora mostramos só o
-          estado de preparação de cada canal.
-        </p>
-        <ul className="mt-3 grid gap-2 text-xs text-zinc-500 sm:grid-cols-2">
-          {Object.entries(channels).map(([k, v]) => (
-            <li key={k} className="rounded-lg border border-zinc-800/80 bg-zinc-900/40 px-3 py-2">
-              <span className="font-semibold capitalize text-zinc-300">{k}</span>
-              <span className="ml-2 text-zinc-500">{v?.status}</span>
-              {v?.doc ? <span className="mt-1 block font-mono text-[10px] text-zinc-600">{v.doc}</span> : null}
-            </li>
-          ))}
-        </ul>
-        <p className="mt-4 text-xs text-zinc-600">
-          Voltar ao <Link className="text-sky-400 hover:underline" to="/empresa/dashboard">dashboard</Link>.
-        </p>
-        </section>
-      </AccordionSection>
     </div>
   );
 }

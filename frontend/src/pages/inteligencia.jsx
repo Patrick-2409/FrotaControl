@@ -491,7 +491,6 @@ export default function InteligenciaPage() {
       eyebrow="Inteligência"
       title="Central de Inteligência Operacional"
       lead="Análise automatizada da operação com base em dados reais"
-      showRoadmap={false}
     >
       <div className="space-y-4 px-1 pb-20 sm:space-y-6 sm:px-0 sm:pb-0">
         <AccordionSection

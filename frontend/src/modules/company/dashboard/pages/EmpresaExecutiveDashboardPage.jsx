@@ -57,7 +57,7 @@ export default function EmpresaExecutiveDashboardPage() {
 
   if (loading) {
     return (
-      <BIDashboardShell eyebrow="Indicadores" title="Executivo" lead="" showRoadmap={false}>
+      <BIDashboardShell eyebrow="Indicadores" title="Executivo" lead="">
         <PeriodoHeader periodo={periodo} setPeriodo={setPeriodo} />
         <div className="fc-card border-zinc-800/90 p-8">
           <SkeletonRows rows={6} />
@@ -68,7 +68,7 @@ export default function EmpresaExecutiveDashboardPage() {
 
   if (!summary) {
     return (
-      <BIDashboardShell eyebrow="Indicadores" title="Executivo" lead="" showRoadmap={false}>
+      <BIDashboardShell eyebrow="Indicadores" title="Executivo" lead="">
         <PeriodoHeader periodo={periodo} setPeriodo={setPeriodo} />
         <p className="text-sm text-rose-400/90">Não foi possível carregar o painel executivo.</p>
       </BIDashboardShell>
@@ -116,7 +116,6 @@ export default function EmpresaExecutiveDashboardPage() {
       eyebrow="Indicadores"
       title="Executivo"
       lead="Visão consolidada e acionável por módulo. Toque em qualquer card para abrir a área correspondente."
-      showRoadmap={false}
     >
       <PeriodoHeader periodo={periodo} setPeriodo={setPeriodo} />
 
