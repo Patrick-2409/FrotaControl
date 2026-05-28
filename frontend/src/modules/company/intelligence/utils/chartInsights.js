@@ -23,6 +23,7 @@ const compactDate = (iso) => {
 
 export const CHART_LEGEND_ITEMS = {
   custo: { color: REPORT_COLORS.line, label: "Custo diário (R$)", short: "Custo (R$)" },
+  media: { color: "#D97706", label: "Média diária — linha de referência", short: "Média" },
   consumo: { color: REPORT_COLORS.consumo, label: "Consumo (litros)", short: "Consumo (L)" },
   producao: { color: REPORT_COLORS.producao, label: "Produção (viagens)", short: "Produção" },
   registros: { color: REPORT_COLORS.primary, label: "Registros de parte diária", short: "Registros" },
@@ -72,28 +73,57 @@ export function buildPieDiscussion(pieData = []) {
   return points;
 }
 
+export function buildLineStats(lineData = []) {
+  const rows = lineData.map((row) => ({
+    periodo: row.periodo,
+    custo: toNumber(row.custo),
+  }));
+  if (!rows.length) return null;
+
+  const total = rows.reduce((acc, row) => acc + row.custo, 0);
+  const media = total / rows.length;
+  const peak = rows.reduce((best, row) => (row.custo > best.custo ? row : best), rows[0]);
+  const low = rows.reduce((best, row) => (row.custo < best.custo ? row : best), rows[0]);
+
+  return {
+    total,
+    media,
+    min: low.custo,
+    max: peak.custo,
+    minDate: low.periodo,
+    maxDate: peak.periodo,
+    firstDate: rows[0].periodo,
+    lastDate: rows[rows.length - 1].periodo,
+    tableRows: rows.map((row) => ({
+      periodo: row.periodo,
+      custo: row.custo,
+      vsMediaPct: media > 0 ? ((row.custo - media) / media) * 100 : 0,
+      isPeak: row.periodo === peak.periodo && row.custo === peak.custo,
+      isMin: row.periodo === low.periodo && row.custo === low.custo,
+    })),
+  };
+}
+
 export function buildLineDiscussion(lineData = []) {
-  if (!lineData.length) return ["Sem custo diário registrado no período."];
-  const values = lineData.map((row) => ({ periodo: row.periodo, custo: toNumber(row.custo) }));
-  const total = values.reduce((acc, row) => acc + row.custo, 0);
-  const media = total / values.length;
-  const peak = values.reduce((best, row) => (row.custo > best.custo ? row : best), values[0]);
-  const low = values.reduce((best, row) => (row.custo < best.custo ? row : best), values[0]);
-  const first = values[0]?.custo ?? 0;
-  const last = values[values.length - 1]?.custo ?? 0;
+  const stats = buildLineStats(lineData);
+  if (!stats) return ["Sem custo diário registrado no período."];
+
+  const first = stats.tableRows[0]?.custo ?? 0;
+  const last = stats.tableRows[stats.tableRows.length - 1]?.custo ?? 0;
   const variation = first > 0 ? ((last - first) / first) * 100 : 0;
 
   const points = [
-    `Custo acumulado no período: ${fmtMoney(total)} · média diária ${fmtMoney(media)}.`,
-    `Pico de custo: ${compactDate(peak.periodo)} com ${fmtMoney(peak.custo)}.`,
-    `Menor custo diário: ${compactDate(low.periodo)} com ${fmtMoney(low.custo)}.`,
+    `Referência tracejada no gráfico = média diária ${fmtMoney(stats.media)} (linha de comparação).`,
+    `Período ${compactDate(stats.firstDate)} → ${compactDate(stats.lastDate)} · acumulado ${fmtMoney(stats.total)} em ${stats.tableRows.length} dia(s) com lançamento.`,
+    `Pico: ${compactDate(stats.maxDate)} com ${fmtMoney(stats.max)} (${stats.media > 0 ? fmtPct(((stats.max - stats.media) / stats.media) * 100) : "—"} acima da média).`,
+    `Menor dia: ${compactDate(stats.minDate)} com ${fmtMoney(stats.min)} (${stats.media > 0 ? fmtPct(((stats.min - stats.media) / stats.media) * 100) : "—"} vs média).`,
   ];
   if (variation >= 15) {
-    points.push(`Tendência de alta: último dia ${fmtPct(variation)} acima do início do período — validar lançamentos ou demanda extraordinária.`);
+    points.push(`Tendência de alta: último dia ${fmtPct(variation)} acima do primeiro — validar lançamentos ou demanda extraordinária.`);
   } else if (variation <= -15) {
-    points.push(`Tendência de queda: custo final ${fmtPct(Math.abs(variation))} abaixo do início — possível redução de operação ou correção de lançamentos.`);
+    points.push(`Tendência de queda: último dia ${fmtPct(Math.abs(variation))} abaixo do primeiro — possível redução de operação.`);
   } else {
-    points.push(`Custo relativamente estável entre início e fim do período (variação ${fmtPct(variation)}).`);
+    points.push(`Entre primeiro e último dia a variação foi ${fmtPct(variation)} — comportamento relativamente estável.`);
   }
   return points;
 }

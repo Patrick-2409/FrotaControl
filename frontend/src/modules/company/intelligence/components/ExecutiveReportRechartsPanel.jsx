@@ -8,6 +8,7 @@ import {
   LineChart,
   Pie,
   PieChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -17,17 +18,26 @@ import { CHART_GUIDES } from "../utils/chartGuides";
 import {
   buildBarDiscussion,
   buildLineDiscussion,
+  buildLineStats,
   buildPieDiscussion,
   buildPieLegendItems,
   CHART_LEGEND_ITEMS,
 } from "../utils/chartInsights";
-import { ColorLegend, ReportChartCard, StaticLegend } from "./ChartReportBlocks";
+import { ColorLegend, LineCostDataTable, ReportChartCard, StaticLegend } from "./ChartReportBlocks";
 import { REPORT_COLORS, REPORT_TOOLTIP, reportColorById } from "../utils/reportChartColors";
 
 const hasRows = (rows) => Array.isArray(rows) && rows.length > 0;
 const fmtNum = (value) => Number(value || 0).toLocaleString("pt-BR");
 const fmtMoney = (value) =>
   Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const fmtMoneyAxis = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "R$ 0";
+  if (Math.abs(n) >= 1000) {
+    return `R$ ${(n / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}k`;
+  }
+  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+};
 const fmtDateTick = (value) => {
   const raw = String(value || "");
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
@@ -57,6 +67,7 @@ export default function ExecutiveReportRechartsPanel({ pieData = [], lineData = 
   }));
   const pieLegend = buildPieLegendItems(pieData);
   const pieDiscussion = buildPieDiscussion(pieData);
+  const lineStats = buildLineStats(lineData);
   const lineDiscussion = buildLineDiscussion(lineData);
   const barDiscussion = buildBarDiscussion(barData);
 
@@ -104,28 +115,75 @@ export default function ExecutiveReportRechartsPanel({ pieData = [], lineData = 
       {showCombustivel ? (
         <ReportChartCard
           title={CHART_GUIDES.custoPorPeriodo.titulo}
-          subtitle="Tendência diária de custo"
+          subtitle="Eixo Y = reais (R$) · linha laranja tracejada = média diária de referência"
           guideKey="custoPorPeriodo"
           className={enrichedPie.length <= 1 ? "xl:col-span-2" : ""}
           legend={
             <StaticLegend
               title="Legenda"
-              items={[{ color: CHART_LEGEND_ITEMS.custo.color, label: CHART_LEGEND_ITEMS.custo.label }]}
+              items={[
+                { color: CHART_LEGEND_ITEMS.custo.color, label: CHART_LEGEND_ITEMS.custo.label },
+                { color: CHART_LEGEND_ITEMS.media.color, label: CHART_LEGEND_ITEMS.media.label },
+              ]}
             />
           }
+          extra={<LineCostDataTable stats={lineStats} />}
           discussion={lineDiscussion}
         >
-          {hasRows(lineData) ? (
+          {hasRows(lineData) && lineStats ? (
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={lineData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+              <LineChart data={lineData} margin={{ top: 28, right: 20, left: 4, bottom: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={REPORT_COLORS.grid} />
-                <XAxis dataKey="periodo" stroke={REPORT_COLORS.axis} fontSize={11} tickFormatter={fmtDateTick} />
-                <YAxis stroke={REPORT_COLORS.axis} fontSize={11} tickFormatter={(v) => fmtNum(v)} />
-                <Tooltip {...REPORT_TOOLTIP} formatter={(value) => [fmtMoney(value), CHART_LEGEND_ITEMS.custo.short]} />
+                <XAxis
+                  dataKey="periodo"
+                  stroke={REPORT_COLORS.axis}
+                  fontSize={11}
+                  tickFormatter={fmtDateTick}
+                  label={{ value: "Data", position: "insideBottom", offset: -2, fill: REPORT_COLORS.axis, fontSize: 11 }}
+                />
+                <YAxis
+                  stroke={REPORT_COLORS.axis}
+                  fontSize={11}
+                  width={68}
+                  tickFormatter={fmtMoneyAxis}
+                  label={{
+                    value: "Custo (R$)",
+                    angle: -90,
+                    position: "insideLeft",
+                    fill: REPORT_COLORS.axis,
+                    fontSize: 11,
+                    style: { textAnchor: "middle" },
+                  }}
+                />
+                <Tooltip
+                  {...REPORT_TOOLTIP}
+                  labelFormatter={(label) => `Data: ${fmtDateTick(label)}`}
+                  formatter={(value) => {
+                    const custo = Number(value);
+                    const vsMedia =
+                      lineStats.media > 0 ? `${(((custo - lineStats.media) / lineStats.media) * 100).toFixed(1)}% vs média` : "";
+                    return [`${fmtMoney(value)} (${vsMedia})`, CHART_LEGEND_ITEMS.custo.short];
+                  }}
+                />
                 <Legend
                   verticalAlign="top"
-                  wrapperStyle={{ fontSize: 12, paddingBottom: 8 }}
-                  payload={[{ value: CHART_LEGEND_ITEMS.custo.label, type: "line", color: REPORT_COLORS.line }]}
+                  wrapperStyle={{ fontSize: 12, paddingBottom: 4 }}
+                  payload={[
+                    { value: CHART_LEGEND_ITEMS.custo.label, type: "line", color: REPORT_COLORS.line },
+                    { value: CHART_LEGEND_ITEMS.media.label, type: "line", color: CHART_LEGEND_ITEMS.media.color },
+                  ]}
+                />
+                <ReferenceLine
+                  y={lineStats.media}
+                  stroke={CHART_LEGEND_ITEMS.media.color}
+                  strokeDasharray="8 4"
+                  strokeWidth={2}
+                  label={{
+                    value: `Média ${fmtMoney(lineStats.media)}`,
+                    position: "insideTopRight",
+                    fill: CHART_LEGEND_ITEMS.media.color,
+                    fontSize: 11,
+                  }}
                 />
                 <Line
                   type="monotone"
@@ -133,8 +191,8 @@ export default function ExecutiveReportRechartsPanel({ pieData = [], lineData = 
                   name={CHART_LEGEND_ITEMS.custo.label}
                   stroke={REPORT_COLORS.line}
                   strokeWidth={3}
-                  dot={{ r: 4, fill: REPORT_COLORS.line, strokeWidth: 0 }}
-                  activeDot={{ r: 6 }}
+                  dot={{ r: 5, fill: "#FFFFFF", stroke: REPORT_COLORS.line, strokeWidth: 2 }}
+                  activeDot={{ r: 7 }}
                 />
               </LineChart>
             </ResponsiveContainer>

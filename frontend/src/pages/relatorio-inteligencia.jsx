@@ -4,6 +4,7 @@ import CompanyLogo from "../components/CompanyLogo";
 import IntelligenceFiltersCard from "../modules/company/intelligence/components/IntelligenceFiltersCard";
 import ExecutiveReportCharts from "../modules/company/intelligence/components/ExecutiveReportCharts";
 import ExecutiveReportParteDiaria from "../modules/company/intelligence/components/ExecutiveReportParteDiaria";
+import { mapOrigemIa, SourceBadge } from "../modules/company/intelligence/components/ChartReportBlocks";
 import { useAuth } from "../services/auth";
 import api, { extractApiErrorMessage, getFriendlyApiErrorMessage } from "../services/api";
 import { emitToast } from "../services/uiEvents";
@@ -105,7 +106,7 @@ function KpiCard({ label, value, sub }) {
   );
 }
 
-function InsightBlock({ title, children, tone = "default" }) {
+function InsightBlock({ title, children, tone = "default", source }) {
   const tones = {
     default: "border-slate-200 bg-white",
     critical: "border-red-200 bg-red-50",
@@ -113,7 +114,10 @@ function InsightBlock({ title, children, tone = "default" }) {
   };
   return (
     <article className={`rounded-xl border p-5 shadow-sm ${tones[tone] || tones.default}`}>
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">{title}</h3>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">{title}</h3>
+        {source ? <SourceBadge type={source} /> : null}
+      </div>
       <div className="mt-3 text-sm leading-relaxed text-slate-800">{children}</div>
     </article>
   );
@@ -297,6 +301,15 @@ export default function RelatorioInteligenciaPage() {
   const riscos = Array.isArray(relatorio?.riscos) ? relatorio.riscos : [];
   const inconsistencias = overview?.inconsistencias || [];
   const modulos = relatorio?.analiseModulos || relatorio?.analise_modulos || {};
+  const origemIa = mapOrigemIa(relatorio?.origem);
+  const origemLabel =
+    relatorio?.origem === "openai"
+      ? "Resposta gerada pela IA com base nos lançamentos do período."
+      : relatorio?.origem === "cache"
+        ? "Resposta reutilizada (cache) — mesmos filtros e dados anteriores."
+        : relatorio?.origem === "limit"
+          ? "Limite diário de IA atingido — texto gerado por regras automáticas."
+          : "IA indisponível ou sem chave — texto gerado por regras automáticas com seus dados.";
 
   return (
     <div className="fc-report-page min-h-screen bg-slate-100 print:bg-white">
@@ -378,20 +391,40 @@ export default function RelatorioInteligenciaPage() {
           ) : null}
 
           <section className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-            <InsightBlock title="Resumo executivo" tone={status.label === "CRÍTICO" ? "critical" : "default"}>
+            <InsightBlock
+              title="Resumo executivo"
+              tone={status.label === "CRÍTICO" ? "critical" : "default"}
+              source={origemIa}
+            >
               <p className="text-base font-medium text-slate-900">{loading ? "Carregando..." : resumoExecutivo}</p>
+              {!loading && relatorio?.origem ? (
+                <p className="mt-2 text-xs text-slate-500">{origemLabel}</p>
+              ) : null}
             </InsightBlock>
-            <div className="grid grid-cols-2 gap-3">
-              {loading
-                ? [1, 2, 3, 4].map((i) => <div key={i} className="h-24 animate-pulse rounded-xl bg-slate-100" />)
-                : kpiCards.map((card) => <KpiCard key={card.label} {...card} />)}
+            <div>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Indicadores</p>
+                <SourceBadge type="dados" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {loading
+                  ? [1, 2, 3, 4].map((i) => <div key={i} className="h-24 animate-pulse rounded-xl bg-slate-100" />)
+                  : kpiCards.map((card) => <KpiCard key={card.label} {...card} />)}
+              </div>
             </div>
           </section>
 
           <section className="mt-10">
-            <header className="mb-6">
-              <p className="text-xs font-semibold uppercase tracking-widest text-blue-700">Análise visual</p>
-              <h2 className="mt-1 text-xl font-bold text-slate-900">Gráficos operacionais</h2>
+            <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-blue-700">Análise visual</p>
+                <h2 className="mt-1 text-xl font-bold text-slate-900">Gráficos operacionais</h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  Números e curvas vêm dos seus abastecimentos, viagens e partes diárias. A leitura abaixo de cada gráfico
+                  é automática (não é GPT).
+                </p>
+              </div>
+              <SourceBadge type="dados" />
             </header>
             {loading ? (
               <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
@@ -414,15 +447,22 @@ export default function RelatorioInteligenciaPage() {
           </section>
 
           <section className="mt-10 border-t border-slate-200 pt-10">
-            <header className="mb-6">
-              <p className="text-xs font-semibold uppercase tracking-widest text-blue-700">Inteligência artificial</p>
-              <h2 className="mt-1 text-xl font-bold text-slate-900">Diagnóstico e ações</h2>
+            <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-blue-700">Inteligência artificial</p>
+                <h2 className="mt-1 text-xl font-bold text-slate-900">Diagnóstico e ações</h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  Ao abrir ou atualizar o relatório, o sistema envia os indicadores do período para a IA (ou usa regras
+                  se o limite/chave não permitir).
+                </p>
+              </div>
+              <SourceBadge type={origemIa} />
             </header>
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-              <InsightBlock title="Diagnóstico" tone={inconsistencias.length ? "critical" : "default"}>
+              <InsightBlock title="Diagnóstico" tone={inconsistencias.length ? "critical" : "default"} source={origemIa}>
                 {analysisLoading ? "Gerando análise..." : diagnostico || "Sem diagnóstico disponível."}
               </InsightBlock>
-              <InsightBlock title="Ações recomendadas" tone="action">
+              <InsightBlock title="Ações recomendadas" tone="action" source={origemIa}>
                 {acoes.length ? (
                   <ul className="list-disc space-y-2 pl-5">
                     {acoes.slice(0, 6).map((acao) => (
@@ -438,17 +478,17 @@ export default function RelatorioInteligenciaPage() {
             {(modulos.combustivel || modulos.transporte || modulos.apoio || modulos.frota) && (
               <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
                 {modulos.combustivel ? (
-                  <InsightBlock title="Combustível">
+                  <InsightBlock title="Combustível" source={origemIa}>
                     <p>{modulos.combustivel}</p>
                   </InsightBlock>
                 ) : null}
                 {modulos.transporte ? (
-                  <InsightBlock title="Transporte">
+                  <InsightBlock title="Transporte" source={origemIa}>
                     <p>{modulos.transporte}</p>
                   </InsightBlock>
                 ) : null}
                 {modulos.apoio || modulos.frota ? (
-                  <InsightBlock title="Apoio">
+                  <InsightBlock title="Apoio" source={origemIa}>
                     <p>{modulos.apoio || modulos.frota}</p>
                   </InsightBlock>
                 ) : null}
@@ -457,7 +497,7 @@ export default function RelatorioInteligenciaPage() {
 
             {riscos.length > 0 ? (
               <div className="mt-6">
-                <InsightBlock title="Riscos operacionais">
+                <InsightBlock title="Riscos operacionais" source={origemIa}>
                   <ul className="list-disc space-y-2 pl-5">
                     {riscos.slice(0, 5).map((risco) => (
                       <li key={risco}>{risco}</li>

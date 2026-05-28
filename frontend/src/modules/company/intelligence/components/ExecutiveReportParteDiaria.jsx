@@ -161,7 +161,7 @@ export default function ExecutiveReportParteDiaria({ parteDiaria = {}, loading =
               </div>
             )}
           </div>
-          <ChartDiscussion points={parteDiariaDiscussion} />
+            <ChartDiscussion points={parteDiariaDiscussion} source="dados" />
           <ChartGuideBlock guideKey="parteDiariaProdutividade" />
         </article>
       </div>
