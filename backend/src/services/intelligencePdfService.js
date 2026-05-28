@@ -294,7 +294,6 @@ const getPuppeteer = () => {
 
 const launchBrowser = async () => {
   const puppeteer = getPuppeteer();
-  console.log("[PDF] Caminho Chromium:", process.env.PUPPETEER_EXECUTABLE_PATH);
   try {
     const browser = await puppeteer.launch({
       headless: "new",
@@ -485,9 +484,6 @@ const renderPdfFromHtml = async (html) => {
 };
 
 const generateIntelligencePdf = async ({ empresaId, analysis, report }) => {
-  if (!process.env.PUPPETEER_EXECUTABLE_PATH) {
-    throw new Error("Chromium não configurado. Defina PUPPETEER_EXECUTABLE_PATH.");
-  }
   const company = await getCompanyById(empresaId);
   const html = await buildHtmlReport({ company, analysis, report });
   let buffer;
@@ -512,9 +508,6 @@ const generateIntelligencePdf = async ({ empresaId, analysis, report }) => {
 };
 
 const generateDebugPdf = async () => {
-  if (!process.env.PUPPETEER_EXECUTABLE_PATH) {
-    throw new Error("Chromium não configurado. Defina PUPPETEER_EXECUTABLE_PATH.");
-  }
   const html = "<!doctype html><html><body><h1>Teste Chromium OK</h1></body></html>";
   const buffer = await renderPdfFromHtml(html);
   return {
