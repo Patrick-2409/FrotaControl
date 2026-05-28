@@ -1,5 +1,13 @@
 import { Component, useEffect, useState } from "react";
 import { CHART_GUIDES } from "../utils/chartGuides";
+import {
+  buildBarDiscussion,
+  buildLineDiscussion,
+  buildPieDiscussion,
+  buildPieLegendItems,
+  CHART_LEGEND_ITEMS,
+} from "../utils/chartInsights";
+import { ColorLegend, ReportChartCard, StaticLegend } from "./ChartReportBlocks";
 import { REPORT_COLORS, reportColorById } from "../utils/reportChartColors";
 
 const hasRows = (rows) => Array.isArray(rows) && rows.length > 0;
@@ -25,44 +33,12 @@ class ChartsErrorBoundary extends Component {
   }
 }
 
-function ChartGuide({ guide }) {
-  if (!guide) return null;
-  return (
-    <div className="mt-4 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-3">
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">O que mostra</p>
-        <p className="mt-1 text-sm text-slate-700">{guide.oQue}</p>
-      </div>
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Como interpretar</p>
-        <p className="mt-1 text-sm text-slate-700">{guide.como}</p>
-      </div>
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Impacto</p>
-        <p className="mt-1 text-sm text-slate-700">{guide.impacto}</p>
-      </div>
-    </div>
-  );
-}
-
-function ReportChartCard({ title, subtitle, children, guide, className = "" }) {
-  return (
-    <article className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ${className}`}>
-      <header>
-        <h3 className="text-base font-semibold text-slate-900">{title}</h3>
-        {subtitle ? <p className="mt-1 text-sm text-slate-500">{subtitle}</p> : null}
-      </header>
-      <div className="mt-4 h-[320px] w-full">{children}</div>
-      <ChartGuide guide={guide} />
-    </article>
-  );
-}
-
 function FallbackChartsPanel({ pieData, lineData, barData, tipoAnalise }) {
   const tipo = String(tipoAnalise || "geral").toLowerCase();
   const showCombustivel = tipo === "geral" || tipo === "combustivel" || tipo === "frota";
   const showTransporte = tipo === "geral" || tipo === "transporte";
   const pieTotal = pieData.reduce((acc, item) => acc + Number(item?.value || 0), 0);
+  const pieLegend = buildPieLegendItems(pieData);
 
   return (
     <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
@@ -70,11 +46,13 @@ function FallbackChartsPanel({ pieData, lineData, barData, tipoAnalise }) {
         <ReportChartCard
           title={CHART_GUIDES.consumoPorVeiculo.titulo}
           subtitle="Participação percentual por veículo"
-          guide={CHART_GUIDES.consumoPorVeiculo}
+          guideKey="consumoPorVeiculo"
+          legend={<ColorLegend title="Legenda — cor por veículo" items={pieLegend} />}
+          discussion={buildPieDiscussion(pieData)}
         >
           <div className="flex h-full flex-col items-center justify-center gap-3">
             <div
-              className="h-44 w-44 rounded-full border border-slate-200"
+              className="h-40 w-40 rounded-full border border-slate-200"
               style={{
                 background: (() => {
                   let cursor = 0;
@@ -89,14 +67,6 @@ function FallbackChartsPanel({ pieData, lineData, barData, tipoAnalise }) {
                 })(),
               }}
             />
-            <div className="grid w-full gap-1 px-2">
-              {pieData.map((item, index) => (
-                <div key={item.name} className="flex justify-between text-xs text-slate-600">
-                  <span>{item.name}</span>
-                  <span>{fmtNum(item.value)} L</span>
-                </div>
-              ))}
-            </div>
           </div>
         </ReportChartCard>
       ) : null}
@@ -105,11 +75,18 @@ function FallbackChartsPanel({ pieData, lineData, barData, tipoAnalise }) {
         <ReportChartCard
           title={CHART_GUIDES.custoPorPeriodo.titulo}
           subtitle="Tendência diária de custo"
-          guide={CHART_GUIDES.custoPorPeriodo}
+          guideKey="custoPorPeriodo"
           className={pieData.length <= 1 ? "xl:col-span-2" : ""}
+          legend={
+            <StaticLegend
+              title="Legenda"
+              items={[{ color: CHART_LEGEND_ITEMS.custo.color, label: CHART_LEGEND_ITEMS.custo.label }]}
+            />
+          }
+          discussion={buildLineDiscussion(lineData)}
         >
           {hasRows(lineData) ? (
-            <svg viewBox="0 0 520 200" className="h-full w-full">
+            <svg viewBox="0 0 520 200" className="h-full w-full" role="img" aria-label="Gráfico de linha de custo">
               <polyline
                 fill="none"
                 stroke={REPORT_COLORS.line}
@@ -134,8 +111,18 @@ function FallbackChartsPanel({ pieData, lineData, barData, tipoAnalise }) {
         <ReportChartCard
           title={CHART_GUIDES.consumoVsProducao.titulo}
           subtitle="Comparativo transporte por data"
-          guide={CHART_GUIDES.consumoVsProducao}
+          guideKey="consumoVsProducao"
           className="xl:col-span-2"
+          legend={
+            <StaticLegend
+              title="Legenda"
+              items={[
+                { color: CHART_LEGEND_ITEMS.consumo.color, label: CHART_LEGEND_ITEMS.consumo.label },
+                { color: CHART_LEGEND_ITEMS.producao.color, label: CHART_LEGEND_ITEMS.producao.label },
+              ]}
+            />
+          }
+          discussion={buildBarDiscussion(barData)}
         >
           {hasRows(barData) ? (
             <div className="flex h-full items-end gap-2 px-2 pb-2">
@@ -145,14 +132,20 @@ function FallbackChartsPanel({ pieData, lineData, barData, tipoAnalise }) {
                   <div key={item.periodo} className="flex min-w-0 flex-1 flex-col items-center gap-2">
                     <div className="flex h-52 w-full items-end justify-center gap-1">
                       <div
-                        className="w-3 rounded-t bg-red-500"
-                        style={{ height: `${Math.max((Number(item.consumo || 0) / maxY) * 100, 4)}%` }}
-                        title={`Consumo ${fmtNum(item.consumo)}`}
+                        className="w-3 rounded-t"
+                        style={{
+                          backgroundColor: REPORT_COLORS.consumo,
+                          height: `${Math.max((Number(item.consumo || 0) / maxY) * 100, 4)}%`,
+                        }}
+                        title={`${CHART_LEGEND_ITEMS.consumo.short}: ${fmtNum(item.consumo)}`}
                       />
                       <div
-                        className="w-3 rounded-t bg-emerald-600"
-                        style={{ height: `${Math.max((Number(item.producao || 0) / maxY) * 100, 4)}%` }}
-                        title={`Produção ${fmtNum(item.producao)}`}
+                        className="w-3 rounded-t"
+                        style={{
+                          backgroundColor: REPORT_COLORS.producao,
+                          height: `${Math.max((Number(item.producao || 0) / maxY) * 100, 4)}%`,
+                        }}
+                        title={`${CHART_LEGEND_ITEMS.producao.short}: ${fmtNum(item.producao)}`}
                       />
                     </div>
                     <span className="text-[10px] text-slate-500">{String(item.periodo).slice(5)}</span>

@@ -1,4 +1,6 @@
 import { CHART_GUIDES } from "../utils/chartGuides";
+import { buildParteDiariaDiscussion, CHART_LEGEND_ITEMS } from "../utils/chartInsights";
+import { ChartDiscussion, ChartGuideBlock, StaticLegend } from "./ChartReportBlocks";
 import { REPORT_COLORS } from "../utils/reportChartColors";
 
 const fmtNum = (value, digits = 0) =>
@@ -23,6 +25,10 @@ export default function ExecutiveReportParteDiaria({ parteDiaria = {}, loading =
     registros: Number(row.registros || 0),
     horas: Number(row.totalHoras || 0),
   }));
+  const parteDiariaDiscussion = buildParteDiariaDiscussion(chartData, atividades, indicadores);
+  const topAtividade = atividades.length
+    ? [...atividades].sort((a, b) => Number(b.registros || 0) - Number(a.registros || 0))[0]
+    : null;
 
   if (loading) {
     return (
@@ -61,31 +67,42 @@ export default function ExecutiveReportParteDiaria({ parteDiaria = {}, loading =
           <h3 className="text-base font-semibold text-slate-900">Atividades por veículo</h3>
           <p className="mt-1 text-sm text-slate-500">Top veículos por volume de registros e horas.</p>
           {atividades.length ? (
-            <div className="mt-4 overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
-                    <th className="py-2 pr-3">Veículo</th>
-                    <th className="py-2 pr-3">Registros</th>
-                    <th className="py-2 pr-3">Horas</th>
-                    <th className="py-2">Km</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {atividades.map((row) => (
-                    <tr key={`${row.veiculoId}-${row.veiculo}`} className="border-b border-slate-100">
-                      <td className="py-2.5 pr-3 font-medium text-slate-800">
-                        {row.veiculo}
-                        <span className="ml-1 text-xs text-slate-400">{row.placa}</span>
-                      </td>
-                      <td className="py-2.5 pr-3 tabular-nums text-slate-700">{fmtNum(row.registros)}</td>
-                      <td className="py-2.5 pr-3 tabular-nums text-slate-700">{fmtNum(row.totalHoras, 1)}</td>
-                      <td className="py-2.5 tabular-nums text-slate-700">{fmtNum(row.totalKm, 1)}</td>
+            <>
+              <div className="mt-4 overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+                      <th className="py-2 pr-3">Veículo</th>
+                      <th className="py-2 pr-3">Registros</th>
+                      <th className="py-2 pr-3">Horas</th>
+                      <th className="py-2">Km</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {atividades.map((row) => (
+                      <tr key={`${row.veiculoId}-${row.veiculo}`} className="border-b border-slate-100">
+                        <td className="py-2.5 pr-3 font-medium text-slate-800">
+                          {row.veiculo}
+                          <span className="ml-1 text-xs text-slate-400">{row.placa}</span>
+                        </td>
+                        <td className="py-2.5 pr-3 tabular-nums text-slate-700">{fmtNum(row.registros)}</td>
+                        <td className="py-2.5 pr-3 tabular-nums text-slate-700">{fmtNum(row.totalHoras, 1)}</td>
+                        <td className="py-2.5 tabular-nums text-slate-700">{fmtNum(row.totalKm, 1)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {topAtividade ? (
+                <ChartDiscussion
+                  title="Leitura da tabela"
+                  points={[
+                    `Veículo líder: ${topAtividade.veiculo} concentra ${fmtNum(topAtividade.registros)} registro(s) e ${fmtNum(topAtividade.totalHoras, 1)} h.`,
+                    `Cobertura: ${fmtNum(indicadores.veiculosComParteDiaria)} veículo(s) com lançamento no período filtrado.`,
+                  ]}
+                />
+              ) : null}
+            </>
           ) : (
             <p className="mt-6 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
               Nenhuma parte diária registrada no escopo filtrado.
@@ -96,7 +113,14 @@ export default function ExecutiveReportParteDiaria({ parteDiaria = {}, loading =
         <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h3 className="text-base font-semibold text-slate-900">{CHART_GUIDES.parteDiariaProdutividade.titulo}</h3>
           <p className="mt-1 text-sm text-slate-500">Registros e horas por dia.</p>
-          <div className="mt-4 h-[280px]">
+          <StaticLegend
+            title="Legenda"
+            items={[
+              { color: CHART_LEGEND_ITEMS.registros.color, label: CHART_LEGEND_ITEMS.registros.label },
+              { color: CHART_LEGEND_ITEMS.horas.color, label: CHART_LEGEND_ITEMS.horas.label },
+            ]}
+          />
+          <div className="mt-3 h-[280px]">
             {chartData.length ? (
               <div className="flex h-full items-end gap-2 px-2 pb-2">
                 {chartData.map((item) => {
@@ -137,20 +161,8 @@ export default function ExecutiveReportParteDiaria({ parteDiaria = {}, loading =
               </div>
             )}
           </div>
-          <div className="mt-4 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-3">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">O que mostra</p>
-              <p className="mt-1 text-sm text-slate-700">{CHART_GUIDES.parteDiariaProdutividade.oQue}</p>
-            </div>
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Como interpretar</p>
-              <p className="mt-1 text-sm text-slate-700">{CHART_GUIDES.parteDiariaProdutividade.como}</p>
-            </div>
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Impacto</p>
-              <p className="mt-1 text-sm text-slate-700">{CHART_GUIDES.parteDiariaProdutividade.impacto}</p>
-            </div>
-          </div>
+          <ChartDiscussion points={parteDiariaDiscussion} />
+          <ChartGuideBlock guideKey="parteDiariaProdutividade" />
         </article>
       </div>
     </section>
