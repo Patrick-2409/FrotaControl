@@ -294,7 +294,7 @@ const getPuppeteer = () => {
 
 const launchBrowser = async () => {
   const puppeteer = getPuppeteer();
-  console.log("Cache Puppeteer:", process.env.PUPPETEER_CACHE_DIR);
+  console.log("[PDF] Cache Puppeteer:", process.env.PUPPETEER_CACHE_DIR);
   try {
     const browser = await puppeteer.launch({
       headless: "new",

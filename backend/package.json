@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "postinstall": "echo \"Instalando Chromium...\" && rm -rf /opt/render/.cache/puppeteer && npx puppeteer browsers install chrome && echo \"Build Puppeteer OK\"",
+    "postinstall": "echo \"Instalando Chromium...\" && rm -rf /tmp/puppeteer-cache && PUPPETEER_CACHE_DIR=/tmp/puppeteer-cache npx puppeteer browsers install chrome && echo \"Build Puppeteer OK\"",
     "db:init": "node scripts/init-db-only.js",
     "test": "node --test \"./test/**/*.test.js\""
   },
