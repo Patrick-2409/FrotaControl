@@ -20,7 +20,15 @@ export default function IntelligenceFiltersCard({
   vehicleOptions = [],
   driverOptions = [],
   embedded = false,
+  variant = "dark",
 }) {
+  const isLight = variant === "light";
+  const labelClass = isLight
+    ? "mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500"
+    : "mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-400";
+  const selectClass = isLight
+    ? "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+    : inputClass;
   const onFieldChange = (field) => (event) => {
     onChange((prev) => ({ ...prev, [field]: event.target.value }));
   };
@@ -35,8 +43,8 @@ export default function IntelligenceFiltersCard({
 
       <div className={`${embedded ? "" : "mt-4"} grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4`}>
         <label className="block">
-          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-400">Período</span>
-          <select className={inputClass} value={filters.periodo} onChange={onFieldChange("periodo")}>
+          <span className={labelClass}>Período</span>
+          <select className={selectClass} value={filters.periodo} onChange={onFieldChange("periodo")}>
             {PERIOD_OPTIONS.map((item) => (
               <option key={item.value} value={item.value}>
                 {item.label}
@@ -46,8 +54,8 @@ export default function IntelligenceFiltersCard({
         </label>
 
         <label className="block">
-          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-400">Veículo</span>
-          <select className={inputClass} value={filters.veiculoId} onChange={onFieldChange("veiculoId")}>
+          <span className={labelClass}>Veículo</span>
+          <select className={selectClass} value={filters.veiculoId} onChange={onFieldChange("veiculoId")}>
             {vehicleOptions.map((item) => (
               <option key={item.value} value={item.value}>
                 {item.label}
@@ -57,8 +65,8 @@ export default function IntelligenceFiltersCard({
         </label>
 
         <label className="block">
-          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-400">Motorista</span>
-          <select className={inputClass} value={filters.motoristaId} onChange={onFieldChange("motoristaId")}>
+          <span className={labelClass}>Motorista</span>
+          <select className={selectClass} value={filters.motoristaId} onChange={onFieldChange("motoristaId")}>
             {driverOptions.map((item) => (
               <option key={item.value} value={item.value}>
                 {item.label}
@@ -68,8 +76,8 @@ export default function IntelligenceFiltersCard({
         </label>
 
         <label className="block">
-          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-400">Tipo de análise</span>
-          <select className={inputClass} value={filters.tipoAnalise} onChange={onFieldChange("tipoAnalise")}>
+          <span className={labelClass}>Tipo de análise</span>
+          <select className={selectClass} value={filters.tipoAnalise} onChange={onFieldChange("tipoAnalise")}>
             {ANALYSIS_TYPE_OPTIONS.map((item) => (
               <option key={item.value} value={item.value}>
                 {item.label}

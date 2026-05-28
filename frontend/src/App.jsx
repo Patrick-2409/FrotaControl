@@ -68,6 +68,13 @@ const InteligenciaPage = lazy(() =>
     }))
   )
 );
+const RelatorioInteligenciaPage = lazy(() =>
+  importWithRetry(() =>
+    import("./pages/relatorio-inteligencia").then((module) => ({
+      default: module.default,
+    }))
+  )
+);
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -378,6 +385,21 @@ function App() {
                       <Route path="alertas" element={<EmpresaAlertasPage />} />
                       <Route path="*" element={<Navigate to="dashboard" replace />} />
                     </Routes>
+                  </RouteTransition>
+                </EmpresaLayout>
+              </ProtectedDashboard>
+            </Protected>
+          }
+        />
+
+        <Route
+          path="/relatorio-inteligencia"
+          element={
+            <Protected>
+              <ProtectedDashboard>
+                <EmpresaLayout>
+                  <RouteTransition>
+                    <RelatorioInteligenciaPage />
                   </RouteTransition>
                 </EmpresaLayout>
               </ProtectedDashboard>

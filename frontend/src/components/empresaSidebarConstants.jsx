@@ -184,7 +184,10 @@ export const EMPRESA_SIDEBAR_SECTIONS = filterEmpresaSidebarSections([
   {
     id: "inteligencia",
     title: null,
-    items: [{ to: "/inteligencia", label: "Inteligência", icon: "brain", exact: false }],
+    items: [
+      { to: "/inteligencia", label: "Inteligência", icon: "brain", exact: false },
+      { to: "/relatorio-inteligencia", label: "Relatório BI", icon: "reports", exact: false },
+    ],
   },
   {
     id: "relatorios",

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import BIDashboardShell from "../modules/company/bi/components/BIDashboardShell";
 import IntelligenceFiltersCard from "../modules/company/intelligence/components/IntelligenceFiltersCard";
 import IntelligenceChartsPanel from "../modules/company/intelligence/components/IntelligenceChartsPanel";
@@ -608,6 +608,11 @@ export default function InteligenciaPage() {
     });
   }, []);
 
+  const reportHref = useMemo(() => {
+    const params = new URLSearchParams(buildApiFilters(filters));
+    return `/relatorio-inteligencia?${params.toString()}`;
+  }, [filters]);
+
   return (
     <BIDashboardShell
       eyebrow="Inteligência"
@@ -682,6 +687,12 @@ export default function InteligenciaPage() {
             >
               {analysisLoading ? "Gerando análise e PDF..." : "Gerar Análise Inteligente"}
             </button>
+            <Link
+              to={reportHref}
+              className="fc-btn w-full rounded-md border border-sky-700/60 bg-sky-950/30 px-4 py-3 text-center text-sm font-semibold text-sky-100 transition-all duration-300 hover:border-sky-500"
+            >
+              Abrir relatório HTML (BI)
+            </Link>
             <button
               type="button"
               className="fc-btn w-full rounded-md border border-zinc-700 px-4 py-3 text-sm font-semibold text-zinc-100 transition-all duration-300 hover:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60"

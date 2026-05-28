@@ -214,7 +214,11 @@ const getIntelligenceOverview = async (req, res) => {
     console.log("[INTELIGENCIA][combustivel]", combustivel);
     const transporte = await analisarTransporte(ctx);
     console.log("[INTELIGENCIA][transporte]", transporte);
-    const frota = await analisarFrota({ ...ctx, activeVehicleIds: transporte.support?.activeVehicleIds || new Set() });
+    const frota = await analisarFrota({
+      ...ctx,
+      activeVehicleIds: transporte.support?.activeVehicleIds || new Set(),
+      fuelActiveVehicleIds: combustivel.support?.fuelActiveVehicleIds || new Set(),
+    });
     console.log("[INTELIGENCIA][frota]", frota);
     const resumo = gerarResumoExecutivo({ combustivel, transporte, frota, periodo: ctx.periodo });
 
@@ -264,6 +268,16 @@ const getIntelligenceOverview = async (req, res) => {
       insights: resumo.insights,
       status_operacao: resumo.statusOperacao,
       inconsistencias: resumo.inconsistencias,
+      parte_diaria: {
+        atividades_por_veiculo: frota.graficos?.atividadesPorVeiculo || [],
+        produtividade_por_dia: frota.graficos?.produtividadePorDia || [],
+        indicadores: {
+          totalParteDiaria: frota.indicadores?.totalParteDiaria || 0,
+          totalHorasParteDiaria: frota.indicadores?.totalHorasParteDiaria || 0,
+          mediaHorasPorRegistro: frota.indicadores?.mediaHorasPorRegistro || 0,
+          veiculosComParteDiaria: frota.indicadores?.veiculosComParteDiaria || 0,
+        },
+      },
     });
   } catch (error) {
     console.error("🔥 ERRO REAL INTELIGENCIA:");

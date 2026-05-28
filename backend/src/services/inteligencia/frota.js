@@ -17,7 +17,7 @@ const analisarFrota = async (ctx) => {
   const transportPredicate = buildTransportVehiclePredicate("v");
   const apoioPredicate = buildApoioVehiclePredicate("v");
 
-  const [vehiclesScopeRows, parteDiariaAgg, parteDiariaActiveRows, escopoTransporteAgg, escopoApoioAgg] =
+  const [vehiclesScopeRows, parteDiariaAgg, parteDiariaActiveRows, parteDiariaPorVeiculoRows, parteDiariaPorDiaRows, escopoTransporteAgg, escopoApoioAgg] =
     await Promise.all([
       safeFrotaQuery(
         "vehiclesScopeRows",
@@ -57,6 +57,35 @@ const analisarFrota = async (ctx) => {
        FROM parte_diaria pd
        WHERE ${filtrosParteDiaria}
          AND pd.veiculo_id IS NOT NULL`,
+        baseParams
+      ),
+      safeFrotaQuery(
+        "parteDiariaPorVeiculoRows",
+        `SELECT
+         pd.veiculo_id,
+         COALESCE(v.nome, pd.equipamento, 'Sem nome') AS veiculo,
+         COALESCE(v.placa, '-') AS placa,
+         COUNT(*)::int AS registros,
+         COALESCE(SUM(pd.total_horas), 0)::numeric AS total_horas,
+         COALESCE(SUM(pd.total_km), 0)::numeric AS total_km
+       FROM parte_diaria pd
+       LEFT JOIN veiculos v ON v.id = pd.veiculo_id AND v.empresa_id = pd.empresa_id
+       WHERE ${filtrosParteDiaria}
+       GROUP BY pd.veiculo_id, v.nome, v.placa, pd.equipamento
+       ORDER BY registros DESC, total_horas DESC
+       LIMIT 12`,
+        baseParams
+      ),
+      safeFrotaQuery(
+        "parteDiariaPorDiaRows",
+        `SELECT
+         DATE(COALESCE(pd.recorded_at_client, pd.data))::text AS periodo,
+         COUNT(*)::int AS registros,
+         COALESCE(SUM(pd.total_horas), 0)::numeric AS total_horas
+       FROM parte_diaria pd
+       WHERE ${filtrosParteDiaria}
+       GROUP BY 1
+       ORDER BY 1`,
         baseParams
       ),
       safeFrotaQuery(
@@ -104,6 +133,24 @@ const analisarFrota = async (ctx) => {
   const veiculosOciosos = veiculosOciososTransporte + veiculosOciososApoio;
   const veiculosOciososRows = scopedVehicles.filter((row) => !isVeiculoAtivo(Number(row.id)));
 
+  const totalParteDiaria = toNumber(parteDiariaAgg.rows[0]?.total_parte_diaria);
+  const atividadesPorVeiculo = (parteDiariaPorVeiculoRows.rows || []).map((row) => ({
+    veiculoId: Number(row.veiculo_id) || null,
+    veiculo: row.veiculo,
+    placa: row.placa,
+    registros: toNumber(row.registros),
+    totalHoras: toNumber(row.total_horas),
+    totalKm: toNumber(row.total_km),
+  }));
+  const produtividadePorDia = (parteDiariaPorDiaRows.rows || []).map((row) => ({
+    periodo: row.periodo,
+    registros: toNumber(row.registros),
+    totalHoras: toNumber(row.total_horas),
+  }));
+  const totalHorasParteDiaria = atividadesPorVeiculo.reduce((acc, row) => acc + row.totalHoras, 0);
+  const veiculosComParteDiaria = atividadesPorVeiculo.filter((row) => row.registros > 0).length;
+  const mediaHorasPorRegistro = totalParteDiaria > 0 ? totalHorasParteDiaria / totalParteDiaria : 0;
+
   return {
     indicadores: {
       veiculosAtivos,
@@ -115,7 +162,10 @@ const analisarFrota = async (ctx) => {
       totalVeiculosTransporte: toNumber(escopoTransporteAgg.rows[0]?.total),
       totalVeiculosApoio: toNumber(escopoApoioAgg.rows[0]?.total),
       totalVeiculosEscopo: scopedVehicles.length,
-      totalParteDiaria: toNumber(parteDiariaAgg.rows[0]?.total_parte_diaria),
+      totalParteDiaria,
+      totalHorasParteDiaria,
+      mediaHorasPorRegistro,
+      veiculosComParteDiaria,
     },
     insights: {
       veiculosOciosos: veiculosOciososRows.map((row) => ({
@@ -124,6 +174,10 @@ const analisarFrota = async (ctx) => {
         placa: row.placa,
         tipoOperacao: row.tipo_operacao === "transporte" ? "transporte" : "apoio",
       })),
+    },
+    graficos: {
+      atividadesPorVeiculo,
+      produtividadePorDia,
     },
   };
 };
