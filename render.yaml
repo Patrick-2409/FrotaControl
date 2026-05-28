@@ -8,7 +8,7 @@ services:
     region: oregon
     plan: free
     rootDir: backend
-    buildCommand: chmod +x ../render-build.sh && ../render-build.sh && npm install
+    buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:

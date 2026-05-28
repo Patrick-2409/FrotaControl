@@ -285,7 +285,10 @@ const dualBarSvg = (series, title) => {
 };
 
 const getPuppeteer = () => {
-  if (!puppeteerModule) puppeteerModule = require("puppeteer");
+  if (!puppeteerModule) {
+    puppeteerModule = require("puppeteer");
+    console.log("Puppeteer pronto para uso");
+  }
   return puppeteerModule;
 };
 
@@ -294,13 +297,10 @@ const launchBrowser = async () => {
   console.log("[PDF] Caminho Chromium:", process.env.PUPPETEER_EXECUTABLE_PATH);
   try {
     const browser = await puppeteer.launch({
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-      headless: true,
+      headless: "new",
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
       ],
     });
     console.log("[PDF] Chromium iniciado com sucesso");
