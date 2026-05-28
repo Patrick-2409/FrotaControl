@@ -8,7 +8,7 @@ services:
     region: oregon
     plan: free
     rootDir: backend
-    buildCommand: npm install && npx puppeteer browsers install chrome --path ./.cache/puppeteer
+    buildCommand: npm install && npx puppeteer browsers install chrome --path /opt/render/.cache/puppeteer
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
@@ -31,7 +31,7 @@ services:
       - key: CLOUDINARY_API_SECRET
         sync: false
       - key: PUPPETEER_CACHE_DIR
-        value: /opt/render/project/src/backend/.cache/puppeteer
+        value: /opt/render/.cache/puppeteer
 
   - type: web
     name: frotacontrol-frontend

@@ -290,10 +290,51 @@ const getPuppeteer = () => {
   return puppeteerModule;
 };
 
+const discoverChromeFromCache = (cacheRoot) => {
+  if (!cacheRoot) return [];
+  const roots = [
+    cacheRoot,
+    path.join(cacheRoot, "chrome"),
+  ];
+  const candidates = [];
+  for (const root of roots) {
+    let versions = [];
+    try {
+      if (!fsSync.existsSync(root)) continue;
+      versions = fsSync.readdirSync(root);
+    } catch {
+      continue;
+    }
+    for (const version of versions) {
+      const linuxChrome = path.join(root, version, "chrome-linux64", "chrome");
+      const linuxLegacy = path.join(root, version, "chrome-linux", "chrome");
+      const macChrome = path.join(root, version, "chrome-mac", "Chromium.app", "Contents", "MacOS", "Chromium");
+      const winChrome = path.join(root, version, "chrome-win64", "chrome.exe");
+      [linuxChrome, linuxLegacy, macChrome, winChrome].forEach((bin) => {
+        try {
+          if (fsSync.existsSync(bin)) candidates.push(bin);
+        } catch {
+          // ignora caminho inválido
+        }
+      });
+    }
+  }
+  return candidates;
+};
+
 const getBrowserCandidates = () => {
   const puppeteer = getPuppeteer();
+  const cacheRoots = [
+    process.env.PUPPETEER_CACHE_DIR,
+    path.resolve(process.cwd(), ".cache/puppeteer"),
+    path.resolve(__dirname, "../../.cache/puppeteer"),
+    "/opt/render/.cache/puppeteer",
+    "/opt/render/project/src/backend/.cache/puppeteer",
+  ].filter(Boolean);
+  const cacheCandidates = cacheRoots.flatMap((root) => discoverChromeFromCache(root));
   const candidates = [
     process.env.PUPPETEER_EXECUTABLE_PATH,
+    ...cacheCandidates,
     "/usr/bin/google-chrome-stable",
     "/usr/bin/google-chrome",
     "/usr/bin/chromium-browser",
@@ -310,7 +351,7 @@ const getBrowserCandidates = () => {
   } catch {
     // Ignora erro de resolução automática do Puppeteer e tenta caminhos estáticos.
   }
-  return candidates.filter(Boolean);
+  return [...new Set(candidates.filter(Boolean))];
 };
 
 const resolveBrowserExecutable = () =>
