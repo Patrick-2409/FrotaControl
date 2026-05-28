@@ -8,7 +8,7 @@ services:
     region: oregon
     plan: free
     rootDir: backend
-    buildCommand: npm install && npx puppeteer browsers install chrome --path /opt/render/.cache/puppeteer
+    buildCommand: chmod +x ../render-build.sh && ../render-build.sh && npm install
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
@@ -30,6 +30,8 @@ services:
         sync: false
       - key: CLOUDINARY_API_SECRET
         sync: false
+      - key: PUPPETEER_EXECUTABLE_PATH
+        value: /usr/bin/chromium
       - key: PUPPETEER_CACHE_DIR
         value: /opt/render/.cache/puppeteer
 

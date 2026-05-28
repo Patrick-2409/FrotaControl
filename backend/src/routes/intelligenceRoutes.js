@@ -5,6 +5,7 @@ const {
   analisarOperacao,
   exportarPdfInteligencia,
   getIntelligenceOverview,
+  debugPdfInteligencia,
 } = require("../controllers/intelligenceController");
 
 const router = express.Router();
@@ -30,5 +31,6 @@ router.post("/gerar", aiLimiter, asyncHandler(analisarOperacao));
 router.get("/overview", overviewLimiter, asyncHandler(getIntelligenceOverview));
 router.post("/pdf", aiLimiter, asyncHandler(exportarPdfInteligencia));
 router.get("/pdf", aiLimiter, asyncHandler(exportarPdfInteligencia));
+router.get("/debug/pdf", aiLimiter, asyncHandler(debugPdfInteligencia));
 
 module.exports = router;

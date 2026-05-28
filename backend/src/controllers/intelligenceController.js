@@ -2,7 +2,7 @@ const { z } = require("zod");
 const { resolveEmpresaScopeWrite } = require("../domain/tenantContext");
 const { analyzeOperationalData } = require("../services/intelligenceAnalysisService");
 const { generateIntelligenceReport } = require("../services/intelligenceAiService");
-const { generateIntelligencePdf } = require("../services/intelligencePdfService");
+const { generateIntelligencePdf, generateDebugPdf } = require("../services/intelligencePdfService");
 const { buildContext, toIsoDate } = require("../services/inteligencia/common");
 const { analisarCombustivel } = require("../services/inteligencia/combustivel");
 const { analisarTransporte } = require("../services/inteligencia/transporte");
@@ -299,8 +299,24 @@ const getIntelligenceOverview = async (req, res) => {
   }
 };
 
+const debugPdfInteligencia = async (req, res) => {
+  try {
+    const pdf = await generateDebugPdf();
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${pdf.filename}"`);
+    return res.send(pdf.buffer);
+  } catch (error) {
+    return res.status(500).json({
+      error: true,
+      message: "Falha ao gerar PDF profissional. Chromium não disponível.",
+      detail: error?.message || String(error),
+    });
+  }
+};
+
 module.exports = {
   analisarOperacao,
   exportarPdfInteligencia,
   getIntelligenceOverview,
+  debugPdfInteligencia,
 };
