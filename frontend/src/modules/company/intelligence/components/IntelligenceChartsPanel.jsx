@@ -1,5 +1,6 @@
 import { Component, useEffect, useState } from "react";
-import { CHART_COLORS, getColorById } from "../utils/chartColors";
+import { CHART_COLORS, getColorByIndex } from "../utils/chartColors";
+import { BiPieLegend, enrichPieChartData } from "../utils/pieChartHelpers";
 
 const ENABLE_RECHARTS = String(import.meta.env.VITE_ENABLE_RECHARTS || "").trim().toLowerCase() === "true";
 
@@ -11,14 +12,12 @@ const maxFrom = (values) => {
 };
 
 const hasRows = (rows) => Array.isArray(rows) && rows.length > 0;
-const compactLabel = (value) => {
-  const text = String(value || "");
-  return text.length > 18 ? `${text.slice(0, 18)}...` : text;
-};
+
 function ChartCard({ title, subtitle, helpText, children, className = "" }) {
+  const isPie = className.includes("chart-card-pie");
   return (
-    <article className={`rounded-xl border border-zinc-800/90 bg-zinc-950/50 p-4 ${className}`}>
-      <p className="flex items-center gap-2 text-sm font-semibold text-zinc-100">
+    <article className={`rounded-xl border border-zinc-800/90 bg-zinc-950/50 p-4 sm:p-5 ${className}`}>
+      <p className="flex items-center gap-2 text-sm font-semibold text-zinc-100 sm:text-base">
         <span>{title}</span>
         {helpText ? (
           <span
@@ -29,9 +28,9 @@ function ChartCard({ title, subtitle, helpText, children, className = "" }) {
           </span>
         ) : null}
       </p>
-      {subtitle ? <p className="mt-1 text-xs text-zinc-400">{subtitle}</p> : null}
-      <div className="mt-3 h-[260px] w-full overflow-hidden sm:h-[240px]">
-        <div className="h-full w-full">{children}</div>
+      {subtitle ? <p className="mt-1 text-xs text-zinc-400 sm:text-sm">{subtitle}</p> : null}
+      <div className={`mt-3 w-full overflow-hidden ${isPie ? "h-auto" : "h-[220px] sm:h-[240px]"}`}>
+        <div className={isPie ? "w-full" : "h-full w-full"}>{children}</div>
       </div>
     </article>
   );
@@ -65,71 +64,38 @@ class ChartErrorBoundary extends Component {
   }
 }
 
-function PieLegend({ data }) {
-  const total = (Array.isArray(data) ? data : []).reduce((acc, item) => acc + Number(item?.value || 0), 0);
-  const maxValue = Math.max(...(Array.isArray(data) ? data : []).map((item) => Number(item?.value || 0)), 0);
-  return (
-    <div className="mt-3 grid grid-cols-1 gap-1">
-      {data.map((item, index) => {
-        const color = getColorById(item?.veiculo_id ?? item?.name ?? index);
-        const value = Number(item?.value || 0);
-        const pct = total > 0 ? (value / total) * 100 : 0;
-        const isTop = value === maxValue && maxValue > 0;
-        return (
-          <div
-            key={`legend-${item.name}`}
-            className={`grid grid-cols-[10px_minmax(0,1fr)_auto_auto] items-center gap-2 rounded-md px-2 py-1 text-xs ${
-              isTop ? "border border-emerald-600/40 bg-emerald-950/20" : ""
-            }`}
-          >
-            <span
-              className="inline-block h-2.5 w-2.5 rounded-full"
-              style={{ backgroundColor: color }}
-              aria-hidden
-            />
-            <span
-              className="truncate font-medium"
-              title={item.name}
-              style={{ color }}
-            >
-              {compactLabel(item.name)}
-            </span>
-            <span className="tabular-nums text-zinc-300">{fmt(value)} L</span>
-            <span className="tabular-nums text-zinc-400">
-              {Number(pct).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 function PieFallbackChart({ data }) {
-  const total = data.reduce((acc, item) => acc + Number(item.value || 0), 0);
+  const enriched = enrichPieChartData(data);
+  const total = enriched.reduce((acc, item) => acc + Number(item.value || 0), 0);
   let currentAngle = -90;
-  const segments = data.map((item, index) => {
+  const segments = enriched.map((item) => {
     const value = Number(item.value || 0);
     const angle = total > 0 ? (value / total) * 360 : 0;
     const segment = {
-      color: getColorById(item?.veiculo_id ?? item?.name ?? index),
+      color: item.color,
       from: currentAngle,
       to: currentAngle + angle,
     };
     currentAngle += angle;
     return segment;
   });
+
   return (
-    <div className="flex h-full items-center justify-center">
-      <div
-        className="h-44 w-44 rounded-full border border-zinc-700/70 sm:h-40 sm:w-40"
-        style={{
-          background: `conic-gradient(${segments
-            .map((seg) => `${seg.color} ${seg.from}deg ${seg.to}deg`)
-            .join(", ")})`,
-        }}
-        aria-label="Consumo por veículo"
-      />
+    <div className="flex flex-col gap-4 md:flex-row md:items-center md:gap-5">
+      <div className="mx-auto flex h-[168px] w-full max-w-[240px] shrink-0 items-center justify-center md:h-[220px] md:max-w-none md:flex-1">
+        <div
+          className="relative h-40 w-40 rounded-full border border-zinc-700/70 sm:h-44 sm:w-44"
+          style={{
+            background: `conic-gradient(${segments
+              .map((seg) => `${seg.color} ${seg.from}deg ${seg.to}deg`)
+              .join(", ")})`,
+          }}
+          aria-label="Consumo por veículo"
+        />
+      </div>
+      <div className="min-w-0 flex-1 md:border-l md:border-zinc-800 md:pl-4">
+        <BiPieLegend items={enriched} />
+      </div>
     </div>
   );
 }
@@ -206,9 +172,9 @@ function FallbackChartsPanel({ pieData, lineData, barData }) {
           title="Consumo por veículo"
           subtitle="Participação percentual por veículo no período."
           helpText="Mostra quais veículos concentram maior consumo e participação."
+          className="chart-card-pie"
         >
           <PieFallbackChart data={pieData} />
-          <PieLegend data={pieData} />
         </ChartCard>
       ) : pieLength === 1 ? (
         <ChartCard title="Consumo por veículo" subtitle="Participação no período">

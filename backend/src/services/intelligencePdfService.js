@@ -461,6 +461,8 @@ const renderPdfFromHtml = async (html) => {
   }
 };
 
+const generateIntelligenceHtml = buildHtmlReport;
+
 const generateIntelligencePdf = async ({ empresaId, analysis, report }) => {
   const error = new Error(PDF_MAINTENANCE_MESSAGE);
   error.statusCode = 501;
@@ -474,6 +476,7 @@ const generateDebugPdf = async () => {
 };
 
 module.exports = {
+  generateIntelligenceHtml,
   generateIntelligencePdf,
   generateDebugPdf,
 };

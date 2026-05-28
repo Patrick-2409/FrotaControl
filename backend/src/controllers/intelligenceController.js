@@ -1,13 +1,17 @@
 const { z } = require("zod");
 const { resolveEmpresaScopeWrite } = require("../domain/tenantContext");
+const { getCompanyById } = require("../models/companyModel");
 const { analyzeOperationalData } = require("../services/intelligenceAnalysisService");
+const { generateIntelligenceHtml } = require("../services/intelligencePdfService");
 const { generateIntelligenceReport } = require("../services/intelligenceAiService");
-const { generateExecutivePdf } = require("../services/pdfReport");
-const { buildContext, toIsoDate } = require("../services/inteligencia/common");
-const { analisarCombustivel } = require("../services/inteligencia/combustivel");
-const { analisarTransporte } = require("../services/inteligencia/transporte");
-const { analisarFrota } = require("../services/inteligencia/frota");
-const { gerarResumoExecutivo } = require("../services/inteligencia/resumoExecutivo");
+const {
+  montarRespostaInteligente,
+  mapRelatorioCompativel,
+  buildOverviewResponse,
+  buildOverviewVazio,
+  buildPayloadGeracaoIA,
+  mesclarComplementoGpt,
+} = require("../services/inteligencia.service");
 
 const parseOptionalPositiveInt = (value) => {
   if (value == null || String(value).trim() === "") return null;
@@ -21,24 +25,6 @@ const bodySchema = z.object({
   motoristaId: z.union([z.string(), z.number()]).optional().nullable(),
   tipoAnalise: z.enum(["geral", "combustivel", "transporte", "frota"]).optional(),
 });
-
-const SAFE_EMPTY_OVERVIEW = {
-  vazio: true,
-  consumo_por_veiculo: [],
-  custo_por_periodo: [],
-  consumo_vs_producao: [],
-  erro_debug: false,
-  indicadores: {
-    totalLitros: 0,
-    totalValor: 0,
-    precoMedio: 0,
-    totalViagens: 0,
-    veiculosAtivos: 0,
-    veiculosOciosos: 0,
-    veiculosConsiderados: 0,
-    totalParteDiaria: 0,
-  },
-};
 
 const parseAnalysisPayload = (req, { allowFallback = false } = {}) => {
   const empresaId = resolveEmpresaScopeWrite(req);
@@ -98,7 +84,7 @@ const parseAnalysisPayload = (req, { allowFallback = false } = {}) => {
   };
 };
 
-const parseAndBuildAnalysis = async (req) => {
+const parseAndBuildAnalysis = async (req, { withGpt = false } = {}) => {
   const { empresaId, payload } = parseAnalysisPayload(req);
 
   const analysis = await analyzeOperationalData({
@@ -109,37 +95,41 @@ const parseAndBuildAnalysis = async (req) => {
     tipoAnalise: payload.tipoAnalise,
   });
 
-  const inconsistencias = [...(analysis?.inconsistencias || [])];
-  const statusOperacao = analysis?.statusOperacao || null;
+  const inteligenciaMotor = montarRespostaInteligente(analysis);
+  let inteligencia = inteligenciaMotor;
+  let gptReport = null;
 
-  const relatorio = await generateIntelligenceReport({
-    empresaId: Number(empresaId),
-    indicadores: analysis.indicadores,
-    insights: {
-      ...(analysis.insights || {}),
-      inconsistenciasDetectadas: inconsistencias,
-    },
-    inconsistencias,
-    metricasExecutivas: analysis.metricasExecutivas,
-    statusOperacao,
-    periodo: analysis.periodo,
-    tipoAnalise: analysis.tipoAnalise,
-    filtros: analysis.filtros,
-  });
+  if (withGpt) {
+    const gptPayload = buildPayloadGeracaoIA(analysis, inteligenciaMotor, empresaId);
+    gptReport = await generateIntelligenceReport(gptPayload);
+    inteligencia = mesclarComplementoGpt(inteligenciaMotor, gptReport);
+  }
+
+  const relatorio = mapRelatorioCompativel(inteligencia, analysis);
 
   return {
     empresaId,
     analysis,
     relatorio,
+    inteligencia,
+    inteligenciaMotor,
+    gptReport,
   };
 };
 
 const analisarOperacao = async (req, res) => {
   try {
-    const result = await parseAndBuildAnalysis(req);
+    const result = await parseAndBuildAnalysis(req, { withGpt: true });
+    const overview = buildOverviewResponse(result.analysis, result.inteligencia);
     return res.json({
       ...result.analysis,
       relatorio: result.relatorio,
+      inteligencia: result.inteligencia,
+      overview,
+      gpt: {
+        origem: result.gptReport?.origem || null,
+        complemento: result.inteligencia?.complemento_gpt || null,
+      },
     });
   } catch (error) {
     const statusCode = error?.statusCode && Number.isInteger(error.statusCode) ? error.statusCode : 500;
@@ -152,139 +142,95 @@ const analisarOperacao = async (req, res) => {
   }
 };
 
-const exportarPdfInteligencia = async (req, res) => {
+const buildHtmlFilename = (analysis) => {
+  const periodo = analysis?.periodo?.tipo || "mes";
+  const inicio = String(analysis?.periodo?.inicio || "").replaceAll("/", "-");
+  return inicio ? `relatorio-inteligencia-${periodo}-${inicio}.html` : `relatorio-inteligencia-${periodo}.html`;
+};
+
+const exportarHtmlInteligencia = async (req, res) => {
   try {
-    console.log("[PDF] Iniciando exportação de PDF de inteligência...");
     const result = await parseAndBuildAnalysis(req);
-    console.log("[PDF] Analysis concluída, gerando documento...");
-    const pdf = await generateExecutivePdf({
-      empresaId: result.empresaId,
+    const company = await getCompanyById(result.empresaId);
+    const html = await generateIntelligenceHtml({
+      company,
       analysis: result.analysis,
       report: result.relatorio,
     });
-    console.log("[PDF] pdfDoc criado, filename:", pdf.filename);
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="${pdf.filename}"`);
 
-    pdf.pdfDoc.on("error", (streamErr) => {
-      console.error("[PDF] Erro no stream do PDF:", streamErr?.message, streamErr?.stack);
-      if (!res.headersSent) {
-        res.status(500).json({ success: false, error: "Erro ao gerar stream do PDF.", message: streamErr?.message });
-      }
-    });
+    const download = String(req.query?.download || "").toLowerCase();
+    const asAttachment = download === "1" || download === "true" || download === "yes";
 
-    pdf.pdfDoc.pipe(res);
-    pdf.pdfDoc.end();
-    console.log("[PDF] Stream iniciado.");
-    return;
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("X-Report-Format", "html");
+    if (asAttachment) {
+      res.setHeader("Content-Disposition", `attachment; filename="${buildHtmlFilename(result.analysis)}"`);
+    }
+
+    return res.status(200).send(html);
   } catch (error) {
-    console.error("[PDF] Erro ao exportar PDF:", error?.message, error?.stack);
     const statusCode = error?.statusCode && Number.isInteger(error.statusCode) ? error.statusCode : 500;
     if (!res.headersSent) {
       return res.status(statusCode).json({
         success: false,
-        error: error?.message || "Falha ao exportar PDF de inteligência.",
-        message: error?.message || "Falha ao exportar PDF de inteligência.",
+        error: error?.message || "Falha ao exportar HTML de inteligência.",
+        message: error?.message || "Falha ao exportar HTML de inteligência.",
       });
     }
+  }
+};
+
+const PDF_DESATIVADO_MENSAGEM = "PDF desativado temporariamente para estabilização do sistema";
+
+const exportarPdfInteligencia = async (req, res) => {
+  try {
+    return res.status(200).json({
+      ok: true,
+      mensagem: PDF_DESATIVADO_MENSAGEM,
+    });
+  } catch (error) {
+    return res.status(500).json({ erro: error?.message || "Falha ao processar solicitação de PDF." });
   }
 };
 
 const getIntelligenceOverview = async (req, res) => {
   try {
     const { periodo = "mes", veiculo = null, motorista = null } = req.query || {};
-    console.log("PARAMS:", req.query || {});
-
     const { empresaId, payload } = parseAnalysisPayload(req, { allowFallback: true });
+
     if (!empresaId) {
       return res.status(200).json({
-        ...SAFE_EMPTY_OVERVIEW,
+        ...buildOverviewVazio({ periodo, veiculo, motorista }),
         filtros_recebidos: { periodo, veiculo, motorista },
       });
     }
 
-    const ctx = buildContext({
+    const analysis = await analyzeOperationalData({
       empresaId,
       periodo: payload.periodo,
       veiculoId: payload.veiculoId,
       motoristaId: payload.motoristaId,
       tipoAnalise: payload.tipoAnalise,
     });
-    const combustivel = await analisarCombustivel(ctx);
-    console.log("[INTELIGENCIA][combustivel]", combustivel);
-    const transporte = await analisarTransporte(ctx);
-    console.log("[INTELIGENCIA][transporte]", transporte);
-    const frota = await analisarFrota({
-      ...ctx,
-      activeVehicleIds: transporte.support?.activeVehicleIds || new Set(),
-      fuelActiveVehicleIds: combustivel.support?.fuelActiveVehicleIds || new Set(),
+
+    const inteligencia = montarRespostaInteligente(analysis);
+    const overview = buildOverviewResponse(analysis, inteligencia);
+
+    console.log("[INTELIGENCIA][overview]", {
+      status: overview.status,
+      problemas: overview.problemas?.length || 0,
+      insights: overview.insights?.length || 0,
+      vazio: overview.vazio,
     });
-    console.log("[INTELIGENCIA][frota]", frota);
-    const resumo = gerarResumoExecutivo({ combustivel, transporte, frota, periodo: ctx.periodo });
 
-    const consumo_por_veiculo = combustivel.graficos?.consumoPorVeiculo || [];
-    const custo_por_periodo = combustivel.graficos?.custoPorPeriodo || [];
-    const consumo_vs_producao = transporte.graficos?.consumoVsProducao || [];
-    const indicadores = resumo.indicadores || SAFE_EMPTY_OVERVIEW.indicadores;
-    const veiculosConsiderados = Number(indicadores?.veiculosConsiderados || 0);
-    const vazio = !consumo_por_veiculo.length && !custo_por_periodo.length && !consumo_vs_producao.length;
-
-    if (vazio || veiculosConsiderados === 0) {
-      return res.status(200).json({
-        ...SAFE_EMPTY_OVERVIEW,
-        mensagem: "Nenhum dado encontrado para o período",
-        periodo: {
-          tipo: ctx.periodo,
-          inicio: toIsoDate(new Date(ctx.bounds.start)),
-          fim: toIsoDate(new Date(ctx.bounds.endInclusive)),
-        },
-        tipoAnalise: ctx.tipoAnalise,
-        filtros: {
-          veiculoId: ctx.veiculoId,
-          motoristaId: ctx.motoristaId,
-        },
-        indicadores,
-        erro_debug: false,
-      });
-    }
-
-    return res.status(200).json({
-      periodo: {
-        tipo: ctx.periodo,
-        inicio: toIsoDate(new Date(ctx.bounds.start)),
-        fim: toIsoDate(new Date(ctx.bounds.endInclusive)),
-      },
-      tipoAnalise: ctx.tipoAnalise,
-      filtros: {
-        veiculoId: ctx.veiculoId,
-        motoristaId: ctx.motoristaId,
-      },
-      vazio: false,
-      mensagem: "",
-      consumo_por_veiculo,
-      custo_por_periodo,
-      consumo_vs_producao,
-      indicadores,
-      insights: resumo.insights,
-      status_operacao: resumo.statusOperacao,
-      inconsistencias: resumo.inconsistencias,
-      parte_diaria: {
-        atividades_por_veiculo: frota.graficos?.atividadesPorVeiculo || [],
-        produtividade_por_dia: frota.graficos?.produtividadePorDia || [],
-        indicadores: {
-          totalParteDiaria: frota.indicadores?.totalParteDiaria || 0,
-          totalHorasParteDiaria: frota.indicadores?.totalHorasParteDiaria || 0,
-          mediaHorasPorRegistro: frota.indicadores?.mediaHorasPorRegistro || 0,
-          veiculosComParteDiaria: frota.indicadores?.veiculosComParteDiaria || 0,
-        },
-      },
-    });
+    return res.status(200).json(overview);
   } catch (error) {
     console.error("🔥 ERRO REAL INTELIGENCIA:");
     console.error(error);
     console.error(error?.stack);
     return res.status(200).json({
-      ...SAFE_EMPTY_OVERVIEW,
+      ...buildOverviewVazio(),
       erro: true,
       erro_debug: true,
       mensagem: error?.message || "Falha no overview de inteligência.",
@@ -295,27 +241,18 @@ const getIntelligenceOverview = async (req, res) => {
 
 const debugPdfInteligencia = async (req, res) => {
   try {
-    const result = await parseAndBuildAnalysis(req);
-    const pdf = await generateExecutivePdf({
-      empresaId: result.empresaId,
-      analysis: result.analysis,
-      report: result.relatorio,
+    return res.status(200).json({
+      ok: true,
+      mensagem: PDF_DESATIVADO_MENSAGEM,
     });
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="debug-inteligencia.pdf"`);
-    pdf.pdfDoc.pipe(res);
-    pdf.pdfDoc.end();
-    return;
   } catch (error) {
-    return res.status(500).json({
-      error: true,
-      message: error?.message || "Falha ao gerar PDF de debug.",
-    });
+    return res.status(500).json({ erro: error?.message || "Falha ao processar PDF de debug." });
   }
 };
 
 module.exports = {
   analisarOperacao,
+  exportarHtmlInteligencia,
   exportarPdfInteligencia,
   getIntelligenceOverview,
   debugPdfInteligencia,

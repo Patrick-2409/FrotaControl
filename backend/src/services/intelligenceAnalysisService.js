@@ -2,7 +2,9 @@ const { buildContext, toIsoDate } = require("./inteligencia/common");
 const { analisarCombustivel } = require("./inteligencia/combustivel");
 const { analisarTransporte } = require("./inteligencia/transporte");
 const { analisarFrota } = require("./inteligencia/frota");
+const { analisarConsistenciaVeiculos } = require("./inteligencia/consistenciaOperacional");
 const { gerarResumoExecutivo } = require("./inteligencia/resumoExecutivo");
+const { enriquecerContextoInteligencia, registrarLogBaseInteligencia } = require("./inteligencia/baseInteligencia");
 
 const emptyModulo = () => ({ indicadores: {}, insights: {}, graficos: {}, support: { activeVehicleIds: new Set() } });
 
@@ -14,27 +16,43 @@ const analyzeOperationalData = async ({
   tipoAnalise = "geral",
 }) => {
   const ctx = buildContext({ empresaId, periodo, veiculoId, motoristaId, tipoAnalise });
-  const tipo = ctx.tipoAnalise;
+  const ctxBase = await enriquecerContextoInteligencia(ctx);
+  const tipo = ctxBase.tipoAnalise;
 
   let combustivel = emptyModulo();
   let transporte = emptyModulo();
 
   if (tipo === "geral" || tipo === "combustivel" || tipo === "transporte" || tipo === "frota") {
-    combustivel = await analisarCombustivel(ctx);
+    combustivel = await analisarCombustivel(ctxBase);
   }
   if (tipo === "geral" || tipo === "transporte") {
-    transporte = await analisarTransporte(ctx);
+    transporte = await analisarTransporte(ctxBase);
   } else {
-    transporte = await analisarTransporte(ctx);
+    transporte = await analisarTransporte(ctxBase);
   }
 
   const frota = await analisarFrota({
-    ...ctx,
+    ...ctxBase,
     activeVehicleIds: transporte.support?.activeVehicleIds || new Set(),
     fuelActiveVehicleIds: combustivel.support?.fuelActiveVehicleIds || new Set(),
   });
 
-  const resumo = gerarResumoExecutivo({ combustivel, transporte, frota, periodo: ctx.periodo });
+  registrarLogBaseInteligencia({ base: ctxBase.base, combustivel, transporte, frota });
+
+  const consistenciaVeiculos = await analisarConsistenciaVeiculos(ctxBase);
+  const periodoBounds = {
+    tipo: ctx.periodo,
+    inicio: toIsoDate(new Date(ctx.bounds.start)),
+    fim: toIsoDate(new Date(ctx.bounds.endInclusive)),
+  };
+  const resumo = gerarResumoExecutivo({
+    combustivel,
+    transporte,
+    frota,
+    periodo: ctx.periodo,
+    periodoBounds,
+    consistenciaVeiculos,
+  });
 
   const graficos = {
     consumoPorVeiculo: [],
@@ -65,6 +83,10 @@ const analyzeOperationalData = async ({
     insights: resumo.insights,
     statusOperacao: resumo.statusOperacao,
     inconsistencias: resumo.inconsistencias,
+    inconsistenciasDetalhadas: resumo.inconsistenciasDetalhadas || [],
+    consistenciaVeiculos,
+    contextoOperacional: resumo.insights?.contextoOperacional || null,
+    insightsAutomaticos: resumo.insights?.insightsAutomaticos || [],
     graficos,
     modulos: {
       combustivel,

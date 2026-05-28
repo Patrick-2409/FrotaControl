@@ -1,37 +1,47 @@
-const BASE_COLORS = [
-  "#3B82F6",
-  "#10B981",
-  "#F59E0B",
-  "#EF4444",
-  "#8B5CF6",
-  "#06B6D4",
-];
+import {
+  POWER_BI_PALETTE,
+  REPORT_COLORS,
+  CHART_TOOLTIP_EXPLANATIONS,
+  reportColorByIndex,
+  reportColorById,
+  assignUniqueChartColors,
+} from "./reportChartColors";
 
-export const COLORS = BASE_COLORS;
+export {
+  POWER_BI_PALETTE,
+  REPORT_COLORS,
+  CHART_TOOLTIP_EXPLANATIONS,
+  reportColorByIndex,
+  reportColorById,
+  assignUniqueChartColors,
+};
 
-export function getColorById(id) {
-  const normalizedId = String(id ?? "sem-id");
-  const hash = normalizedId.split("").reduce((acc, char) => {
-    return char.charCodeAt(0) + ((acc << 5) - acc);
-  }, 0);
-
-  const index = Math.abs(hash) % BASE_COLORS.length;
-  return BASE_COLORS[index];
-}
+export const COLORS = POWER_BI_PALETTE;
 
 export const CHART_COLORS = {
-  line: "#3B82F6",
-  consumo: "#EF4444",
-  producao: "#10B981",
+  line: REPORT_COLORS.line,
+  consumo: REPORT_COLORS.consumo,
+  producao: REPORT_COLORS.producao,
+  media: REPORT_COLORS.media,
 };
+
+export function getColorByIndex(index) {
+  return reportColorByIndex(index);
+}
+
+export function getColorById(id, index = null) {
+  return reportColorById(id, index);
+}
 
 export const CHART_TOOLTIP_STYLE = {
   contentStyle: {
     backgroundColor: "#111827",
     border: "1px solid #374151",
     color: "#fff",
-    borderRadius: 10,
+    borderRadius: 12,
+    boxShadow: "0 10px 28px rgba(0, 0, 0, 0.35)",
+    padding: 0,
   },
-  labelStyle: { color: "#fff" },
-  itemStyle: { color: "#fff" },
+  labelStyle: { color: "#F8FAFC", fontWeight: 600 },
+  itemStyle: { color: "#F8FAFC" },
 };

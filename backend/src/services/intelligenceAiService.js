@@ -9,10 +9,11 @@ const {
   buildAcoesFallback,
   looksLikeKpiRepetition,
   looksLikeDataDescription,
-  buildScopedDataForAi,
   filterModulosByScope,
   trimText,
 } = require("./inteligencia/operacionalRules");
+const { montarPromptIA, prepararPayloadPromptIA, buildPromptSistemaIA } = require("./inteligencia/promptInteligencia");
+const { aplicarRegraDeOuroNoRelatorio } = require("./inteligencia/regraDeOuro");
 
 const OPENAI_MODEL_DEFAULT = "gpt-4o-mini";
 const INTELLIGENCE_DAILY_LIMIT_DEFAULT = 5;
@@ -218,6 +219,15 @@ const buildStructuredText = (report) => {
     : [];
   return [
     `STATUS DA OPERAÇÃO: ${report.statusOperacao || "Status indisponível."}`,
+    ...(report?.regraDeOuro || report?.dadosSuficientes != null
+      ? [
+          "REGRA DE OURO:",
+          `- Dados suficientes: ${report?.regraDeOuro?.dadosSuficientes ?? report?.dadosSuficientes ? "Sim" : "Não"}`,
+          `- Há inconsistência: ${report?.regraDeOuro?.haInconsistencia ?? report?.haInconsistencia ? "Sim" : "Não"}`,
+          `- Confiável para decisão: ${report?.regraDeOuro?.confiavelParaDecisao ?? report?.confiavelParaDecisao ? "Sim" : "Não"}`,
+          `- Porquê: ${report?.regraDeOuro?.explicacaoPorque || report?.explicacaoPorque || "—"}`,
+        ]
+      : []),
     `RESUMO EXECUTIVO: ${report.resumoExecutivo || report.analise}`,
     `KPIS:`,
     ...(kpisLines.length ? kpisLines : ["- KPIs indisponíveis para o período"]),
@@ -348,67 +358,25 @@ const runWithFunctionTimeout = async (promiseFactory, timeoutMs) => {
   return result;
 };
 
-const buildAnalysisPrompt = (escopo) => [
-    "Você é consultor executivo de frota e auditoria operacional.",
-    "Sua função NÃO é descrever dados — é gerar INSIGHTS acionáveis para esta frota específica.",
-    `ESCOPO OBRIGATÓRIO (${escopo.escopo}): ${escopo.instrucao}`,
-    "PROIBIDO analisar módulos fora do escopo. PROIBIDO misturar transporte e apoio.",
-    "Formato mental: CAUSA → CONSEQUÊNCIA → DECISÃO → AÇÃO PRÁTICA.",
-    "Responda somente JSON válido no formato:",
-    "{",
-    '  "status_operacao": "status técnico objetivo com base numérica",',
-    '  "resumo_executivo": "texto executivo e objetivo com base numérica",',
-    '  "kpis": [],',
-    '  "analise_modulos": { "combustivel": "insight curto", "transporte": "insight curto", "apoio": "insight curto" },',
-    '  "diagnostico_detalhado": "diagnóstico com causa e evidência numérica",',
-    '  "impacto_financeiro": "impacto objetivo com valores e cálculo explícito",',
-    '  "inconsistencias": ["inconsistência detectada com evidência"],',
-    '  "historico_suficiente": true,',
-    '  "observacao_historico": "declarar explicitamente quando histórico for insuficiente",',
-    '  "riscos_operacionais": ["risco específico com evidência numérica"],',
-    '  "acoes_recomendadas": ["ação objetiva, específica e executável"],',
-    '  "calculos_utilizados": ["Preço médio = total valor / total litros"]',
-    "}",
-    "REGRAS CRÍTICAS:",
-    "1) Validar consistência dos dados antes de analisar.",
-    "Se houver divergência (ex.: viagens sem consumo), apontar como 'ERRO DE DADO' e NÃO assumir operação normal.",
-    "2) Separar obrigatoriamente transporte (com produção) e apoio (sem produção).",
-    "3) NÃO misturar contextos entre transporte e apoio.",
-    "4) Identificar inconsistências: consumo sem produção, produção sem consumo e concentração de uso.",
-    "5) Explicar os cálculos: preço médio, participação por veículo e totalizações.",
-    "6) Estrutura obrigatória: Status da operação, Resumo executivo (interpretação, não repetição), Diagnóstico técnico, Inconsistências de dados, Impacto financeiro, Riscos operacionais e Ações específicas.",
-    "7) Linguagem direta, técnica e executiva.",
-    "8) Se dados forem insuficientes, declarar explicitamente.",
-    "Se o dado for insuficiente, assuma explicitamente insuficiência de dados em vez de inferir.",
-    "No campo calculos_utilizados inclua fórmulas realmente usadas na análise.",
-    "No campo inconsistencias, prefixe itens críticos com 'ERRO DE DADO:' quando aplicável.",
-    "PROIBIDO no resumo_executivo: repetir KPIs literalmente (ex.: apenas listar totais). OBRIGATÓRIO: interpretar, apontar problemas e impacto.",
-    "PROIBIDO em acoes_recomendadas: usar verbos vagos como 'avaliar', 'verificar', 'considerar'. OBRIGATÓRIO: ações diretas, aplicáveis e com referência numérica.",
-    "Se contexto_teste=true, mencionar que a base é preliminar e evitar conclusões definitivas de padrão operacional.",
-    "Se houver inconsistencias ou producao_sem_consumo/consumo_sem_producao: o resumo_executivo DEVE começar pelo ERRO DE DADO como fator principal e o relatório inteiro deve girar em torno da correção.",
-    "No diagnostico_detalhado: incluir percentuais (concentração, ociosidade, participação) e declarar risco operacional explícito.",
-    "Em acoes_recomendadas: priorizar correção de lançamentos/integração quando houver inconsistência, com passos concretos e números do período.",
-    "Deixe kpis como array vazio []. KPIs já estão no PDF.",
-    "resumo_executivo: máximo 3 frases, linguagem de decisão (Decisão/Causa/Consequência), sem listar totais.",
-    "analise_modulos: preencher SOMENTE módulos do escopo; outros campos com string vazia.",
-    "diagnostico_detalhado: bullets curtos com % e risco operacional.",
-    "impacto_financeiro: 1-2 frases com valor e consequência financeira.",
-    "acoes_recomendadas: 2-4 ações práticas, verbo no imperativo, com número do período.",
-  ].join("\n");
-
-const generateIntelligenceReport = async (data) => {
+const generateIntelligenceReport = async (data = {}) => {
   const escopo = buildEscopoAnalise(data?.tipoAnalise, data?.filtros);
-  const dataContext = {
-    ...buildScopedDataForAi(data),
-    contexto_teste: Boolean(data?.insights?.contextoTeste),
-    mensagem_contexto_teste: data?.insights?.contextoTeste ? MENSAGEM_CONTEXTO_TESTE : null,
-    status_preliminar: data?.statusOperacao || null,
-  };
-  const prompt = buildAnalysisPrompt(escopo);
+  const { contexto, dados, inconsistencias, insights, motor_interno } = prepararPayloadPromptIA({
+    ...data,
+    inteligenciaMotor: data?.inteligenciaMotor || null,
+    insights: {
+      ...(data?.insights || {}),
+      contextoTeste: Boolean(data?.insights?.contextoTeste),
+      mensagemContextoTeste: data?.insights?.contextoTeste ? MENSAGEM_CONTEXTO_TESTE : null,
+    },
+    statusOperacao: data?.statusOperacao || null,
+  });
+  const systemPrompt = buildPromptSistemaIA(escopo);
+  const userPrompt = montarPromptIA(contexto, dados, inconsistencias, insights, motor_interno);
 
   const finalizeReport = (report) => {
     const enriched = enrichRelatorioExecutivo(report, data);
-    return { ...enriched, textoEstruturado: buildStructuredText(enriched) };
+    const withRegra = aplicarRegraDeOuroNoRelatorio(enriched, data);
+    return { ...withRegra, textoEstruturado: buildStructuredText(withRegra) };
   };
 
   const empresaId = Number(data?.empresaId);
@@ -461,8 +429,8 @@ const generateIntelligenceReport = async (data) => {
             model,
             temperature: 0.1,
             messages: [
-              { role: "system", content: prompt },
-              { role: "user", content: `DADOS:\n${JSON.stringify(dataContext)}` },
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt },
             ],
           }),
         }),

@@ -23,8 +23,18 @@ import {
   buildPieLegendItems,
   CHART_LEGEND_ITEMS,
 } from "../utils/chartInsights";
-import { ColorLegend, LineCostDataTable, ReportChartCard, StaticLegend } from "./ChartReportBlocks";
-import { REPORT_COLORS, REPORT_TOOLTIP, reportColorById } from "../utils/reportChartColors";
+import {
+  ColorLegend,
+  createExecutiveTooltip,
+  LineCostDataTable,
+  ReportChartCard,
+  StaticLegend,
+} from "./ChartReportBlocks";
+import {
+  CHART_TOOLTIP_EXPLANATIONS,
+  REPORT_COLORS,
+  reportColorByIndex,
+} from "../utils/reportChartColors";
 
 const hasRows = (rows) => Array.isArray(rows) && rows.length > 0;
 const fmtNum = (value) => Number(value || 0).toLocaleString("pt-BR");
@@ -47,6 +57,14 @@ const fmtDateTick = (value) => {
   return raw.slice(0, 6);
 };
 
+const PieTooltip = createExecutiveTooltip({
+  explanation: CHART_TOOLTIP_EXPLANATIONS.pieConsumo,
+  valueFormatter: (value, _name, item) => [
+    `${fmtNum(value)} L (${Number(item?.payload?.percent || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%)`,
+    item?.payload?.name || "Veículo",
+  ],
+});
+
 function ChartEmpty() {
   return (
     <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500">
@@ -61,8 +79,9 @@ export default function ExecutiveReportRechartsPanel({ pieData = [], lineData = 
   const showTransporte = tipo === "geral" || tipo === "transporte";
 
   const pieTotal = pieData.reduce((acc, item) => acc + Number(item?.value || 0), 0);
-  const enrichedPie = pieData.map((item) => ({
+  const enrichedPie = pieData.map((item, index) => ({
     ...item,
+    color: reportColorByIndex(index),
     percent: pieTotal > 0 ? (Number(item?.value || 0) / pieTotal) * 100 : 0,
   }));
   const pieLegend = buildPieLegendItems(pieData);
@@ -71,14 +90,33 @@ export default function ExecutiveReportRechartsPanel({ pieData = [], lineData = 
   const lineDiscussion = buildLineDiscussion(lineData);
   const barDiscussion = buildBarDiscussion(barData);
 
+  const LineTooltip = createExecutiveTooltip({
+    explanation: CHART_TOOLTIP_EXPLANATIONS.lineCusto,
+    labelFormatter: (label) => `Data: ${fmtDateTick(label)}`,
+    valueFormatter: (value) => {
+      const custo = Number(value);
+      const vsMedia =
+        lineStats?.media > 0
+          ? `${(((custo - lineStats.media) / lineStats.media) * 100).toFixed(1)}% vs média`
+          : "";
+      return [`${fmtMoney(value)}${vsMedia ? ` (${vsMedia})` : ""}`, CHART_LEGEND_ITEMS.custo.short];
+    },
+  });
+
+  const BarTooltip = createExecutiveTooltip({
+    explanation: CHART_TOOLTIP_EXPLANATIONS.barConsumoProducao,
+    labelFormatter: (label) => `Data: ${fmtDateTick(label)}`,
+    valueFormatter: (value, name) => [fmtNum(value), name],
+  });
+
   return (
     <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
       {showCombustivel && enrichedPie.length > 1 ? (
         <ReportChartCard
           title={CHART_GUIDES.consumoPorVeiculo.titulo}
-          subtitle="Participação percentual por veículo"
+          subtitle="Participação percentual por veículo — paleta Power BI"
           guideKey="consumoPorVeiculo"
-          legend={<ColorLegend title="Legenda — cor por veículo" items={pieLegend} />}
+          legend={<ColorLegend title="Legenda — cor por veículo" items={pieLegend} required />}
           discussion={pieDiscussion}
         >
           <ResponsiveContainer width="100%" height="100%">
@@ -88,24 +126,28 @@ export default function ExecutiveReportRechartsPanel({ pieData = [], lineData = 
                 dataKey="value"
                 nameKey="name"
                 cx="50%"
-                cy="46%"
-                outerRadius={100}
-                innerRadius={44}
+                cy="44%"
+                outerRadius={96}
+                innerRadius={42}
                 stroke="#FFFFFF"
                 strokeWidth={2}
                 labelLine={false}
                 label={({ percent }) => (percent >= 0.07 ? `${(percent * 100).toFixed(0)}%` : "")}
               >
                 {enrichedPie.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={reportColorById(entry?.veiculo_id ?? entry?.name ?? index)} />
+                  <Cell key={`cell-${index}`} fill={entry.color} />
                 ))}
               </Pie>
-              <Tooltip
-                {...REPORT_TOOLTIP}
-                formatter={(value, _name, item) => [
-                  `${fmtNum(value)} L (${Number(item?.payload?.percent || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%)`,
-                  item?.payload?.name || "Veículo",
-                ]}
+              <Tooltip content={<PieTooltip />} />
+              <Legend
+                verticalAlign="bottom"
+                height={36}
+                wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
+                payload={pieLegend.map((item) => ({
+                  value: item.label,
+                  type: "square",
+                  color: item.color,
+                }))}
               />
             </PieChart>
           </ResponsiveContainer>
@@ -115,7 +157,7 @@ export default function ExecutiveReportRechartsPanel({ pieData = [], lineData = 
       {showCombustivel ? (
         <ReportChartCard
           title={CHART_GUIDES.custoPorPeriodo.titulo}
-          subtitle="Eixo Y = reais (R$) · linha laranja tracejada = média diária de referência"
+          subtitle="Azul = custo diário · Laranja tracejado = média de referência"
           guideKey="custoPorPeriodo"
           className={enrichedPie.length <= 1 ? "xl:col-span-2" : ""}
           legend={
@@ -155,16 +197,7 @@ export default function ExecutiveReportRechartsPanel({ pieData = [], lineData = 
                     style: { textAnchor: "middle" },
                   }}
                 />
-                <Tooltip
-                  {...REPORT_TOOLTIP}
-                  labelFormatter={(label) => `Data: ${fmtDateTick(label)}`}
-                  formatter={(value) => {
-                    const custo = Number(value);
-                    const vsMedia =
-                      lineStats.media > 0 ? `${(((custo - lineStats.media) / lineStats.media) * 100).toFixed(1)}% vs média` : "";
-                    return [`${fmtMoney(value)} (${vsMedia})`, CHART_LEGEND_ITEMS.custo.short];
-                  }}
-                />
+                <Tooltip content={<LineTooltip />} />
                 <Legend
                   verticalAlign="top"
                   wrapperStyle={{ fontSize: 12, paddingBottom: 4 }}
@@ -205,7 +238,7 @@ export default function ExecutiveReportRechartsPanel({ pieData = [], lineData = 
       {showTransporte ? (
         <ReportChartCard
           title={CHART_GUIDES.consumoVsProducao.titulo}
-          subtitle="Comparativo transporte por data"
+          subtitle="Vermelho = consumo (L) · Verde = produção (viagens)"
           guideKey="consumoVsProducao"
           className="xl:col-span-2"
           legend={
@@ -225,10 +258,27 @@ export default function ExecutiveReportRechartsPanel({ pieData = [], lineData = 
                 <CartesianGrid strokeDasharray="3 3" stroke={REPORT_COLORS.grid} />
                 <XAxis dataKey="periodo" stroke={REPORT_COLORS.axis} fontSize={11} tickFormatter={fmtDateTick} />
                 <YAxis stroke={REPORT_COLORS.axis} fontSize={11} />
-                <Tooltip {...REPORT_TOOLTIP} formatter={(value, name) => [fmtNum(value), name]} />
-                <Legend verticalAlign="top" wrapperStyle={{ fontSize: 12, paddingBottom: 4 }} />
-                <Bar dataKey="consumo" name={CHART_LEGEND_ITEMS.consumo.label} fill={REPORT_COLORS.consumo} radius={[6, 6, 0, 0]} />
-                <Bar dataKey="producao" name={CHART_LEGEND_ITEMS.producao.label} fill={REPORT_COLORS.producao} radius={[6, 6, 0, 0]} />
+                <Tooltip content={<BarTooltip />} />
+                <Legend
+                  verticalAlign="top"
+                  wrapperStyle={{ fontSize: 12, paddingBottom: 4 }}
+                  payload={[
+                    { value: CHART_LEGEND_ITEMS.consumo.label, type: "square", color: REPORT_COLORS.consumo },
+                    { value: CHART_LEGEND_ITEMS.producao.label, type: "square", color: REPORT_COLORS.producao },
+                  ]}
+                />
+                <Bar
+                  dataKey="consumo"
+                  name={CHART_LEGEND_ITEMS.consumo.label}
+                  fill={REPORT_COLORS.consumo}
+                  radius={[6, 6, 0, 0]}
+                />
+                <Bar
+                  dataKey="producao"
+                  name={CHART_LEGEND_ITEMS.producao.label}
+                  fill={REPORT_COLORS.producao}
+                  radius={[6, 6, 0, 0]}
+                />
               </BarChart>
             </ResponsiveContainer>
           ) : (

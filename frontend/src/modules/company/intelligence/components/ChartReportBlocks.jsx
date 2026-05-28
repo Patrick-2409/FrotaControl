@@ -34,36 +34,102 @@ export function SourceBadge({ type = "dados" }) {
 
 export function mapOrigemIa(origem) {
   if (origem === "openai" || origem === "cache") return "ia";
-  if (origem === "fallback" || origem === "limit" || origem === "timeout") return "regras";
+  if (origem === "motor_operacional" || origem === "fallback" || origem === "limit" || origem === "timeout") {
+    return "regras";
+  }
   return "regras";
 }
 
-export function ColorLegend({ title = "Legenda", items = [] }) {
-  if (!items.length) return null;
+export function ColorLegend({ title = "Legenda", items = [], required = true }) {
   return (
     <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
       <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{title}</p>
-      <ul className="mt-2 space-y-1.5">
-        {items.map((item) => (
-          <li
-            key={`${item.label}-${item.value || ""}`}
-            className="grid grid-cols-[12px_minmax(0,1fr)_auto_auto] items-center gap-2 text-xs"
-          >
-            <span
-              className="inline-block h-3 w-3 shrink-0 rounded-sm border border-slate-200"
-              style={{ backgroundColor: item.color }}
-              aria-hidden
-            />
-            <span className="truncate font-medium text-slate-800" title={item.label}>
-              {item.label}
-            </span>
-            {item.value ? <span className="tabular-nums text-slate-600">{item.value}</span> : <span />}
-            {item.detail ? <span className="tabular-nums font-semibold text-slate-500">{item.detail}</span> : <span />}
-          </li>
-        ))}
-      </ul>
+      {required ? (
+        <p className="mt-1 text-[10px] text-slate-400">Cada cor identifica uma série distinta — leitura obrigatória.</p>
+      ) : null}
+      {items.length ? (
+        <ul className="mt-2 space-y-1.5">
+          {items.map((item) => (
+            <li
+              key={`${item.label}-${item.value || ""}`}
+              className="grid grid-cols-[12px_minmax(0,1fr)_auto_auto] items-center gap-2 text-xs"
+            >
+              <span
+                className="inline-block h-3 w-3 shrink-0 rounded-sm border border-slate-200"
+                style={{ backgroundColor: item.color }}
+                aria-hidden
+              />
+              <span className="truncate font-medium text-slate-800" title={item.label}>
+                {item.label}
+              </span>
+              {item.value ? <span className="tabular-nums text-slate-600">{item.value}</span> : <span />}
+              {item.detail ? <span className="tabular-nums font-semibold text-slate-500">{item.detail}</span> : <span />}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-2 text-xs text-slate-500">Sem séries para exibir na legenda.</p>
+      )}
     </div>
   );
+}
+
+export function ExecutiveChartTooltip({
+  active,
+  payload,
+  label,
+  explanation = "",
+  labelFormatter,
+  valueFormatter,
+}) {
+  if (!active || !payload?.length) return null;
+
+  const title = labelFormatter ? labelFormatter(label) : label;
+
+  return (
+    <div className="max-w-[280px] rounded-xl border border-slate-300 bg-white p-3 shadow-lg">
+      {title ? <p className="mb-2 text-xs font-semibold text-slate-700">{title}</p> : null}
+      <ul className="space-y-1.5">
+        {payload.map((entry, index) => {
+          const rawValue = entry.value;
+          const formatted = valueFormatter
+            ? valueFormatter(rawValue, entry.name, entry, index)
+            : [rawValue, entry.name];
+          const displayValue = Array.isArray(formatted) ? formatted[0] : formatted;
+          const displayName = Array.isArray(formatted) ? formatted[1] : entry.name;
+
+          return (
+            <li key={`${entry.dataKey}-${entry.name}-${index}`} className="flex items-start gap-2 text-sm text-slate-800">
+              <span
+                className="mt-1 h-2.5 w-2.5 shrink-0 rounded-sm border border-slate-200"
+                style={{ backgroundColor: entry.color || entry.payload?.fill }}
+                aria-hidden
+              />
+              <span>
+                <span className="font-medium">{displayName}:</span> {displayValue}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {explanation ? (
+        <p className="mt-2 border-t border-slate-100 pt-2 text-[11px] leading-snug text-slate-500">{explanation}</p>
+      ) : null}
+    </div>
+  );
+}
+
+export function createExecutiveTooltip({ explanation, labelFormatter, valueFormatter }) {
+  return function ExecutiveTooltipRenderer(props) {
+    return (
+      <ExecutiveChartTooltip
+        {...props}
+        explanation={explanation}
+        labelFormatter={labelFormatter}
+        valueFormatter={valueFormatter}
+      />
+    );
+  };
 }
 
 export function StaticLegend({ title = "Legenda", items = [] }) {
@@ -165,7 +231,11 @@ export function ReportChartCard({
         {subtitle ? <p className="mt-1 text-sm text-slate-500">{subtitle}</p> : null}
       </header>
       <div className="mt-4 h-[320px] w-full">{children}</div>
-      {legend}
+      {legend ?? (
+        <div className="mt-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+          Legenda obrigatória — aguardando dados do gráfico.
+        </div>
+      )}
       {extra}
       <ChartDiscussion points={discussion} source={discussionSource} />
       <ChartGuideBlock guideKey={guideKey} />

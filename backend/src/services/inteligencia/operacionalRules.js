@@ -19,9 +19,54 @@ const buildApoioVehiclePredicate = (alias = "v") => `${resolveTipoOperacaoVeicul
 
 const isPeriodoCurto = (periodo) => periodo === "dia" || periodo === "semana";
 
-const detectContextoTeste = ({ indicadores = {}, periodo = "mes" }) => {
-  const veiculosAtivos = toNumber(indicadores.veiculosAtivos);
-  return veiculosAtivos <= 3 || isPeriodoCurto(periodo);
+const resolvePeriodoTipo = (periodo) => {
+  if (typeof periodo === "string") return periodo;
+  return periodo?.tipo || "mes";
+};
+
+const gerarContexto = (dados = {}) => {
+  const veiculos = Array.isArray(dados.veiculos)
+    ? dados.veiculos
+    : Array.isArray(dados)
+      ? dados
+      : [];
+  const indicadores = dados.indicadores || {};
+  const periodo = dados.periodo || {};
+
+  const totalVeiculos =
+    toNumber(indicadores.totalVeiculosEscopo) ||
+    toNumber(indicadores.veiculosConsiderados) ||
+    veiculos.length;
+
+  const veiculosAtivos =
+    toNumber(indicadores.veiculosAtivos) ||
+    veiculos.filter((v) => {
+      if (typeof v?.ativo === "boolean") return v.ativo;
+      return toNumber(v?.viagens) > 0 || toNumber(v?.litros) > 0;
+    }).length;
+
+  const periodoInicial = periodo.inicio || periodo.inicial || null;
+  const periodoFinal = periodo.fim || periodo.final || null;
+  const baseEmTeste = totalVeiculos < 5;
+
+  return {
+    totalVeiculos,
+    veiculosAtivos,
+    periodoInicial,
+    periodoFinal,
+    baseEmTeste,
+  };
+};
+
+const detectContextoTeste = ({ indicadores = {}, periodo = "mes", contexto = null } = {}) => {
+  const ctx =
+    contexto ||
+    gerarContexto({
+      indicadores,
+      periodo: typeof periodo === "object" ? periodo : {},
+    });
+  const periodoTipo = resolvePeriodoTipo(periodo);
+  return ctx.baseEmTeste || ctx.veiculosAtivos <= 3 || isPeriodoCurto(periodoTipo);
 };
 
 const MENSAGEM_CONTEXTO_TESTE =
@@ -387,6 +432,8 @@ const buildScopedDataForAi = (data = {}) => {
     insights: {
       veiculoDestaque: data?.insights?.veiculoDestaque,
       contextoTeste: data?.insights?.contextoTeste,
+      contextoOperacional: data?.insights?.contextoOperacional || data?.contextoOperacional,
+      insightsAutomaticos: data?.insights?.insightsAutomaticos || data?.insights_automaticos || [],
       producaoSemConsumo: data?.insights?.producaoSemConsumo,
       consumoSemProducao: data?.insights?.consumoSemProducao,
       metricasExecutivas: data?.insights?.metricasExecutivas || data?.metricasExecutivas,
@@ -439,6 +486,8 @@ module.exports = {
   buildTransportVehiclePredicate,
   buildApoioVehiclePredicate,
   detectContextoTeste,
+  gerarContexto,
+  resolvePeriodoTipo,
   MENSAGEM_CONTEXTO_TESTE,
   detectInconsistenciasOperacionais,
   resolveStatusOperacao,

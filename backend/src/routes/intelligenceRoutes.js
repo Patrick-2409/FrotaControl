@@ -3,6 +3,7 @@ const rateLimit = require("express-rate-limit");
 const { asyncHandler } = require("../utils/asyncHandler");
 const {
   analisarOperacao,
+  exportarHtmlInteligencia,
   exportarPdfInteligencia,
   getIntelligenceOverview,
   debugPdfInteligencia,
@@ -29,6 +30,7 @@ const aiLimiter = rateLimit({
 router.post("/analisar", aiLimiter, asyncHandler(analisarOperacao));
 router.post("/gerar", aiLimiter, asyncHandler(analisarOperacao));
 router.get("/overview", overviewLimiter, asyncHandler(getIntelligenceOverview));
+router.get("/html", aiLimiter, asyncHandler(exportarHtmlInteligencia));
 router.post("/pdf", aiLimiter, asyncHandler(exportarPdfInteligencia));
 router.get("/pdf", aiLimiter, asyncHandler(exportarPdfInteligencia));
 router.get("/debug/pdf", aiLimiter, asyncHandler(debugPdfInteligencia));

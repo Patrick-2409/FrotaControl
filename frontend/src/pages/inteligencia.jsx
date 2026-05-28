@@ -3,6 +3,13 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import BIDashboardShell from "../modules/company/bi/components/BIDashboardShell";
 import IntelligenceFiltersCard from "../modules/company/intelligence/components/IntelligenceFiltersCard";
 import IntelligenceChartsPanel from "../modules/company/intelligence/components/IntelligenceChartsPanel";
+import IntelligenceExecutivePanel from "../modules/company/intelligence/components/IntelligenceExecutivePanel";
+import { ExecutiveRegraDeOuroCard, resolveRegraDeOuro } from "../modules/company/intelligence/components/ExecutiveRegraDeOuroCard";
+import {
+  downloadInteligenciaPdf,
+  parseBlobErrorMessage,
+} from "../modules/company/intelligence/utils/pdfDownload";
+import { getDadosGraficos } from "../modules/company/intelligence/utils/overviewInteligencia";
 import AccordionSection from "../modules/company/shared/components/AccordionSection";
 import api, { extractApiErrorMessage, getFriendlyApiErrorMessage } from "../services/api";
 import { emitToast } from "../services/uiEvents";
@@ -19,6 +26,15 @@ const DEFAULT_DRIVER_OPTIONS = [{ value: "todos", label: "Todos os motoristas" }
 const INTELIGENCIA_SECTIONS = ["executivo", "combustivel", "frota", "transporte"];
 
 const EMPTY_OVERVIEW = {
+  vazio: true,
+  status: "OK",
+  resumo: "",
+  problemas: [],
+  insights: [],
+  recomendacoes: [],
+  contexto: {},
+  dados_graficos: {},
+  modulos_leitura: {},
   consumo_por_veiculo: [],
   custo_por_periodo: [],
   consumo_vs_producao: [],
@@ -51,8 +67,6 @@ const buildApiFilters = (filters) => {
 const fmtNumber = (value) => toNumber(value, 0).toLocaleString("pt-BR");
 const fmtCurrency = (value) =>
   toNumber(value, 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const sumBy = (rows, key) =>
-  (Array.isArray(rows) ? rows : []).reduce((acc, row) => acc + toNumber(row?.[key]), 0);
 
 const compactDate = (isoDate) => {
   if (!isoDate) return "-";
@@ -62,116 +76,6 @@ const compactDate = (isoDate) => {
   return `${d}/${m}/${y}`;
 };
 
-const getFilenameFromDisposition = (contentDisposition, fallback = "inteligencia-operacional.pdf") => {
-  const raw = String(contentDisposition || "");
-  const utf8Match = raw.match(/filename\*\s*=\s*UTF-8''([^;]+)/i);
-  if (utf8Match?.[1]) {
-    try {
-      return decodeURIComponent(utf8Match[1]).replace(/["']/g, "").trim() || fallback;
-    } catch {
-      return utf8Match[1].replace(/["']/g, "").trim() || fallback;
-    }
-  }
-  const simpleMatch = raw.match(/filename\s*=\s*"?([^";]+)"?/i);
-  return simpleMatch?.[1]?.trim() || fallback;
-};
-
-const parseBlobErrorMessage = async (error, fallback) => {
-  const maybeBlob = error?.response?.data;
-  if (maybeBlob instanceof Blob) {
-    try {
-      const raw = await maybeBlob.text();
-      const parsed = JSON.parse(raw);
-      return parsed?.message || parsed?.error || fallback;
-    } catch {
-      return fallback;
-    }
-  }
-  return getFriendlyApiErrorMessage(error) || extractApiErrorMessage(error) || fallback;
-};
-
-const triggerPdfDownload = (url, filename) => {
-  if (!url) return false;
-  try {
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename || "inteligencia-operacional.pdf";
-    link.rel = "noopener";
-    link.style.display = "none";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-function Sparkline({ data = [], tone = "default" }) {
-  const values = (Array.isArray(data) ? data : []).map((v) => Number(v)).filter((v) => Number.isFinite(v));
-  if (!values.length) {
-    return <div className="h-10 rounded-md bg-zinc-900/60" />;
-  }
-  const width = 120;
-  const height = 32;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const span = max - min || 1;
-  const points = values
-    .map((v, i) => {
-      const x = (i / Math.max(1, values.length - 1)) * (width - 2) + 1;
-      const y = height - ((v - min) / span) * (height - 4) - 2;
-      return `${x},${y}`;
-    })
-    .join(" ");
-  const strokeByTone = {
-    positive: "#10B981",
-    warning: "#F59E0B",
-    danger: "#EF4444",
-    default: "#3B82F6",
-  };
-  return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="h-10 w-full">
-      <polyline fill="none" stroke={strokeByTone[tone] || strokeByTone.default} strokeWidth="2.5" points={points} />
-    </svg>
-  );
-}
-
-function ExecutiveKpiCard({ title, value, subtitle, tone = "default", sparkline = [] }) {
-  const toneClass = {
-    positive: "card-info border-emerald-700/50",
-    warning: "card-warning border-amber-700/50",
-    danger: "card-danger border-red-700/50",
-    default: "card-info",
-  };
-  return (
-    <article className={`card rounded-xl p-4 ${toneClass[tone] || toneClass.default}`}>
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">{title}</p>
-      <p className="mt-2 text-2xl font-bold leading-tight text-zinc-50">{value}</p>
-      {subtitle ? <p className="mt-1 text-xs text-zinc-400">{subtitle}</p> : null}
-      <div className="mt-3">
-        <Sparkline data={sparkline} tone={tone} />
-      </div>
-    </article>
-  );
-}
-
-function SummarySkeleton() {
-  return (
-    <section className="rounded-xl border border-zinc-800/80 bg-zinc-950/40 p-4 sm:p-5">
-      <div className="animate-pulse space-y-3">
-        <div className="h-4 w-36 rounded bg-zinc-800/80" />
-        <div className="h-9 w-2/3 rounded bg-zinc-800/70" />
-        <div className="grid grid-cols-1 gap-3">
-          <div className="h-28 rounded-xl border border-zinc-800/80 bg-zinc-900/80" />
-          <div className="h-28 rounded-xl border border-zinc-800/80 bg-zinc-900/80" />
-          <div className="h-28 rounded-xl border border-zinc-800/80 bg-zinc-900/80" />
-        </div>
-      </div>
-    </section>
-  );
-}
-
 function InsightCard({ title, children, tone = "default" }) {
   const toneMap = {
     default: "card-info",
@@ -180,9 +84,9 @@ function InsightCard({ title, children, tone = "default" }) {
     ok: "card-info border-emerald-900/80 bg-emerald-950/20",
   };
   return (
-    <article className={`card rounded-xl p-4 ${toneMap[tone] || toneMap.default}`}>
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">{title}</p>
-      <div className="mt-2 text-sm text-zinc-200">{children}</div>
+    <article className={`card rounded-2xl p-5 sm:p-6 ${toneMap[tone] || toneMap.default}`}>
+      <p className="text-sm font-bold uppercase tracking-widest text-zinc-500 sm:text-xs">{title}</p>
+      <div className="mt-4 text-zinc-200">{children}</div>
     </article>
   );
 }
@@ -199,45 +103,36 @@ export default function InteligenciaPage() {
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [overviewError, setOverviewError] = useState("");
   const [analysisError, setAnalysisError] = useState("");
-  const [pdfDownloadUrl, setPdfDownloadUrl] = useState("");
-  const [pdfFilename, setPdfFilename] = useState("inteligencia-operacional.pdf");
+  const [compactPdfLoading, setCompactPdfLoading] = useState(false);
   const currentPathSection = String(location.pathname || "")
     .split("/")
     .filter(Boolean)
     .slice(-1)[0];
   const activeSection = INTELIGENCIA_SECTIONS.includes(currentPathSection) ? currentPathSection : "executivo";
 
-  const hasOperationalData = useMemo(() => {
-    const indicadores = overview?.indicadores || {};
-    return (
-      (overview?.consumo_por_veiculo?.length || 0) > 0 ||
-      (overview?.custo_por_periodo?.length || 0) > 0 ||
-      (overview?.consumo_vs_producao?.length || 0) > 0 ||
-      toNumber(indicadores.totalLitros) > 0 ||
-      toNumber(indicadores.totalValor) > 0 ||
-      toNumber(indicadores.totalViagens) > 0
-    );
-  }, [overview]);
+  const hasOperationalData = useMemo(() => !overview?.vazio, [overview]);
 
-  const chartData = useMemo(
-    () => ({
-      pieData: (overview?.consumo_por_veiculo || []).map((item) => ({
+  const regraDeOuro = useMemo(() => resolveRegraDeOuro({ overview }), [overview]);
+
+  const chartData = useMemo(() => {
+    const graficos = getDadosGraficos(overview);
+    return {
+      pieData: (graficos.consumo_por_veiculo || []).map((item) => ({
         veiculo_id: item?.veiculo_id ?? item?.veiculoId ?? item?.veiculo ?? "sem-id",
         name: item?.veiculo || "Sem veículo",
         value: toNumber(item?.litros),
       })),
-      lineData: (overview?.custo_por_periodo || []).map((item) => ({
+      lineData: (graficos.custo_por_periodo || []).map((item) => ({
         periodo: item?.periodo || "-",
         custo: toNumber(item?.custo),
       })),
-      barData: (overview?.consumo_vs_producao || []).map((item) => ({
+      barData: (graficos.consumo_vs_producao || []).map((item) => ({
         periodo: item?.periodo || "-",
         consumo: toNumber(item?.consumo),
         producao: toNumber(item?.producao),
       })),
-    }),
-    [overview]
-  );
+    };
+  }, [overview]);
 
   const resumoOperacional = useMemo(() => {
     const indicadores = overview?.indicadores || {};
@@ -251,78 +146,6 @@ export default function InteligenciaPage() {
     };
   }, [overview]);
 
-  const statusGeral = useMemo(() => {
-    if (analysisLoading || overviewLoading) {
-      return {
-        label: "Processando",
-        tone: "warning",
-        detail: "Atualizando leitura operacional com base nos filtros selecionados.",
-      };
-    }
-    if (overviewError) {
-      return {
-        label: "Instável",
-        tone: "critical",
-        detail: "Falha ao carregar parte dos dados operacionais.",
-      };
-    }
-    if (resumoOperacional.totalViagens === 0 && resumoOperacional.totalLitros > 0) {
-      return {
-        label: "Crítico",
-        tone: "critical",
-        detail: "Há consumo registrado sem produção no período.",
-      };
-    }
-    if (resumoOperacional.veiculosOciosos > 0) {
-      return {
-        label: "Atenção",
-        tone: "warning",
-        detail: `${fmtNumber(resumoOperacional.veiculosOciosos)} veículo(s) estão ociosos no recorte atual.`,
-      };
-    }
-    if (resumoOperacional.totalLitros === 0 && resumoOperacional.totalViagens === 0) {
-      return {
-        label: "Sem operação",
-        tone: "default",
-        detail: "Não há movimentação operacional no período selecionado.",
-      };
-    }
-    return {
-      label: "Estável",
-      tone: "ok",
-      detail: "Operação com consumo e produção coerentes no período.",
-    };
-  }, [analysisLoading, overviewLoading, overviewError, resumoOperacional]);
-
-  const diagnosticoPrincipal = useMemo(() => {
-    const relatorio = analysis?.relatorio || null;
-    if (relatorio?.problemaPrincipal) return relatorio.problemaPrincipal;
-    if (resumoOperacional.totalViagens === 0 && resumoOperacional.totalLitros > 0) {
-      return `Foram consumidos ${fmtNumber(resumoOperacional.totalLitros)} L sem viagens registradas no período.`;
-    }
-    if (resumoOperacional.veiculosOciosos > 0) {
-      return `${fmtNumber(resumoOperacional.veiculosOciosos)} veículo(s) ociosos estão reduzindo a produtividade da frota.`;
-    }
-    if (resumoOperacional.totalLitros === 0 && resumoOperacional.totalViagens === 0) {
-      return "Recorte sem movimentação operacional para diagnóstico de risco.";
-    }
-    return "Operação com comportamento regular no recorte atual, sem anomalia crítica detectada.";
-  }, [analysis, resumoOperacional]);
-
-  const acoesRecomendadas = useMemo(() => {
-    const relatorio = analysis?.relatorio || null;
-    if (Array.isArray(relatorio?.acoes) && relatorio.acoes.length) return relatorio.acoes;
-    const fallback = [];
-    if (resumoOperacional.totalViagens === 0 && resumoOperacional.totalLitros > 0) {
-      fallback.push("Auditar imediatamente abastecimentos sem romaneio no período.");
-    }
-    if (resumoOperacional.veiculosOciosos > 0) {
-      fallback.push("Redistribuir veículos ociosos para frentes com demanda ativa.");
-    }
-    fallback.push("Atualizar os filtros e gerar análise inteligente para detalhamento executivo.");
-    return fallback;
-  }, [analysis, resumoOperacional]);
-
   const impactoFinanceiro = useMemo(() => {
     const exposicaoSemProducao =
       resumoOperacional.totalViagens === 0 && resumoOperacional.totalLitros > 0 ? resumoOperacional.totalValor : 0;
@@ -334,105 +157,39 @@ export default function InteligenciaPage() {
     };
   }, [resumoOperacional]);
 
-  const moduloCombustivel = useMemo(
-    () => ({
-      consumoTotal: resumoOperacional.totalLitros,
-      custoTotal: resumoOperacional.totalValor,
-      precoMedio: resumoOperacional.precoMedio,
-      insight:
-        resumoOperacional.totalLitros > 0
-          ? "Consumo registrado no período selecionado."
-          : "Sem consumo registrado no período selecionado.",
-    }),
-    [resumoOperacional]
-  );
+  const moduloCombustivel = useMemo(() => {
+    const mod = overview?.modulos_leitura?.combustivel || {};
+    return {
+      consumoTotal: toNumber(mod.consumoTotal ?? resumoOperacional.totalLitros),
+      custoTotal: toNumber(mod.custoTotal ?? resumoOperacional.totalValor),
+      precoMedio: mod.precoMedio ?? resumoOperacional.precoMedio,
+      leitura: mod.leitura || "",
+    };
+  }, [overview, resumoOperacional]);
 
-  const moduloTransporte = useMemo(
-    () => ({
-      viagens: resumoOperacional.totalViagens,
-      insight:
-        resumoOperacional.totalViagens > 0
-          ? "Há produção registrada no recorte atual."
-          : "0 viagens registradas no período.",
-    }),
-    [resumoOperacional]
-  );
+  const moduloTransporte = useMemo(() => {
+    const mod = overview?.modulos_leitura?.transporte || {};
+    return {
+      viagens: toNumber(mod.viagens ?? resumoOperacional.totalViagens),
+      leitura: mod.leitura || "",
+    };
+  }, [overview, resumoOperacional]);
 
-  const moduloFrota = useMemo(
-    () => ({
-      veiculosAtivos: resumoOperacional.veiculosAtivos,
-      veiculosOciosos: resumoOperacional.veiculosOciosos,
-      insight:
-        resumoOperacional.veiculosOciosos > 0
-          ? `${fmtNumber(resumoOperacional.veiculosOciosos)} veículo(s) ocioso(s) no período.`
-          : "Sem ociosidade relevante no recorte atual.",
-    }),
-    [resumoOperacional]
-  );
-
-  const executiveCards = useMemo(() => {
-    const sparkCusto = chartData.lineData.map((item) => item.custo);
-    const sparkProdutividade = chartData.barData.map((item) => item.producao);
-    const sparkConsumo = chartData.barData.map((item) => item.consumo);
-    const eficiencia = resumoOperacional.totalLitros > 0
-      ? resumoOperacional.totalViagens / resumoOperacional.totalLitros
-      : 0;
-
-    const alertasAtivos =
-      (statusGeral.label === "Crítico" ? 1 : 0) +
-      (moduloFrota.veiculosOciosos > 0 ? 1 : 0) +
-      (moduloTransporte.viagens === 0 && moduloCombustivel.consumoTotal > 0 ? 1 : 0);
-
-    return [
-      {
-        id: "status",
-        title: "Status da operação",
-        value: statusGeral.label,
-        subtitle: statusGeral.detail,
-        tone: statusGeral.tone === "critical" ? "danger" : statusGeral.tone === "warning" ? "warning" : "positive",
-        sparkline: sparkProdutividade.length ? sparkProdutividade : sparkConsumo,
-      },
-      {
-        id: "custo",
-        title: "Custo total",
-        value: fmtCurrency(resumoOperacional.totalValor),
-        subtitle: "Consolidado no período filtrado",
-        tone: resumoOperacional.totalValor > 0 ? "warning" : "default",
-        sparkline: sparkCusto,
-      },
-      {
-        id: "eficiencia",
-        title: "Eficiência combustível",
-        value: `${eficiencia.toLocaleString("pt-BR", { maximumFractionDigits: 3 })} viagens/L`,
-        subtitle: "Relação entre viagens e litros consumidos",
-        tone: eficiencia > 0.1 ? "positive" : eficiencia > 0 ? "warning" : "danger",
-        sparkline: sparkConsumo,
-      },
-      {
-        id: "prod",
-        title: "Produtividade",
-        value: `${fmtNumber(resumoOperacional.totalViagens)} viagens`,
-        subtitle: "Produção operacional no período",
-        tone: resumoOperacional.totalViagens > 0 ? "positive" : "warning",
-        sparkline: sparkProdutividade,
-      },
-      {
-        id: "alertas",
-        title: "Alertas",
-        value: fmtNumber(alertasAtivos),
-        subtitle: "Sinais críticos e pontos de atenção",
-        tone: alertasAtivos > 1 ? "danger" : alertasAtivos === 1 ? "warning" : "positive",
-        sparkline: [alertasAtivos, moduloFrota.veiculosOciosos, resumoOperacional.totalViagens, resumoOperacional.totalLitros],
-      },
-    ];
-  }, [chartData, moduloCombustivel.consumoTotal, moduloFrota.veiculosOciosos, moduloTransporte.viagens, resumoOperacional, statusGeral]);
+  const moduloFrota = useMemo(() => {
+    const mod = overview?.modulos_leitura?.frota || {};
+    return {
+      veiculosAtivos: toNumber(mod.veiculosAtivos ?? resumoOperacional.veiculosAtivos),
+      veiculosOciosos: toNumber(mod.veiculosOciosos ?? resumoOperacional.veiculosOciosos),
+      leitura: mod.leitura || "",
+    };
+  }, [overview, resumoOperacional]);
 
   const periodoLabel = useMemo(() => {
-    const inicio = analysis?.periodo?.inicio;
-    const fim = analysis?.periodo?.fim;
-    if (!inicio && !fim) return "Período em análise";
+    const inicio = overview?.periodo?.inicio;
+    const fim = overview?.periodo?.fim;
+    if (!inicio && !fim) return "";
     return `${compactDate(inicio)} até ${compactDate(fim)}`;
-  }, [analysis]);
+  }, [overview]);
 
   const loadFiltersOptions = useCallback(async () => {
     try {
@@ -471,42 +228,7 @@ export default function InteligenciaPage() {
     try {
       const params = buildApiFilters(activeFilters);
       const { data } = await api.get("/inteligencia/overview", { params });
-      const consumoPorVeiculo = Array.isArray(data?.consumo_por_veiculo) ? data.consumo_por_veiculo : [];
-      const custoPorPeriodo = Array.isArray(data?.custo_por_periodo) ? data.custo_por_periodo : [];
-      const consumoVsProducao = Array.isArray(data?.consumo_vs_producao) ? data.consumo_vs_producao : [];
-      const rawIndicadores = data?.indicadores && typeof data.indicadores === "object" ? data.indicadores : {};
-
-      // Consistência: resumo usa os mesmos agregados dos gráficos.
-      const totalLitrosGraficos = sumBy(consumoPorVeiculo, "litros");
-      const totalValorGraficos = sumBy(custoPorPeriodo, "custo");
-      const totalViagensGraficos = sumBy(consumoVsProducao, "producao");
-
-      const normalizedOverview = {
-        consumo_por_veiculo: consumoPorVeiculo,
-        custo_por_periodo: custoPorPeriodo,
-        consumo_vs_producao: consumoVsProducao,
-        indicadores: {
-          ...rawIndicadores,
-          totalLitros: consumoPorVeiculo.length ? totalLitrosGraficos : toNumber(rawIndicadores.totalLitros),
-          totalValor: custoPorPeriodo.length ? totalValorGraficos : toNumber(rawIndicadores.totalValor),
-          totalViagens: consumoVsProducao.length ? totalViagensGraficos : toNumber(rawIndicadores.totalViagens),
-        },
-      };
-
-      console.log("[INTELIGENCIA] dados reais:", normalizedOverview);
-
-      console.info("[INTELIGENCIA] dados carregados:", {
-        quantidade_registros: {
-          consumo_por_veiculo: consumoPorVeiculo.length,
-          custo_por_periodo: custoPorPeriodo.length,
-          consumo_vs_producao: consumoVsProducao.length,
-          total: consumoPorVeiculo.length + custoPorPeriodo.length + consumoVsProducao.length,
-        },
-        periodo_aplicado: data?.periodo || { tipo: activeFilters?.periodo || "mes" },
-        veiculos_considerados: Number(rawIndicadores?.veiculosConsiderados || 0),
-      });
-
-      setOverview(normalizedOverview);
+      setOverview(data && typeof data === "object" ? data : EMPTY_OVERVIEW);
     } catch (error) {
       setOverview(EMPTY_OVERVIEW);
       setOverviewError(
@@ -532,27 +254,18 @@ export default function InteligenciaPage() {
       };
       const { data } = await api.post("/inteligencia/gerar", payload);
       setAnalysis(data || null);
-
-      const pdfResponse = await api.post("/inteligencia/pdf", payload, {
-        responseType: "blob",
-        skipGlobalErrorToast: true,
-      });
-      const nextFilename = getFilenameFromDisposition(
-        pdfResponse?.headers?.["content-disposition"],
-        `inteligencia-${apiFilters.periodo || "mes"}.pdf`
-      );
-      const blobUrl = URL.createObjectURL(pdfResponse.data);
-      setPdfDownloadUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return blobUrl;
-      });
-      setPdfFilename(nextFilename);
-
-      const downloaded = triggerPdfDownload(blobUrl, nextFilename);
-      if (downloaded) {
-        emitToast("Análise gerada e PDF baixado com sucesso.");
+      if (data?.overview) {
+        setOverview(data.overview);
+      } else if (data?.inteligencia) {
+        setOverview((prev) => ({ ...prev, ...data.inteligencia }));
+      }
+      const origemGpt = data?.gpt?.origem;
+      if (origemGpt === "openai" || origemGpt === "cache") {
+        emitToast("Análise gerada com complemento IA sobre os dados do motor operacional.");
+      } else if (origemGpt === "limit") {
+        emitToast("Limite diário de IA atingido — apenas motor operacional aplicado.", "warning");
       } else {
-        emitToast("PDF gerado. Toque em 'Baixar PDF agora'.", "warning");
+        emitToast("Análise gerada pelo motor operacional (IA indisponível).", "warning");
       }
     } catch (error) {
       console.error("Erro ao gerar análise:", error);
@@ -565,16 +278,22 @@ export default function InteligenciaPage() {
     }
   }, [filters]);
 
-  const baixarPdfAgora = useCallback(() => {
-    if (!pdfDownloadUrl) {
-      emitToast("Gere uma análise antes de baixar o PDF.", "warning");
-      return;
+  const baixarPdfCompacto = useCallback(async () => {
+    setCompactPdfLoading(true);
+    try {
+      const result = await downloadInteligenciaPdf(filters);
+      if (result?.disabled) {
+        emitToast(result.mensagem, "warning");
+        return;
+      }
+      emitToast(`PDF compacto baixado (${result.filename}). Formato diferente do relatório HTML.`, "success");
+    } catch (error) {
+      const friendlyMessage = await parseBlobErrorMessage(error, "Falha ao gerar PDF no servidor.");
+      emitToast(friendlyMessage, "error");
+    } finally {
+      setCompactPdfLoading(false);
     }
-    const downloaded = triggerPdfDownload(pdfDownloadUrl, pdfFilename);
-    if (!downloaded) {
-      window.open(pdfDownloadUrl, "_blank", "noopener,noreferrer");
-    }
-  }, [pdfDownloadUrl, pdfFilename]);
+  }, [filters]);
 
   useEffect(() => {
     void loadFiltersOptions();
@@ -583,13 +302,6 @@ export default function InteligenciaPage() {
   useEffect(() => {
     void loadOverview(filters);
   }, [filters, loadOverview]);
-
-  useEffect(
-    () => () => {
-      if (pdfDownloadUrl) URL.revokeObjectURL(pdfDownloadUrl);
-    },
-    [pdfDownloadUrl]
-  );
 
   useEffect(() => {
     if (INTELIGENCIA_SECTIONS.includes(currentPathSection)) return;
@@ -619,7 +331,7 @@ export default function InteligenciaPage() {
       title="Central de Inteligência Operacional"
       lead="Análise automatizada da operação com base em dados reais"
     >
-      <div className="space-y-4 px-1 pb-20 sm:space-y-6 sm:px-0 sm:pb-0">
+      <div className="space-y-5 px-2 pb-24 sm:space-y-6 sm:px-0 sm:pb-0">
         <AccordionSection
           id="inteligencia-filtros"
           title="Filtros operacionais"
@@ -685,118 +397,107 @@ export default function InteligenciaPage() {
               onClick={gerarAnalise}
               disabled={analysisLoading}
             >
-              {analysisLoading ? "Gerando análise e PDF..." : "Gerar Análise Inteligente"}
+              {analysisLoading ? "Gerando análise..." : "Gerar Análise Inteligente"}
             </button>
             <Link
               to={reportHref}
               className="fc-btn w-full rounded-md border border-sky-700/60 bg-sky-950/30 px-4 py-3 text-center text-sm font-semibold text-sky-100 transition-all duration-300 hover:border-sky-500"
             >
-              Abrir relatório HTML (BI)
+              Abrir relatório HTML (BI) — PDF visual
             </Link>
             <button
               type="button"
               className="fc-btn w-full rounded-md border border-zinc-700 px-4 py-3 text-sm font-semibold text-zinc-100 transition-all duration-300 hover:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60"
-              onClick={baixarPdfAgora}
-              disabled={analysisLoading || !pdfDownloadUrl}
+              onClick={() => void baixarPdfCompacto()}
+              disabled={analysisLoading || compactPdfLoading}
             >
-              Baixar PDF agora
+              {compactPdfLoading ? "Gerando PDF..." : "PDF compacto (servidor — formato antigo)"}
             </button>
+            <p className="text-xs text-zinc-500">
+              O PDF fiel ao layout BI está em «Relatório HTML → Baixar PDF (layout BI)».
+            </p>
             {analysisError ? <p className="text-sm text-red-400">{analysisError}</p> : null}
           </div>
         </AccordionSection>
 
         <AccordionSection
           id="inteligencia-resumo"
-          title="Leitura executiva"
+          title="Painel executivo"
           description={periodoLabel}
-          defaultOpenDesktop={false}
-          defaultOpenMobile={false}
+          defaultOpenDesktop
+          defaultOpenMobile
         >
-          {overviewLoading ? (
-            <SummarySkeleton />
+          {activeSection === "executivo" ? (
+            <div className="space-y-5 sm:space-y-6">
+              <ExecutiveRegraDeOuroCard
+                regra={regraDeOuro}
+                loading={overviewLoading || analysisLoading}
+              />
+              <IntelligenceExecutivePanel
+                overview={overview}
+                loading={overviewLoading}
+                error={overviewError}
+                periodoLabel={periodoLabel}
+              />
+            </div>
+          ) : overviewLoading ? (
+            <div className="animate-pulse rounded-xl border border-zinc-800/80 bg-zinc-950/40 p-5">
+              <div className="h-4 w-36 rounded bg-zinc-800/80" />
+              <div className="mt-4 h-24 rounded-xl bg-zinc-800/60" />
+            </div>
           ) : !hasOperationalData ? (
-            <section className="rounded-xl border border-dashed border-zinc-800 bg-zinc-950/40 p-4 text-sm text-zinc-300">
-              Sem dados para o período selecionado
-            </section>
+            (overview?.mensagem || overview?.resumo) ? (
+              <section className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/40 p-5 text-base text-zinc-300 sm:p-6 sm:text-sm">
+                {overview.mensagem || overview.resumo}
+              </section>
+            ) : null
           ) : (
             <section className="transition-all duration-300">
-              {activeSection === "executivo" ? (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                    {executiveCards.map((card) => (
-                      <ExecutiveKpiCard
-                        key={card.id}
-                        title={card.title}
-                        value={card.value}
-                        subtitle={card.subtitle}
-                        tone={card.tone}
-                        sparkline={card.sparkline}
-                      />
-                    ))}
-                  </div>
-                  <InsightCard title="Diagnóstico e ação recomendada" tone={statusGeral.tone === "critical" ? "critical" : "default"}>
-                    <div className="space-y-2">
-                      <div className="inline-flex rounded-full border border-current px-3 py-1 text-xs font-semibold">
-                        Status: {statusGeral.label}
-                      </div>
-                      <p className="text-sm text-zinc-300">{statusGeral.detail}</p>
-                      <p className="font-medium">{diagnosticoPrincipal}</p>
-                      <div className="space-y-1">
-                        {acoesRecomendadas.slice(0, 3).map((item) => (
-                          <p key={item} className="text-sm">
-                            - {item}
-                          </p>
-                        ))}
-                      </div>
-                    </div>
-                  </InsightCard>
-                </div>
-              ) : null}
-
               {activeSection === "combustivel" ? (
-                <div className="grid grid-cols-1 gap-4 sm:gap-5">
+                <div className="grid grid-cols-1 gap-5 sm:gap-6">
                   <InsightCard title="Combustível" tone={impactoFinanceiro.exposicaoSemProducao > 0 ? "warning" : "default"}>
-                    <div className="space-y-1">
+                    <div className="space-y-2 text-base sm:text-sm">
                       <p>
                         <span className="text-zinc-400">Consumo total:</span> {fmtNumber(moduloCombustivel.consumoTotal)} L
                       </p>
                       <p>
                         <span className="text-zinc-400">Custo total:</span> {fmtCurrency(moduloCombustivel.custoTotal)}
                       </p>
-                      <p>
-                        <span className="text-zinc-400">Preço médio:</span>{" "}
-                        {moduloCombustivel.precoMedio != null ? fmtCurrency(moduloCombustivel.precoMedio) : "Sem base"}
-                      </p>
-                      <p className="text-zinc-300">{moduloCombustivel.insight}</p>
+                      {moduloCombustivel.precoMedio != null ? (
+                        <p>
+                          <span className="text-zinc-400">Preço médio:</span> {fmtCurrency(moduloCombustivel.precoMedio)}
+                        </p>
+                      ) : null}
+                      {moduloCombustivel.leitura ? <p className="text-zinc-300">{moduloCombustivel.leitura}</p> : null}
                     </div>
                   </InsightCard>
                 </div>
               ) : null}
 
               {activeSection === "transporte" ? (
-                <div className="grid grid-cols-1 gap-4 sm:gap-5">
+                <div className="grid grid-cols-1 gap-5 sm:gap-6">
                   <InsightCard title="Transporte" tone={moduloTransporte.viagens === 0 ? "warning" : "ok"}>
-                    <div className="space-y-1">
+                    <div className="space-y-2 text-base sm:text-sm">
                       <p>
                         <span className="text-zinc-400">Viagens:</span> {fmtNumber(moduloTransporte.viagens)}
                       </p>
-                      <p className="text-zinc-300">{moduloTransporte.insight}</p>
+                      {moduloTransporte.leitura ? <p className="text-zinc-300">{moduloTransporte.leitura}</p> : null}
                     </div>
                   </InsightCard>
                 </div>
               ) : null}
 
               {activeSection === "frota" ? (
-                <div className="grid grid-cols-1 gap-4 sm:gap-5">
+                <div className="grid grid-cols-1 gap-5 sm:gap-6">
                   <InsightCard title="Frota" tone={moduloFrota.veiculosOciosos > 0 ? "warning" : "ok"}>
-                    <div className="space-y-1">
+                    <div className="space-y-2 text-base sm:text-sm">
                       <p>
                         <span className="text-zinc-400">Veículos ativos:</span> {fmtNumber(moduloFrota.veiculosAtivos)}
                       </p>
                       <p>
                         <span className="text-zinc-400">Veículos ociosos:</span> {fmtNumber(moduloFrota.veiculosOciosos)}
                       </p>
-                      <p className="text-zinc-300">{moduloFrota.insight}</p>
+                      {moduloFrota.leitura ? <p className="text-zinc-300">{moduloFrota.leitura}</p> : null}
                     </div>
                   </InsightCard>
                 </div>
@@ -805,7 +506,9 @@ export default function InteligenciaPage() {
           )}
         </AccordionSection>
 
-        {overviewError ? <p className="text-sm text-red-400">{overviewError}</p> : null}
+        {overviewError && activeSection !== "executivo" ? (
+          <p className="px-2 text-base text-red-400 sm:px-0 sm:text-sm">{overviewError}</p>
+        ) : null}
 
         <AccordionSection
           id="inteligencia-graficos"

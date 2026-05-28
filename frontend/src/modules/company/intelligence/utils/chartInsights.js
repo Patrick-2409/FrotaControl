@@ -1,4 +1,4 @@
-import { REPORT_COLORS, reportColorById } from "./reportChartColors";
+import { REPORT_COLORS, reportColorByIndex } from "./reportChartColors";
 
 const toNumber = (value) => {
   const parsed = Number(value);
@@ -22,12 +22,12 @@ const compactDate = (iso) => {
 };
 
 export const CHART_LEGEND_ITEMS = {
-  custo: { color: REPORT_COLORS.line, label: "Custo diário (R$)", short: "Custo (R$)" },
-  media: { color: "#D97706", label: "Média diária — linha de referência", short: "Média" },
-  consumo: { color: REPORT_COLORS.consumo, label: "Consumo (litros)", short: "Consumo (L)" },
-  producao: { color: REPORT_COLORS.producao, label: "Produção (viagens)", short: "Produção" },
-  registros: { color: REPORT_COLORS.primary, label: "Registros de parte diária", short: "Registros" },
-  horas: { color: REPORT_COLORS.success, label: "Horas operacionais", short: "Horas" },
+  custo: { color: REPORT_COLORS.line, label: "Custo diário (R$) — azul", short: "Custo (R$)" },
+  media: { color: REPORT_COLORS.media, label: "Média diária — laranja (referência)", short: "Média" },
+  consumo: { color: REPORT_COLORS.consumo, label: "Consumo (litros) — vermelho", short: "Consumo (L)" },
+  producao: { color: REPORT_COLORS.producao, label: "Produção (viagens) — verde", short: "Produção" },
+  registros: { color: REPORT_COLORS.primary, label: "Registros de parte diária — azul", short: "Registros" },
+  horas: { color: REPORT_COLORS.success, label: "Horas operacionais — verde", short: "Horas" },
 };
 
 export function buildPieLegendItems(pieData = []) {
@@ -36,7 +36,7 @@ export function buildPieLegendItems(pieData = []) {
     const value = toNumber(item?.value);
     const percent = total > 0 ? (value / total) * 100 : 0;
     return {
-      color: reportColorById(item?.veiculo_id ?? item?.name ?? index),
+      color: reportColorByIndex(index),
       label: item?.name || "Veículo",
       value: `${fmtNum(value, 1)} L`,
       detail: fmtPct(percent),

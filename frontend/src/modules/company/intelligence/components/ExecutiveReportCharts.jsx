@@ -9,7 +9,7 @@ import {
   CHART_LEGEND_ITEMS,
 } from "../utils/chartInsights";
 import { ColorLegend, LineCostDataTable, ReportChartCard, StaticLegend } from "./ChartReportBlocks";
-import { REPORT_COLORS, reportColorById } from "../utils/reportChartColors";
+import { REPORT_COLORS, reportColorByIndex } from "../utils/reportChartColors";
 
 const hasRows = (rows) => Array.isArray(rows) && rows.length > 0;
 const fmtNum = (value) => Number(value || 0).toLocaleString("pt-BR");
@@ -62,7 +62,7 @@ function FallbackChartsPanel({ pieData, lineData, barData, tipoAnalise }) {
                     const pct = pieTotal > 0 ? (value / pieTotal) * 100 : 0;
                     const start = cursor;
                     cursor += pct;
-                    return `${reportColorById(item?.veiculo_id ?? item?.name ?? index)} ${start}% ${cursor}%`;
+                    return `${reportColorByIndex(index)} ${start}% ${cursor}%`;
                   });
                   return stops.length ? `conic-gradient(${stops.join(", ")})` : "#E2E8F0";
                 })(),

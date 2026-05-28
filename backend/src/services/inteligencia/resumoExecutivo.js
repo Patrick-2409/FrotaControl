@@ -1,13 +1,23 @@
 const { toNumber } = require("./common");
+const { mergeInconsistencias } = require("./consistenciaOperacional");
+const { gerarInsights } = require("./insightsOperacionais");
 const {
   detectContextoTeste,
+  gerarContexto,
   MENSAGEM_CONTEXTO_TESTE,
   detectInconsistenciasOperacionais,
   resolveStatusOperacao,
   computeMetricasExecutivas,
 } = require("./operacionalRules");
 
-const gerarResumoExecutivo = ({ combustivel, transporte, frota, periodo = "mes" }) => {
+const gerarResumoExecutivo = ({
+  combustivel,
+  transporte,
+  frota,
+  periodo = "mes",
+  periodoBounds = null,
+  consistenciaVeiculos = null,
+}) => {
   const totalLitros = toNumber(combustivel?.indicadores?.totalLitros);
   const totalLitrosTransporte = toNumber(combustivel?.indicadores?.totalLitrosTransporte);
   const totalLitrosApoio = toNumber(combustivel?.indicadores?.totalLitrosApoio);
@@ -56,21 +66,48 @@ const gerarResumoExecutivo = ({ combustivel, transporte, frota, periodo = "mes" 
     dadosTransporteDisponiveis,
   };
 
-  const { inconsistencias, producaoSemConsumo, consumoSemProducao } = detectInconsistenciasOperacionais({
-    indicadores,
-    insights: { operacaoParada },
-  });
+  const { inconsistencias: inconsistenciasGlobais, producaoSemConsumo, consumoSemProducao } =
+    detectInconsistenciasOperacionais({
+      indicadores,
+      insights: { operacaoParada },
+    });
 
-  const contextoTeste = detectContextoTeste({ indicadores, periodo });
+  const inconsistenciasDetalhadas = consistenciaVeiculos?.inconsistenciasDetalhadas || [];
+  const inconsistencias = mergeInconsistencias(inconsistenciasGlobais, inconsistenciasDetalhadas);
+  const producaoSemConsumoVeiculo = inconsistenciasDetalhadas.some((item) => item.tipo === "ERRO_CRITICO");
+  const consumoSemProducaoVeiculo = inconsistenciasDetalhadas.some((item) => item.tipo === "ALERTA");
+
+  const contexto = gerarContexto({
+    veiculos: [
+      ...(consistenciaVeiculos?.veiculosTransporte || []),
+      ...(consistenciaVeiculos?.veiculosApoio || []),
+    ],
+    periodo: periodoBounds || { tipo: periodo },
+    indicadores,
+  });
+  const contextoTeste = detectContextoTeste({ indicadores, periodo: periodoBounds || periodo, contexto });
+
+  const insightsAutomaticos = gerarInsights({
+    combustivel: (combustivel?.graficos?.consumoPorVeiculo || []).map((row) => ({
+      nome: row.veiculo,
+      litros: row.litros,
+      veiculoId: row.veiculo_id,
+    })),
+    transporte: consistenciaVeiculos?.veiculosTransporte || [],
+    indicadores,
+  });
 
   const insights = {
     operacaoParada,
-    consumoSemProducao,
-    producaoSemConsumo,
+    consumoSemProducao: consumoSemProducao || consumoSemProducaoVeiculo,
+    producaoSemConsumo: producaoSemConsumo || producaoSemConsumoVeiculo,
     analiseProducaoIgnorada: !dadosTransporteDisponiveis,
+    contexto,
+    contextoOperacional: contexto,
     contextoTeste,
     mensagemContextoTeste: contextoTeste ? MENSAGEM_CONTEXTO_TESTE : null,
     inconsistenciasDetectadas: inconsistencias,
+    insightsAutomaticos,
     veiculosOciosos: frota?.insights?.veiculosOciosos || [],
     veiculoDestaque: combustivel?.insights?.veiculoDestaque || null,
     regrasOperacao: {
@@ -90,6 +127,8 @@ const gerarResumoExecutivo = ({ combustivel, transporte, frota, periodo = "mes" 
     },
     statusOperacao,
     inconsistencias,
+    inconsistenciasDetalhadas,
+    consistenciaVeiculos: consistenciaVeiculos?.veiculosTransporte || [],
     metricasExecutivas,
   };
 };

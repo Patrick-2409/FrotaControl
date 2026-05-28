@@ -1229,3 +1229,52 @@ textarea:focus-visible,
 .fc-empresa-sidebar {
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset;
 }
+
+@media print {
+  @page {
+    size: A4;
+    margin: 10mm;
+  }
+
+  .fc-empresa-shell-header,
+  .fc-empresa-sidebar,
+  .fc-empresa-nav-backdrop,
+  .fc-empresa-drawer,
+  .fc-empresa-nav-trigger {
+    display: none !important;
+  }
+
+  .fc-empresa-main-grid {
+    display: block !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    gap: 0 !important;
+  }
+
+  .fc-empresa-main-pad,
+  .fc-page {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .fc-theme-empresa.fc-empresa-shell-root {
+    background: #fff !important;
+    color: #0f172a !important;
+    min-height: auto !important;
+  }
+
+  .fc-report-page {
+    background: #fff !important;
+    min-height: auto !important;
+  }
+
+  .fc-report-page .rounded-2xl,
+  .fc-report-page section,
+  .fc-report-page article,
+  .fc-report-section {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

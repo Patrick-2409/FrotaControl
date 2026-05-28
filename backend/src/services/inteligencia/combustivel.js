@@ -65,8 +65,9 @@ const analisarCombustivel = async (ctx) => {
          COALESCE(SUM(c.litros), 0)::double precision AS total_litros,
          COALESCE(SUM(c.valor_total), 0)::double precision AS total_valor
        FROM combustiveis c
-       LEFT JOIN veiculos v ON v.id = c.veiculo_id AND v.empresa_id = c.empresa_id
+       INNER JOIN veiculos v ON v.id = c.veiculo_id AND v.empresa_id = c.empresa_id
        WHERE ${filtrosCombustivel}
+         AND c.veiculo_id IS NOT NULL
        GROUP BY c.veiculo_id, v.nome, v.placa
        ORDER BY total_litros DESC
        LIMIT 1`,
@@ -80,8 +81,9 @@ const analisarCombustivel = async (ctx) => {
          COALESCE(v.placa, '-') AS placa,
          COALESCE(SUM(c.litros), 0)::double precision AS litros
        FROM combustiveis c
-       LEFT JOIN veiculos v ON v.id = c.veiculo_id AND v.empresa_id = c.empresa_id
+       INNER JOIN veiculos v ON v.id = c.veiculo_id AND v.empresa_id = c.empresa_id
        WHERE ${filtrosCombustivel}
+         AND c.veiculo_id IS NOT NULL
        GROUP BY c.veiculo_id, v.nome, v.placa
        ORDER BY litros DESC`,
       baseParams

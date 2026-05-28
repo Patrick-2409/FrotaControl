@@ -1,5 +1,6 @@
 const { pool } = require("../../db");
 const { toNumber, buildTransportVehiclePredicate, buildApoioVehiclePredicate } = require("./common");
+const { classificarVeiculos } = require("./classificarVeiculos");
 
 const emptyResult = () => ({ rows: [] });
 
@@ -13,19 +14,30 @@ const safeFrotaQuery = async (label, sql, params) => {
 };
 
 const analisarFrota = async (ctx) => {
-  const { baseParams, filtrosParteDiaria, activeVehicleIds = new Set(), fuelActiveVehicleIds = new Set() } = ctx;
+  const {
+    baseParams,
+    filtrosParteDiaria,
+    activeVehicleIds = new Set(),
+    fuelActiveVehicleIds = new Set(),
+    veiculosTransporte: veiculosTransporteCtx = [],
+    veiculosApoio: veiculosApoioCtx = [],
+  } = ctx;
   const transportPredicate = buildTransportVehiclePredicate("v");
   const apoioPredicate = buildApoioVehiclePredicate("v");
 
   const [vehiclesScopeRows, parteDiariaAgg, parteDiariaActiveRows, parteDiariaPorVeiculoRows, parteDiariaPorDiaRows, escopoTransporteAgg, escopoApoioAgg] =
     await Promise.all([
-      safeFrotaQuery(
-        "vehiclesScopeRows",
-        `SELECT
+      veiculosTransporteCtx.length || veiculosApoioCtx.length
+        ? Promise.resolve({ rows: [...veiculosTransporteCtx, ...veiculosApoioCtx] })
+        : safeFrotaQuery(
+            "vehiclesScopeRows",
+            `SELECT
          v.id,
          COALESCE(v.nome, 'Sem nome') AS nome,
          COALESCE(v.placa, '-') AS placa,
-         CASE WHEN ${transportPredicate} THEN 'transporte' ELSE 'apoio' END AS tipo_operacao
+         COALESCE(v.usa_para_transporte, false) AS usa_para_transporte,
+         COALESCE(v.usa_para_transporte, false) AS usa_romaneio,
+         NULLIF(LOWER(TRIM(v.tipo_operacao)), '') AS tipo_operacao
        FROM veiculos v
        WHERE v.empresa_id = $1
          AND ($4::int IS NULL OR v.id = $4)
@@ -40,8 +52,8 @@ const analisarFrota = async (ctx) => {
            )
          )
        ORDER BY v.nome`,
-        baseParams
-      ),
+            baseParams
+          ),
       safeFrotaQuery(
         "parteDiariaAgg",
         `SELECT COUNT(*)::int AS total_parte_diaria
@@ -55,7 +67,9 @@ const analisarFrota = async (ctx) => {
         "parteDiariaActiveRows",
         `SELECT DISTINCT pd.veiculo_id
        FROM parte_diaria pd
+       INNER JOIN veiculos v ON v.id = pd.veiculo_id AND v.empresa_id = pd.empresa_id
        WHERE ${filtrosParteDiaria}
+         AND ${apoioPredicate}
          AND pd.veiculo_id IS NOT NULL`,
         baseParams
       ),
@@ -69,8 +83,9 @@ const analisarFrota = async (ctx) => {
          COALESCE(SUM(pd.total_horas), 0)::numeric AS total_horas,
          COALESCE(SUM(pd.total_km), 0)::numeric AS total_km
        FROM parte_diaria pd
-       LEFT JOIN veiculos v ON v.id = pd.veiculo_id AND v.empresa_id = pd.empresa_id
+       INNER JOIN veiculos v ON v.id = pd.veiculo_id AND v.empresa_id = pd.empresa_id
        WHERE ${filtrosParteDiaria}
+         AND ${apoioPredicate}
        GROUP BY pd.veiculo_id, v.nome, v.placa, pd.equipamento
        ORDER BY registros DESC, total_horas DESC
        LIMIT 12`,
@@ -83,7 +98,9 @@ const analisarFrota = async (ctx) => {
          COUNT(*)::int AS registros,
          COALESCE(SUM(pd.total_horas), 0)::numeric AS total_horas
        FROM parte_diaria pd
+       INNER JOIN veiculos v ON v.id = pd.veiculo_id AND v.empresa_id = pd.empresa_id
        WHERE ${filtrosParteDiaria}
+         AND ${apoioPredicate}
        GROUP BY 1
        ORDER BY 1`,
         baseParams
@@ -108,30 +125,43 @@ const analisarFrota = async (ctx) => {
       ),
     ]);
 
-  const parteDiariaActiveIds = new Set(
+  const parteDiariaActiveIdsRaw = new Set(
     (parteDiariaActiveRows.rows || [])
       .map((row) => Number(row.veiculo_id))
       .filter((id) => Number.isFinite(id) && id > 0)
   );
 
-  const isVeiculoAtivo = (veiculoId) =>
-    activeVehicleIds.has(veiculoId) || fuelActiveVehicleIds.has(veiculoId) || parteDiariaActiveIds.has(veiculoId);
-
-  const scopedVehicles = vehiclesScopeRows.rows || [];
+  const scopedVehicles = classificarVeiculos(vehiclesScopeRows.rows || []);
   const transporteVehicles = scopedVehicles.filter((row) => row.tipo_operacao === "transporte");
-  const apoioVehicles = scopedVehicles.filter((row) => row.tipo_operacao !== "transporte");
+  const apoioVehicles = scopedVehicles.filter((row) => row.tipo_operacao === "apoio");
+  const apoioVehicleIds = new Set(apoioVehicles.map((row) => Number(row.id)).filter(Number.isFinite));
 
-  const countAtivos = (list) => list.filter((row) => isVeiculoAtivo(Number(row.id))).length;
-  const countOciosos = (list) => list.filter((row) => !isVeiculoAtivo(Number(row.id))).length;
+  const parteDiariaActiveIds = new Set(
+    [...parteDiariaActiveIdsRaw].filter((id) => apoioVehicleIds.has(id))
+  );
 
-  const veiculosAtivosTransporte = countAtivos(transporteVehicles);
-  const veiculosOciososTransporte = countOciosos(transporteVehicles);
-  const veiculosAtivosApoio = countAtivos(apoioVehicles);
-  const veiculosOciososApoio = countOciosos(apoioVehicles);
+  const isVeiculoAtivoTransporte = (veiculoId) =>
+    activeVehicleIds.has(veiculoId) || fuelActiveVehicleIds.has(veiculoId);
+
+  const isVeiculoAtivoApoio = (veiculoId) =>
+    fuelActiveVehicleIds.has(veiculoId) || parteDiariaActiveIds.has(veiculoId);
+
+  const countAtivos = (list, predicate) => list.filter((row) => predicate(Number(row.id))).length;
+  const countOciosos = (list, predicate) => list.filter((row) => !predicate(Number(row.id))).length;
+
+  const veiculosAtivosTransporte = countAtivos(transporteVehicles, isVeiculoAtivoTransporte);
+  const veiculosOciososTransporte = countOciosos(transporteVehicles, isVeiculoAtivoTransporte);
+  const veiculosAtivosApoio = countAtivos(apoioVehicles, isVeiculoAtivoApoio);
+  const veiculosOciososApoio = countOciosos(apoioVehicles, isVeiculoAtivoApoio);
 
   const veiculosAtivos = veiculosAtivosTransporte + veiculosAtivosApoio;
   const veiculosOciosos = veiculosOciososTransporte + veiculosOciososApoio;
-  const veiculosOciososRows = scopedVehicles.filter((row) => !isVeiculoAtivo(Number(row.id)));
+  const veiculosOciososRows = scopedVehicles.filter(
+    (row) =>
+      !(row.tipo_operacao === "transporte"
+        ? isVeiculoAtivoTransporte(Number(row.id))
+        : isVeiculoAtivoApoio(Number(row.id)))
+  );
 
   const totalParteDiaria = toNumber(parteDiariaAgg.rows[0]?.total_parte_diaria);
   const atividadesPorVeiculo = (parteDiariaPorVeiculoRows.rows || []).map((row) => ({
