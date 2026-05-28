@@ -56,10 +56,20 @@ const resolveExecutiveReport = (report = {}) => {
   const analiseModulos = report?.analiseModulos || report?.analise_modulos || {};
   const moduloCombustivel = ensureText(analiseModulos?.combustivel, "Dados insuficientes de combustível para análise.");
   const moduloTransporte = ensureText(analiseModulos?.transporte, "Dados insuficientes de transporte para análise.");
-  const moduloFrota = ensureText(analiseModulos?.frota, "Dados insuficientes de frota para análise.");
+  const moduloApoio = ensureText(analiseModulos?.apoio || analiseModulos?.frota, "Dados insuficientes de apoio para análise.");
   const impactoFinanceiro = ensureText(report?.impactoFinanceiro || report?.impacto_financeiro, "Impacto financeiro indisponível.");
   const riscos = ensureList(report?.riscos || report?.riscos_operacionais, ["Sem riscos específicos identificados."]);
   const acoes = ensureList(report?.acoes || report?.acoes_recomendadas, ["Reavaliar filtros e gerar novo diagnóstico."]);
+  const inconsistencias = ensureList(report?.inconsistencias, []);
+  const kpis = Array.isArray(report?.kpis)
+    ? report.kpis
+        .map((item) => ({
+          nome: String(item?.nome || "").trim(),
+          valor: String(item?.valor || "").trim(),
+          formula: String(item?.formula || item?.calculo || "").trim(),
+        }))
+        .filter((item) => item.nome && item.valor)
+    : [];
   const calculos = ensureList(report?.calculosUtilizados || report?.calculos_utilizados, [
     "Preço médio = total valor / total litros",
     "Eficiência = km rodados / litros consumidos (quando km disponível)",
@@ -70,10 +80,12 @@ const resolveExecutiveReport = (report = {}) => {
     diagnosticoDetalhado,
     moduloCombustivel,
     moduloTransporte,
-    moduloFrota,
+    moduloApoio,
     impactoFinanceiro,
     riscos,
     acoes,
+    inconsistencias,
+    kpis,
     calculos,
   };
 };
@@ -296,6 +308,18 @@ const buildHtmlReport = async ({ company, analysis, report }) => {
   const indicators = analysis?.indicadores || {};
   const charts = analysis?.graficos || {};
   const executivo = resolveExecutiveReport(report);
+  const kpisExecutivos = executivo.kpis.length
+    ? executivo.kpis
+    : [
+        { nome: "Total litros", valor: `${fmtNum(indicators.totalLitros, 1)} L`, formula: "Somatório dos litros abastecidos no período" },
+        { nome: "Total valor", valor: fmtMoney(indicators.totalValor), formula: "Somatório financeiro do período" },
+        {
+          nome: "Preço médio",
+          valor: indicators.precoMedio == null ? "—" : `R$ ${fmtNum(indicators.precoMedio, 2)}/L`,
+          formula: "Preço médio = total valor / total litros",
+        },
+        { nome: "Viagens transporte", valor: fmtNum(indicators.totalViagensTransporte ?? indicators.totalViagens), formula: "Contagem de viagens de transporte" },
+      ];
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -305,6 +329,22 @@ const buildHtmlReport = async ({ company, analysis, report }) => {
     @page { size: A4; margin: 12mm; }
     body { font-family: Inter, Arial, sans-serif; color: #111827; margin: 0; background: #ffffff; }
     .page { padding: 8px 4px; }
+    .cover {
+      min-height: 96vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      border: 2px solid #dbe2ea;
+      border-radius: 18px;
+      padding: 40px 28px;
+      page-break-after: always;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    }
+    .cover h1 { margin: 14px 0 8px; font-size: 30px; color: #0f172a; }
+    .cover h2 { margin: 0; font-size: 16px; color: #334155; font-weight: 600; }
+    .cover .meta { margin-top: 24px; font-size: 12px; color: #64748b; text-align: center; }
     .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
     .header h1 { margin: 0; font-size: 22px; color: #0f172a; }
     .meta { color: #6b7280; font-size: 12px; line-height: 1.5; text-align: right; }
@@ -322,6 +362,17 @@ const buildHtmlReport = async ({ company, analysis, report }) => {
   </style>
 </head>
 <body>
+  <div class="cover">
+    ${logoSrc ? `<img src="${esc(logoSrc)}" alt="Logo da empresa" style="width:120px;height:120px;object-fit:contain;border-radius:16px;border:1px solid #e5e7eb;background:#fff;padding:8px;" />` : ""}
+    <h1>Relatório Executivo Profissional</h1>
+    <h2>Central de Inteligência Operacional</h2>
+    <div style="margin-top:18px;font-size:14px;color:#334155;font-weight:600;">${esc(company?.nome || "Empresa")}</div>
+    <div class="meta">
+      <div>Período: ${esc(analysis?.periodo?.inicio)} até ${esc(analysis?.periodo?.fim)}</div>
+      <div>Tipo de análise: ${esc(analysis?.tipoAnalise || "geral")}</div>
+      <div>Gerado em: ${esc(generatedAt)}</div>
+    </div>
+  </div>
   <div class="page">
     <header class="header">
       <div style="display:flex;align-items:center;gap:12px;">
@@ -345,31 +396,17 @@ const buildHtmlReport = async ({ company, analysis, report }) => {
     </section>
 
     <section class="section">
-      <h2>Indicadores</h2>
+      <h2>KPIs</h2>
       <div class="kpis">
-        <div class="kpi"><span>Total litros</span><strong>${esc(fmtNum(indicators.totalLitros, 1))} L</strong></div>
-        <div class="kpi"><span>Total valor</span><strong>${esc(fmtMoney(indicators.totalValor))}</strong></div>
-        <div class="kpi"><span>Preço médio</span><strong>${esc(indicators.precoMedio == null ? "—" : `R$ ${fmtNum(indicators.precoMedio, 2)}/L`)}</strong></div>
-        <div class="kpi"><span>Total viagens</span><strong>${esc(fmtNum(indicators.totalViagens))}</strong></div>
-        <div class="kpi"><span>Veículos ativos</span><strong>${esc(fmtNum(indicators.veiculosAtivos))}</strong></div>
-        <div class="kpi"><span>Veículos ociosos</span><strong>${esc(fmtNum(indicators.veiculosOciosos))}</strong></div>
+        ${kpisExecutivos
+          .map(
+            (kpi) =>
+              `<div class="kpi"><span>${esc(kpi.nome)}</span><strong>${esc(kpi.valor)}</strong><div style="margin-top:4px;font-size:10px;color:#6b7280;">${esc(
+                kpi.formula || "Sem fórmula informada"
+              )}</div></div>`
+          )
+          .join("")}
       </div>
-    </section>
-
-    <section class="section">
-      <h2>Resumo Executivo</h2>
-      <p>${esc(executivo.resumoExecutivo)}</p>
-      <p style="margin-top:10px;"><strong>Diagnóstico detalhado:</strong> ${esc(executivo.diagnosticoDetalhado)}</p>
-      <p style="margin-top:10px;"><strong>Análise por módulo - Combustível:</strong> ${esc(executivo.moduloCombustivel)}</p>
-      <p style="margin-top:8px;"><strong>Análise por módulo - Transporte:</strong> ${esc(executivo.moduloTransporte)}</p>
-      <p style="margin-top:8px;"><strong>Análise por módulo - Frota:</strong> ${esc(executivo.moduloFrota)}</p>
-      <p style="margin-top:10px;"><strong>Impacto financeiro:</strong> ${esc(executivo.impactoFinanceiro)}</p>
-      <p style="margin-top:10px;"><strong>Riscos operacionais:</strong></p>
-      <ul>${executivo.riscos.map((item) => `<li>${esc(item)}</li>`).join("")}</ul>
-      <p style="margin-top:10px;"><strong>Ações recomendadas:</strong></p>
-      <ul>${executivo.acoes.map((item) => `<li>${esc(item)}</li>`).join("")}</ul>
-      <p style="margin-top:10px;"><strong>Cálculos utilizados:</strong></p>
-      <ul>${executivo.calculos.map((item) => `<li>${esc(item)}</li>`).join("")}</ul>
     </section>
 
     <section class="section">
@@ -377,6 +414,39 @@ const buildHtmlReport = async ({ company, analysis, report }) => {
       <div class="chart">${pieChartSvg(charts.consumoPorVeiculo, "Consumo por veículo")}</div>
       <div class="chart">${lineChartSvg(charts.custoPorPeriodo, "Custo por período")}</div>
       <div class="chart">${dualBarSvg(charts.consumoVsProducao, "Consumo vs produção")}</div>
+    </section>
+
+    <section class="section">
+      <h2>Resumo Executivo</h2>
+      <p>${esc(executivo.resumoExecutivo)}</p>
+      <p style="margin-top:10px;"><strong>Análise por módulo - Combustível:</strong> ${esc(executivo.moduloCombustivel)}</p>
+      <p style="margin-top:8px;"><strong>Análise por módulo - Transporte:</strong> ${esc(executivo.moduloTransporte)}</p>
+      <p style="margin-top:8px;"><strong>Análise por módulo - Apoio:</strong> ${esc(executivo.moduloApoio)}</p>
+    </section>
+
+    <section class="section">
+      <h2>Diagnóstico</h2>
+      <p>${esc(executivo.diagnosticoDetalhado)}</p>
+      <p style="margin-top:10px;"><strong>Impacto financeiro:</strong> ${esc(executivo.impactoFinanceiro)}</p>
+      ${
+        executivo.inconsistencias.length
+          ? `<p style="margin-top:10px;"><strong>Inconsistências detectadas:</strong></p><ul>${executivo.inconsistencias
+              .map((item) => `<li>${esc(item)}</li>`)
+              .join("")}</ul>`
+          : ""
+      }
+    </section>
+
+    <section class="section">
+      <h2>Riscos</h2>
+      <ul>${executivo.riscos.map((item) => `<li>${esc(item)}</li>`).join("")}</ul>
+    </section>
+
+    <section class="section">
+      <h2>Ações recomendadas</h2>
+      <ul>${executivo.acoes.map((item) => `<li>${esc(item)}</li>`).join("")}</ul>
+      <p style="margin-top:10px;"><strong>Cálculos utilizados:</strong></p>
+      <ul>${executivo.calculos.map((item) => `<li>${esc(item)}</li>`).join("")}</ul>
     </section>
 
     <div class="footer">Relatório gerado automaticamente pelo FrotaMax.</div>
@@ -422,6 +492,18 @@ const generatePdfWithPdfKit = async ({ company, analysis, report }) =>
       const insights = analysis?.insights || {};
       const health = healthFromInsights(insights);
       const executivo = resolveExecutiveReport(report);
+      const kpisExecutivos = executivo.kpis.length
+        ? executivo.kpis
+        : [
+            { nome: "Total litros", valor: `${fmtNum(indicators.totalLitros, 1)} L`, formula: "Somatório dos litros abastecidos no período" },
+            { nome: "Total valor", valor: fmtMoney(indicators.totalValor), formula: "Somatório financeiro do período" },
+            {
+              nome: "Preço médio",
+              valor: indicators.precoMedio == null ? "—" : `R$ ${fmtNum(indicators.precoMedio, 2)}/L`,
+              formula: "Preço médio = total valor / total litros",
+            },
+            { nome: "Viagens transporte", valor: fmtNum(indicators.totalViagensTransporte ?? indicators.totalViagens), formula: "Contagem de viagens de transporte" },
+          ];
       const doc = new PDFDocument({
         size: "A4",
         margin: 36,
@@ -451,15 +533,12 @@ const generatePdfWithPdfKit = async ({ company, analysis, report }) =>
       doc.fontSize(18).fillColor(health.color).text(health.label);
 
       doc.moveDown(0.8);
-      doc.fontSize(14).fillColor("#111827").text("Indicadores");
+      doc.fontSize(14).fillColor("#111827").text("KPIs");
       doc.moveDown(0.3);
-      doc.fontSize(11).fillColor("#1f2937");
-      doc.text(`• Total litros: ${fmtNum(indicators.totalLitros, 1)} L`);
-      doc.text(`• Total valor: ${fmtMoney(indicators.totalValor)}`);
-      doc.text(`• Preço médio: ${indicators.precoMedio == null ? "—" : `R$ ${fmtNum(indicators.precoMedio, 2)}/L`}`);
-      doc.text(`• Total viagens: ${fmtNum(indicators.totalViagens)}`);
-      doc.text(`• Veículos ativos: ${fmtNum(indicators.veiculosAtivos)}`);
-      doc.text(`• Veículos ociosos: ${fmtNum(indicators.veiculosOciosos)}`);
+      kpisExecutivos.forEach((kpi) => {
+        doc.fontSize(11).fillColor("#1f2937").text(`• ${kpi.nome}: ${kpi.valor}`);
+        doc.fontSize(10).fillColor("#6b7280").text(`  Fórmula: ${kpi.formula || "Sem fórmula informada"}`);
+      });
 
       doc.moveDown(0.8);
       doc.fontSize(14).fillColor("#111827").text("Resumo Executivo");
@@ -475,12 +554,20 @@ const generatePdfWithPdfKit = async ({ company, analysis, report }) =>
       doc.fontSize(11).fillColor("#1f2937");
       doc.text(`• Combustível: ${executivo.moduloCombustivel}`);
       doc.text(`• Transporte: ${executivo.moduloTransporte}`);
-      doc.text(`• Frota: ${executivo.moduloFrota}`);
+      doc.text(`• Apoio: ${executivo.moduloApoio}`);
 
       doc.moveDown(0.6);
-      doc.fontSize(12).fillColor("#111827").text("Impacto financeiro");
+      doc.fontSize(12).fillColor("#111827").text("Diagnóstico e impacto financeiro");
+      doc.moveDown(0.2);
+      doc.fontSize(11).fillColor("#1f2937").text(`Diagnóstico: ${executivo.diagnosticoDetalhado}`);
       doc.moveDown(0.2);
       doc.fontSize(11).fillColor("#1f2937").text(executivo.impactoFinanceiro);
+
+      if (executivo.inconsistencias.length) {
+        doc.moveDown(0.4);
+        doc.fontSize(12).fillColor("#b91c1c").text("Inconsistências detectadas");
+        executivo.inconsistencias.forEach((item) => doc.fontSize(11).fillColor("#991b1b").text(`• ${item}`));
+      }
 
       doc.moveDown(0.6);
       doc.fontSize(12).fillColor("#111827").text("Riscos operacionais");

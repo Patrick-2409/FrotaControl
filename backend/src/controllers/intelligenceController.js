@@ -109,6 +109,38 @@ const parseAndBuildAnalysis = async (req) => {
     tipoAnalise: payload.tipoAnalise,
   });
 
+  const inconsistencias = [];
+  const indicadores = analysis?.indicadores || {};
+  const insights = analysis?.insights || {};
+  const litros = Number(indicadores?.totalLitros || 0);
+  const valor = Number(indicadores?.totalValor || 0);
+  const precoMedio = Number(indicadores?.precoMedio || 0);
+  const viagensTransporte = Number(indicadores?.totalViagensTransporte || 0);
+  const litrosTransporte = Number(indicadores?.totalLitrosTransporte || 0);
+  const dadosTransporteDisponiveis = Boolean(indicadores?.dadosTransporteDisponiveis);
+
+  if (litros < 0) inconsistencias.push("totalLitros negativo.");
+  if (valor < 0) inconsistencias.push("totalValor negativo.");
+  if (precoMedio < 0) inconsistencias.push("precoMedio negativo.");
+  if (litros === 0 && valor > 0) inconsistencias.push("valor informado com litros zerados.");
+  if (litros > 0 && valor === 0) inconsistencias.push("litros informados com valor zerado.");
+  if (precoMedio > 0 && (litros <= 0 || valor <= 0)) {
+    inconsistencias.push("precoMedio informado sem base válida em litros e valor.");
+  }
+  if (!dadosTransporteDisponiveis && (viagensTransporte > 0 || litrosTransporte > 0)) {
+    inconsistencias.push("dados de transporte marcados como indisponíveis com indicadores de transporte preenchidos.");
+  }
+  if (!dadosTransporteDisponiveis && insights?.consumoSemProducao) {
+    inconsistencias.push("insight de consumo sem produção ativo sem base de transporte disponível.");
+  }
+
+  if (inconsistencias.length) {
+    const err = new Error(`Dados inconsistentes para análise: ${inconsistencias.join(" ")}`);
+    err.statusCode = 422;
+    err.details = inconsistencias;
+    throw err;
+  }
+
   const relatorio = await generateIntelligenceReport({
     empresaId: Number(empresaId),
     indicadores: analysis.indicadores,
@@ -138,6 +170,7 @@ const analisarOperacao = async (req, res) => {
       success: false,
       error: error?.message || "Falha ao analisar operação.",
       message: error?.message || "Falha ao analisar operação.",
+      inconsistencias: Array.isArray(error?.details) ? error.details : [],
     });
   }
 };
@@ -160,6 +193,7 @@ const exportarPdfInteligencia = async (req, res) => {
       success: false,
       error: error?.message || "Falha ao exportar PDF de inteligência.",
       message: error?.message || "Falha ao exportar PDF de inteligência.",
+      inconsistencias: Array.isArray(error?.details) ? error.details : [],
     });
   }
 };

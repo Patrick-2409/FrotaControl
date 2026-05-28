@@ -107,6 +107,10 @@ const ensureConcreteText = (text, fallback) => {
 const ensureModuleAnalysis = (raw, data) => {
   const source = raw && typeof raw === "object" ? raw : {};
   const transporteDisponivel = Boolean(data?.indicadores?.dadosTransporteDisponiveis);
+  const apoioBase = ensureConcreteText(
+    source.apoio || source.frota,
+    `${toNumber(data?.indicadores?.veiculosAtivos)} veículo(s) de apoio/serviço ativo(s) e ${toNumber(data?.indicadores?.veiculosOciosos)} ocioso(s).`
+  );
   return {
     combustivel: ensureConcreteText(
       source.combustivel,
@@ -120,11 +124,34 @@ const ensureModuleAnalysis = (raw, data) => {
           ).toFixed(1)} L.`
         : "Dados insuficientes de transporte para análise de produção."
     ),
-    frota: ensureConcreteText(
-      source.frota,
-      `${toNumber(data?.indicadores?.veiculosAtivos)} veículo(s) ativo(s) e ${toNumber(data?.indicadores?.veiculosOciosos)} ocioso(s).`
-    ),
+    apoio: apoioBase,
+    // Compatibilidade com consumidores legados da chave "frota".
+    frota: apoioBase,
   };
+};
+
+const ensureKpis = (value, data) => {
+  const rawList = Array.isArray(value) ? value : [];
+  const normalized = rawList
+    .map((item) => {
+      const nome = String(item?.nome || "").trim();
+      const valor = String(item?.valor ?? "").trim();
+      const formula = String(item?.formula || item?.calculo || "").trim();
+      if (!nome || !valor) return null;
+      return { nome, valor, formula };
+    })
+    .filter(Boolean);
+  if (normalized.length) return normalized;
+  return [
+    { nome: "Total de litros", valor: `${toNumber(data?.indicadores?.totalLitros).toFixed(1)} L`, formula: "Somatório dos litros abastecidos no período" },
+    { nome: "Custo total", valor: `R$ ${toNumber(data?.indicadores?.totalValor).toFixed(2)}`, formula: "Somatório dos valores abastecidos no período" },
+    {
+      nome: "Preço médio",
+      valor: `R$ ${toNumber(data?.indicadores?.precoMedio).toFixed(2)}/L`,
+      formula: "Preço médio = total valor / total litros",
+    },
+    { nome: "Viagens de transporte", valor: `${toNumber(data?.indicadores?.totalViagensTransporte)} viagens`, formula: "Contagem de viagens para veículos de transporte" },
+  ];
 };
 
 const sanitizeResponse = (raw, data) => {
@@ -144,14 +171,23 @@ const sanitizeResponse = (raw, data) => {
   const calculosUtilizados = ensureList(raw?.calculos_utilizados)
     .map((item) => ensureConcreteText(item, ""))
     .filter(Boolean);
+  const kpis = ensureKpis(raw?.kpis, data);
   const riscos = ensureList(raw?.riscos_operacionais || raw?.riscos)
     .map((item) => ensureConcreteText(item, ""))
     .filter(Boolean);
   const acoes = ensureList(raw?.acoes_recomendadas || raw?.acoes)
     .map((item) => ensureConcreteText(item, ""))
     .filter(Boolean);
+  const inconsistencias = ensureList(raw?.inconsistencias)
+    .map((item) => ensureConcreteText(item, ""))
+    .filter(Boolean);
+  const historicoSuficiente = typeof raw?.historico_suficiente === "boolean" ? raw.historico_suficiente : null;
+  const observacaoHistorico = ensureConcreteText(
+    raw?.observacao_historico,
+    historicoSuficiente === false ? "Dados históricos insuficientes para comparação robusta no período selecionado." : ""
+  );
   const problemaPrincipal = diagnosticoDetalhado;
-  const analise = [resumoExecutivo, analiseModulos.combustivel, analiseModulos.transporte, analiseModulos.frota, impactoFinanceiro]
+  const analise = [resumoExecutivo, analiseModulos.combustivel, analiseModulos.transporte, analiseModulos.apoio, impactoFinanceiro]
     .filter(Boolean)
     .join(" ");
 
@@ -163,7 +199,11 @@ const sanitizeResponse = (raw, data) => {
     resumoExecutivo,
     diagnosticoDetalhado,
     analiseModulos,
+    kpis,
     impactoFinanceiro,
+    inconsistencias,
+    historicoSuficiente,
+    observacaoHistorico,
     calculosUtilizados: calculosUtilizados.length
       ? calculosUtilizados
       : [
@@ -191,13 +231,22 @@ const extractJson = (text) => {
 };
 
 const buildStructuredText = (report) => {
+  const kpisLines = Array.isArray(report.kpis)
+    ? report.kpis.map((kpi) => `- ${kpi.nome}: ${kpi.valor}${kpi.formula ? ` (${kpi.formula})` : ""}`)
+    : [];
   return [
     `RESUMO EXECUTIVO: ${report.resumoExecutivo || report.analise}`,
+    `KPIS:`,
+    ...(kpisLines.length ? kpisLines : ["- KPIs indisponíveis para o período"]),
     `DIAGNÓSTICO DETALHADO: ${report.diagnosticoDetalhado || report.problemaPrincipal}`,
     `ANÁLISE POR MÓDULO:`,
     `- Combustível: ${report?.analiseModulos?.combustivel || "Dados insuficientes para combustível."}`,
     `- Transporte: ${report?.analiseModulos?.transporte || "Dados insuficientes para transporte."}`,
-    `- Frota: ${report?.analiseModulos?.frota || "Dados insuficientes para frota."}`,
+    `- Apoio: ${report?.analiseModulos?.apoio || report?.analiseModulos?.frota || "Dados insuficientes para apoio."}`,
+    ...(report?.observacaoHistorico ? [`HISTÓRICO: ${report.observacaoHistorico}`] : []),
+    ...(Array.isArray(report?.inconsistencias) && report.inconsistencias.length
+      ? ["INCONSISTÊNCIAS:", ...report.inconsistencias.map((item) => `- ${item}`)]
+      : []),
     `IMPACTO FINANCEIRO: ${report.impactoFinanceiro || "Dados insuficientes."}`,
     `RISCOS OPERACIONAIS:`,
     ...report.riscos.map((item) => `- ${item}`),
@@ -331,39 +380,37 @@ const generateIntelligenceReport = async (data) => {
     },
   };
   const prompt = [
-    "Você é um analista sênior de operações e logística.",
-    "Sua função é gerar um relatório executivo baseado EXCLUSIVAMENTE nos dados fornecidos.",
+    "Você é um especialista em engenharia de produção e logística operacional.",
+    "Sua missão é gerar um RELATÓRIO EXECUTIVO PROFISSIONAL com base EXCLUSIVA nos dados fornecidos.",
     "Responda somente JSON válido no formato:",
     "{",
     '  "resumo_executivo": "texto executivo e objetivo com base numérica",',
-    '  "diagnostico_detalhado": "problema principal + causa com base numérica",',
+    '  "kpis": [{"nome":"kpi","valor":"valor","formula":"fórmula aplicada"}],',
     '  "analise_modulos": {',
-    '    "combustivel": "análise específica com números e sem generalização",',
-    '    "transporte": "análise específica com números e sem assumir produção para apoio",',
-    '    "frota": "análise específica com números"',
+    '    "combustivel": "análise específica com números",',
+    '    "transporte": "análise específica com números para veículos de transporte",',
+    '    "apoio": "análise específica com números para veículos de apoio"',
     "  },",
+    '  "diagnostico_detalhado": "diagnóstico com causa e evidência numérica",',
     '  "impacto_financeiro": "impacto objetivo com valores e cálculo explícito",',
+    '  "inconsistencias": ["inconsistência detectada com evidência"],',
+    '  "historico_suficiente": true,',
+    '  "observacao_historico": "declarar explicitamente quando histórico for insuficiente",',
     '  "riscos_operacionais": ["risco específico com evidência numérica"],',
     '  "acoes_recomendadas": ["ação objetiva, específica e executável"],',
     '  "calculos_utilizados": ["Preço médio = total valor / total litros"]',
     "}",
-    "REGRAS OBRIGATÓRIAS:",
-    "1) NÃO misturar contextos operacionais.",
-    "- Veículos de transporte possuem produção (viagens).",
-    "- Veículos de apoio NÃO possuem produção.",
-    "- Nunca atribuir produção a veículos de apoio.",
-    "2) Validar coerência dos dados antes de analisar.",
-    "- Se houver consumo sem produção, verificar se é veículo de apoio.",
-    "- Não classificar automaticamente como problema quando for apoio.",
-    "3) Separar análise por módulo: Combustível, Transporte e Frota.",
-    "4) Explicar TODOS os cálculos utilizados com fórmula explícita.",
-    "5) Gerar relatório estruturado com: Resumo executivo, Diagnóstico detalhado, Análise por módulo, Impacto financeiro, Riscos operacionais e Ações recomendadas.",
-    "6) Sempre justificar conclusões com base numérica.",
-    "7) Se dados forem insuficientes, declarar explicitamente e não inventar análise.",
-    "8) Linguagem executiva, clara e profissional.",
-    "9) Evitar frases genéricas como 'avaliar situação' e 'melhorar processo'.",
-    "10) Ser específico e objetivo.",
-    "IMPORTANTE: Se não houver dados de transporte, declarar 'dados insuficientes para transporte' e ignorar inferências de produção.",
+    "REGRAS:",
+    "1) Separar obrigatoriamente veículos de transporte e veículos de apoio.",
+    "2) NÃO atribuir produção a veículos de apoio.",
+    "3) Validar se há histórico suficiente; se não houver, declarar explicitamente.",
+    "4) Explicar todos os cálculos utilizados.",
+    "5) Estrutura obrigatória: Resumo executivo, KPIs, Análise por módulo (combustível, transporte, apoio), Diagnóstico, Impacto financeiro, Riscos e Ações recomendadas.",
+    "6) NÃO usar frases genéricas.",
+    "7) Justificar TODAS as conclusões com números.",
+    "8) Se houver inconsistência, declarar no relatório.",
+    "9) Linguagem executiva, clara, objetiva e profissional.",
+    "Se o dado for insuficiente, assuma explicitamente insuficiência de dados em vez de inferir.",
     "No campo calculos_utilizados inclua fórmulas realmente usadas na análise.",
   ].join("\n");
 
