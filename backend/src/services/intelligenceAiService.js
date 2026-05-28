@@ -11,6 +11,8 @@ const GENERIC_PATTERNS = [
   /é importante revisar/i,
   /deve melhorar/i,
   /precisa melhorar/i,
+  /avaliar situação/i,
+  /melhorar processo/i,
   /otimizar processos/i,
   /acompanhar de perto/i,
   /monitorar melhor/i,
@@ -155,6 +157,10 @@ const ensureKpis = (value, data) => {
 };
 
 const sanitizeResponse = (raw, data) => {
+  const statusOperacao = ensureConcreteText(
+    raw?.status_operacao,
+    toNumber(data?.indicadores?.veiculosOciosos) > 0 ? "Atenção: operação com ociosidade relevante." : "Operação estável no recorte atual."
+  );
   const resumoExecutivo = ensureConcreteText(
     raw?.resumo_executivo,
     `Resumo executivo: ${fallbackAnalise(data)}`
@@ -181,17 +187,21 @@ const sanitizeResponse = (raw, data) => {
   const inconsistencias = ensureList(raw?.inconsistencias)
     .map((item) => ensureConcreteText(item, ""))
     .filter(Boolean);
+  const inconsistenciasInput = ensureList(data?.insights?.inconsistenciasDetectadas)
+    .map((item) => ensureConcreteText(item, ""))
+    .filter(Boolean);
   const historicoSuficiente = typeof raw?.historico_suficiente === "boolean" ? raw.historico_suficiente : null;
   const observacaoHistorico = ensureConcreteText(
     raw?.observacao_historico,
     historicoSuficiente === false ? "Dados históricos insuficientes para comparação robusta no período selecionado." : ""
   );
   const problemaPrincipal = diagnosticoDetalhado;
-  const analise = [resumoExecutivo, analiseModulos.combustivel, analiseModulos.transporte, analiseModulos.apoio, impactoFinanceiro]
+  const analise = [statusOperacao, resumoExecutivo, analiseModulos.combustivel, analiseModulos.transporte, analiseModulos.apoio, impactoFinanceiro]
     .filter(Boolean)
     .join(" ");
 
   return {
+    statusOperacao,
     problemaPrincipal,
     analise,
     riscos: riscos.length ? riscos : fallbackRiscos(data),
@@ -201,7 +211,7 @@ const sanitizeResponse = (raw, data) => {
     analiseModulos,
     kpis,
     impactoFinanceiro,
-    inconsistencias,
+    inconsistencias: [...new Set([...inconsistenciasInput, ...inconsistencias])],
     historicoSuficiente,
     observacaoHistorico,
     calculosUtilizados: calculosUtilizados.length
@@ -235,6 +245,7 @@ const buildStructuredText = (report) => {
     ? report.kpis.map((kpi) => `- ${kpi.nome}: ${kpi.valor}${kpi.formula ? ` (${kpi.formula})` : ""}`)
     : [];
   return [
+    `STATUS DA OPERAÇÃO: ${report.statusOperacao || "Status indisponível."}`,
     `RESUMO EXECUTIVO: ${report.resumoExecutivo || report.analise}`,
     `KPIS:`,
     ...(kpisLines.length ? kpisLines : ["- KPIs indisponíveis para o período"]),
@@ -380,10 +391,11 @@ const generateIntelligenceReport = async (data) => {
     },
   };
   const prompt = [
-    "Você é um especialista em engenharia de produção e logística operacional.",
-    "Sua missão é gerar um RELATÓRIO EXECUTIVO PROFISSIONAL com base EXCLUSIVA nos dados fornecidos.",
+    "Você é um especialista em engenharia de produção e auditoria operacional.",
+    "Sua função é gerar um relatório executivo com análise crítica dos dados.",
     "Responda somente JSON válido no formato:",
     "{",
+    '  "status_operacao": "status técnico objetivo com base numérica",',
     '  "resumo_executivo": "texto executivo e objetivo com base numérica",',
     '  "kpis": [{"nome":"kpi","valor":"valor","formula":"fórmula aplicada"}],',
     '  "analise_modulos": {',
@@ -400,18 +412,19 @@ const generateIntelligenceReport = async (data) => {
     '  "acoes_recomendadas": ["ação objetiva, específica e executável"],',
     '  "calculos_utilizados": ["Preço médio = total valor / total litros"]',
     "}",
-    "REGRAS:",
-    "1) Separar obrigatoriamente veículos de transporte e veículos de apoio.",
-    "2) NÃO atribuir produção a veículos de apoio.",
-    "3) Validar se há histórico suficiente; se não houver, declarar explicitamente.",
-    "4) Explicar todos os cálculos utilizados.",
-    "5) Estrutura obrigatória: Resumo executivo, KPIs, Análise por módulo (combustível, transporte, apoio), Diagnóstico, Impacto financeiro, Riscos e Ações recomendadas.",
-    "6) NÃO usar frases genéricas.",
-    "7) Justificar TODAS as conclusões com números.",
-    "8) Se houver inconsistência, declarar no relatório.",
-    "9) Linguagem executiva, clara, objetiva e profissional.",
+    "REGRAS CRÍTICAS:",
+    "1) Validar consistência dos dados antes de analisar.",
+    "Se houver divergência (ex.: viagens sem consumo), apontar como 'ERRO DE DADO' e NÃO assumir operação normal.",
+    "2) Separar obrigatoriamente transporte (com produção) e apoio (sem produção).",
+    "3) NÃO misturar contextos entre transporte e apoio.",
+    "4) Identificar inconsistências: consumo sem produção, produção sem consumo e concentração de uso.",
+    "5) Explicar os cálculos: preço médio, participação por veículo e totalizações.",
+    "6) Estrutura obrigatória: Status da operação, Resumo executivo (interpretação, não repetição), Diagnóstico técnico, Inconsistências de dados, Impacto financeiro, Riscos operacionais e Ações específicas.",
+    "7) Linguagem direta, técnica e executiva.",
+    "8) Se dados forem insuficientes, declarar explicitamente.",
     "Se o dado for insuficiente, assuma explicitamente insuficiência de dados em vez de inferir.",
     "No campo calculos_utilizados inclua fórmulas realmente usadas na análise.",
+    "No campo inconsistencias, prefixe itens críticos com 'ERRO DE DADO:' quando aplicável.",
   ].join("\n");
 
   const empresaId = Number(data?.empresaId);

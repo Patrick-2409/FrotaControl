@@ -1,6 +1,5 @@
 const fs = require("fs/promises");
 const path = require("path");
-const PDFDocument = require("pdfkit");
 const { getCompanyById } = require("../models/companyModel");
 
 let puppeteerModule = null;
@@ -474,130 +473,6 @@ const renderPdfFromHtml = async (html) => {
   }
 };
 
-const shouldFallbackToPdfKit = (error) => {
-  const message = String(error?.message || "").toLowerCase();
-  return (
-    message.includes("could not find chrome") ||
-    message.includes("failed to launch") ||
-    message.includes("browser was not found") ||
-    message.includes("spawn") ||
-    message.includes("enoent")
-  );
-};
-
-const generatePdfWithPdfKit = async ({ company, analysis, report }) =>
-  new Promise((resolve, reject) => {
-    try {
-      const indicators = analysis?.indicadores || {};
-      const insights = analysis?.insights || {};
-      const health = healthFromInsights(insights);
-      const executivo = resolveExecutiveReport(report);
-      const kpisExecutivos = executivo.kpis.length
-        ? executivo.kpis
-        : [
-            { nome: "Total litros", valor: `${fmtNum(indicators.totalLitros, 1)} L`, formula: "Somatório dos litros abastecidos no período" },
-            { nome: "Total valor", valor: fmtMoney(indicators.totalValor), formula: "Somatório financeiro do período" },
-            {
-              nome: "Preço médio",
-              valor: indicators.precoMedio == null ? "—" : `R$ ${fmtNum(indicators.precoMedio, 2)}/L`,
-              formula: "Preço médio = total valor / total litros",
-            },
-            { nome: "Viagens transporte", valor: fmtNum(indicators.totalViagensTransporte ?? indicators.totalViagens), formula: "Contagem de viagens de transporte" },
-          ];
-      const doc = new PDFDocument({
-        size: "A4",
-        margin: 36,
-        info: {
-          Title: "Central de Inteligência Operacional",
-          Author: "FrotaMax",
-        },
-      });
-
-      const chunks = [];
-      doc.on("data", (chunk) => chunks.push(chunk));
-      doc.on("end", () => resolve(Buffer.concat(chunks)));
-      doc.on("error", reject);
-
-      const generatedAt = new Date().toLocaleString("pt-BR");
-      doc.fontSize(20).fillColor("#0f172a").text("Central de Inteligência Operacional");
-      doc.moveDown(0.2);
-      doc
-        .fontSize(11)
-        .fillColor("#475569")
-        .text(`${company?.nome || "Empresa"} • ${analysis?.periodo?.inicio || "-"} até ${analysis?.periodo?.fim || "-"}`);
-      doc.text(`Tipo: ${analysis?.tipoAnalise || "geral"} • Gerado em: ${generatedAt}`);
-
-      doc.moveDown(0.8);
-      doc.fontSize(14).fillColor("#111827").text("Status da operação");
-      doc.moveDown(0.2);
-      doc.fontSize(18).fillColor(health.color).text(health.label);
-
-      doc.moveDown(0.8);
-      doc.fontSize(14).fillColor("#111827").text("KPIs");
-      doc.moveDown(0.3);
-      kpisExecutivos.forEach((kpi) => {
-        doc.fontSize(11).fillColor("#1f2937").text(`• ${kpi.nome}: ${kpi.valor}`);
-        doc.fontSize(10).fillColor("#6b7280").text(`  Fórmula: ${kpi.formula || "Sem fórmula informada"}`);
-      });
-
-      doc.moveDown(0.8);
-      doc.fontSize(14).fillColor("#111827").text("Resumo Executivo");
-      doc.moveDown(0.3);
-      doc.fontSize(11).fillColor("#1f2937");
-      doc.text(`Resumo: ${executivo.resumoExecutivo}`);
-      doc.moveDown(0.3);
-      doc.text(`Diagnóstico detalhado: ${executivo.diagnosticoDetalhado}`);
-
-      doc.moveDown(0.6);
-      doc.fontSize(12).fillColor("#111827").text("Análise por módulo");
-      doc.moveDown(0.2);
-      doc.fontSize(11).fillColor("#1f2937");
-      doc.text(`• Combustível: ${executivo.moduloCombustivel}`);
-      doc.text(`• Transporte: ${executivo.moduloTransporte}`);
-      doc.text(`• Apoio: ${executivo.moduloApoio}`);
-
-      doc.moveDown(0.6);
-      doc.fontSize(12).fillColor("#111827").text("Diagnóstico e impacto financeiro");
-      doc.moveDown(0.2);
-      doc.fontSize(11).fillColor("#1f2937").text(`Diagnóstico: ${executivo.diagnosticoDetalhado}`);
-      doc.moveDown(0.2);
-      doc.fontSize(11).fillColor("#1f2937").text(executivo.impactoFinanceiro);
-
-      if (executivo.inconsistencias.length) {
-        doc.moveDown(0.4);
-        doc.fontSize(12).fillColor("#b91c1c").text("Inconsistências detectadas");
-        executivo.inconsistencias.forEach((item) => doc.fontSize(11).fillColor("#991b1b").text(`• ${item}`));
-      }
-
-      doc.moveDown(0.6);
-      doc.fontSize(12).fillColor("#111827").text("Riscos operacionais");
-      doc.moveDown(0.2);
-      const riscos = executivo.riscos;
-      riscos.forEach((item) => doc.fontSize(11).fillColor("#1f2937").text(`• ${item}`));
-
-      doc.moveDown(0.6);
-      doc.fontSize(12).fillColor("#111827").text("Ações recomendadas");
-      doc.moveDown(0.2);
-      const acoes = executivo.acoes;
-      acoes.forEach((item) => doc.fontSize(11).fillColor("#1f2937").text(`• ${item}`));
-
-      doc.moveDown(0.6);
-      doc.fontSize(12).fillColor("#111827").text("Cálculos utilizados");
-      doc.moveDown(0.2);
-      executivo.calculos.forEach((item) => doc.fontSize(11).fillColor("#1f2937").text(`• ${item}`));
-
-      doc.moveDown(0.8);
-      doc
-        .fontSize(10)
-        .fillColor("#6b7280")
-        .text("Observação técnica: PDF gerado em modo de compatibilidade (sem Chromium).", { align: "left" });
-
-      doc.end();
-    } catch (error) {
-      reject(error);
-    }
-  });
-
 const generateIntelligencePdf = async ({ empresaId, analysis, report }) => {
   const company = await getCompanyById(empresaId);
   const html = await buildHtmlReport({ company, analysis, report });
@@ -605,11 +480,12 @@ const generateIntelligencePdf = async ({ empresaId, analysis, report }) => {
   try {
     buffer = await renderPdfFromHtml(html);
   } catch (error) {
-    if (!shouldFallbackToPdfKit(error)) {
-      throw error;
-    }
-    console.warn("[INTELIGENCIA][PDF] Puppeteer indisponível, usando fallback PDFKit:", error?.message || error);
-    buffer = await generatePdfWithPdfKit({ company, analysis, report });
+    const message = String(error?.message || error || "").trim();
+    const wrapped = new Error(
+      `Falha ao gerar PDF profissional com Chromium. Verifique instalação/configuração do Puppeteer/Chrome. Detalhe: ${message}`
+    );
+    wrapped.statusCode = 500;
+    throw wrapped;
   }
   const companySlug = String(company?.nome || "empresa")
     .normalize("NFD")

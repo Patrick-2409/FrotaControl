@@ -134,21 +134,36 @@ const parseAndBuildAnalysis = async (req) => {
     inconsistencias.push("insight de consumo sem produção ativo sem base de transporte disponível.");
   }
 
-  if (inconsistencias.length) {
-    const err = new Error(`Dados inconsistentes para análise: ${inconsistencias.join(" ")}`);
-    err.statusCode = 422;
-    err.details = inconsistencias;
-    throw err;
-  }
-
   const relatorio = await generateIntelligenceReport({
     empresaId: Number(empresaId),
     indicadores: analysis.indicadores,
-    insights: analysis.insights,
+    insights: {
+      ...(analysis.insights || {}),
+      inconsistenciasDetectadas: inconsistencias,
+    },
     periodo: analysis.periodo,
     tipoAnalise: analysis.tipoAnalise,
     filtros: analysis.filtros,
   });
+
+  if (inconsistencias.length) {
+    relatorio.inconsistencias = [...new Set([...(relatorio.inconsistencias || []), ...inconsistencias])];
+    relatorio.statusOperacao = `Crítico: ${inconsistencias.length} inconsistência(s) de dados detectada(s).`;
+    relatorio.analise = [
+      `ERRO DE DADO: ${inconsistencias.join(" ")}`,
+      relatorio.analise,
+    ]
+      .filter(Boolean)
+      .join(" ");
+    relatorio.textoEstruturado = [
+      `STATUS DA OPERAÇÃO: ${relatorio.statusOperacao}`,
+      "INCONSISTÊNCIAS DE DADOS:",
+      ...relatorio.inconsistencias.map((item) => `- ERRO DE DADO: ${item}`),
+      relatorio.textoEstruturado,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
 
   return {
     empresaId,
