@@ -14,7 +14,20 @@ if (import.meta.env.DEV) {
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js");
+    navigator.serviceWorker
+      .register("/sw.js")
+      .then((registration) => {
+        registration.addEventListener("updatefound", () => {
+          const worker = registration.installing;
+          if (!worker) return;
+          worker.addEventListener("statechange", () => {
+            if (worker.state === "activated" && navigator.serviceWorker.controller) {
+              window.location.reload();
+            }
+          });
+        });
+      })
+      .catch(() => {});
   });
 }
 
