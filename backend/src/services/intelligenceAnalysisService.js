@@ -31,6 +31,7 @@ const analyzeOperationalData = async ({
   const frota = await analisarFrota({
     ...ctx,
     activeVehicleIds: transporte.support?.activeVehicleIds || new Set(),
+    fuelActiveVehicleIds: combustivel.support?.fuelActiveVehicleIds || new Set(),
   });
 
   const resumo = gerarResumoExecutivo({ combustivel, transporte, frota, periodo: ctx.periodo });

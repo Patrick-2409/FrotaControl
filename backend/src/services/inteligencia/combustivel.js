@@ -136,6 +136,9 @@ const analisarCombustivel = async (ctx) => {
       totalValorApoio,
       veiculosConsiderados,
     },
+    support: {
+      fuelActiveVehicleIds: veiculosUnicos,
+    },
     insights: {
       veiculoDestaque,
     },

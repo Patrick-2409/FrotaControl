@@ -9,7 +9,11 @@ const {
   buildLineChartCanvas,
   buildGroupedBarChartCanvas,
   pieLegendText,
+  pieLegendTable,
+  lineDataTable,
+  barDataTable,
   CHART_EXPLANATIONS,
+  chartLegendNote,
 } = require("./pdfCharts");
 
 const PdfPrinter = require("pdfmake/src/printer");
@@ -168,15 +172,8 @@ const statusBox = (status) => ({
   margin: [0, 0, 0, 14],
 });
 
-const chartBlock = (title, chartNode, explanation, legendText = null) => {
-  const block = [
-    { text: title, style: "chartTitle" },
-    chartNode,
-  ];
-  if (legendText) {
-    block.push({ text: legendText, style: "chartLegend", margin: [0, 4, 0, 6] });
-  }
-  block.push({ text: explanation, style: "chartExplanation", margin: [0, 0, 0, 14] });
+const chartBlock = (title, chartNode, explanation, extras = []) => {
+  const block = [{ text: title, style: "chartTitle" }, chartNode, ...extras, { text: explanation, style: "chartExplanation", margin: [0, 0, 0, 14] }];
   return block;
 };
 
@@ -241,7 +238,11 @@ const generateExecutivePdf = async ({ empresaId, analysis, report }) => {
   const riscos = safeList(report?.riscos || report?.riscos_operacionais, ["Sem riscos específicos identificados."]);
   const acoes = safeList(report?.acoes || report?.acoes_recomendadas, ["Sem ações recomendadas para o recorte."]);
   const modulos = report?.analiseModulos || report?.analise_modulos || {};
-  const kpis = Array.isArray(report?.kpis) ? report.kpis : [];
+  const metricas = insights.metricasExecutivas || report?.metricasExecutivas || {};
+  const prioridadeInconsistencia = Boolean(report?.prioridadeInconsistencia) || uniqueInconsistencias.length > 0;
+  const totalFrota =
+    toNumber(indicadores.totalVeiculosTransporte) + toNumber(indicadores.totalVeiculosApoio) ||
+    toNumber(indicadores.totalVeiculosEscopo);
 
   const pieData = (graficos.consumoPorVeiculo || []).map((row) => ({
     label: row.veiculo,
@@ -252,22 +253,40 @@ const generateExecutivePdf = async ({ empresaId, analysis, report }) => {
   const barChart = buildGroupedBarChartCanvas(graficos.consumoVsProducao || []);
 
   const kpiRows = [
-    ["Indicador", "Valor", "Observação"],
-    ["Total litros", `${fmtNum(indicadores.totalLitros, 1)} L`, "Todos os veículos"],
-    ["Litros transporte", `${fmtNum(indicadores.totalLitrosTransporte, 1)} L`, "tipo_operacao = transporte"],
-    ["Litros apoio", `${fmtNum(indicadores.totalLitrosApoio, 1)} L`, "tipo_operacao = apoio (sem produção)"],
-    ["Custo total", fmtMoney(indicadores.totalValor), "Somatório de abastecimentos"],
+    ["Indicador", "Valor", "Referência"],
+    ["Custo total", fmtMoney(indicadores.totalValor), "Abastecimentos no período"],
+    ["Consumo total", `${fmtNum(indicadores.totalLitros, 1)} L`, `Transporte ${fmtNum(indicadores.totalLitrosTransporte, 1)} L | Apoio ${fmtNum(indicadores.totalLitrosApoio, 1)} L`],
     ["Preço médio", indicadores.precoMedio == null ? "—" : `R$ ${fmtNum(indicadores.precoMedio, 2)}/L`, "total valor ÷ total litros"],
-    ["Viagens transporte", fmtNum(indicadores.totalViagensTransporte), "Somente veículos de transporte"],
-    ["Veículos ativos", fmtNum(indicadores.veiculosAtivos), `${fmtNum(indicadores.veiculosAtivosTransporte)} transp. / ${fmtNum(indicadores.veiculosAtivosApoio)} apoio`],
-    ["Veículos ociosos", fmtNum(indicadores.veiculosOciosos), `${fmtNum(indicadores.veiculosOciososTransporte)} transp. / ${fmtNum(indicadores.veiculosOciososApoio)} apoio`],
+    ["Produção (transporte)", fmtNum(indicadores.totalViagensTransporte), "Viagens — somente tipo_operacao=transporte"],
+    [
+      "Utilização da frota",
+      totalFrota > 0 ? `${fmtNum(indicadores.veiculosAtivos)}/${fmtNum(totalFrota)} (${metricas.utilizacaoFrotaPct ?? 0}%)` : fmtNum(indicadores.veiculosAtivos),
+      "Ativo = viagem OU abastecimento OU parte diária no período",
+    ],
+    [
+      "Ociosidade",
+      `${fmtNum(indicadores.veiculosOciosos)} veículo(s)`,
+      `${metricas.ociosidadePct ?? 0}% da frota sem movimento registrado`,
+    ],
   ];
 
-  if (kpis.length) {
-    kpis.slice(0, 6).forEach((kpi) => {
-      kpiRows.push([safeText(kpi.nome, "KPI"), safeText(kpi.valor, "—"), safeText(kpi.formula, "—")]);
-    });
-  }
+  const blocoInconsistencia = uniqueInconsistencias.length
+    ? [
+        alertBox(
+          "PRIORIDADE: INCONSISTÊNCIA DE DADOS — o relatório deve ser lido com foco na correção dos lançamentos antes de decisões operacionais.",
+          "#B91C1C",
+          "#FEF2F2"
+        ),
+        { text: "Inconsistências detectadas", style: "alertTitle", color: "#B91C1C" },
+        {
+          text:
+            "Produção sem consumo ou consumo sem produção indicam falha de integração, lançamento omitido ou tipo_operacao incorreto. Enquanto não corrigido, indicadores de eficiência ficam inválidos.",
+          style: "body",
+          margin: [0, 0, 0, 6],
+        },
+        { ul: uniqueInconsistencias.map((item) => `ERRO DE DADO: ${item}`), margin: [0, 0, 0, 14] },
+      ]
+    : [];
 
   const content = [
     // —— 1. CAPA ——
@@ -297,29 +316,14 @@ const generateExecutivePdf = async ({ empresaId, analysis, report }) => {
     ...(contextoTeste ? [alertBox(insights.mensagemContextoTeste || MENSAGEM_CONTEXTO_TESTE)] : []),
 
     statusBox(status),
+    ...blocoInconsistencia,
 
-  // —— 2. RESUMO EXECUTIVO ——
     sectionDivider(),
-    { text: "1. Resumo executivo", style: "sectionTitle" },
+    { text: prioridadeInconsistencia ? "1. Resumo executivo (foco em correção de dados)" : "1. Resumo executivo", style: "sectionTitle" },
     { text: resumo, style: "body", margin: [0, 0, 0, 12] },
 
-    // —— INCONSISTÊNCIAS ——
-    ...(uniqueInconsistencias.length
-      ? [
-          { text: "INCONSISTÊNCIA DE DADOS DETECTADA", style: "alertTitle", color: "#B91C1C" },
-          {
-            text:
-              "Foram identificadas divergências entre produção e consumo. Isso pode indicar erro de lançamento, integração incompleta ou classificação incorreta do tipo de operação do veículo.",
-            style: "body",
-            margin: [0, 0, 0, 6],
-          },
-          { ul: uniqueInconsistencias.map((item) => `ERRO DE DADO: ${item}`), margin: [0, 0, 0, 12] },
-        ]
-      : []),
-
-    // —— 3. KPIs ——
     sectionDivider(),
-    { text: "2. KPIs principais", style: "sectionTitle" },
+    { text: "2. KPIs do período", style: "sectionTitle" },
     {
       table: { headerRows: 1, widths: ["*", "auto", "*"], body: kpiRows },
       layout: "lightHorizontalLines",
@@ -333,17 +337,29 @@ const generateExecutivePdf = async ({ empresaId, analysis, report }) => {
       "3.1 Consumo por veículo (pizza)",
       { ...pieChart, margin: [0, 4, 0, 0] },
       CHART_EXPLANATIONS.consumoPorVeiculo,
-      pieChart.empty ? "Sem dados no período." : pieLegendText(pieChart)
+      [
+        { text: chartLegendNote("pie"), style: "chartLegend", margin: [0, 4, 0, 2] },
+        { text: pieChart.empty ? "Sem dados no período." : pieLegendText(pieChart), style: "chartLegend", margin: [0, 0, 0, 2] },
+        pieLegendTable(pieChart),
+      ]
     ),
     ...chartBlock(
       "3.2 Custo ao longo do tempo (linha)",
       { ...lineChart, margin: [0, 4, 0, 0] },
-      CHART_EXPLANATIONS.custoPorPeriodo
+      CHART_EXPLANATIONS.custoPorPeriodo,
+      [
+        { text: chartLegendNote("line"), style: "chartLegend", margin: [0, 4, 0, 2] },
+        lineDataTable(lineChart),
+      ]
     ),
     ...chartBlock(
       "3.3 Consumo vs produção — transporte (barras)",
       { ...barChart, margin: [0, 4, 0, 0] },
-      CHART_EXPLANATIONS.consumoVsProducao
+      CHART_EXPLANATIONS.consumoVsProducao,
+      [
+        { text: chartLegendNote("bar"), style: "chartLegend", margin: [0, 4, 0, 2] },
+        barDataTable(barChart),
+      ]
     ),
 
     // —— 5. ANÁLISE POR MÓDULO ——

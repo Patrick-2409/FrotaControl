@@ -119,33 +119,13 @@ const parseAndBuildAnalysis = async (req) => {
       ...(analysis.insights || {}),
       inconsistenciasDetectadas: inconsistencias,
     },
+    inconsistencias,
+    metricasExecutivas: analysis.metricasExecutivas,
     statusOperacao,
     periodo: analysis.periodo,
     tipoAnalise: analysis.tipoAnalise,
     filtros: analysis.filtros,
   });
-
-  if (inconsistencias.length) {
-    relatorio.inconsistencias = [...new Set([...(relatorio.inconsistencias || []), ...inconsistencias])];
-    relatorio.statusOperacao =
-      statusOperacao?.label === "CRÍTICO"
-        ? `${statusOperacao.label}: ${inconsistencias.length} inconsistência(s) de dados detectada(s).`
-        : `Crítico: ${inconsistencias.length} inconsistência(s) de dados detectada(s).`;
-    relatorio.analise = [
-      `ERRO DE DADO: ${inconsistencias.join(" ")}`,
-      relatorio.analise,
-    ]
-      .filter(Boolean)
-      .join(" ");
-    relatorio.textoEstruturado = [
-      `STATUS DA OPERAÇÃO: ${relatorio.statusOperacao}`,
-      "INCONSISTÊNCIAS DE DADOS:",
-      ...relatorio.inconsistencias.map((item) => `- ERRO DE DADO: ${item}`),
-      relatorio.textoEstruturado,
-    ]
-      .filter(Boolean)
-      .join("\n");
-  }
 
   return {
     empresaId,

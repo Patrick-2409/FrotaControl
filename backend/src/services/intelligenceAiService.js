@@ -1,6 +1,14 @@
 const crypto = require("crypto");
 const { pool } = require("../db");
-const { buildEscopoAnalise, MENSAGEM_CONTEXTO_TESTE } = require("./inteligencia/operacionalRules");
+const {
+  buildEscopoAnalise,
+  MENSAGEM_CONTEXTO_TESTE,
+  enrichRelatorioExecutivo,
+  buildResumoExecutivoFallback,
+  buildDiagnosticoFallback,
+  buildAcoesFallback,
+  looksLikeKpiRepetition,
+} = require("./inteligencia/operacionalRules");
 
 const OPENAI_MODEL_DEFAULT = "gpt-4o-mini";
 const INTELLIGENCE_DAILY_LIMIT_DEFAULT = 5;
@@ -42,33 +50,21 @@ const looksGeneric = (text) => {
   return false;
 };
 
-const fallbackProblem = (data) => {
-  const totalViagens = toNumber(data?.indicadores?.totalViagens);
-  const totalLitros = toNumber(data?.indicadores?.totalLitros);
-  const ociosos = toNumber(data?.indicadores?.veiculosOciosos);
-  if (totalViagens === 0 && totalLitros > 0) {
-    return `Foram consumidos ${totalLitros.toFixed(1)} L sem viagens no período.`;
-  }
-  if (ociosos > 0) {
-    return `${ociosos} veículo(s) ficaram ociosos no período analisado.`;
-  }
-  const destaque = data?.insights?.veiculoDestaque;
-  if (destaque?.nome && toNumber(destaque?.totalLitros) > 0) {
-    return `O veículo ${destaque.nome} liderou consumo com ${toNumber(destaque.totalLitros).toFixed(1)} L.`;
-  }
-  return `A operação registrou ${totalViagens} viagem(ns) no período analisado.`;
-};
+const fallbackProblem = (data) =>
+  buildDiagnosticoFallback({
+    indicadores: data?.indicadores || {},
+    insights: data?.insights || {},
+    inconsistencias: data?.insights?.inconsistenciasDetectadas || [],
+    metricas: data?.insights?.metricasExecutivas || {},
+  });
 
-const fallbackAnalise = (data) => {
-  const indicador = data?.indicadores || {};
-  const totalLitros = toNumber(indicador.totalLitros);
-  const totalValor = toNumber(indicador.totalValor);
-  const precoMedio = indicador.precoMedio == null ? null : toNumber(indicador.precoMedio, NaN);
-  const totalViagens = toNumber(indicador.totalViagens);
-  return `Consumo total de ${totalLitros.toFixed(1)} L, custo de R$ ${totalValor.toFixed(2)} e ${totalViagens} viagem(ns). ${
-    Number.isFinite(precoMedio) ? `Preço médio de R$ ${precoMedio.toFixed(2)}/L.` : "Preço médio indisponível."
-  }`;
-};
+const fallbackAnalise = (data) =>
+  buildResumoExecutivoFallback({
+    indicadores: data?.indicadores || {},
+    insights: data?.insights || {},
+    inconsistencias: data?.insights?.inconsistenciasDetectadas || [],
+    metricas: data?.insights?.metricasExecutivas || {},
+  });
 
 const fallbackRiscos = (data) => {
   const riscos = [];
@@ -86,24 +82,12 @@ const fallbackRiscos = (data) => {
   return riscos.length ? riscos : ["Sem risco crítico identificado no recorte atual."];
 };
 
-const fallbackAcoes = (data) => {
-  const acoes = [];
-  const insights = data?.insights || {};
-  const indicador = data?.indicadores || {};
-  if (insights.operacaoParada || insights.consumoSemProducao) {
-    acoes.push("Validar imediatamente abastecimentos sem viagens e bloquear novas ocorrências.");
-  }
-  if (toNumber(indicador.veiculosOciosos) > 0) {
-    acoes.push("Redistribuir veículos ociosos para frentes com demanda ativa.");
-  }
-  if (insights.veiculoDestaque?.nome) {
-    acoes.push(`Auditar consumo do veículo ${insights.veiculoDestaque.nome} ainda neste turno.`);
-  }
-  if (!acoes.length) {
-    acoes.push("Manter monitoramento diário e revisar indicadores ao fim de cada turno.");
-  }
-  return acoes;
-};
+const fallbackAcoes = (data) =>
+  buildAcoesFallback({
+    indicadores: data?.indicadores || {},
+    insights: data?.insights || {},
+    inconsistencias: data?.insights?.inconsistenciasDetectadas || [],
+  });
 
 const ensureConcreteText = (text, fallback) => {
   const raw = String(text || "").trim();
@@ -167,9 +151,10 @@ const sanitizeResponse = (raw, data) => {
     raw?.status_operacao,
     toNumber(data?.indicadores?.veiculosOciosos) > 0 ? "Atenção: operação com ociosidade relevante." : "Operação estável no recorte atual."
   );
+  const resumoRaw = String(raw?.resumo_executivo || "").trim();
   const resumoExecutivo = ensureConcreteText(
-    raw?.resumo_executivo,
-    `Resumo executivo: ${fallbackAnalise(data)}`
+    looksLikeKpiRepetition(resumoRaw) ? "" : resumoRaw,
+    fallbackAnalise(data)
   );
   const diagnosticoDetalhado = ensureConcreteText(
     raw?.diagnostico_detalhado || raw?.problema_principal,
@@ -421,6 +406,10 @@ const buildAnalysisPrompt = (escopo) => [
     "PROIBIDO no resumo_executivo: repetir KPIs literalmente (ex.: apenas listar totais). OBRIGATÓRIO: interpretar, apontar problemas e impacto.",
     "PROIBIDO em acoes_recomendadas: usar verbos vagos como 'avaliar', 'verificar', 'considerar'. OBRIGATÓRIO: ações diretas, aplicáveis e com referência numérica.",
     "Se contexto_teste=true, mencionar que a base é preliminar e evitar conclusões definitivas de padrão operacional.",
+    "Se houver inconsistencias ou producao_sem_consumo/consumo_sem_producao: o resumo_executivo DEVE começar pelo ERRO DE DADO como fator principal e o relatório inteiro deve girar em torno da correção.",
+    "No diagnostico_detalhado: incluir percentuais (concentração, ociosidade, participação) e declarar risco operacional explícito.",
+    "Em acoes_recomendadas: priorizar correção de lançamentos/integração quando houver inconsistência, com passos concretos e números do período.",
+    "NÃO duplicar KPIs no JSON kpis se os mesmos valores já estão em indicadores — máximo 6 KPIs complementares.",
   ].join("\n");
 
 const generateIntelligenceReport = async (data) => {
@@ -443,8 +432,15 @@ const generateIntelligenceReport = async (data) => {
       producao_sem_consumo: Boolean(data?.insights?.producaoSemConsumo),
       consumo_sem_producao: Boolean(data?.insights?.consumoSemProducao),
     },
+    metricas_executivas: data?.insights?.metricasExecutivas || data?.metricasExecutivas || {},
+    inconsistencias_detectadas: data?.insights?.inconsistenciasDetectadas || data?.inconsistencias || [],
   };
   const prompt = buildAnalysisPrompt(escopo);
+
+  const finalizeReport = (report) => {
+    const enriched = enrichRelatorioExecutivo(report, data);
+    return { ...enriched, textoEstruturado: buildStructuredText(enriched) };
+  };
 
   const empresaId = Number(data?.empresaId);
   const hasEmpresaId = Number.isFinite(empresaId) && empresaId > 0;
@@ -456,22 +452,14 @@ const generateIntelligenceReport = async (data) => {
     if (cached && typeof cached === "object") {
       const normalizedCached = sanitizeResponse(cached, data);
       await saveUsageLog({ empresaId, cacheKey, model: "cache", cacheHit: true });
-      return {
-        ...normalizedCached,
-        textoEstruturado: buildStructuredText(normalizedCached),
-        origem: "cache",
-      };
+      return { ...finalizeReport(normalizedCached), origem: "cache" };
     }
   }
 
   const apiKey = String(process.env.OPENAI_API_KEY || "").trim();
   const fallbackBase = sanitizeResponse({}, data);
   if (!apiKey) {
-    return {
-      ...fallbackBase,
-      textoEstruturado: buildStructuredText(fallbackBase),
-      origem: "fallback",
-    };
+    return { ...finalizeReport(fallbackBase), origem: "fallback" };
   }
 
   if (hasEmpresaId) {
@@ -481,11 +469,7 @@ const generateIntelligenceReport = async (data) => {
         ...fallbackBase,
         analise: `Limite diário de análises IA atingido (${dailyLimit()}/dia).`,
       };
-      return {
-        ...limited,
-        textoEstruturado: buildStructuredText(limited),
-        origem: "limit",
-      };
+      return { ...finalizeReport(limited), origem: "limit" };
     }
   }
 
@@ -520,11 +504,7 @@ const generateIntelligenceReport = async (data) => {
       if (hasEmpresaId && cacheKey) {
         await saveUsageLog({ empresaId, cacheKey, model: `${model}-timeout`, cacheHit: false });
       }
-      return {
-        ...fallback,
-        textoEstruturado: buildStructuredText(fallback),
-        origem: "timeout",
-      };
+      return { ...finalizeReport(fallback), origem: "timeout" };
     }
 
     const payload = await response.json().catch(() => ({}));
@@ -533,35 +513,24 @@ const generateIntelligenceReport = async (data) => {
       if (hasEmpresaId && cacheKey) {
         await saveUsageLog({ empresaId, cacheKey, model: `${model}-error`, cacheHit: false });
       }
-      return {
-        ...fallback,
-        textoEstruturado: buildStructuredText(fallback),
-        origem: "fallback",
-      };
+      return { ...finalizeReport(fallback), origem: "fallback" };
     }
 
     const content = payload?.choices?.[0]?.message?.content || "";
     const parsed = extractJson(content);
     const normalized = sanitizeResponse(parsed || {}, data);
+    const finalized = finalizeReport(normalized);
     if (hasEmpresaId && cacheKey) {
-      await saveCachedReport({ empresaId, cacheKey, report: normalized });
+      await saveCachedReport({ empresaId, cacheKey, report: finalized });
       await saveUsageLog({ empresaId, cacheKey, model, cacheHit: false });
     }
-    return {
-      ...normalized,
-      textoEstruturado: buildStructuredText(normalized),
-      origem: "openai",
-    };
+    return { ...finalized, origem: "openai" };
   } catch {
     const fallback = sanitizeResponse({}, data);
     if (hasEmpresaId && cacheKey) {
       await saveUsageLog({ empresaId, cacheKey, model: `${model}-exception`, cacheHit: false });
     }
-    return {
-      ...fallback,
-      textoEstruturado: buildStructuredText(fallback),
-      origem: "fallback",
-    };
+    return { ...finalizeReport(fallback), origem: "fallback" };
   } finally {
     clearTimeout(timer);
   }

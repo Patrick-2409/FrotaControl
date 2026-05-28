@@ -4,6 +4,7 @@ const {
   MENSAGEM_CONTEXTO_TESTE,
   detectInconsistenciasOperacionais,
   resolveStatusOperacao,
+  computeMetricasExecutivas,
 } = require("./operacionalRules");
 
 const gerarResumoExecutivo = ({ combustivel, transporte, frota, periodo = "mes" }) => {
@@ -76,13 +77,18 @@ const gerarResumoExecutivo = ({ combustivel, transporte, frota, periodo = "mes" 
     },
   };
 
+  const metricasExecutivas = computeMetricasExecutivas(indicadores, insights);
   const statusOperacao = resolveStatusOperacao({ indicadores, insights, inconsistencias });
 
   return {
     indicadores,
-    insights,
+    insights: {
+      ...insights,
+      metricasExecutivas,
+    },
     statusOperacao,
     inconsistencias,
+    metricasExecutivas,
   };
 };
 
