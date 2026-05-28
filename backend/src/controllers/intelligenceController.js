@@ -200,7 +200,9 @@ const exportarPdfInteligencia = async (req, res) => {
     });
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${pdf.filename}"`);
-    return res.send(pdf.buffer);
+    pdf.pdfDoc.pipe(res);
+    pdf.pdfDoc.end();
+    return;
   } catch (error) {
     const statusCode = error?.statusCode && Number.isInteger(error.statusCode) ? error.statusCode : 500;
     return res.status(statusCode).json({
@@ -307,7 +309,9 @@ const debugPdfInteligencia = async (req, res) => {
     });
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="debug-inteligencia.pdf"`);
-    return res.send(pdf.buffer);
+    pdf.pdfDoc.pipe(res);
+    pdf.pdfDoc.end();
+    return;
   } catch (error) {
     return res.status(500).json({
       error: true,

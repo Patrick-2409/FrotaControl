@@ -1,7 +1,16 @@
 const fs = require("fs/promises");
 const path = require("path");
-const PdfPrinter = require("pdfmake");
 const { getCompanyById } = require("../models/companyModel");
+
+let PdfPrinter;
+try {
+  // Preferência solicitada para ambiente Node.
+  PdfPrinter = require("pdfmake/src/printer");
+} catch {
+  // Compatibilidade para builds onde src/printer não resolve via CJS.
+  const pdfMakeModule = require("pdfmake");
+  PdfPrinter = pdfMakeModule?.default || pdfMakeModule;
+}
 
 const toNumber = (value, fallback = 0) => {
   const parsed = Number(value);
@@ -126,16 +135,6 @@ const buildPrinter = () => {
   return new PdfPrinter(fonts);
 };
 
-const toPdfBuffer = (printer, docDefinition) =>
-  new Promise((resolve, reject) => {
-    const chunks = [];
-    const pdfDoc = printer.createPdfKitDocument(docDefinition);
-    pdfDoc.on("data", (chunk) => chunks.push(chunk));
-    pdfDoc.on("end", () => resolve(Buffer.concat(chunks)));
-    pdfDoc.on("error", reject);
-    pdfDoc.end();
-  });
-
 const generateExecutivePdf = async ({ empresaId, analysis, report }) => {
   const company = await getCompanyById(empresaId);
   const logoDataUrl = await resolveLogoDataUrl(company?.logo_url);
@@ -259,7 +258,7 @@ const generateExecutivePdf = async ({ empresaId, analysis, report }) => {
   };
 
   const printer = buildPrinter();
-  const buffer = await toPdfBuffer(printer, docDefinition);
+  const pdfDoc = printer.createPdfKitDocument(docDefinition);
   const companySlug = String(company?.nome || "empresa")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -267,7 +266,7 @@ const generateExecutivePdf = async ({ empresaId, analysis, report }) => {
     .replace(/^-+|-+$/g, "")
     .toLowerCase();
   const filename = `inteligencia-executiva-${companySlug || "empresa"}-${analysis?.periodo?.tipo || "mes"}.pdf`;
-  return { buffer, filename };
+  return { pdfDoc, filename };
 };
 
 module.exports = {
