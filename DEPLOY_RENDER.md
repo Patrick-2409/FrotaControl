@@ -53,9 +53,9 @@ npm run db:init
 
 Em `NODE_ENV=production`, o pool usa SSL por padrão. Para Postgres local sem SSL: `DATABASE_SSL=false`.
 
-### PDF (Puppeteer)
+### PDF
 
-No plano free do Render o Chrome pode não estar instalado. Se a exportação PDF falhar, configure `PUPPETEER_EXECUTABLE_PATH` conforme a imagem do serviço ou use [documentação Render + Puppeteer](https://render.com/docs).
+As exportações PDF estão temporariamente em manutenção (endpoint retorna 501).
 
 ## 3. Frontend (Static Site)
 
@@ -86,7 +86,7 @@ Na raiz do repositório existe `render.yaml` como ponto de partida. Ajuste nomes
 - `GET https://seu-api.onrender.com/api/health` → JSON com `success: true`
 - Login motorista (CPF), admin empresa, super admin
 - Lançamento offline + sincronização contra a API remota
-- Exportações PDF/Excel no painel (se Puppeteer OK)
+- Exportações Excel no painel
 
 ## 7. Primeiro uso em produção
 

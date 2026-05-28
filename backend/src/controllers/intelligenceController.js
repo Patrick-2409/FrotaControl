@@ -2,7 +2,6 @@ const { z } = require("zod");
 const { resolveEmpresaScopeWrite } = require("../domain/tenantContext");
 const { analyzeOperationalData } = require("../services/intelligenceAnalysisService");
 const { generateIntelligenceReport } = require("../services/intelligenceAiService");
-const { generateIntelligencePdf, generateDebugPdf } = require("../services/intelligencePdfService");
 const { buildContext, toIsoDate } = require("../services/inteligencia/common");
 const { analisarCombustivel } = require("../services/inteligencia/combustivel");
 const { analisarTransporte } = require("../services/inteligencia/transporte");
@@ -191,26 +190,10 @@ const analisarOperacao = async (req, res) => {
 };
 
 const exportarPdfInteligencia = async (req, res) => {
-  try {
-    const result = await parseAndBuildAnalysis(req);
-    const pdf = await generateIntelligencePdf({
-      empresaId: result.empresaId,
-      analysis: result.analysis,
-      report: result.relatorio,
-    });
-
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="${pdf.filename}"`);
-    return res.send(pdf.buffer);
-  } catch (error) {
-    const statusCode = error?.statusCode && Number.isInteger(error.statusCode) ? error.statusCode : 500;
-    return res.status(statusCode).json({
-      success: false,
-      error: error?.message || "Falha ao exportar PDF de inteligência.",
-      message: error?.message || "Falha ao exportar PDF de inteligência.",
-      inconsistencias: Array.isArray(error?.details) ? error.details : [],
-    });
-  }
+  return res.status(501).json({
+    error: true,
+    message: "Geração de PDF temporariamente desativada para manutenção",
+  });
 };
 
 const getIntelligenceOverview = async (req, res) => {
@@ -300,18 +283,10 @@ const getIntelligenceOverview = async (req, res) => {
 };
 
 const debugPdfInteligencia = async (req, res) => {
-  try {
-    const pdf = await generateDebugPdf();
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="${pdf.filename}"`);
-    return res.send(pdf.buffer);
-  } catch (error) {
-    return res.status(500).json({
-      error: true,
-      message: "Falha ao gerar PDF profissional. Chromium não disponível.",
-      detail: error?.message || String(error),
-    });
-  }
+  return res.status(501).json({
+    error: true,
+    message: "Geração de PDF temporariamente desativada para manutenção",
+  });
 };
 
 module.exports = {

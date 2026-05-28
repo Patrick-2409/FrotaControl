@@ -22,7 +22,7 @@ const COLORS = {
 };
 
 let tablesReadyPromise = null;
-let puppeteerModule = null;
+const PDF_MAINTENANCE_MESSAGE = "Geração de PDF temporariamente desativada para manutenção";
 const INSUFFICIENT_DATA_TEXT = "Dados insuficientes para análise";
 
 const toNumber = (value, fallback = 0) => {
@@ -1186,23 +1186,8 @@ const buildHtmlReport = async ({ dataset, ai }) => {
   return html;
 };
 
-const getPuppeteer = () => {
-  if (!puppeteerModule) {
-    puppeteerModule = require("puppeteer");
-  }
-  return puppeteerModule;
-};
-
 const launchBrowser = async () => {
-  const puppeteer = getPuppeteer();
-  const timeoutMs = Math.max(20000, Number(process.env.PUPPETEER_LAUNCH_TIMEOUT_MS || 90000));
-  const options = {
-    headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--no-zygote", "--single-process"],
-    timeout: timeoutMs,
-    protocolTimeout: timeoutMs,
-  };
-  return puppeteer.launch(options);
+  throw new Error(PDF_MAINTENANCE_MESSAGE);
 };
 
 const fallbackPdf = ({ dataset, ai }) =>

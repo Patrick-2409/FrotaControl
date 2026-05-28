@@ -8,7 +8,7 @@ services:
     region: oregon
     plan: free
     rootDir: backend
-    buildCommand: PUPPETEER_CACHE_DIR=/tmp/puppeteer-cache npm install
+    buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
@@ -30,9 +30,6 @@ services:
         sync: false
       - key: CLOUDINARY_API_SECRET
         sync: false
-      - key: PUPPETEER_CACHE_DIR
-        value: /tmp/puppeteer-cache
-
   - type: web
     name: frotacontrol-frontend
     runtime: node

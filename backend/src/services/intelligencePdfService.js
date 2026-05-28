@@ -2,7 +2,7 @@ const fs = require("fs/promises");
 const path = require("path");
 const { getCompanyById } = require("../models/companyModel");
 
-let puppeteerModule = null;
+const PDF_MAINTENANCE_MESSAGE = "Geração de PDF temporariamente desativada para manutenção";
 
 const COLORS = {
   blue: "#2563eb",
@@ -284,32 +284,8 @@ const dualBarSvg = (series, title) => {
 </svg>`;
 };
 
-const getPuppeteer = () => {
-  if (!puppeteerModule) {
-    puppeteerModule = require("puppeteer");
-    console.log("Puppeteer pronto para uso");
-  }
-  return puppeteerModule;
-};
-
 const launchBrowser = async () => {
-  const puppeteer = getPuppeteer();
-  console.log("[PDF] Cache Puppeteer:", process.env.PUPPETEER_CACHE_DIR);
-  try {
-    const browser = await puppeteer.launch({
-      headless: "new",
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-      ],
-    });
-    console.log("[PDF] Chromium iniciado com sucesso");
-    return browser;
-  } catch (error) {
-    console.error("[PDF][ERRO]", error);
-    throw new Error("Falha ao iniciar Chromium - ambiente inválido");
-  }
+  throw new Error(PDF_MAINTENANCE_MESSAGE);
 };
 
 const buildHtmlReport = async ({ company, analysis, report }) => {
@@ -486,36 +462,15 @@ const renderPdfFromHtml = async (html) => {
 };
 
 const generateIntelligencePdf = async ({ empresaId, analysis, report }) => {
-  const company = await getCompanyById(empresaId);
-  const html = await buildHtmlReport({ company, analysis, report });
-  let buffer;
-  try {
-    buffer = await renderPdfFromHtml(html);
-  } catch (error) {
-    const message = String(error?.message || error || "").trim();
-    const wrapped = new Error(
-      `Falha ao gerar PDF profissional com Chromium. Verifique instalação/configuração do Puppeteer/Chrome. Detalhe: ${message}`
-    );
-    wrapped.statusCode = 500;
-    throw wrapped;
-  }
-  const companySlug = String(company?.nome || "empresa")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .toLowerCase();
-  const filename = `inteligencia-operacional-${companySlug || "empresa"}-${analysis?.periodo?.tipo || "mes"}.pdf`;
-  return { buffer, filename };
+  const error = new Error(PDF_MAINTENANCE_MESSAGE);
+  error.statusCode = 501;
+  throw error;
 };
 
 const generateDebugPdf = async () => {
-  const html = "<!doctype html><html><body><h1>Teste Chromium OK</h1></body></html>";
-  const buffer = await renderPdfFromHtml(html);
-  return {
-    buffer,
-    filename: "debug-chromium.pdf",
-  };
+  const error = new Error(PDF_MAINTENANCE_MESSAGE);
+  error.statusCode = 501;
+  throw error;
 };
 
 module.exports = {

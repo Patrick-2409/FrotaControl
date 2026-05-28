@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "postinstall": "echo \"Instalando Chromium...\" && rm -rf /tmp/puppeteer-cache && PUPPETEER_CACHE_DIR=/tmp/puppeteer-cache npx puppeteer browsers install chrome && echo \"Build Puppeteer OK\"",
     "db:init": "node scripts/init-db-only.js",
     "test": "node --test \"./test/**/*.test.js\""
   },
@@ -36,7 +35,6 @@
     "multer": "^2.1.1",
     "pdfkit": "^0.18.0",
     "pg": "^8.20.0",
-    "puppeteer": "^24.43.1",
     "zod": "^4.4.2"
   }
 }

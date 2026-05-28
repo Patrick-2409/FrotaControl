@@ -8,14 +8,7 @@ const { getCompanyById } = require("../models/companyModel");
 const viagemModel = require("../models/viagemModel");
 const { z } = require("zod");
 
-/** Puppeteer só aqui: evitar require no arranque (Render/OOM e cold start). */
-let puppeteerModule = null;
-const getPuppeteer = () => {
-  if (!puppeteerModule) {
-    puppeteerModule = require("puppeteer");
-  }
-  return puppeteerModule;
-};
+const PDF_MAINTENANCE_MESSAGE = "Geração de PDF temporariamente desativada para manutenção";
 
 const parseOperationalDate = (value) => {
   if (!value) return null;
@@ -41,29 +34,7 @@ const resolveExportScope = (req) => {
   };
 };
 const launchBrowser = async () => {
-  const timeoutMs = Number(process.env.PUPPETEER_LAUNCH_TIMEOUT_MS || 90000);
-  console.log("[PDF] Cache Puppeteer:", process.env.PUPPETEER_CACHE_DIR);
-  const baseOptions = {
-    headless: "new",
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--no-zygote",
-      "--single-process",
-    ],
-    timeout: timeoutMs,
-    protocolTimeout: timeoutMs,
-  };
-  const puppeteer = getPuppeteer();
-  try {
-    const browser = await puppeteer.launch(baseOptions);
-    console.log("[PDF] Chromium iniciado com sucesso");
-    return browser;
-  } catch (error) {
-    console.error("[PDF][ERRO]", error);
-    throw new Error("Falha ao iniciar Chromium - ambiente inválido");
-  }
+  throw new Error(PDF_MAINTENANCE_MESSAGE);
 };
 const normalizeDateFilter = (rawValue) => {
   if (!rawValue) return undefined;
@@ -2329,119 +2300,11 @@ const exportExcel = async (req, res) => {
   res.end();
 };
 
-const exportPdf = async (req, res) => {
-  let filters;
-  try {
-    filters = parseExportFilters(req.query);
-  } catch (err) {
-    return res.status(400).json({
-      success: false,
-      error: err.message || "Filtros inválidos para exportação.",
-      message: err.message || "Filtros inválidos para exportação.",
-    });
-  }
-
-  try {
-  const scope = resolveExportScope(req);
-  const filtersEffective = normalizeExportQueryFilters(filters);
-  let data;
-  try {
-    data = await loadExportItems(scope, filtersEffective);
-  } catch (e) {
-    if (e.message === EXPORT_TOO_MANY_MESSAGE) {
-      return res.status(400).json({
-        success: false,
-        error: EXPORT_TOO_MANY_MESSAGE,
-        message: EXPORT_TOO_MANY_MESSAGE,
-      });
-    }
-    throw e;
-  }
-  const company = await getCompanyById(scope.empresa_id);
-  const logoAssets = await resolveEmpresaLogoAssets(req, company);
-  const summaryText = formatExportFiltersSummaryPt(filtersEffective, data.length);
-  const html = buildOfficialHtml({
-    companyName: company?.nome || "Empresa",
-    logoUrl: logoAssets.htmlSrc,
-    records: data,
-    summaryText,
+const exportPdf = async (req, res) =>
+  res.status(501).json({
+    error: true,
+    message: PDF_MAINTENANCE_MESSAGE,
   });
-
-  let browser;
-  let pdfBuffer;
-  try {
-    browser = await launchBrowser();
-    const page = await browser.newPage();
-    await page.setViewport({ width: 1240, height: 800, deviceScaleFactor: 2 });
-    await page.setContent(html, { waitUntil: "domcontentloaded" });
-    await page.waitForNetworkIdle({ idleTime: 500, timeout: 30000 }).catch(() => {});
-    const scrollHeight = await page.evaluate(() =>
-      Math.max(document.body?.scrollHeight ?? 0, document.documentElement?.scrollHeight ?? 0, 800)
-    );
-    const pdfViewportHeight = Math.min(Math.max(scrollHeight + 80, 900), 16384);
-    await page.setViewport({ width: 1240, height: pdfViewportHeight, deviceScaleFactor: 2 });
-    pdfBuffer = await page.pdf({
-      format: "A4",
-      printBackground: true,
-      preferCSSPageSize: true,
-      scale: 1,
-      margin: {
-        top: "10mm",
-        right: "10mm",
-        bottom: "10mm",
-        left: "10mm",
-      },
-    });
-  } catch (error) {
-    console.warn("[exportPdf] render principal:", error?.message || error);
-    try {
-      const rasterForFallback = await toExcelCompatibleImage(logoAssets.htmlSrc, logoAssets.excelImage);
-      const fallbackBuffer = await buildFallbackPdfBuffer({
-        companyName: company?.nome || "Empresa",
-        records: data,
-        logoImage: rasterForFallback,
-        filterSummary: summaryText,
-      });
-      res.setHeader("X-PDF-Fallback", "1");
-      res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", "attachment; filename=registros.pdf");
-      return res.send(fallbackBuffer);
-    } catch (fallbackErr) {
-      console.error("[exportPdf] fallback PDFKit:", fallbackErr?.message || fallbackErr);
-      if (!res.headersSent) {
-        return res.status(500).json({
-          success: false,
-          error: fallbackErr.message || "Não foi possível gerar o PDF.",
-          message: fallbackErr.message || "Não foi possível gerar o PDF.",
-        });
-      }
-      return;
-    }
-  } finally {
-    if (browser) await browser.close().catch(() => {});
-  }
-
-  res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", "attachment; filename=registros.pdf");
-  res.send(pdfBuffer);
-  } catch (outerErr) {
-    if (outerErr.message === EXPORT_TOO_MANY_MESSAGE && !res.headersSent) {
-      return res.status(400).json({
-        success: false,
-        error: EXPORT_TOO_MANY_MESSAGE,
-        message: EXPORT_TOO_MANY_MESSAGE,
-      });
-    }
-    console.error("[exportPdf] falha geral:", outerErr?.message || outerErr);
-    if (!res.headersSent) {
-      return res.status(500).json({
-        success: false,
-        error: outerErr.message || "Falha ao gerar o PDF.",
-        message: outerErr.message || "Falha ao gerar o PDF.",
-      });
-    }
-  }
-};
 
 const exportCsv = async (req, res) => {
   let filters;
