@@ -122,14 +122,11 @@ const buildContext = ({ empresaId, periodo = "mes", veiculoId = null, motoristaI
   };
 };
 
-const buildTransportVehiclePredicate = (alias = "v") => `
-  (
-    COALESCE(${alias}.usa_para_transporte, false) = true
-    OR COALESCE(${alias}.tipo_operacao, '') = 'transporte'
-    OR LOWER(COALESCE(${alias}.tipo, '')) LIKE '%transport%'
-    OR LOWER(COALESCE(${alias}.categoria, '')) LIKE '%transport%'
-  )
-`;
+const {
+  buildTransportVehiclePredicate,
+  buildApoioVehiclePredicate,
+  resolveTipoOperacaoVeiculo,
+} = require("./operacionalRules");
 
 module.exports = {
   PERIODOS,
@@ -143,4 +140,6 @@ module.exports = {
   toNullablePositiveInt,
   buildContext,
   buildTransportVehiclePredicate,
+  buildApoioVehiclePredicate,
+  resolveTipoOperacaoVeiculo,
 };

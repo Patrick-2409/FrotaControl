@@ -109,30 +109,8 @@ const parseAndBuildAnalysis = async (req) => {
     tipoAnalise: payload.tipoAnalise,
   });
 
-  const inconsistencias = [];
-  const indicadores = analysis?.indicadores || {};
-  const insights = analysis?.insights || {};
-  const litros = Number(indicadores?.totalLitros || 0);
-  const valor = Number(indicadores?.totalValor || 0);
-  const precoMedio = Number(indicadores?.precoMedio || 0);
-  const viagensTransporte = Number(indicadores?.totalViagensTransporte || 0);
-  const litrosTransporte = Number(indicadores?.totalLitrosTransporte || 0);
-  const dadosTransporteDisponiveis = Boolean(indicadores?.dadosTransporteDisponiveis);
-
-  if (litros < 0) inconsistencias.push("totalLitros negativo.");
-  if (valor < 0) inconsistencias.push("totalValor negativo.");
-  if (precoMedio < 0) inconsistencias.push("precoMedio negativo.");
-  if (litros === 0 && valor > 0) inconsistencias.push("valor informado com litros zerados.");
-  if (litros > 0 && valor === 0) inconsistencias.push("litros informados com valor zerado.");
-  if (precoMedio > 0 && (litros <= 0 || valor <= 0)) {
-    inconsistencias.push("precoMedio informado sem base válida em litros e valor.");
-  }
-  if (!dadosTransporteDisponiveis && (viagensTransporte > 0 || litrosTransporte > 0)) {
-    inconsistencias.push("dados de transporte marcados como indisponíveis com indicadores de transporte preenchidos.");
-  }
-  if (!dadosTransporteDisponiveis && insights?.consumoSemProducao) {
-    inconsistencias.push("insight de consumo sem produção ativo sem base de transporte disponível.");
-  }
+  const inconsistencias = [...(analysis?.inconsistencias || [])];
+  const statusOperacao = analysis?.statusOperacao || null;
 
   const relatorio = await generateIntelligenceReport({
     empresaId: Number(empresaId),
@@ -141,6 +119,7 @@ const parseAndBuildAnalysis = async (req) => {
       ...(analysis.insights || {}),
       inconsistenciasDetectadas: inconsistencias,
     },
+    statusOperacao,
     periodo: analysis.periodo,
     tipoAnalise: analysis.tipoAnalise,
     filtros: analysis.filtros,
@@ -148,7 +127,10 @@ const parseAndBuildAnalysis = async (req) => {
 
   if (inconsistencias.length) {
     relatorio.inconsistencias = [...new Set([...(relatorio.inconsistencias || []), ...inconsistencias])];
-    relatorio.statusOperacao = `Crítico: ${inconsistencias.length} inconsistência(s) de dados detectada(s).`;
+    relatorio.statusOperacao =
+      statusOperacao?.label === "CRÍTICO"
+        ? `${statusOperacao.label}: ${inconsistencias.length} inconsistência(s) de dados detectada(s).`
+        : `Crítico: ${inconsistencias.length} inconsistência(s) de dados detectada(s).`;
     relatorio.analise = [
       `ERRO DE DADO: ${inconsistencias.join(" ")}`,
       relatorio.analise,
@@ -254,7 +236,7 @@ const getIntelligenceOverview = async (req, res) => {
     console.log("[INTELIGENCIA][transporte]", transporte);
     const frota = await analisarFrota({ ...ctx, activeVehicleIds: transporte.support?.activeVehicleIds || new Set() });
     console.log("[INTELIGENCIA][frota]", frota);
-    const resumo = gerarResumoExecutivo({ combustivel, transporte, frota });
+    const resumo = gerarResumoExecutivo({ combustivel, transporte, frota, periodo: ctx.periodo });
 
     const consumo_por_veiculo = combustivel.graficos?.consumoPorVeiculo || [];
     const custo_por_periodo = combustivel.graficos?.custoPorPeriodo || [];
@@ -299,6 +281,9 @@ const getIntelligenceOverview = async (req, res) => {
       custo_por_periodo,
       consumo_vs_producao,
       indicadores,
+      insights: resumo.insights,
+      status_operacao: resumo.statusOperacao,
+      inconsistencias: resumo.inconsistencias,
     });
   } catch (error) {
     console.error("🔥 ERRO REAL INTELIGENCIA:");

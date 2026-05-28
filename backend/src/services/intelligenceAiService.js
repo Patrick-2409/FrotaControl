@@ -1,5 +1,6 @@
 const crypto = require("crypto");
 const { pool } = require("../db");
+const { buildEscopoAnalise, MENSAGEM_CONTEXTO_TESTE } = require("./inteligencia/operacionalRules");
 
 const OPENAI_MODEL_DEFAULT = "gpt-4o-mini";
 const INTELLIGENCE_DAILY_LIMIT_DEFAULT = 5;
@@ -17,6 +18,11 @@ const GENERIC_PATTERNS = [
   /acompanhar de perto/i,
   /monitorar melhor/i,
   /ajustes gerais/i,
+  /\bavaliar\b/i,
+  /\bverificar\b/i,
+  /^avaliar/i,
+  /^verificar/i,
+  /considerar a possibilidade/i,
 ];
 
 const toNumber = (value, fallback = 0) => {
@@ -111,7 +117,7 @@ const ensureModuleAnalysis = (raw, data) => {
   const transporteDisponivel = Boolean(data?.indicadores?.dadosTransporteDisponiveis);
   const apoioBase = ensureConcreteText(
     source.apoio || source.frota,
-    `${toNumber(data?.indicadores?.veiculosAtivos)} veículo(s) de apoio/serviço ativo(s) e ${toNumber(data?.indicadores?.veiculosOciosos)} ocioso(s).`
+    `${toNumber(data?.indicadores?.veiculosAtivosApoio)} veículo(s) de apoio ativo(s), ${toNumber(data?.indicadores?.veiculosOciososApoio)} ocioso(s), consumo de ${toNumber(data?.indicadores?.totalLitrosApoio).toFixed(1)} L (sem produção/viagens).`
   );
   return {
     combustivel: ensureConcreteText(
@@ -376,23 +382,10 @@ const runWithFunctionTimeout = async (promiseFactory, timeoutMs) => {
   return result;
 };
 
-const generateIntelligenceReport = async (data) => {
-  const dataContext = {
-    periodo: data?.periodo || null,
-    tipoAnalise: data?.tipoAnalise || null,
-    filtros: data?.filtros || null,
-    indicadores: data?.indicadores || {},
-    insights: data?.insights || {},
-    regra_contexto: {
-      transporte_tem_producao: true,
-      apoio_sem_producao: true,
-      dados_transporte_disponiveis: Boolean(data?.indicadores?.dadosTransporteDisponiveis),
-      analise_producao_ignorada: Boolean(data?.insights?.analiseProducaoIgnorada),
-    },
-  };
-  const prompt = [
+const buildAnalysisPrompt = (escopo) => [
     "Você é um especialista em engenharia de produção e auditoria operacional.",
     "Sua função é gerar um relatório executivo com análise crítica dos dados.",
+    `ESCOPO DA ANÁLISE (${escopo.escopo}): ${escopo.instrucao}`,
     "Responda somente JSON válido no formato:",
     "{",
     '  "status_operacao": "status técnico objetivo com base numérica",',
@@ -425,7 +418,33 @@ const generateIntelligenceReport = async (data) => {
     "Se o dado for insuficiente, assuma explicitamente insuficiência de dados em vez de inferir.",
     "No campo calculos_utilizados inclua fórmulas realmente usadas na análise.",
     "No campo inconsistencias, prefixe itens críticos com 'ERRO DE DADO:' quando aplicável.",
+    "PROIBIDO no resumo_executivo: repetir KPIs literalmente (ex.: apenas listar totais). OBRIGATÓRIO: interpretar, apontar problemas e impacto.",
+    "PROIBIDO em acoes_recomendadas: usar verbos vagos como 'avaliar', 'verificar', 'considerar'. OBRIGATÓRIO: ações diretas, aplicáveis e com referência numérica.",
+    "Se contexto_teste=true, mencionar que a base é preliminar e evitar conclusões definitivas de padrão operacional.",
   ].join("\n");
+
+const generateIntelligenceReport = async (data) => {
+  const escopo = buildEscopoAnalise(data?.tipoAnalise, data?.filtros);
+  const dataContext = {
+    periodo: data?.periodo || null,
+    tipoAnalise: data?.tipoAnalise || null,
+    escopo_analise: escopo,
+    filtros: data?.filtros || null,
+    indicadores: data?.indicadores || {},
+    insights: data?.insights || {},
+    contexto_teste: Boolean(data?.insights?.contextoTeste),
+    mensagem_contexto_teste: data?.insights?.contextoTeste ? MENSAGEM_CONTEXTO_TESTE : null,
+    status_preliminar: data?.statusOperacao || null,
+    regra_contexto: {
+      tipo_operacao_transporte: "transporte — possui produção (viagens)",
+      tipo_operacao_apoio: "apoio — NÃO possui produção; proibido atribuir eficiência operacional de produção",
+      dados_transporte_disponiveis: Boolean(data?.indicadores?.dadosTransporteDisponiveis),
+      analise_producao_ignorada: Boolean(data?.insights?.analiseProducaoIgnorada),
+      producao_sem_consumo: Boolean(data?.insights?.producaoSemConsumo),
+      consumo_sem_producao: Boolean(data?.insights?.consumoSemProducao),
+    },
+  };
+  const prompt = buildAnalysisPrompt(escopo);
 
   const empresaId = Number(data?.empresaId);
   const hasEmpresaId = Number.isFinite(empresaId) && empresaId > 0;

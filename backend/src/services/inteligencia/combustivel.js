@@ -1,5 +1,12 @@
 const { pool } = require("../../db");
-const { toNumber, safeDivide, toIsoDate, safeIsoFromDate, buildTransportVehiclePredicate } = require("./common");
+const {
+  toNumber,
+  safeDivide,
+  toIsoDate,
+  safeIsoFromDate,
+  buildTransportVehiclePredicate,
+  buildApoioVehiclePredicate,
+} = require("./common");
 
 const emptyResult = () => ({ rows: [] });
 
@@ -15,8 +22,9 @@ const safeCombustivelQuery = async (label, sql, params) => {
 const analisarCombustivel = async (ctx) => {
   const { baseParams, filtrosCombustivel } = ctx;
   const transportVehiclePredicate = buildTransportVehiclePredicate("v");
+  const apoioVehiclePredicate = buildApoioVehiclePredicate("v");
 
-  const [fuelAgg, fuelAggTransporte, topFuelRows, pieFuelRows, lineCostRows] = await Promise.all([
+  const [fuelAgg, fuelAggTransporte, fuelAggApoio, topFuelRows, pieFuelRows, lineCostRows] = await Promise.all([
     safeCombustivelQuery(
       "fuelAgg",
       `SELECT
@@ -35,6 +43,17 @@ const analisarCombustivel = async (ctx) => {
        INNER JOIN veiculos v ON v.id = c.veiculo_id AND v.empresa_id = c.empresa_id
        WHERE ${filtrosCombustivel}
          AND ${transportVehiclePredicate}`,
+      baseParams
+    ),
+    safeCombustivelQuery(
+      "fuelAggApoio",
+      `SELECT
+         COALESCE(SUM(c.litros), 0)::double precision AS total_litros_apoio,
+         COALESCE(SUM(c.valor_total), 0)::double precision AS total_valor_apoio
+       FROM combustiveis c
+       INNER JOIN veiculos v ON v.id = c.veiculo_id AND v.empresa_id = c.empresa_id
+       WHERE ${filtrosCombustivel}
+         AND ${apoioVehiclePredicate}`,
       baseParams
     ),
     safeCombustivelQuery(
@@ -86,6 +105,8 @@ const analisarCombustivel = async (ctx) => {
   const precoMedio = safeDivide(totalValor, totalLitros);
   const totalLitrosTransporte = toNumber(fuelAggTransporte.rows[0]?.total_litros_transporte);
   const totalValorTransporte = toNumber(fuelAggTransporte.rows[0]?.total_valor_transporte);
+  const totalLitrosApoio = toNumber(fuelAggApoio.rows[0]?.total_litros_apoio);
+  const totalValorApoio = toNumber(fuelAggApoio.rows[0]?.total_valor_apoio);
 
   const combustivelRows = pieFuelRows.rows || [];
   const veiculosUnicos = new Set(
@@ -111,6 +132,8 @@ const analisarCombustivel = async (ctx) => {
       precoMedio,
       totalLitrosTransporte,
       totalValorTransporte,
+      totalLitrosApoio,
+      totalValorApoio,
       veiculosConsiderados,
     },
     insights: {

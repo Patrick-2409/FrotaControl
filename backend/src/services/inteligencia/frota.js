@@ -1,5 +1,5 @@
 const { pool } = require("../../db");
-const { toNumber } = require("./common");
+const { toNumber, buildTransportVehiclePredicate, buildApoioVehiclePredicate } = require("./common");
 
 const emptyResult = () => ({ rows: [] });
 
@@ -14,11 +14,17 @@ const safeFrotaQuery = async (label, sql, params) => {
 
 const analisarFrota = async (ctx) => {
   const { baseParams, activeVehicleIds = new Set() } = ctx;
+  const transportPredicate = buildTransportVehiclePredicate("v");
+  const apoioPredicate = buildApoioVehiclePredicate("v");
 
-  const [vehiclesScopeRows, parteDiariaAgg] = await Promise.all([
+  const [vehiclesScopeRows, parteDiariaAgg, escopoTransporteAgg, escopoApoioAgg] = await Promise.all([
     safeFrotaQuery(
       "vehiclesScopeRows",
-      `SELECT v.id, COALESCE(v.nome, 'Sem nome') AS nome, COALESCE(v.placa, '-') AS placa
+      `SELECT
+         v.id,
+         COALESCE(v.nome, 'Sem nome') AS nome,
+         COALESCE(v.placa, '-') AS placa,
+         CASE WHEN ${transportPredicate} THEN 'transporte' ELSE 'apoio' END AS tipo_operacao
        FROM veiculos v
        WHERE v.empresa_id = $1
          AND ($4::int IS NULL OR v.id = $4)
@@ -39,25 +45,60 @@ const analisarFrota = async (ctx) => {
       "parteDiariaAgg",
       `SELECT COUNT(*)::int AS total_parte_diaria
        FROM parte_diaria pd
+       INNER JOIN veiculos v ON v.id = pd.veiculo_id AND v.empresa_id = pd.empresa_id
        WHERE pd.empresa_id = $1
          AND COALESCE(pd.recorded_at_client, pd.data) BETWEEN $2::timestamptz AND $3::timestamptz
          AND ($4::int IS NULL OR pd.veiculo_id = $4)
-         AND ($5::int IS NULL OR pd.usuario_id = $5)`,
+         AND ($5::int IS NULL OR pd.usuario_id = $5)
+         AND ${apoioPredicate}`,
+      baseParams
+    ),
+    safeFrotaQuery(
+      "escopoTransporteAgg",
+      `SELECT COUNT(*)::int AS total
+       FROM veiculos v
+       WHERE v.empresa_id = $1
+         AND ($4::int IS NULL OR v.id = $4)
+         AND ${transportPredicate}`,
+      baseParams
+    ),
+    safeFrotaQuery(
+      "escopoApoioAgg",
+      `SELECT COUNT(*)::int AS total
+       FROM veiculos v
+       WHERE v.empresa_id = $1
+         AND ($4::int IS NULL OR v.id = $4)
+         AND ${apoioPredicate}`,
       baseParams
     ),
   ]);
 
   const scopedVehicles = vehiclesScopeRows.rows || [];
-  const veiculosAtivos = scopedVehicles.length
-    ? scopedVehicles.filter((row) => activeVehicleIds.has(Number(row.id))).length
-    : activeVehicleIds.size;
+  const transporteVehicles = scopedVehicles.filter((row) => row.tipo_operacao === "transporte");
+  const apoioVehicles = scopedVehicles.filter((row) => row.tipo_operacao !== "transporte");
+
+  const countAtivos = (list) => list.filter((row) => activeVehicleIds.has(Number(row.id))).length;
+  const countOciosos = (list) => list.filter((row) => !activeVehicleIds.has(Number(row.id)));
+
+  const veiculosAtivosTransporte = countAtivos(transporteVehicles);
+  const veiculosOciososTransporte = countOciosos(transporteVehicles);
+  const veiculosAtivosApoio = countAtivos(apoioVehicles);
+  const veiculosOciososApoio = countOciosos(apoioVehicles);
+
+  const veiculosAtivos = veiculosAtivosTransporte + veiculosAtivosApoio;
+  const veiculosOciosos = veiculosOciososTransporte + veiculosOciososApoio;
   const veiculosOciososRows = scopedVehicles.filter((row) => !activeVehicleIds.has(Number(row.id)));
-  const veiculosOciosos = veiculosOciososRows.length;
 
   return {
     indicadores: {
       veiculosAtivos,
       veiculosOciosos,
+      veiculosAtivosTransporte,
+      veiculosOciososTransporte,
+      veiculosAtivosApoio,
+      veiculosOciososApoio,
+      totalVeiculosTransporte: toNumber(escopoTransporteAgg.rows[0]?.total),
+      totalVeiculosApoio: toNumber(escopoApoioAgg.rows[0]?.total),
       totalParteDiaria: toNumber(parteDiariaAgg.rows[0]?.total_parte_diaria),
     },
     insights: {
@@ -65,6 +106,7 @@ const analisarFrota = async (ctx) => {
         veiculoId: Number(row.id),
         nome: row.nome,
         placa: row.placa,
+        tipoOperacao: row.tipo_operacao === "transporte" ? "transporte" : "apoio",
       })),
     },
   };
