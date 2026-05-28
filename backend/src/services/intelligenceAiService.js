@@ -8,6 +8,10 @@ const {
   buildDiagnosticoFallback,
   buildAcoesFallback,
   looksLikeKpiRepetition,
+  looksLikeDataDescription,
+  buildScopedDataForAi,
+  filterModulosByScope,
+  trimText,
 } = require("./inteligencia/operacionalRules");
 
 const OPENAI_MODEL_DEFAULT = "gpt-4o-mini";
@@ -98,53 +102,30 @@ const ensureConcreteText = (text, fallback) => {
 
 const ensureModuleAnalysis = (raw, data) => {
   const source = raw && typeof raw === "object" ? raw : {};
+  const tipo = data?.tipoAnalise || "geral";
   const transporteDisponivel = Boolean(data?.indicadores?.dadosTransporteDisponiveis);
   const apoioBase = ensureConcreteText(
     source.apoio || source.frota,
-    `${toNumber(data?.indicadores?.veiculosAtivosApoio)} veículo(s) de apoio ativo(s), ${toNumber(data?.indicadores?.veiculosOciososApoio)} ocioso(s), consumo de ${toNumber(data?.indicadores?.totalLitrosApoio).toFixed(1)} L (sem produção/viagens).`
+    `${toNumber(data?.indicadores?.veiculosAtivosApoio)} ativo(s) / ${toNumber(data?.indicadores?.veiculosOciososApoio)} ocioso(s) em apoio — sem produção.`
   );
-  return {
+  const full = {
     combustivel: ensureConcreteText(
       source.combustivel,
-      `Consumo total ${toNumber(data?.indicadores?.totalLitros).toFixed(1)} L e custo total R$ ${toNumber(data?.indicadores?.totalValor).toFixed(2)}.`
+      `Insight combustível: participação transporte/apoio e preço médio impactam margem.`
     ),
     transporte: ensureConcreteText(
       source.transporte,
       transporteDisponivel
-        ? `Produção de ${toNumber(data?.indicadores?.totalViagensTransporte)} viagem(ns) com consumo dedicado de ${toNumber(
-            data?.indicadores?.totalLitrosTransporte
-          ).toFixed(1)} L.`
-        : "Dados insuficientes de transporte para análise de produção."
+        ? `Insight transporte: ${toNumber(data?.indicadores?.totalViagensTransporte)} viagem(ns) no recorte.`
+        : "Dados insuficientes de transporte."
     ),
     apoio: apoioBase,
-    // Compatibilidade com consumidores legados da chave "frota".
     frota: apoioBase,
   };
+  return filterModulosByScope(full, tipo);
 };
 
-const ensureKpis = (value, data) => {
-  const rawList = Array.isArray(value) ? value : [];
-  const normalized = rawList
-    .map((item) => {
-      const nome = String(item?.nome || "").trim();
-      const valor = String(item?.valor ?? "").trim();
-      const formula = String(item?.formula || item?.calculo || "").trim();
-      if (!nome || !valor) return null;
-      return { nome, valor, formula };
-    })
-    .filter(Boolean);
-  if (normalized.length) return normalized;
-  return [
-    { nome: "Total de litros", valor: `${toNumber(data?.indicadores?.totalLitros).toFixed(1)} L`, formula: "Somatório dos litros abastecidos no período" },
-    { nome: "Custo total", valor: `R$ ${toNumber(data?.indicadores?.totalValor).toFixed(2)}`, formula: "Somatório dos valores abastecidos no período" },
-    {
-      nome: "Preço médio",
-      valor: `R$ ${toNumber(data?.indicadores?.precoMedio).toFixed(2)}/L`,
-      formula: "Preço médio = total valor / total litros",
-    },
-    { nome: "Viagens de transporte", valor: `${toNumber(data?.indicadores?.totalViagensTransporte)} viagens`, formula: "Contagem de viagens para veículos de transporte" },
-  ];
-};
+const ensureKpis = () => [];
 
 const sanitizeResponse = (raw, data) => {
   const statusOperacao = ensureConcreteText(
@@ -168,7 +149,7 @@ const sanitizeResponse = (raw, data) => {
   const calculosUtilizados = ensureList(raw?.calculos_utilizados)
     .map((item) => ensureConcreteText(item, ""))
     .filter(Boolean);
-  const kpis = ensureKpis(raw?.kpis, data);
+  const kpis = ensureKpis();
   const riscos = ensureList(raw?.riscos_operacionais || raw?.riscos)
     .map((item) => ensureConcreteText(item, ""))
     .filter(Boolean);
@@ -368,19 +349,17 @@ const runWithFunctionTimeout = async (promiseFactory, timeoutMs) => {
 };
 
 const buildAnalysisPrompt = (escopo) => [
-    "Você é um especialista em engenharia de produção e auditoria operacional.",
-    "Sua função é gerar um relatório executivo com análise crítica dos dados.",
-    `ESCOPO DA ANÁLISE (${escopo.escopo}): ${escopo.instrucao}`,
+    "Você é consultor executivo de frota e auditoria operacional.",
+    "Sua função NÃO é descrever dados — é gerar INSIGHTS acionáveis para esta frota específica.",
+    `ESCOPO OBRIGATÓRIO (${escopo.escopo}): ${escopo.instrucao}`,
+    "PROIBIDO analisar módulos fora do escopo. PROIBIDO misturar transporte e apoio.",
+    "Formato mental: CAUSA → CONSEQUÊNCIA → DECISÃO → AÇÃO PRÁTICA.",
     "Responda somente JSON válido no formato:",
     "{",
     '  "status_operacao": "status técnico objetivo com base numérica",',
     '  "resumo_executivo": "texto executivo e objetivo com base numérica",',
-    '  "kpis": [{"nome":"kpi","valor":"valor","formula":"fórmula aplicada"}],',
-    '  "analise_modulos": {',
-    '    "combustivel": "análise específica com números",',
-    '    "transporte": "análise específica com números para veículos de transporte",',
-    '    "apoio": "análise específica com números para veículos de apoio"',
-    "  },",
+    '  "kpis": [],',
+    '  "analise_modulos": { "combustivel": "insight curto", "transporte": "insight curto", "apoio": "insight curto" },',
     '  "diagnostico_detalhado": "diagnóstico com causa e evidência numérica",',
     '  "impacto_financeiro": "impacto objetivo com valores e cálculo explícito",',
     '  "inconsistencias": ["inconsistência detectada com evidência"],',
@@ -409,31 +388,21 @@ const buildAnalysisPrompt = (escopo) => [
     "Se houver inconsistencias ou producao_sem_consumo/consumo_sem_producao: o resumo_executivo DEVE começar pelo ERRO DE DADO como fator principal e o relatório inteiro deve girar em torno da correção.",
     "No diagnostico_detalhado: incluir percentuais (concentração, ociosidade, participação) e declarar risco operacional explícito.",
     "Em acoes_recomendadas: priorizar correção de lançamentos/integração quando houver inconsistência, com passos concretos e números do período.",
-    "NÃO duplicar KPIs no JSON kpis se os mesmos valores já estão em indicadores — máximo 6 KPIs complementares.",
+    "Deixe kpis como array vazio []. KPIs já estão no PDF.",
+    "resumo_executivo: máximo 3 frases, linguagem de decisão (Decisão/Causa/Consequência), sem listar totais.",
+    "analise_modulos: preencher SOMENTE módulos do escopo; outros campos com string vazia.",
+    "diagnostico_detalhado: bullets curtos com % e risco operacional.",
+    "impacto_financeiro: 1-2 frases com valor e consequência financeira.",
+    "acoes_recomendadas: 2-4 ações práticas, verbo no imperativo, com número do período.",
   ].join("\n");
 
 const generateIntelligenceReport = async (data) => {
   const escopo = buildEscopoAnalise(data?.tipoAnalise, data?.filtros);
   const dataContext = {
-    periodo: data?.periodo || null,
-    tipoAnalise: data?.tipoAnalise || null,
-    escopo_analise: escopo,
-    filtros: data?.filtros || null,
-    indicadores: data?.indicadores || {},
-    insights: data?.insights || {},
+    ...buildScopedDataForAi(data),
     contexto_teste: Boolean(data?.insights?.contextoTeste),
     mensagem_contexto_teste: data?.insights?.contextoTeste ? MENSAGEM_CONTEXTO_TESTE : null,
     status_preliminar: data?.statusOperacao || null,
-    regra_contexto: {
-      tipo_operacao_transporte: "transporte — possui produção (viagens)",
-      tipo_operacao_apoio: "apoio — NÃO possui produção; proibido atribuir eficiência operacional de produção",
-      dados_transporte_disponiveis: Boolean(data?.indicadores?.dadosTransporteDisponiveis),
-      analise_producao_ignorada: Boolean(data?.insights?.analiseProducaoIgnorada),
-      producao_sem_consumo: Boolean(data?.insights?.producaoSemConsumo),
-      consumo_sem_producao: Boolean(data?.insights?.consumoSemProducao),
-    },
-    metricas_executivas: data?.insights?.metricasExecutivas || data?.metricasExecutivas || {},
-    inconsistencias_detectadas: data?.insights?.inconsistenciasDetectadas || data?.inconsistencias || [],
   };
   const prompt = buildAnalysisPrompt(escopo);
 

@@ -173,8 +173,88 @@ const statusBox = (status) => ({
 });
 
 const chartBlock = (title, chartNode, explanation, extras = []) => {
-  const block = [{ text: title, style: "chartTitle" }, chartNode, ...extras, { text: explanation, style: "chartExplanation", margin: [0, 0, 0, 14] }];
-  return block;
+  return [
+    { text: title, style: "chartTitle" },
+    chartNode,
+    ...extras,
+    { text: explanation, style: "chartExplanation", margin: [0, 0, 0, 16] },
+  ];
+};
+
+const insightBox = (text) => ({
+  table: {
+    widths: ["*"],
+    body: [[{ text, style: "insightText", border: [false, false, false, false], margin: [12, 10, 12, 10] }]],
+  },
+  layout: { hLineWidth: () => 0, vLineWidth: () => 0 },
+  fillColor: "#F0F9FF",
+  margin: [0, 0, 0, 10],
+});
+
+const kpiMini = (label, value) => ({
+  table: {
+    widths: ["*"],
+    body: [
+      [{ text: label, style: "kpiLabel", border: [false, false, false, false] }],
+      [{ text: value, style: "kpiValue", border: [false, false, false, false], margin: [0, 2, 0, 0] }],
+    ],
+  },
+  layout: "noBorders",
+  fillColor: "#F8FAFC",
+  margin: [0, 0, 6, 6],
+});
+
+const buildKpisForPdf = (indicadores, tipoAnalise, metricas) => {
+  const tipo = String(tipoAnalise || "geral").toLowerCase();
+  const totalFrota = toNumber(indicadores.totalVeiculosEscopo);
+  const cards = [];
+
+  if (tipo === "geral" || tipo === "combustivel" || tipo === "frota") {
+    cards.push(kpiMini("Custo total", fmtMoney(indicadores.totalValor)));
+    cards.push(kpiMini("Consumo", `${fmtNum(indicadores.totalLitros, 1)} L`));
+    if (indicadores.precoMedio != null) {
+      cards.push(kpiMini("Preço médio", `R$ ${fmtNum(indicadores.precoMedio, 2)}/L`));
+    }
+  }
+  if (tipo === "geral" || tipo === "transporte") {
+    cards.push(kpiMini("Viagens transp.", fmtNum(indicadores.totalViagensTransporte)));
+  }
+  if (totalFrota > 0) {
+    cards.push(
+      kpiMini(
+        "Frota ativa",
+        `${fmtNum(indicadores.veiculosAtivos)}/${fmtNum(totalFrota)} (${metricas.utilizacaoFrotaPct ?? 0}%)`
+      )
+    );
+    cards.push(kpiMini("Ociosidade", `${fmtNum(indicadores.veiculosOciosos)} (${metricas.ociosidadePct ?? 0}%)`));
+  }
+  return cards;
+};
+
+const kpiGrid = (cards) => {
+  const rows = [];
+  for (let i = 0; i < cards.length; i += 2) {
+    rows.push([cards[i] || { text: "" }, cards[i + 1] || { text: "" }]);
+  }
+  return {
+    table: { widths: ["*", "*"], body: rows },
+    layout: "noBorders",
+    margin: [0, 0, 0, 0],
+  };
+};
+
+const buildModuloBlocks = (modulos, tipoAnalise) => {
+  const tipo = String(tipoAnalise || "geral").toLowerCase();
+  const blocks = [];
+  const push = (titulo, texto) => {
+    if (!texto || texto === "Dados insuficientes para análise.") return;
+    blocks.push({ text: titulo, style: "subSectionTitle" });
+    blocks.push({ text: texto, style: "bodyCompact", margin: [0, 0, 0, 8] });
+  };
+  if (tipo === "geral" || tipo === "combustivel") push("Combustível", modulos?.combustivel);
+  if (tipo === "geral" || tipo === "transporte") push("Transporte", modulos?.transporte);
+  if (tipo === "geral" || tipo === "frota") push("Apoio", modulos?.apoio || modulos?.frota);
+  return blocks;
 };
 
 const ensurePdfMakeFonts = async () => {
@@ -240,158 +320,144 @@ const generateExecutivePdf = async ({ empresaId, analysis, report }) => {
   const modulos = report?.analiseModulos || report?.analise_modulos || {};
   const metricas = insights.metricasExecutivas || report?.metricasExecutivas || {};
   const prioridadeInconsistencia = Boolean(report?.prioridadeInconsistencia) || uniqueInconsistencias.length > 0;
-  const totalFrota =
-    toNumber(indicadores.totalVeiculosTransporte) + toNumber(indicadores.totalVeiculosApoio) ||
-    toNumber(indicadores.totalVeiculosEscopo);
+  const tipoAnalise = String(analysis?.tipoAnalise || "geral").toLowerCase();
+  const kpiCards = buildKpisForPdf(indicadores, tipoAnalise, metricas);
+  const incluiCombustivel = tipoAnalise === "geral" || tipoAnalise === "combustivel" || tipoAnalise === "frota";
+  const incluiTransporte = tipoAnalise === "geral" || tipoAnalise === "transporte";
 
   const pieData = (graficos.consumoPorVeiculo || []).map((row) => ({
     label: row.veiculo,
     value: row.litros,
   }));
-  const pieChart = buildPieChartCanvas(pieData);
-  const lineChart = buildLineChartCanvas(graficos.custoPorPeriodo || []);
-  const barChart = buildGroupedBarChartCanvas(graficos.consumoVsProducao || []);
+  const pieChart = incluiCombustivel ? buildPieChartCanvas(pieData) : null;
+  const lineChart = incluiCombustivel ? buildLineChartCanvas(graficos.custoPorPeriodo || []) : null;
+  const barChart = incluiTransporte ? buildGroupedBarChartCanvas(graficos.consumoVsProducao || []) : null;
 
-  const kpiRows = [
-    ["Indicador", "Valor", "Referência"],
-    ["Custo total", fmtMoney(indicadores.totalValor), "Abastecimentos no período"],
-    ["Consumo total", `${fmtNum(indicadores.totalLitros, 1)} L`, `Transporte ${fmtNum(indicadores.totalLitrosTransporte, 1)} L | Apoio ${fmtNum(indicadores.totalLitrosApoio, 1)} L`],
-    ["Preço médio", indicadores.precoMedio == null ? "—" : `R$ ${fmtNum(indicadores.precoMedio, 2)}/L`, "total valor ÷ total litros"],
-    ["Produção (transporte)", fmtNum(indicadores.totalViagensTransporte), "Viagens — somente tipo_operacao=transporte"],
-    [
-      "Utilização da frota",
-      totalFrota > 0 ? `${fmtNum(indicadores.veiculosAtivos)}/${fmtNum(totalFrota)} (${metricas.utilizacaoFrotaPct ?? 0}%)` : fmtNum(indicadores.veiculosAtivos),
-      "Ativo = viagem OU abastecimento OU parte diária no período",
-    ],
-    [
-      "Ociosidade",
-      `${fmtNum(indicadores.veiculosOciosos)} veículo(s)`,
-      `${metricas.ociosidadePct ?? 0}% da frota sem movimento registrado`,
-    ],
-  ];
-
+  const inconsistenciasVisiveis = uniqueInconsistencias.slice(0, 3);
   const blocoInconsistencia = uniqueInconsistencias.length
     ? [
         alertBox(
-          "PRIORIDADE: INCONSISTÊNCIA DE DADOS — o relatório deve ser lido com foco na correção dos lançamentos antes de decisões operacionais.",
+          "PRIORIDADE: corrigir inconsistências de dados antes de decisões operacionais.",
           "#B91C1C",
           "#FEF2F2"
         ),
-        { text: "Inconsistências detectadas", style: "alertTitle", color: "#B91C1C" },
         {
-          text:
-            "Produção sem consumo ou consumo sem produção indicam falha de integração, lançamento omitido ou tipo_operacao incorreto. Enquanto não corrigido, indicadores de eficiência ficam inválidos.",
-          style: "body",
-          margin: [0, 0, 0, 6],
+          ul: inconsistenciasVisiveis.map((item) => `ERRO DE DADO: ${item}`),
+          style: "bodyCompact",
+          margin: [0, 0, 0, 8],
         },
-        { ul: uniqueInconsistencias.map((item) => `ERRO DE DADO: ${item}`), margin: [0, 0, 0, 14] },
+        ...(uniqueInconsistencias.length > 3
+          ? [{ text: `+${uniqueInconsistencias.length - 3} inconsistência(s) adicional(is) no sistema.`, style: "muted" }]
+          : []),
       ]
     : [];
 
+  const chartSections = [];
+  if (incluiCombustivel && pieChart) {
+    chartSections.push(
+      ...chartBlock(
+        "Consumo por veículo",
+        { ...pieChart, margin: [0, 6, 0, 0] },
+        CHART_EXPLANATIONS.consumoPorVeiculo,
+        [
+          { text: chartLegendNote("pie"), style: "chartLegend", margin: [0, 4, 0, 2] },
+          { text: pieChart.empty ? "Sem dados no período." : pieLegendText(pieChart), style: "chartLegend", margin: [0, 0, 0, 2] },
+          pieLegendTable(pieChart),
+        ]
+      )
+    );
+  }
+  if (incluiCombustivel && lineChart) {
+    chartSections.push(
+      ...chartBlock(
+        "Custo ao longo do tempo",
+        { ...lineChart, margin: [0, 6, 0, 0] },
+        CHART_EXPLANATIONS.custoPorPeriodo,
+        [
+          { text: chartLegendNote("line"), style: "chartLegend", margin: [0, 4, 0, 2] },
+          lineDataTable(lineChart),
+        ]
+      )
+    );
+  }
+  if (incluiTransporte && barChart) {
+    chartSections.push(
+      ...chartBlock(
+        "Consumo vs produção (transporte)",
+        { ...barChart, margin: [0, 6, 0, 0] },
+        CHART_EXPLANATIONS.consumoVsProducao,
+        [
+          { text: chartLegendNote("bar"), style: "chartLegend", margin: [0, 4, 0, 2] },
+          barDataTable(barChart),
+        ]
+      )
+    );
+  }
+
+  const moduloBlocks = buildModuloBlocks(modulos, tipoAnalise);
+
   const content = [
-    // —— 1. CAPA ——
     {
       columns: [
         logoDataUrl
-          ? { image: logoDataUrl, width: 72, maxHeight: 72, margin: [0, 0, 16, 0] }
-          : { width: 72, text: "" },
+          ? { image: logoDataUrl, width: 56, maxHeight: 56, margin: [0, 0, 12, 0] }
+          : { width: 56, text: "" },
         [
-          { text: "RELATÓRIO EXECUTIVO", style: "coverTitle" },
-          { text: "Inteligência Operacional", style: "coverSubtitle" },
+          { text: "Relatório Executivo — Inteligência", style: "coverTitle" },
           { text: safeText(company?.nome, "Empresa"), style: "coverCompany" },
           {
-            text: `Período: ${safeText(analysis?.periodo?.inicio, "-")} até ${safeText(analysis?.periodo?.fim, "-")}`,
+            text: `${safeText(analysis?.periodo?.inicio, "-")} → ${safeText(analysis?.periodo?.fim, "-")} · ${tipoAnalise.toUpperCase()} · ${generatedAt}`,
             style: "muted",
-            margin: [0, 6, 0, 0],
+            margin: [0, 4, 0, 0],
           },
-          { text: `Gerado em ${generatedAt}`, style: "muted" },
-          { text: `Escopo: ${safeText(analysis?.tipoAnalise, "geral").toUpperCase()}`, style: "muted" },
         ],
       ],
-      margin: [0, 40, 0, 0],
+      margin: [0, 0, 0, 10],
     },
-    { text: "", pageBreak: "after" },
-
-    // —— AVISO TESTE ——
-    ...(contextoTeste ? [alertBox(insights.mensagemContextoTeste || MENSAGEM_CONTEXTO_TESTE)] : []),
-
+    ...(contextoTeste ? [alertBox(insights.mensagemContextoTeste || MENSAGEM_CONTEXTO_TESTE, "#92400E", "#FFFBEB")] : []),
     statusBox(status),
     ...blocoInconsistencia,
-
-    sectionDivider(),
-    { text: prioridadeInconsistencia ? "1. Resumo executivo (foco em correção de dados)" : "1. Resumo executivo", style: "sectionTitle" },
-    { text: resumo, style: "body", margin: [0, 0, 0, 12] },
-
-    sectionDivider(),
-    { text: "2. KPIs do período", style: "sectionTitle" },
     {
-      table: { headerRows: 1, widths: ["*", "auto", "*"], body: kpiRows },
-      layout: "lightHorizontalLines",
-      margin: [0, 0, 0, 14],
+      columns: [
+        {
+          width: "58%",
+          stack: [
+            {
+              text: prioridadeInconsistencia ? "Decisão prioritária" : "Resumo executivo",
+              style: "sectionTitle",
+              margin: [0, 6, 0, 4],
+            },
+            insightBox(resumo),
+          ],
+        },
+        {
+          width: "42%",
+          stack: [{ text: "Indicadores do escopo", style: "sectionTitle", margin: [0, 6, 0, 4] }, kpiGrid(kpiCards)],
+        },
+      ],
+      columnGap: 12,
+      margin: [0, 0, 0, 6],
     },
-
-    // —— 4. GRÁFICOS ——
+    ...(chartSections.length ? [{ text: "", pageBreak: "before" }, { text: "Gráficos analíticos", style: "sectionTitle" }, ...chartSections] : []),
+    ...(moduloBlocks.length
+      ? [sectionDivider(), { text: "Insights por módulo (escopo)", style: "sectionTitle" }, ...moduloBlocks]
+      : []),
     sectionDivider(),
-    { text: "3. Gráficos analíticos (dados reais)", style: "sectionTitle" },
-    ...chartBlock(
-      "3.1 Consumo por veículo (pizza)",
-      { ...pieChart, margin: [0, 4, 0, 0] },
-      CHART_EXPLANATIONS.consumoPorVeiculo,
-      [
-        { text: chartLegendNote("pie"), style: "chartLegend", margin: [0, 4, 0, 2] },
-        { text: pieChart.empty ? "Sem dados no período." : pieLegendText(pieChart), style: "chartLegend", margin: [0, 0, 0, 2] },
-        pieLegendTable(pieChart),
-      ]
-    ),
-    ...chartBlock(
-      "3.2 Custo ao longo do tempo (linha)",
-      { ...lineChart, margin: [0, 4, 0, 0] },
-      CHART_EXPLANATIONS.custoPorPeriodo,
-      [
-        { text: chartLegendNote("line"), style: "chartLegend", margin: [0, 4, 0, 2] },
-        lineDataTable(lineChart),
-      ]
-    ),
-    ...chartBlock(
-      "3.3 Consumo vs produção — transporte (barras)",
-      { ...barChart, margin: [0, 4, 0, 0] },
-      CHART_EXPLANATIONS.consumoVsProducao,
-      [
-        { text: chartLegendNote("bar"), style: "chartLegend", margin: [0, 4, 0, 2] },
-        barDataTable(barChart),
-      ]
-    ),
-
-    // —— 5. ANÁLISE POR MÓDULO ——
-    sectionDivider(),
-    { text: "4. Análise por módulo", style: "sectionTitle" },
-    { text: `Combustível: ${safeText(modulos?.combustivel)}`, style: "body" },
-    { text: `Transporte (produção): ${safeText(modulos?.transporte)}`, style: "body" },
-    { text: `Apoio (sem produção): ${safeText(modulos?.apoio || modulos?.frota)}`, style: "body", margin: [0, 0, 0, 12] },
-
-    // —— 6. DIAGNÓSTICO ——
-    sectionDivider(),
-    { text: "5. Diagnóstico inteligente", style: "sectionTitle" },
-    { text: diagnostico, style: "body", margin: [0, 0, 0, 12] },
-
-    // —— 7. IMPACTO ——
-    sectionDivider(),
-    { text: "6. Impacto financeiro", style: "sectionTitle" },
-    { text: impacto, style: "body", margin: [0, 0, 0, 12] },
-
-    // —— 8. RISCOS ——
-    sectionDivider(),
-    { text: "7. Riscos operacionais", style: "sectionTitle" },
-    { ul: riscos, margin: [0, 0, 0, 12] },
-
-    // —— 9. AÇÕES ——
-    sectionDivider(),
-    { text: "8. Ações recomendadas", style: "sectionTitle" },
-    { ul: acoes, margin: [0, 0, 0, 8] },
+    { text: "Diagnóstico", style: "sectionTitle" },
+    insightBox(diagnostico),
+    { text: "Impacto financeiro", style: "subSectionTitle" },
+    { text: impacto, style: "bodyCompact", margin: [0, 0, 0, 10] },
     {
-      text: "Regras operacionais: transporte possui produção (viagens); apoio não possui produção — não misturar contextos na execução das ações.",
+      columns: [
+        { width: "50%", stack: [{ text: "Riscos", style: "subSectionTitle" }, { ul: riscos.slice(0, 5), style: "bodyCompact" }] },
+        { width: "50%", stack: [{ text: "Ações recomendadas", style: "subSectionTitle" }, { ul: acoes.slice(0, 5), style: "bodyCompact" }] },
+      ],
+      columnGap: 14,
+    },
+    {
+      text: "Transporte = produção (viagens). Apoio = sem produção. Ações devem respeitar o escopo filtrado.",
       style: "muted",
-      italics: true,
+      margin: [0, 10, 0, 0],
     },
   ];
 
@@ -401,17 +467,18 @@ const generateExecutivePdf = async ({ empresaId, analysis, report }) => {
     content,
     defaultStyle: { font: "Roboto", fontSize: 10, color: "#111827", lineHeight: 1.3 },
     styles: {
-      coverTitle: { fontSize: 22, bold: true, color: "#0F172A" },
-      coverSubtitle: { fontSize: 13, color: "#334155", margin: [0, 4, 0, 0] },
-      coverCompany: { fontSize: 14, bold: true, color: "#1E293B", margin: [0, 12, 0, 0] },
-      title: { fontSize: 16, bold: true, color: "#0F172A" },
-      subtitle: { fontSize: 12, bold: true, color: "#1F2937" },
-      muted: { fontSize: 9, color: "#6B7280" },
-      sectionTitle: { fontSize: 13, bold: true, color: "#0F172A", margin: [0, 4, 0, 8] },
-      chartTitle: { fontSize: 11, bold: true, color: "#1F2937", margin: [0, 8, 0, 4] },
-      chartLegend: { fontSize: 8, color: "#4B5563" },
-      chartExplanation: { fontSize: 9, color: "#374151", italics: true },
-      alertTitle: { fontSize: 12, bold: true, margin: [0, 0, 0, 4] },
+      coverTitle: { fontSize: 16, bold: true, color: "#0F172A" },
+      coverCompany: { fontSize: 12, bold: true, color: "#1E293B", margin: [0, 2, 0, 0] },
+      muted: { fontSize: 8, color: "#64748B" },
+      sectionTitle: { fontSize: 12, bold: true, color: "#0F172A" },
+      subSectionTitle: { fontSize: 10, bold: true, color: "#334155", margin: [0, 6, 0, 4] },
+      chartTitle: { fontSize: 11, bold: true, color: "#0F172A", margin: [0, 10, 0, 6] },
+      chartLegend: { fontSize: 8, color: "#475569" },
+      chartExplanation: { fontSize: 9, color: "#1E293B" },
+      insightText: { fontSize: 10, color: "#0F172A", lineHeight: 1.35 },
+      kpiLabel: { fontSize: 8, color: "#64748B", margin: [8, 6, 8, 0] },
+      kpiValue: { fontSize: 11, bold: true, color: "#0F172A", margin: [8, 0, 8, 8] },
+      bodyCompact: { fontSize: 9, color: "#334155", lineHeight: 1.3 },
       body: { fontSize: 10, color: "#1F2937" },
     },
     footer: (currentPage, pageCount) => ({

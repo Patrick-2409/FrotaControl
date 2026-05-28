@@ -27,6 +27,7 @@ const gerarResumoExecutivo = ({ combustivel, transporte, frota, periodo = "mes" 
   const veiculosOciososApoio = toNumber(frota?.indicadores?.veiculosOciososApoio);
   const totalVeiculosTransporte = toNumber(frota?.indicadores?.totalVeiculosTransporte);
   const totalVeiculosApoio = toNumber(frota?.indicadores?.totalVeiculosApoio);
+  const totalVeiculosEscopo = toNumber(frota?.indicadores?.totalVeiculosEscopo);
   const veiculosConsiderados = toNumber(combustivel?.indicadores?.veiculosConsiderados);
 
   const operacaoParada = dadosTransporteDisponiveis && totalViagensTransporte === 0 && totalLitrosTransporte > 0;
@@ -48,9 +49,10 @@ const gerarResumoExecutivo = ({ combustivel, transporte, frota, periodo = "mes" 
     veiculosOciososTransporte,
     veiculosAtivosApoio,
     veiculosOciososApoio,
-    totalVeiculosTransporte,
-    totalVeiculosApoio,
-    veiculosConsiderados,
+      totalVeiculosTransporte,
+      totalVeiculosApoio,
+      totalVeiculosEscopo,
+      veiculosConsiderados,
     dadosTransporteDisponiveis,
   };
 

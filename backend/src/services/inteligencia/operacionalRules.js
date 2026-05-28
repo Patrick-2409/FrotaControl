@@ -119,6 +119,7 @@ const computeMetricasExecutivas = (indicadores = {}, insights = {}) => {
   const totalLitros = toNumber(indicadores.totalLitros);
   const destaque = insights?.veiculoDestaque;
   const totalFrota =
+    toNumber(indicadores.totalVeiculosEscopo) ||
     toNumber(indicadores.totalVeiculosTransporte) + toNumber(indicadores.totalVeiculosApoio) ||
     toNumber(indicadores.veiculosConsiderados);
 
@@ -138,76 +139,68 @@ const hasInconsistenciaCritica = (inconsistencias = [], insights = {}) =>
   insights.consumoSemProducao ||
   insights.operacaoParada;
 
+const trimText = (text, max = 420) => {
+  const raw = String(text || "").trim();
+  if (raw.length <= max) return raw;
+  const cut = raw.slice(0, max);
+  const lastStop = Math.max(cut.lastIndexOf("."), cut.lastIndexOf(";"));
+  return (lastStop > 80 ? cut.slice(0, lastStop + 1) : `${cut}…`).trim();
+};
+
 const buildResumoExecutivoFallback = ({ indicadores = {}, insights = {}, inconsistencias = [], metricas = {} }) => {
   if (hasInconsistenciaCritica(inconsistencias, insights)) {
     const principal = inconsistencias[0] || "divergência entre produção e consumo";
-    return (
-      `O fator dominante do período é ERRO DE DADO: ${principal}. ` +
-      `Enquanto a inconsistência não for corrigida, conclusões de eficiência operacional ficam comprometidas. ` +
-      `Prioridade imediata: reconciliar lançamentos de viagens e abastecimentos de transporte antes de qualquer decisão de custo.`
+    return trimText(
+      `Decisão imediata: tratar ERRO DE DADO (${principal}) antes de qualquer corte de custo. ` +
+        `Causa provável: lançamento omitido ou tipo_operacao incorreto. ` +
+        `Consequência: indicadores de eficiência inválidos até reconciliação.`
     );
   }
 
   if (metricas.concentracaoConsumoPct >= 50 && metricas.veiculoDestaqueNome) {
-    return (
-      `A operação concentra ${metricas.concentracaoConsumoPct}% do consumo no veículo ${metricas.veiculoDestaqueNome} ` +
-      `(${metricas.veiculoDestaqueLitros.toFixed(1)} L), elevando risco de parada se esse ativo ficar indisponível. ` +
-      `Utilização da frota em ${metricas.utilizacaoFrotaPct}% com ociosidade de ${metricas.ociosidadePct}%.`
+    return trimText(
+      `Decisão: reduzir dependência do veículo ${metricas.veiculoDestaqueNome} (${metricas.concentracaoConsumoPct}% do consumo). ` +
+        `Causa: concentração operacional. Consequência: parada desse ativo impacta ${metricas.concentracaoConsumoPct}% do abastecimento.`
     );
   }
 
   if (toNumber(indicadores.veiculosOciosos) > 0) {
-    return (
-      `Há ${toNumber(indicadores.veiculosOciosos)} veículo(s) ocioso(s) (${metricas.ociosidadePct}% da frota), ` +
-      `indicando capacidade ociosa que pressiona custo fixo sem retorno operacional no recorte.`
+    return trimText(
+      `Decisão: realocar ou desmobilizar ${toNumber(indicadores.veiculosOciosos)} veículo(s) ociosos (${metricas.ociosidadePct}% da frota). ` +
+        `Causa: ausência de viagem, abastecimento e parte diária no período. Consequência: custo fixo sem retorno.`
     );
   }
 
-  return (
-    `Operação com utilização de ${metricas.utilizacaoFrotaPct}% da frota e ` +
-    `${metricas.participacaoTransporteLitrosPct}% do consumo em veículos de transporte. ` +
-    `Sem inconsistências críticas detectadas no período analisado.`
+  return trimText(
+    `Decisão: manter operação no padrão atual (utilização ${metricas.utilizacaoFrotaPct}%). ` +
+      `Insight: consumo de transporte representa ${metricas.participacaoTransporteLitrosPct}% do total sem inconsistências críticas.`
   );
 };
 
 const buildDiagnosticoFallback = ({ indicadores = {}, insights = {}, inconsistencias = [], metricas = {} }) => {
-  const partes = [];
+  const bullets = [];
 
   if (hasInconsistenciaCritica(inconsistencias, insights)) {
-    partes.push(
-      `Diagnóstico técnico: ${inconsistencias.length} inconsistência(s) — principal: ${inconsistencias[0]}. ` +
-        `Risco operacional: decisões baseadas em produção ou consumo isolados podem gerar ação incorreta (penalizar veículo de apoio ou ignorar falha de integração).`
+    bullets.push(
+      `• Inconsistência (${inconsistencias.length}x): ${inconsistencias[0]} — risco: decisão errada sobre eficiência.`
     );
   }
-
-  if (metricas.concentracaoConsumoPct > 0 && metricas.veiculoDestaqueNome) {
-    partes.push(
-      `Concentração de ${metricas.concentracaoConsumoPct}% do consumo em ${metricas.veiculoDestaqueNome} ` +
-        `(${metricas.veiculoDestaqueLitros.toFixed(1)} L de ${toNumber(indicadores.totalLitros).toFixed(1)} L totais).`
-    );
+  if (metricas.concentracaoConsumoPct >= 40 && metricas.veiculoDestaqueNome) {
+    bullets.push(`• Concentração ${metricas.concentracaoConsumoPct}% em ${metricas.veiculoDestaqueNome}.`);
   }
-
   if (toNumber(indicadores.veiculosOciosos) > 0) {
-    partes.push(
-      `Ociosidade: ${toNumber(indicadores.veiculosOciosos)} veículo(s) (${metricas.ociosidadePct}% da frota) sem viagem, abastecimento ou parte diária no período.`
-    );
+    bullets.push(`• Ociosidade ${metricas.ociosidadePct}% (${toNumber(indicadores.veiculosOciosos)} veículo(s)).`);
   }
-
   if (insights.producaoSemConsumo) {
-    partes.push(
-      `Produção sem consumo: ${toNumber(indicadores.totalViagensTransporte)} viagem(ns) de transporte com 0 L registrados — integração ou lançamento incompleto.`
-    );
+    bullets.push(`• ${toNumber(indicadores.totalViagensTransporte)} viagem(ns) sem consumo registrado.`);
   }
-
   if (insights.consumoSemProducao) {
-    partes.push(
-      `Consumo sem produção: ${toNumber(indicadores.totalLitrosTransporte).toFixed(1)} L em transporte sem viagens — validar tipo_operacao do veículo.`
-    );
+    bullets.push(`• ${toNumber(indicadores.totalLitrosTransporte).toFixed(1)} L de transporte sem viagens.`);
   }
 
-  return partes.length
-    ? partes.join(" ")
-    : `Diagnóstico: operação estável com utilização de ${metricas.utilizacaoFrotaPct}% e sem divergências críticas entre produção e consumo.`;
+  return bullets.length
+    ? trimText(bullets.join(" "), 500)
+    : `• Operação estável: utilização ${metricas.utilizacaoFrotaPct}% sem divergência crítica.`;
 };
 
 const buildAcoesFallback = ({ indicadores = {}, insights = {}, inconsistencias = [] }) => {
@@ -256,9 +249,18 @@ const looksLikeKpiRepetition = (text) => {
     /preço médio de r\$/i,
     /total de \d+(\.\d+)? l/i,
     /\d+ viagem\(ns\)\./i,
+    /foram consumidos/i,
+    /total valor/i,
+    /total litros/i,
   ];
   const matches = kpiPatterns.filter((rx) => rx.test(raw)).length;
-  return matches >= 2 && raw.length < 280;
+  return matches >= 2 || (matches >= 1 && !/decisão|causa|consequência|insight|risco|prioridade/i.test(raw));
+};
+
+const looksLikeDataDescription = (text) => {
+  const raw = String(text || "").trim();
+  if (!raw) return true;
+  return looksLikeKpiRepetition(raw) || (/^a operação registrou/i.test(raw) && !/decisão|porque|portanto|logo/i.test(raw));
 };
 
 const enrichRelatorioExecutivo = (relatorio = {}, data = {}) => {
@@ -286,12 +288,12 @@ const enrichRelatorioExecutivo = (relatorio = {}, data = {}) => {
   });
   const acoesFallback = buildAcoesFallback({ indicadores, insights, inconsistencias: uniqueInconsistencias });
 
-  let resumoExecutivo = String(relatorio.resumoExecutivo || "").trim();
-  if (!resumoExecutivo || looksLikeKpiRepetition(resumoExecutivo) || temErro) {
+  let resumoExecutivo = trimText(String(relatorio.resumoExecutivo || "").trim(), 420);
+  if (!resumoExecutivo || looksLikeDataDescription(resumoExecutivo) || temErro) {
     resumoExecutivo = resumoFallback;
   }
 
-  let diagnosticoDetalhado = String(relatorio.diagnosticoDetalhado || "").trim();
+  let diagnosticoDetalhado = trimText(String(relatorio.diagnosticoDetalhado || "").trim(), 500);
   if (!diagnosticoDetalhado || looksGenericDiagnostico(diagnosticoDetalhado)) {
     diagnosticoDetalhado = diagnosticoFallback;
   }
@@ -326,6 +328,72 @@ const isGenericAction = (text) => GENERIC_ACTION_RX.some((rx) => rx.test(String(
 const looksGenericDiagnostico = (text) => {
   const raw = String(text || "").trim();
   return raw.length < 40 || (!/%|percentual|concentração|risco/i.test(raw) && !/\d/.test(raw));
+};
+
+const buildScopedIndicadores = (indicadores = {}, tipoAnalise = "geral") => {
+  const all = { ...indicadores };
+  if (tipoAnalise === "combustivel") {
+    return {
+      totalLitros: all.totalLitros,
+      totalValor: all.totalValor,
+      precoMedio: all.precoMedio,
+      totalLitrosTransporte: all.totalLitrosTransporte,
+      totalLitrosApoio: all.totalLitrosApoio,
+      veiculosConsiderados: all.veiculosConsiderados,
+    };
+  }
+  if (tipoAnalise === "transporte") {
+    return {
+      totalViagensTransporte: all.totalViagensTransporte,
+      totalLitrosTransporte: all.totalLitrosTransporte,
+      dadosTransporteDisponiveis: all.dadosTransporteDisponiveis,
+      veiculosAtivosTransporte: all.veiculosAtivosTransporte,
+      veiculosOciososTransporte: all.veiculosOciososTransporte,
+      totalVeiculosTransporte: all.totalVeiculosTransporte,
+    };
+  }
+  if (tipoAnalise === "frota") {
+    return {
+      veiculosAtivosApoio: all.veiculosAtivosApoio,
+      veiculosOciososApoio: all.veiculosOciososApoio,
+      totalVeiculosApoio: all.totalVeiculosApoio,
+      totalVeiculosEscopo: all.totalVeiculosEscopo,
+      totalLitrosApoio: all.totalLitrosApoio,
+      totalParteDiaria: all.totalParteDiaria,
+      veiculosAtivos: all.veiculosAtivos,
+      veiculosOciosos: all.veiculosOciosos,
+    };
+  }
+  return all;
+};
+
+const filterModulosByScope = (modulos = {}, tipoAnalise = "geral") => {
+  const full = modulos || {};
+  if (tipoAnalise === "combustivel") return { combustivel: full.combustivel || "" };
+  if (tipoAnalise === "transporte") return { transporte: full.transporte || "" };
+  if (tipoAnalise === "frota") return { apoio: full.apoio || full.frota || "" };
+  return full;
+};
+
+const buildScopedDataForAi = (data = {}) => {
+  const tipo = data?.tipoAnalise || "geral";
+  const escopo = buildEscopoAnalise(tipo, data?.filtros);
+  return {
+    periodo: data?.periodo,
+    tipoAnalise: tipo,
+    escopo_analise: escopo,
+    filtros: data?.filtros,
+    indicadores: buildScopedIndicadores(data?.indicadores || {}, tipo),
+    insights: {
+      veiculoDestaque: data?.insights?.veiculoDestaque,
+      contextoTeste: data?.insights?.contextoTeste,
+      producaoSemConsumo: data?.insights?.producaoSemConsumo,
+      consumoSemProducao: data?.insights?.consumoSemProducao,
+      metricasExecutivas: data?.insights?.metricasExecutivas || data?.metricasExecutivas,
+    },
+    inconsistencias: data?.insights?.inconsistenciasDetectadas || data?.inconsistencias || [],
+    modulos_permitidos: escopo.escopo,
+  };
 };
 
 const buildEscopoAnalise = (tipoAnalise = "geral", filtros = {}) => {
@@ -382,5 +450,10 @@ module.exports = {
   buildAcoesFallback,
   enrichRelatorioExecutivo,
   looksLikeKpiRepetition,
+  looksLikeDataDescription,
   hasInconsistenciaCritica,
+  buildScopedIndicadores,
+  buildScopedDataForAi,
+  filterModulosByScope,
+  trimText,
 };

@@ -1,4 +1,6 @@
-const CHART_COLORS = ["#2563EB", "#16A34A", "#F59E0B", "#DC2626", "#7C3AED", "#0891B2", "#EA580C", "#4B5563"];
+const CHART_COLORS = ["#1D4ED8", "#15803D", "#D97706", "#B91C1C", "#6D28D9", "#0E7490", "#C2410C", "#374151"];
+const CHART_BG = "#F8FAFC";
+const CHART_BORDER = "#CBD5E1";
 
 const toNumber = (value) => {
   const parsed = Number(value);
@@ -16,14 +18,14 @@ const truncateLabel = (label, max = 22) => {
   return `${raw.slice(0, max - 1)}…`;
 };
 
-const buildPieChartCanvas = (items = [], { width = 480, height = 165 } = {}) => {
+const buildPieChartCanvas = (items = [], { width = 515, height = 200 } = {}) => {
   const series = items
     .map((item) => ({ label: item.label || item.veiculo, value: toNumber(item.value ?? item.litros) }))
     .filter((item) => item.value > 0)
     .slice(0, 8);
 
   if (!series.length) {
-    return { canvas: [{ type: "rect", x: 0, y: 0, w: width, h: height, color: "#F3F4F6", r: 4 }], width, height, empty: true, series: [] };
+    return { canvas: [{ type: "rect", x: 0, y: 0, w: width, h: height, color: CHART_BG, r: 6 }], width, height, empty: true, series: [] };
   }
 
   const total = series.reduce((sum, item) => sum + item.value, 0);
@@ -31,7 +33,7 @@ const buildPieChartCanvas = (items = [], { width = 480, height = 165 } = {}) => 
   const cy = height / 2;
   const radius = Math.min(width, height) * 0.34;
   let angle = -Math.PI / 2;
-  const shapes = [{ type: "rect", x: 0, y: 0, w: width, h: height, color: "#FAFAFA", r: 4 }];
+  const shapes = [{ type: "rect", x: 0, y: 0, w: width, h: height, color: CHART_BG, r: 6, lineWidth: 1, lineColor: CHART_BORDER }];
 
   series.forEach((item, index) => {
     const slice = (item.value / total) * Math.PI * 2;
@@ -55,14 +57,14 @@ const buildPieChartCanvas = (items = [], { width = 480, height = 165 } = {}) => 
   return { canvas: shapes, width, height, series, total };
 };
 
-const buildLineChartCanvas = (items = [], { width = 480, height = 165 } = {}) => {
+const buildLineChartCanvas = (items = [], { width = 515, height = 200 } = {}) => {
   const series = items
     .map((item) => ({ label: item.periodo || item.label, value: toNumber(item.custo ?? item.value) }))
     .filter((item) => item.value >= 0)
     .slice(0, 14);
 
   if (!series.length) {
-    return { canvas: [{ type: "rect", x: 0, y: 0, w: width, h: height, color: "#F3F4F6", r: 4 }], width, height, empty: true, series: [] };
+    return { canvas: [{ type: "rect", x: 0, y: 0, w: width, h: height, color: CHART_BG, r: 6 }], width, height, empty: true, series: [] };
   }
 
   const padL = 44;
@@ -72,7 +74,7 @@ const buildLineChartCanvas = (items = [], { width = 480, height = 165 } = {}) =>
   const chartW = width - padL - padR;
   const chartH = height - padT - padB;
   const maxVal = Math.max(...series.map((item) => item.value), 1);
-  const shapes = [{ type: "rect", x: 0, y: 0, w: width, h: height, color: "#FAFAFA", r: 4 }];
+  const shapes = [{ type: "rect", x: 0, y: 0, w: width, h: height, color: CHART_BG, r: 6, lineWidth: 1, lineColor: CHART_BORDER }];
 
   for (let grid = 0; grid <= 4; grid += 1) {
     const y = padT + (chartH * grid) / 4;
@@ -114,7 +116,7 @@ const buildLineChartCanvas = (items = [], { width = 480, height = 165 } = {}) =>
   return { canvas: shapes, width, height, series, maxVal, points };
 };
 
-const buildGroupedBarChartCanvas = (items = [], { width = 480, height = 175 } = {}) => {
+const buildGroupedBarChartCanvas = (items = [], { width = 515, height = 210 } = {}) => {
   const series = items
     .map((item) => ({
       label: item.periodo || item.label,
@@ -125,7 +127,7 @@ const buildGroupedBarChartCanvas = (items = [], { width = 480, height = 175 } = 
     .slice(0, 12);
 
   if (!series.length) {
-    return { canvas: [{ type: "rect", x: 0, y: 0, w: width, h: height, color: "#F3F4F6", r: 4 }], width, height, empty: true, series: [] };
+    return { canvas: [{ type: "rect", x: 0, y: 0, w: width, h: height, color: CHART_BG, r: 6 }], width, height, empty: true, series: [] };
   }
 
   const padL = 44;
@@ -137,7 +139,7 @@ const buildGroupedBarChartCanvas = (items = [], { width = 480, height = 175 } = 
   const maxVal = Math.max(...series.flatMap((item) => [item.consumo, item.producao]), 1);
   const groupW = chartW / series.length;
   const barW = Math.min(12, groupW * 0.22);
-  const shapes = [{ type: "rect", x: 0, y: 0, w: width, h: height, color: "#FAFAFA", r: 4 }];
+  const shapes = [{ type: "rect", x: 0, y: 0, w: width, h: height, color: CHART_BG, r: 6, lineWidth: 1, lineColor: CHART_BORDER }];
 
   shapes.push({ type: "rect", x: padL, y: 6, w: 10, h: 10, color: "#2563EB" });
   shapes.push({ type: "rect", x: padL + 130, y: 6, w: 10, h: 10, color: "#16A34A" });
@@ -236,12 +238,9 @@ const pieLegendText = (chart) => {
 };
 
 const CHART_EXPLANATIONS = {
-  consumoPorVeiculo:
-    "Este gráfico mostra a distribuição real do consumo de combustível por veículo no período filtrado. Fatias maiores indicam maior participação no gasto total. Use para identificar concentração operacional e dependência de um único ativo.",
-  custoPorPeriodo:
-    "Este gráfico mostra a evolução diária do custo de combustível com base nos lançamentos reais. Tendência de alta sem aumento de produção em transporte pode sinalizar ineficiência ou erro de classificação.",
-  consumoVsProducao:
-    "Este gráfico compara, por dia, consumo (litros) e produção (viagens) apenas de veículos tipo_operacao=transporte. Barras desalinhadas indicam possível ERRO DE DADO (produção sem consumo ou consumo sem produção).",
+  consumoPorVeiculo: "Participação real do consumo por veículo. Fatia dominante = risco de dependência operacional.",
+  custoPorPeriodo: "Evolução diária do custo. Picos isolados exigem validação de lançamento ou demanda extraordinária.",
+  consumoVsProducao: "Comparativo diário transporte: litros vs viagens. Desalinhamento = possível erro de dado.",
 };
 
 const chartLegendNote = (tipo) => {
