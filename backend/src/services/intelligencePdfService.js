@@ -1,3 +1,4 @@
+const fsSync = require("fs");
 const fs = require("fs/promises");
 const path = require("path");
 const { getCompanyById } = require("../models/companyModel");
@@ -289,15 +290,63 @@ const getPuppeteer = () => {
   return puppeteerModule;
 };
 
+const getBrowserCandidates = () => {
+  const puppeteer = getPuppeteer();
+  const candidates = [
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/google-chrome",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/chromium",
+    "C:/Program Files/Google/Chrome/Application/chrome.exe",
+    "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
+    "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
+    "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
+  ];
+  try {
+    if (typeof puppeteer.executablePath === "function") {
+      candidates.unshift(puppeteer.executablePath());
+    }
+  } catch {
+    // Ignora erro de resolução automática do Puppeteer e tenta caminhos estáticos.
+  }
+  return candidates.filter(Boolean);
+};
+
+const resolveBrowserExecutable = () =>
+  getBrowserCandidates().find((candidate) => {
+    try {
+      return fsSync.existsSync(candidate);
+    } catch {
+      return false;
+    }
+  });
+
 const launchBrowser = async () => {
   const puppeteer = getPuppeteer();
   const timeoutMs = Math.max(20000, Number(process.env.PUPPETEER_LAUNCH_TIMEOUT_MS || 90000));
-  return puppeteer.launch({
+  const executablePath = resolveBrowserExecutable();
+  const baseOptions = {
     headless: true,
     args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--no-zygote", "--single-process"],
     timeout: timeoutMs,
     protocolTimeout: timeoutMs,
-  });
+  };
+  const attempts = executablePath ? [{ ...baseOptions, executablePath }, baseOptions] : [baseOptions];
+  let lastError = null;
+  for (const options of attempts) {
+    try {
+      return await puppeteer.launch(options);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  const attemptedPaths = getBrowserCandidates().join(" | ");
+  throw new Error(
+    `Falha ao iniciar Chromium para PDF. Configure PUPPETEER_EXECUTABLE_PATH ou instale o navegador no build. Caminhos tentados: ${attemptedPaths}. Detalhe: ${
+      lastError?.message || "erro desconhecido"
+    }`
+  );
 };
 
 const buildHtmlReport = async ({ company, analysis, report }) => {
