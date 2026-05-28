@@ -294,19 +294,21 @@ const getPuppeteer = () => {
 
 const launchBrowser = async () => {
   const puppeteer = getPuppeteer();
+  console.log("Cache Puppeteer:", process.env.PUPPETEER_CACHE_DIR);
   try {
     const browser = await puppeteer.launch({
       headless: "new",
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
       ],
     });
     console.log("[PDF] Chromium iniciado com sucesso");
     return browser;
   } catch (error) {
     console.error("[PDF][ERRO]", error);
-    throw error;
+    throw new Error("Falha ao iniciar Chromium - ambiente inválido");
   }
 };
 
