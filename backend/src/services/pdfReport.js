@@ -1,4 +1,6 @@
+const fsSync = require("fs");
 const fs = require("fs/promises");
+const os = require("os");
 const path = require("path");
 const { getCompanyById } = require("../models/companyModel");
 
@@ -11,6 +13,8 @@ try {
   const pdfMakeModule = require("pdfmake");
   PdfPrinter = pdfMakeModule?.default || pdfMakeModule;
 }
+
+let fontsReadyPromise = null;
 
 const toNumber = (value, fallback = 0) => {
   const parsed = Number(value);
@@ -122,17 +126,42 @@ const chartRows = (series, labelKey, valueKey, digits = 1, unit = "") => {
   return series.slice(0, 8).map((item) => [safeText(item?.[labelKey], "Sem identificação"), `${fmtNum(item?.[valueKey], digits)}${unit}`]);
 };
 
-const buildPrinter = () => {
-  const base = path.dirname(require.resolve("pdfmake/package.json"));
-  const fonts = {
-    Roboto: {
-      normal: path.join(base, "fonts", "Roboto-Regular.ttf"),
-      bold: path.join(base, "fonts", "Roboto-Medium.ttf"),
-      italics: path.join(base, "fonts", "Roboto-Italic.ttf"),
-      bolditalics: path.join(base, "fonts", "Roboto-MediumItalic.ttf"),
-    },
-  };
-  return new PdfPrinter(fonts);
+const ensurePdfMakeFonts = async () => {
+  if (!fontsReadyPromise) {
+    fontsReadyPromise = (async () => {
+      const vfsModule = require("pdfmake/build/vfs_fonts.js");
+      const vfs = vfsModule?.pdfMake?.vfs || vfsModule;
+      const fontDir = path.join(os.tmpdir(), "pdfmake-fonts");
+      const files = [
+        "Roboto-Regular.ttf",
+        "Roboto-Medium.ttf",
+        "Roboto-Italic.ttf",
+        "Roboto-MediumItalic.ttf",
+      ];
+      await fs.mkdir(fontDir, { recursive: true });
+      await Promise.all(
+        files.map(async (filename) => {
+          const target = path.join(fontDir, filename);
+          if (fsSync.existsSync(target)) return;
+          const b64 = vfs?.[filename];
+          if (!b64) throw new Error(`Fonte ${filename} não encontrada em pdfmake/build/vfs_fonts.js`);
+          await fs.writeFile(target, Buffer.from(b64, "base64"));
+        })
+      );
+      return {
+        normal: path.join(fontDir, "Roboto-Regular.ttf"),
+        bold: path.join(fontDir, "Roboto-Medium.ttf"),
+        italics: path.join(fontDir, "Roboto-Italic.ttf"),
+        bolditalics: path.join(fontDir, "Roboto-MediumItalic.ttf"),
+      };
+    })();
+  }
+  return fontsReadyPromise;
+};
+
+const buildPrinter = async () => {
+  const roboto = await ensurePdfMakeFonts();
+  return new PdfPrinter({ Roboto: roboto });
 };
 
 const generateExecutivePdf = async ({ empresaId, analysis, report }) => {
@@ -257,7 +286,7 @@ const generateExecutivePdf = async ({ empresaId, analysis, report }) => {
     },
   };
 
-  const printer = buildPrinter();
+  const printer = await buildPrinter();
   const pdfDoc = printer.createPdfKitDocument(docDefinition);
   const companySlug = String(company?.nome || "empresa")
     .normalize("NFD")
