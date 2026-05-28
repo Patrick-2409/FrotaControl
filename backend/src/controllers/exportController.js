@@ -1,6 +1,5 @@
 const ExcelJS = require("exceljs");
 const PDFDocument = require("pdfkit");
-const fsSync = require("fs");
 const fs = require("fs/promises");
 const path = require("path");
 const { listManagerRecords } = require("../models/recordModel");
@@ -41,34 +40,11 @@ const resolveExportScope = (req) => {
     usuario_id: null,
   };
 };
-const getBrowserCandidates = () => {
-  const puppeteer = getPuppeteer();
-  return [
-    process.env.PUPPETEER_EXECUTABLE_PATH,
-    typeof puppeteer.executablePath === "function" ? puppeteer.executablePath() : "",
-    "/usr/bin/google-chrome-stable",
-    "/usr/bin/google-chrome",
-    "/usr/bin/chromium-browser",
-    "/usr/bin/chromium",
-    "C:/Program Files/Google/Chrome/Application/chrome.exe",
-    "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
-    "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
-    "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
-  ].filter(Boolean);
-};
-const resolveBrowserExecutable = () =>
-  getBrowserCandidates().find((candidate) => {
-    try {
-      return fsSync.existsSync(candidate);
-    } catch {
-      return false;
-    }
-  });
 const launchBrowser = async () => {
-  const executablePath = resolveBrowserExecutable();
   const timeoutMs = Number(process.env.PUPPETEER_LAUNCH_TIMEOUT_MS || 90000);
+  console.log("[PDF] Cache Puppeteer:", process.env.PUPPETEER_CACHE_DIR);
   const baseOptions = {
-    headless: true,
+    headless: "new",
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
@@ -79,23 +55,15 @@ const launchBrowser = async () => {
     timeout: timeoutMs,
     protocolTimeout: timeoutMs,
   };
-  const attempts = executablePath
-    ? [{ ...baseOptions, executablePath }, baseOptions]
-    : [baseOptions];
-  let lastError;
   const puppeteer = getPuppeteer();
-  for (const options of attempts) {
-    try {
-      return await puppeteer.launch(options);
-    } catch (error) {
-      lastError = error;
-    }
+  try {
+    const browser = await puppeteer.launch(baseOptions);
+    console.log("[PDF] Chromium iniciado com sucesso");
+    return browser;
+  } catch (error) {
+    console.error("[PDF][ERRO]", error);
+    throw new Error("Falha ao iniciar Chromium - ambiente inválido");
   }
-  throw new Error(
-    `Falha ao iniciar navegador para gerar PDF. Verifique PUPPETEER_EXECUTABLE_PATH no ambiente de produção. Detalhe: ${
-      lastError?.message || "erro desconhecido"
-    }`
-  );
 };
 const normalizeDateFilter = (rawValue) => {
   if (!rawValue) return undefined;
