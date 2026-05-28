@@ -61,20 +61,8 @@ const EmpresaFrotaPage = lazy(() => import("./modules/company/fleet/pages/Empres
 const EmpresaPessoasPage = lazy(() => import("./modules/company/people/pages/EmpresaPessoasPage"));
 const EmpresaRelatoriosPage = lazy(() => import("./modules/company/reports/pages/EmpresaRelatoriosPage"));
 const EmpresaAlertasPage = lazy(() => import("./modules/company/alerts/pages/EmpresaAlertasPage"));
-const InteligenciaPage = lazy(() =>
-  importWithRetry(() =>
-    import("./pages/inteligencia").then((module) => ({
-      default: module.default,
-    }))
-  )
-);
-const RelatorioInteligenciaPage = lazy(() =>
-  importWithRetry(() =>
-    import("./pages/relatorio-inteligencia").then((module) => ({
-      default: module.default,
-    }))
-  )
-);
+const InteligenciaPage = lazy(() => import("./pages/inteligencia.jsx"));
+const RelatorioInteligenciaPage = lazy(() => import("./pages/relatorio-inteligencia.jsx"));
 
 function Protected({ children }) {
   const { user, loading } = useAuth();

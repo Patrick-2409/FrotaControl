@@ -1,33 +1,29 @@
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Legend,
-  Line,
-  LineChart,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Component, useEffect, useState } from "react";
 import { CHART_GUIDES } from "../utils/chartGuides";
-import { REPORT_COLORS, REPORT_TOOLTIP, reportColorById } from "../utils/reportChartColors";
+import { REPORT_COLORS, reportColorById } from "../utils/reportChartColors";
 
 const hasRows = (rows) => Array.isArray(rows) && rows.length > 0;
 const fmtNum = (value) => Number(value || 0).toLocaleString("pt-BR");
-const fmtMoney = (value) =>
-  Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const fmtDateTick = (value) => {
-  const raw = String(value || "");
-  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-    const [, mm, dd] = raw.split("-");
-    return `${dd}/${mm}`;
-  }
-  return raw.slice(0, 6);
+const maxFrom = (values) => {
+  const max = Math.max(...values, 0);
+  return max <= 0 ? 1 : max;
 };
+
+class ChartsErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  render() {
+    if (this.state.hasError) return this.props.fallback;
+    return this.props.children;
+  }
+}
 
 function ChartGuide({ guide }) {
   if (!guide) return null;
@@ -62,61 +58,46 @@ function ReportChartCard({ title, subtitle, children, guide, className = "" }) {
   );
 }
 
-function ChartEmpty() {
-  return (
-    <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500">
-      Sem dados suficientes no período selecionado
-    </div>
-  );
-}
-
-export default function ExecutiveReportCharts({ pieData = [], lineData = [], barData = [], tipoAnalise = "geral" }) {
+function FallbackChartsPanel({ pieData, lineData, barData, tipoAnalise }) {
   const tipo = String(tipoAnalise || "geral").toLowerCase();
   const showCombustivel = tipo === "geral" || tipo === "combustivel" || tipo === "frota";
   const showTransporte = tipo === "geral" || tipo === "transporte";
-
   const pieTotal = pieData.reduce((acc, item) => acc + Number(item?.value || 0), 0);
-  const enrichedPie = pieData.map((item) => ({
-    ...item,
-    percent: pieTotal > 0 ? (Number(item?.value || 0) / pieTotal) * 100 : 0,
-  }));
 
   return (
     <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-      {showCombustivel && enrichedPie.length > 1 ? (
+      {showCombustivel && pieData.length > 1 ? (
         <ReportChartCard
           title={CHART_GUIDES.consumoPorVeiculo.titulo}
           subtitle="Participação percentual por veículo"
           guide={CHART_GUIDES.consumoPorVeiculo}
         >
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={enrichedPie}
-                dataKey="value"
-                nameKey="name"
-                cx="50%"
-                cy="50%"
-                outerRadius={118}
-                innerRadius={52}
-                stroke="#FFFFFF"
-                strokeWidth={2}
-                labelLine={false}
-                label={({ percent }) => (percent >= 0.07 ? `${(percent * 100).toFixed(0)}%` : "")}
-              >
-                {enrichedPie.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={reportColorById(entry?.veiculo_id ?? entry?.name ?? index)} />
-                ))}
-              </Pie>
-              <Tooltip
-                {...REPORT_TOOLTIP}
-                formatter={(value, _name, item) => [
-                  `${fmtNum(value)} L (${Number(item?.payload?.percent || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%)`,
-                  item?.payload?.name || "Veículo",
-                ]}
-              />
-            </PieChart>
-          </ResponsiveContainer>
+          <div className="flex h-full flex-col items-center justify-center gap-3">
+            <div
+              className="h-44 w-44 rounded-full border border-slate-200"
+              style={{
+                background: (() => {
+                  let cursor = 0;
+                  const stops = pieData.map((item, index) => {
+                    const value = Number(item?.value || 0);
+                    const pct = pieTotal > 0 ? (value / pieTotal) * 100 : 0;
+                    const start = cursor;
+                    cursor += pct;
+                    return `${reportColorById(item?.veiculo_id ?? item?.name ?? index)} ${start}% ${cursor}%`;
+                  });
+                  return stops.length ? `conic-gradient(${stops.join(", ")})` : "#E2E8F0";
+                })(),
+              }}
+            />
+            <div className="grid w-full gap-1 px-2">
+              {pieData.map((item, index) => (
+                <div key={item.name} className="flex justify-between text-xs text-slate-600">
+                  <span>{item.name}</span>
+                  <span>{fmtNum(item.value)} L</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </ReportChartCard>
       ) : null}
 
@@ -125,27 +106,26 @@ export default function ExecutiveReportCharts({ pieData = [], lineData = [], bar
           title={CHART_GUIDES.custoPorPeriodo.titulo}
           subtitle="Tendência diária de custo"
           guide={CHART_GUIDES.custoPorPeriodo}
-          className={enrichedPie.length <= 1 ? "xl:col-span-2" : ""}
+          className={pieData.length <= 1 ? "xl:col-span-2" : ""}
         >
           {hasRows(lineData) ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={lineData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={REPORT_COLORS.grid} />
-                <XAxis dataKey="periodo" stroke={REPORT_COLORS.axis} fontSize={11} tickFormatter={fmtDateTick} />
-                <YAxis stroke={REPORT_COLORS.axis} fontSize={11} tickFormatter={(v) => fmtNum(v)} />
-                <Tooltip {...REPORT_TOOLTIP} formatter={(value) => [fmtMoney(value), "Custo"]} />
-                <Line
-                  type="monotone"
-                  dataKey="custo"
-                  stroke={REPORT_COLORS.line}
-                  strokeWidth={3}
-                  dot={{ r: 4, fill: REPORT_COLORS.line, strokeWidth: 0 }}
-                  activeDot={{ r: 6 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            <svg viewBox="0 0 520 200" className="h-full w-full">
+              <polyline
+                fill="none"
+                stroke={REPORT_COLORS.line}
+                strokeWidth="3"
+                points={lineData
+                  .map((item, index) => {
+                    const maxY = maxFrom(lineData.map((row) => Number(row.custo || 0)));
+                    const x = 28 + (464 * index) / Math.max(1, lineData.length - 1);
+                    const y = 180 - (150 * Number(item.custo || 0)) / maxY;
+                    return `${x},${y}`;
+                  })
+                  .join(" ")}
+              />
+            </svg>
           ) : (
-            <ChartEmpty />
+            <div className="flex h-full items-center justify-center text-sm text-slate-500">Sem dados</div>
           )}
         </ReportChartCard>
       ) : null}
@@ -158,22 +138,69 @@ export default function ExecutiveReportCharts({ pieData = [], lineData = [], bar
           className="xl:col-span-2"
         >
           {hasRows(barData) ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={barData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={REPORT_COLORS.grid} />
-                <XAxis dataKey="periodo" stroke={REPORT_COLORS.axis} fontSize={11} tickFormatter={fmtDateTick} />
-                <YAxis stroke={REPORT_COLORS.axis} fontSize={11} />
-                <Tooltip {...REPORT_TOOLTIP} formatter={(value, name) => [fmtNum(value), name]} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="consumo" name="Consumo (L)" fill={REPORT_COLORS.consumo} radius={[6, 6, 0, 0]} />
-                <Bar dataKey="producao" name="Produção (viagens)" fill={REPORT_COLORS.producao} radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <div className="flex h-full items-end gap-2 px-2 pb-2">
+              {barData.map((item) => {
+                const maxY = maxFrom(barData.flatMap((row) => [Number(row.consumo || 0), Number(row.producao || 0)]));
+                return (
+                  <div key={item.periodo} className="flex min-w-0 flex-1 flex-col items-center gap-2">
+                    <div className="flex h-52 w-full items-end justify-center gap-1">
+                      <div
+                        className="w-3 rounded-t bg-red-500"
+                        style={{ height: `${Math.max((Number(item.consumo || 0) / maxY) * 100, 4)}%` }}
+                        title={`Consumo ${fmtNum(item.consumo)}`}
+                      />
+                      <div
+                        className="w-3 rounded-t bg-emerald-600"
+                        style={{ height: `${Math.max((Number(item.producao || 0) / maxY) * 100, 4)}%` }}
+                        title={`Produção ${fmtNum(item.producao)}`}
+                      />
+                    </div>
+                    <span className="text-[10px] text-slate-500">{String(item.periodo).slice(5)}</span>
+                  </div>
+                );
+              })}
+            </div>
           ) : (
-            <ChartEmpty />
+            <div className="flex h-full items-center justify-center text-sm text-slate-500">Sem dados</div>
           )}
         </ReportChartCard>
       ) : null}
     </div>
+  );
+}
+
+export default function ExecutiveReportCharts(props) {
+  const [RechartsPanel, setRechartsPanel] = useState(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    import("./ExecutiveReportRechartsPanel")
+      .then((module) => {
+        if (!mounted) return;
+        if (typeof module?.default === "function") {
+          setRechartsPanel(() => module.default);
+        } else {
+          setFailed(true);
+        }
+      })
+      .catch(() => {
+        if (mounted) setFailed(true);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const fallback = <FallbackChartsPanel {...props} />;
+
+  if (failed || typeof RechartsPanel !== "function") {
+    return fallback;
+  }
+
+  return (
+    <ChartsErrorBoundary fallback={fallback}>
+      <RechartsPanel {...props} />
+    </ChartsErrorBoundary>
   );
 }

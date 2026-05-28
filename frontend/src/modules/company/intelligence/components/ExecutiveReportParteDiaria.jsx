@@ -1,14 +1,5 @@
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 import { CHART_GUIDES } from "../utils/chartGuides";
-import { REPORT_COLORS, REPORT_TOOLTIP } from "../utils/reportChartColors";
+import { REPORT_COLORS } from "../utils/reportChartColors";
 
 const fmtNum = (value, digits = 0) =>
   Number(value || 0).toLocaleString("pt-BR", { minimumFractionDigits: digits, maximumFractionDigits: digits });
@@ -107,28 +98,39 @@ export default function ExecutiveReportParteDiaria({ parteDiaria = {}, loading =
           <p className="mt-1 text-sm text-slate-500">Registros e horas por dia.</p>
           <div className="mt-4 h-[280px]">
             {chartData.length ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={REPORT_COLORS.grid} />
-                  <XAxis
-                    dataKey="periodo"
-                    stroke={REPORT_COLORS.axis}
-                    fontSize={10}
-                    tickFormatter={(v) => {
-                      const raw = String(v || "");
-                      if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-                        const [, mm, dd] = raw.split("-");
-                        return `${dd}/${mm}`;
-                      }
-                      return raw.slice(0, 6);
-                    }}
-                  />
-                  <YAxis stroke={REPORT_COLORS.axis} fontSize={10} />
-                  <Tooltip {...REPORT_TOOLTIP} />
-                  <Bar dataKey="registros" name="Registros" fill={REPORT_COLORS.primary} radius={[5, 5, 0, 0]} />
-                  <Bar dataKey="horas" name="Horas" fill={REPORT_COLORS.success} radius={[5, 5, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              <div className="flex h-full items-end gap-2 px-2 pb-2">
+                {chartData.map((item) => {
+                  const maxY = Math.max(
+                    ...chartData.flatMap((row) => [Number(row.registros || 0), Number(row.horas || 0)]),
+                    1
+                  );
+                  return (
+                    <div key={item.periodo} className="flex min-w-0 flex-1 flex-col items-center gap-2">
+                      <div className="flex h-full w-full max-h-52 items-end justify-center gap-1">
+                        <div
+                          className="w-3 rounded-t"
+                          style={{
+                            backgroundColor: REPORT_COLORS.primary,
+                            height: `${Math.max((Number(item.registros || 0) / maxY) * 100, 4)}%`,
+                          }}
+                          title={`Registros ${fmtNum(item.registros)}`}
+                        />
+                        <div
+                          className="w-3 rounded-t"
+                          style={{
+                            backgroundColor: REPORT_COLORS.success,
+                            height: `${Math.max((Number(item.horas || 0) / maxY) * 100, 4)}%`,
+                          }}
+                          title={`Horas ${fmtNum(item.horas, 1)}`}
+                        />
+                      </div>
+                      <span className="text-[10px] text-slate-500">
+                        {String(item.periodo).includes("-") ? String(item.periodo).slice(5).replace("-", "/") : item.periodo}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
               <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500">
                 Sem série diária de produtividade
