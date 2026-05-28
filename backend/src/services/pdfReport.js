@@ -4,15 +4,8 @@ const os = require("os");
 const path = require("path");
 const { getCompanyById } = require("../models/companyModel");
 
-let PdfPrinter;
-try {
-  // Preferência solicitada para ambiente Node.
-  PdfPrinter = require("pdfmake/src/printer");
-} catch {
-  // Compatibilidade para builds onde src/printer não resolve via CJS.
-  const pdfMakeModule = require("pdfmake");
-  PdfPrinter = pdfMakeModule?.default || pdfMakeModule;
-}
+// pdfmake v0.2.x — PdfPrinter exportado diretamente de src/printer (CJS)
+const PdfPrinter = require("pdfmake/src/printer");
 
 let fontsReadyPromise = null;
 
@@ -130,7 +123,9 @@ const ensurePdfMakeFonts = async () => {
   if (!fontsReadyPromise) {
     fontsReadyPromise = (async () => {
       const vfsModule = require("pdfmake/build/vfs_fonts.js");
-      const vfs = vfsModule?.pdfMake?.vfs || vfsModule;
+      // v0.2.x: { pdfMake: { vfs: { "Roboto-Regular.ttf": "<base64>" } } }
+      const vfs = vfsModule?.pdfMake?.vfs;
+      if (!vfs) throw new Error("pdfmake/build/vfs_fonts.js não exportou pdfMake.vfs — versão incompatível.");
       const fontDir = path.join(os.tmpdir(), "pdfmake-fonts");
       const files = [
         "Roboto-Regular.ttf",
@@ -165,8 +160,14 @@ const buildPrinter = async () => {
 };
 
 const generateExecutivePdf = async ({ empresaId, analysis, report }) => {
-  const company = await getCompanyById(empresaId);
-  const logoDataUrl = await resolveLogoDataUrl(company?.logo_url);
+  console.log("[PDF] generateExecutivePdf iniciado para empresaId:", empresaId);
+  let company = null;
+  try {
+    company = await getCompanyById(empresaId);
+  } catch (companyErr) {
+    console.warn("[PDF] Não foi possível carregar empresa para o PDF:", companyErr?.message);
+  }
+  const logoDataUrl = await resolveLogoDataUrl(company?.logo_url).catch(() => "");
   const indicadores = analysis?.indicadores || {};
   const graficos = analysis?.graficos || {};
   const status = statusFromInsights(analysis);
@@ -287,6 +288,7 @@ const generateExecutivePdf = async ({ empresaId, analysis, report }) => {
   };
 
   const printer = await buildPrinter();
+  // v0.2.x: createPdfKitDocument é síncrono — não usar await
   const pdfDoc = printer.createPdfKitDocument(docDefinition);
   const companySlug = String(company?.nome || "empresa")
     .normalize("NFD")

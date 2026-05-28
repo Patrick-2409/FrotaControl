@@ -192,24 +192,39 @@ const analisarOperacao = async (req, res) => {
 
 const exportarPdfInteligencia = async (req, res) => {
   try {
+    console.log("[PDF] Iniciando exportação de PDF de inteligência...");
     const result = await parseAndBuildAnalysis(req);
+    console.log("[PDF] Analysis concluída, gerando documento...");
     const pdf = await generateExecutivePdf({
       empresaId: result.empresaId,
       analysis: result.analysis,
       report: result.relatorio,
     });
+    console.log("[PDF] pdfDoc criado, filename:", pdf.filename);
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${pdf.filename}"`);
+
+    pdf.pdfDoc.on("error", (streamErr) => {
+      console.error("[PDF] Erro no stream do PDF:", streamErr?.message, streamErr?.stack);
+      if (!res.headersSent) {
+        res.status(500).json({ success: false, error: "Erro ao gerar stream do PDF.", message: streamErr?.message });
+      }
+    });
+
     pdf.pdfDoc.pipe(res);
     pdf.pdfDoc.end();
+    console.log("[PDF] Stream iniciado.");
     return;
   } catch (error) {
+    console.error("[PDF] Erro ao exportar PDF:", error?.message, error?.stack);
     const statusCode = error?.statusCode && Number.isInteger(error.statusCode) ? error.statusCode : 500;
-    return res.status(statusCode).json({
-      success: false,
-      error: error?.message || "Falha ao exportar PDF de inteligência.",
-      message: error?.message || "Falha ao exportar PDF de inteligência.",
-    });
+    if (!res.headersSent) {
+      return res.status(statusCode).json({
+        success: false,
+        error: error?.message || "Falha ao exportar PDF de inteligência.",
+        message: error?.message || "Falha ao exportar PDF de inteligência.",
+      });
+    }
   }
 };
 
