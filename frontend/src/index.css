@@ -1275,9 +1275,22 @@ textarea:focus-visible,
   .fc-report-page article,
   .fc-report-section,
   .fc-report-page [data-fc-chart-block],
+  .fc-report-page [data-fc-score-card],
   .fc-report-page table {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+
+  .fc-report-cover {
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .fc-report-board-summary {
+    break-after: page;
+    page-break-after: always;
+    min-height: calc(100vh - 4rem);
+    box-sizing: border-box;
   }
 }
 

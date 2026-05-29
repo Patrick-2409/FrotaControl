@@ -18,7 +18,10 @@ const {
 const { avaliarRegraDeOuro } = require("./inteligencia/regraDeOuro");
 const { classificarVeiculos } = require("./inteligencia/classificarVeiculos");
 const { runIntelligenceEngine } = require("./intelligenceEngine");
+const { buildExecutiveScoreNarratives } = require("./executiveNarrative");
 const { runRiskEngine } = require("./riskEngine");
+const { buildReportContentDeduped } = require("./reportContentDedup");
+const { sanitizeGptComplement, buildLegacyComplemento } = require("./gptComplementProcessor");
 
 const STATUS = {
   CRITICO: "CRITICO",
@@ -334,6 +337,20 @@ const montarRespostaInteligente = (analysis = {}) => {
   const dadosComValidacao = { ...dados, validacao, contextoParcial: contexto.operacional };
   const mio = runIntelligenceEngine(analysis, dados, validacao);
   const priorizacao = runRiskEngine({ analysis, normalized: dados, validacao, mio });
+  const narrativasScores = buildExecutiveScoreNarratives({
+    painelExecutivo: mio.painel_executivo,
+    indicadores: dados.indicadores,
+    validacao,
+    insightsCorrelacao: mio.insights_correlacao,
+    qualidadeInsight: mio.motores?.qualidade_dados,
+    consumoPorVeiculo:
+      dados.combustivel?.graficos?.consumoPorVeiculo ||
+      dados.combustivel?.veiculos ||
+      analysis.graficos?.consumoPorVeiculo ||
+      [],
+    custoPorPeriodo:
+      dados.combustivel?.graficos?.custoPorPeriodo || analysis.graficos?.custoPorPeriodo || [],
+  });
   const insightsLegados = gerarInsights(dadosComValidacao);
   const insights = [...mio.insights_compat, ...insightsLegados].filter(
     (item, index, arr) =>
@@ -381,7 +398,10 @@ const montarRespostaInteligente = (analysis = {}) => {
     origem: "motor_operacional",
     mio,
     priorizacao,
-    painel_executivo: mio.painel_executivo,
+    painel_executivo: {
+      ...mio.painel_executivo,
+      narrativas: narrativasScores,
+    },
     narrativa_executiva: mio.narrativa_executiva,
     top_riscos: priorizacao.top_riscos,
     acao_imediata: priorizacao.acao_imediata,
@@ -402,10 +422,9 @@ const mapRelatorioCompativel = (inteligencia = {}, analysis = {}) => {
     inconsistencias: inteligencia.problemas || [],
     metricas: analysis.insights?.metricasExecutivas || {},
   });
-  const diagnosticoDetalhado = complemento.diagnostico
-    ? `${diagnosticoMotor}\n\nComplemento IA: ${complemento.diagnostico}`.trim()
-    : diagnosticoMotor;
+  const diagnosticoDetalhado = diagnosticoMotor;
   const impactoFinanceiro =
+    complemento.consequencia ||
     complemento.impacto ||
     (toNumber(analysis.indicadores?.totalValor) > 0
       ? `Custo operacional de combustível no período: ${toNumber(analysis.indicadores?.totalValor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`
@@ -424,7 +443,7 @@ const mapRelatorioCompativel = (inteligencia = {}, analysis = {}) => {
     acoes: inteligencia.recomendacoes || [],
     insightsAutomaticos: inteligencia.insights || [],
     regraDeOuro: inteligencia.contexto?.regraDeOuro || null,
-    complementoGpt: complemento.diagnostico || complemento.impacto ? complemento : null,
+    complementoGpt: complemento.disponivel || complemento.hipotese_provavel ? complemento : null,
     inteligencia,
   };
 };
@@ -453,28 +472,31 @@ const normalizeMotorParaGpt = (inteligenciaMotor = {}) => ({
   ),
   recomendacoes: inteligenciaMotor.recomendacoes || [],
   regra_de_ouro: inteligenciaMotor.contexto?.regraDeOuro || null,
+  narrativa_executiva: inteligenciaMotor.narrativa_executiva || inteligenciaMotor.mio?.narrativa_executiva || null,
+  top_riscos: inteligenciaMotor.top_riscos || inteligenciaMotor.priorizacao?.top_riscos || [],
+  acao_imediata: inteligenciaMotor.acao_imediata || inteligenciaMotor.priorizacao?.acao_imediata || null,
+  risco_financeiro_estimado:
+    inteligenciaMotor.risco_financeiro_estimado || inteligenciaMotor.priorizacao?.risco_financeiro_estimado || null,
 });
 
-const buildPayloadGeracaoIA = (analysis = {}, inteligenciaMotor = {}, empresaId = null) => ({
-  empresaId,
-  ...analysis,
-  inteligenciaMotor: normalizeMotorParaGpt(inteligenciaMotor),
+const buildMotorSnapshotParaGpt = (inteligenciaMotor = {}) => ({
+  ...normalizeMotorParaGpt(inteligenciaMotor),
+  painel_executivo: inteligenciaMotor.painel_executivo || inteligenciaMotor.mio?.painel_executivo || null,
 });
 
-const mesclarComplementoGpt = (inteligenciaMotor = {}, gptReport = {}) => {
+const mesclarComplementoGpt = (inteligenciaMotor = {}, gptReport = {}, analysis = {}) => {
   const origemGpt = gptReport?.origem || "fallback";
   const gptAtivo = origemGpt === "openai" || origemGpt === "cache";
+  const indicadores = analysis?.indicadores || {};
 
-  const diagnosticoGpt = String(gptReport?.diagnosticoDetalhado || gptReport?.problemaPrincipal || "").trim();
-  const impactoGpt = String(gptReport?.impactoFinanceiro || gptReport?.impacto_financeiro || "").trim();
-  const recomendacoesGpt = mergeUniqueStrings(
-    gptReport?.acoes,
-    gptReport?.acoes_recomendadas,
-    gptReport?.recomendacoes_complementares
-  );
+  const sanitized = sanitizeGptComplement(gptReport, buildMotorSnapshotParaGpt(inteligenciaMotor), indicadores);
+  const complementoBase = buildLegacyComplemento(sanitized);
+  const temComplemento = Boolean(sanitized.disponivel && sanitized.campos_preenchidos > 0);
 
-  const temComplemento = Boolean(diagnosticoGpt || impactoGpt || recomendacoesGpt.length);
-  const recomendacoes = mergeUniqueStrings(inteligenciaMotor.recomendacoes || [], recomendacoesGpt).slice(0, 8);
+  const recomendacoesMotor = inteligenciaMotor.recomendacoes || [];
+  const recomendacoes = temComplemento && complementoBase.acao_recomendada
+    ? mergeUniqueStrings(recomendacoesMotor, [complementoBase.acao_recomendada]).slice(0, 8)
+    : recomendacoesMotor;
 
   const origem =
     gptAtivo && temComplemento
@@ -482,6 +504,15 @@ const mesclarComplementoGpt = (inteligenciaMotor = {}, gptReport = {}) => {
       : origemGpt === "limit"
         ? "motor_operacional+limite_gpt"
         : inteligenciaMotor.origem || "motor_operacional";
+
+  const complemento_gpt = temComplemento
+    ? {
+        ...complementoBase,
+        origem: origemGpt,
+        disponivel: gptAtivo,
+        campos_preenchidos: sanitized.campos_preenchidos,
+      }
+    : null;
 
   return {
     ...inteligenciaMotor,
@@ -491,28 +522,27 @@ const mesclarComplementoGpt = (inteligenciaMotor = {}, gptReport = {}) => {
     insights: inteligenciaMotor.insights || [],
     recomendacoes,
     origem,
-    complemento_gpt: temComplemento
-      ? {
-          diagnostico: diagnosticoGpt,
-          impacto: impactoGpt,
-          recomendacoes: recomendacoesGpt,
-          origem: origemGpt,
-          disponivel: gptAtivo,
-        }
-      : null,
+    complemento_gpt,
     contexto: {
       ...(inteligenciaMotor.contexto || {}),
-      complemento_gpt:
-        temComplemento
-          ? {
-              diagnostico: diagnosticoGpt,
-              impacto: impactoGpt,
-              origem: origemGpt,
-            }
-          : null,
+      complemento_gpt: complemento_gpt
+        ? {
+            hipotese_provavel: complemento_gpt.hipotese_provavel,
+            consequencia: complemento_gpt.consequencia,
+            risco_futuro: complemento_gpt.risco_futuro,
+            acao_recomendada: complemento_gpt.acao_recomendada,
+            origem: origemGpt,
+          }
+        : null,
     },
   };
 };
+
+const buildPayloadGeracaoIA = (analysis = {}, inteligenciaMotor = {}, empresaId = null) => ({
+  empresaId,
+  ...analysis,
+  inteligenciaMotor: buildMotorSnapshotParaGpt(inteligenciaMotor),
+});
 
 const mapStatusLabel = (status) => {
   if (status === STATUS.CRITICO) return "CRÍTICO";
@@ -594,11 +624,40 @@ const buildOverviewResponse = (analysis = {}, inteligencia = {}) => {
   const status = inteligencia.status || STATUS.OK;
   const modulos_leitura = gerarLeiturasModulo(inteligencia, indicadores);
 
+  const resumo = inteligencia.resumo || (vazio ? "Nenhum dado encontrado para o período selecionado." : "");
+  const regraDeOuro = inteligencia.contexto?.regraDeOuro || null;
+  const painelExecutivo = inteligencia.painel_executivo || inteligencia.mio?.painel_executivo || null;
+  const narrativaExecutiva = inteligencia.narrativa_executiva || inteligencia.mio?.narrativa_executiva || null;
+  const topRiscos = inteligencia.top_riscos || inteligencia.priorizacao?.top_riscos || [];
+  const acaoImediata = inteligencia.acao_imediata || inteligencia.priorizacao?.acao_imediata || null;
+  const riscoFinanceiroEstimado =
+    inteligencia.risco_financeiro_estimado || inteligencia.priorizacao?.risco_financeiro_estimado || null;
+  const problemas = inteligencia.problemas || [];
+  const insights = inteligencia.insights || [];
+  const inconsistenciasDetalhadas = analysis.inconsistenciasDetalhadas || [];
+  const diagnosticoTexto = problemas.filter(Boolean).join(". ") || resumo;
+
+  const conteudoRelatorio = buildReportContentDeduped({
+    resumo,
+    statusLabel: mapStatusLabel(status),
+    regraDeOuro,
+    painelExecutivo,
+    narrativaExecutiva,
+    topRiscos,
+    acaoImediata,
+    riscoFinanceiroEstimado,
+    problemas,
+    insights,
+    inconsistenciasDetalhadas,
+    diagnostico: diagnosticoTexto,
+    indicadores,
+  });
+
   return {
     status,
-    resumo: inteligencia.resumo || (vazio ? "Nenhum dado encontrado para o período selecionado." : ""),
-    problemas: inteligencia.problemas || [],
-    insights: inteligencia.insights || [],
+    resumo,
+    problemas,
+    insights,
     recomendacoes: inteligencia.recomendacoes || [],
     contexto: inteligencia.contexto || {},
     dados_graficos,
@@ -615,24 +674,24 @@ const buildOverviewResponse = (analysis = {}, inteligencia = {}) => {
     custo_por_periodo: dados_graficos.custo_por_periodo,
     consumo_vs_producao: dados_graficos.consumo_vs_producao,
     parte_diaria: dados_graficos.parte_diaria,
-    inconsistencias: inteligencia.problemas || [],
-    inconsistencias_detalhadas: analysis.inconsistenciasDetalhadas || [],
-    insights_automaticos: inteligencia.insights || [],
+    inconsistencias: problemas,
+    inconsistencias_detalhadas: inconsistenciasDetalhadas,
+    insights_automaticos: insights,
     status_operacao: {
       nivel: status,
       label: mapStatusLabel(status),
-      descricao: inteligencia.resumo || "",
+      descricao: resumo,
     },
     contexto_operacional: inteligencia.contexto?.operacional || null,
-    regra_de_ouro: inteligencia.contexto?.regraDeOuro || null,
+    regra_de_ouro: regraDeOuro,
     mio: inteligencia.mio || null,
     priorizacao: inteligencia.priorizacao || null,
-    painel_executivo: inteligencia.painel_executivo || inteligencia.mio?.painel_executivo || null,
-    narrativa_executiva: inteligencia.narrativa_executiva || inteligencia.mio?.narrativa_executiva || null,
-    top_riscos: inteligencia.top_riscos || inteligencia.priorizacao?.top_riscos || [],
-    acao_imediata: inteligencia.acao_imediata || inteligencia.priorizacao?.acao_imediata || null,
-    risco_financeiro_estimado:
-      inteligencia.risco_financeiro_estimado || inteligencia.priorizacao?.risco_financeiro_estimado || null,
+    painel_executivo: painelExecutivo,
+    narrativa_executiva: narrativaExecutiva,
+    top_riscos: topRiscos,
+    acao_imediata: acaoImediata,
+    risco_financeiro_estimado: riscoFinanceiroEstimado,
+    conteudo_relatorio: conteudoRelatorio,
   };
 };
 

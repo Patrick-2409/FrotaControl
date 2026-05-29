@@ -8,6 +8,8 @@ import { ExecutiveReportIndex, ExecutiveReportSection } from "../modules/company
 import ExecutiveInconsistenciasBlock from "../modules/company/intelligence/components/ExecutiveInconsistenciasBlock";
 import { ExecutiveRegraDeOuroCard, resolveRegraDeOuro } from "../modules/company/intelligence/components/ExecutiveRegraDeOuroCard";
 import ExecutiveMioPanel, { ExecutiveMioNarrativeBlock } from "../modules/company/intelligence/components/ExecutiveMioPanel";
+import ExecutiveBoardSummaryPage from "../modules/company/intelligence/components/ExecutiveBoardSummaryPage";
+import ExecutiveGptComplementBlock from "../modules/company/intelligence/components/ExecutiveGptComplementBlock";
 import ExecutiveRiskPanel, {
   ExecutiveFinancialRiskBlock,
   ExecutiveImmediateActionBlock,
@@ -16,6 +18,7 @@ import { mapOrigemIa } from "../modules/company/intelligence/components/ChartRep
 import { useAuth } from "../services/auth";
 import { getDadosGraficos } from "../modules/company/intelligence/utils/overviewInteligencia";
 import { downloadInteligenciaPdf, parseBlobErrorMessage } from "../modules/company/intelligence/utils/pdfDownload";
+import { resolveReportContent } from "../modules/company/intelligence/utils/resolveReportContent";
 import api, { extractApiErrorMessage, getFriendlyApiErrorMessage } from "../services/api";
 import { emitToast } from "../services/uiEvents";
 
@@ -110,6 +113,7 @@ function KpiCard({ label, value, sub }) {
 }
 
 const REPORT_SECTIONS = [
+  { id: "resumo-diretoria", icon: "👔", label: "Resumo para Diretoria" },
   { id: "regra-de-ouro", icon: "⚖️", label: "Regra de ouro" },
   { id: "painel-executivo", icon: "🎯", label: "Painel Executivo" },
   { id: "o-que-aconteceu", icon: "📌", label: "O que aconteceu" },
@@ -122,7 +126,7 @@ const REPORT_SECTIONS = [
   { id: "inconsistencias", icon: "⚠️", label: "Inconsistências detectadas" },
   { id: "indicadores", icon: "📈", label: "Indicadores principais" },
   { id: "graficos", icon: "📉", label: "Gráficos explicados" },
-  { id: "diagnostico-ia", icon: "🧠", label: "Diagnóstico da IA" },
+  { id: "complemento-ia", icon: "🧩", label: "Complemento estratégico (IA)" },
   { id: "impacto-financeiro", icon: "💰", label: "Impacto financeiro" },
   { id: "recomendacoes", icon: "🛠️", label: "Recomendações" },
 ];
@@ -405,13 +409,10 @@ export default function RelatorioInteligenciaPage() {
     }
   }, [loading, analysisLoading, requestLayoutPdf]);
 
-  const resumoExecutivo = overview?.resumo || relatorio?.resumoExecutivo || relatorio?.resumo_executivo || "";
-  const diagnostico =
-    relatorio?.diagnosticoDetalhado ||
-    overview?.complemento_gpt?.diagnostico ||
-    (Array.isArray(overview?.problemas) && overview.problemas.length ? overview.problemas.join(" ") : "") ||
-    relatorio?.diagnostico ||
-    "";
+  const reportContent = useMemo(() => resolveReportContent(overview, relatorio), [overview, relatorio]);
+
+  const resumoExecutivo = reportContent.resumoExecutivo;
+  const diagnostico = reportContent.diagnostico;
   const impactoFinanceiro =
     overview?.complemento_gpt?.impacto ||
     relatorio?.impactoFinanceiro ||
@@ -435,21 +436,28 @@ export default function RelatorioInteligenciaPage() {
     relatorio?.observacaoHistorico ||
     relatorio?.observacao_historico ||
     "";
-  const inconsistencias = overview?.inconsistencias || overview?.problemas || [];
-  const inconsistenciasDetalhadas = overview?.inconsistencias_detalhadas || [];
+  const inconsistencias = reportContent.inconsistencias;
+  const inconsistenciasDetalhadas = reportContent.inconsistenciasDetalhadas;
   const hasInconsistencias = inconsistencias.length > 0 || inconsistenciasDetalhadas.length > 0;
   const contextoOperacional = overview?.contexto_operacional || overview?.contexto?.operacional || null;
-  const insightsAutomaticos = useMemo(() => {
-    const raw = overview?.insights || overview?.insights_automaticos || [];
-    return raw.map((item) => (typeof item === "string" ? { tipo: "INSIGHT", mensagem: item } : item));
-  }, [overview]);
-  const regraDeOuro = useMemo(() => resolveRegraDeOuro({ overview, relatorio }), [overview, relatorio]);
-  const painelExecutivo = overview?.painel_executivo || overview?.mio?.painel_executivo || null;
-  const narrativaExecutiva = overview?.narrativa_executiva || overview?.mio?.narrativa_executiva || null;
-  const topRiscos = overview?.top_riscos || overview?.priorizacao?.top_riscos || [];
-  const acaoImediata = overview?.acao_imediata || overview?.priorizacao?.acao_imediata || null;
-  const riscoFinanceiroEstimado =
-    overview?.risco_financeiro_estimado || overview?.priorizacao?.risco_financeiro_estimado || null;
+  const insightsAutomaticos = reportContent.insights;
+  const regraDeOuro = useMemo(
+    () => reportContent.regraDeOuro || resolveRegraDeOuro({ overview, relatorio }),
+    [reportContent.regraDeOuro, overview, relatorio]
+  );
+  const painelExecutivo = reportContent.painelExecutivo;
+  const narrativaExecutiva = reportContent.narrativaExecutiva;
+  const topRiscos = reportContent.topRiscos;
+  const acaoImediata = reportContent.acaoImediata;
+  const riscoFinanceiroEstimado = reportContent.riscoFinanceiroEstimado;
+  const boardSummary = reportContent.boardSummary;
+  const complementoGpt = overview?.complemento_gpt || null;
+  const hasComplementoGpt = Boolean(
+    complementoGpt?.hipotese_provavel ||
+      complementoGpt?.consequencia ||
+      complementoGpt?.risco_futuro ||
+      complementoGpt?.acao_recomendada
+  );
   const modulosLeitura = overview?.modulos_leitura || relatorio?.analiseModulos || relatorio?.analise_modulos || {};
   const modulos = {
     combustivel: modulosLeitura.combustivel?.leitura || modulosLeitura.combustivel || "",
@@ -546,7 +554,7 @@ export default function RelatorioInteligenciaPage() {
           ref={reportRef}
           className="fc-report-document rounded-2xl border border-slate-200 bg-white p-6 shadow-sm print:border-0 print:shadow-none sm:p-8"
         >
-          <header className="flex flex-wrap items-start justify-between gap-6 border-b border-slate-200 pb-6">
+          <header className="fc-report-cover flex flex-wrap items-start justify-between gap-6 border-b border-slate-200 pb-6">
             <div className="flex min-w-0 items-start gap-4">
               <CompanyLogo
                 logoUrl={user?.logo_url}
@@ -571,6 +579,20 @@ export default function RelatorioInteligenciaPage() {
               <p className="mt-2 max-w-xs text-sm text-slate-600">{status.detail}</p>
             </div>
           </header>
+
+          <ExecutiveBoardSummaryPage
+            overview={overview}
+            boardSummary={boardSummary}
+            topRiscos={topRiscos}
+            acaoImediata={acaoImediata}
+            riscoFinanceiroEstimado={riscoFinanceiroEstimado}
+            painelExecutivo={painelExecutivo}
+            narrativaExecutiva={narrativaExecutiva}
+            regraDeOuro={regraDeOuro}
+            statusLabel={status.label}
+            indicadores={indicadores}
+            loading={loading}
+          />
 
           <div className="mt-6 print:hidden">
             <IntelligenceFiltersCard
@@ -787,6 +809,19 @@ export default function RelatorioInteligenciaPage() {
                   tipoAnalise={tipoAnalise}
                 />
               )}
+            </ExecutiveReportSection>
+
+            <ExecutiveReportSection
+              id="complemento-ia"
+              icon="🧩"
+              title="Complemento estratégico (IA)"
+              subtitle="Hipótese, consequência, risco futuro e ação — agrega valor sem repetir o motor operacional"
+              source="ia"
+              tone="default"
+              isEmpty={!loading && !hasComplementoGpt}
+              emptyMessage="Complemento IA disponível apenas quando o relatório é gerado com GPT (/inteligencia/gerar)."
+            >
+              <ExecutiveGptComplementBlock complemento={complementoGpt} loading={loading} />
             </ExecutiveReportSection>
 
             <ExecutiveReportSection

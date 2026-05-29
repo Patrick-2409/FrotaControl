@@ -128,25 +128,37 @@ test("buildOverviewResponse monta payload para GET /inteligencia/overview", () =
   assert.equal(overview.origem, "motor_operacional");
   assert.equal(overview.vazio, false);
   assert.ok(overview.painel_executivo?.score_geral);
+  assert.ok(overview.painel_executivo?.narrativas?.score_operacional?.negativas?.length > 0);
   assert.ok(overview.narrativa_executiva?.o_que_aconteceu);
   assert.ok(overview.mio?.motores);
   assert.ok(Array.isArray(overview.top_riscos));
+  assert.ok(overview.conteudo_relatorio?.meta);
+  assert.equal(typeof overview.conteudo_relatorio.meta.reducao_percentual, "number");
 });
 
-test("mesclarComplementoGpt preserva motor e adiciona complemento da IA", () => {
+test("mesclarComplementoGpt preserva motor e adiciona complemento estruturado da IA", () => {
   const motor = montarRespostaInteligente(analysisMock);
-  const merged = mesclarComplementoGpt(motor, {
-    origem: "openai",
-    diagnosticoDetalhado: "Diagnóstico complementar com foco em custo.",
-    impactoFinanceiro: "Exposição de R$ 3.500 no período.",
-    acoes: ["Revisar romaneio do veículo líder", "Auditar lançamentos"],
-  });
+  const merged = mesclarComplementoGpt(
+    motor,
+    {
+      origem: "openai",
+      complemento_executivo: {
+        hipotese_provavel: "Possível falha de integração entre romaneio e abastecimento.",
+        consequencia: "Margem operacional permanece exposta a distorção de alocação.",
+        risco_futuro: "O padrão pode se repetir em outros contratos do mesmo cliente.",
+        acao_recomendada: "Definir responsável por reconciliação diária viagem × nota.",
+      },
+    },
+    analysisMock
+  );
 
   assert.equal(merged.status, motor.status);
   assert.deepEqual(merged.problemas, motor.problemas);
   assert.equal(merged.origem, "motor_operacional+gpt");
-  assert.ok(merged.complemento_gpt?.diagnostico);
-  assert.ok(merged.complemento_gpt?.impacto);
+  assert.ok(merged.complemento_gpt?.hipotese_provavel);
+  assert.ok(merged.complemento_gpt?.consequencia);
+  assert.ok(merged.complemento_gpt?.risco_futuro);
+  assert.ok(merged.complemento_gpt?.acao_recomendada);
   assert.ok(merged.recomendacoes.length >= motor.recomendacoes.length);
 });
 

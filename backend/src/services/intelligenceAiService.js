@@ -133,20 +133,37 @@ const sanitizeResponse = (raw, data) => {
     raw?.status_operacao,
     toNumber(data?.indicadores?.veiculosOciosos) > 0 ? "Atenção: operação com ociosidade relevante." : "Operação estável no recorte atual."
   );
+  const complementoExecutivo =
+    raw?.complemento_executivo && typeof raw.complemento_executivo === "object"
+      ? {
+          hipotese_provavel: String(raw.complemento_executivo.hipotese_provavel || raw.complemento_executivo.hipotese || "").trim(),
+          consequencia: String(raw.complemento_executivo.consequencia || "").trim(),
+          risco_futuro: String(raw.complemento_executivo.risco_futuro || "").trim(),
+          acao_recomendada: String(raw.complemento_executivo.acao_recomendada || raw.complemento_executivo.acao || "").trim(),
+        }
+      : null;
+  const hasComplementoExecutivo = Boolean(
+    complementoExecutivo &&
+      (complementoExecutivo.hipotese_provavel ||
+        complementoExecutivo.consequencia ||
+        complementoExecutivo.risco_futuro ||
+        complementoExecutivo.acao_recomendada)
+  );
+
   const resumoRaw = String(raw?.resumo_executivo || "").trim();
-  const resumoExecutivo = ensureConcreteText(
-    looksLikeKpiRepetition(resumoRaw) ? "" : resumoRaw,
-    fallbackAnalise(data)
-  );
-  const diagnosticoDetalhado = ensureConcreteText(
-    raw?.diagnostico_detalhado || raw?.problema_principal,
-    fallbackProblem(data)
-  );
+  const resumoExecutivo = hasComplementoExecutivo
+    ? ""
+    : ensureConcreteText(looksLikeKpiRepetition(resumoRaw) ? "" : resumoRaw, fallbackAnalise(data));
+  const diagnosticoDetalhado = hasComplementoExecutivo
+    ? ""
+    : ensureConcreteText(raw?.diagnostico_detalhado || raw?.problema_principal, fallbackProblem(data));
   const analiseModulos = ensureModuleAnalysis(raw?.analise_modulos, data);
-  const impactoFinanceiro = ensureConcreteText(
-    raw?.impacto_financeiro,
-    `Impacto financeiro atual de R$ ${toNumber(data?.indicadores?.totalValor).toFixed(2)} no período analisado.`
-  );
+  const impactoFinanceiro = hasComplementoExecutivo
+    ? ""
+    : ensureConcreteText(
+        raw?.impacto_financeiro,
+        `Impacto financeiro atual de R$ ${toNumber(data?.indicadores?.totalValor).toFixed(2)} no período analisado.`
+      );
   const calculosUtilizados = ensureList(raw?.calculos_utilizados)
     .map((item) => ensureConcreteText(item, ""))
     .filter(Boolean);
@@ -154,9 +171,11 @@ const sanitizeResponse = (raw, data) => {
   const riscos = ensureList(raw?.riscos_operacionais || raw?.riscos)
     .map((item) => ensureConcreteText(item, ""))
     .filter(Boolean);
-  const acoes = ensureList(raw?.acoes_recomendadas || raw?.acoes)
-    .map((item) => ensureConcreteText(item, ""))
-    .filter(Boolean);
+  const acoes = hasComplementoExecutivo
+    ? ensureList(complementoExecutivo?.acao_recomendada ? [complementoExecutivo.acao_recomendada] : [])
+    : ensureList(raw?.acoes_recomendadas || raw?.acoes)
+        .map((item) => ensureConcreteText(item, ""))
+        .filter(Boolean);
   const inconsistencias = ensureList(raw?.inconsistencias)
     .map((item) => ensureConcreteText(item, ""))
     .filter(Boolean);
@@ -178,12 +197,13 @@ const sanitizeResponse = (raw, data) => {
     problemaPrincipal,
     analise,
     riscos: riscos.length ? riscos : fallbackRiscos(data),
-    acoes: acoes.length ? acoes : fallbackAcoes(data),
+    acoes: acoes.length ? acoes : hasComplementoExecutivo ? [] : fallbackAcoes(data),
     resumoExecutivo,
     diagnosticoDetalhado,
     analiseModulos,
     kpis,
     impactoFinanceiro,
+    complemento_executivo: hasComplementoExecutivo ? complementoExecutivo : null,
     inconsistencias: [...new Set([...inconsistenciasInput, ...inconsistencias])],
     historicoSuficiente,
     observacaoHistorico,
@@ -232,6 +252,15 @@ const buildStructuredText = (report) => {
     `KPIS:`,
     ...(kpisLines.length ? kpisLines : ["- KPIs indisponíveis para o período"]),
     `DIAGNÓSTICO DETALHADO: ${report.diagnosticoDetalhado || report.problemaPrincipal}`,
+    ...(report?.complemento_executivo
+      ? [
+          "COMPLEMENTO EXECUTIVO (IA):",
+          `- Hipótese provável: ${report.complemento_executivo.hipotese_provavel || "—"}`,
+          `- Consequência: ${report.complemento_executivo.consequencia || "—"}`,
+          `- Risco futuro: ${report.complemento_executivo.risco_futuro || "—"}`,
+          `- Ação recomendada: ${report.complemento_executivo.acao_recomendada || "—"}`,
+        ]
+      : []),
     `ANÁLISE POR MÓDULO:`,
     `- Combustível: ${report?.analiseModulos?.combustivel || "Dados insuficientes para combustível."}`,
     `- Transporte: ${report?.analiseModulos?.transporte || "Dados insuficientes para transporte."}`,

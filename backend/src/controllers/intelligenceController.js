@@ -103,7 +103,7 @@ const parseAndBuildAnalysis = async (req, { withGpt = false } = {}) => {
   if (withGpt) {
     const gptPayload = buildPayloadGeracaoIA(analysis, inteligenciaMotor, empresaId);
     gptReport = await generateIntelligenceReport(gptPayload);
-    inteligencia = mesclarComplementoGpt(inteligenciaMotor, gptReport);
+    inteligencia = mesclarComplementoGpt(inteligenciaMotor, gptReport, analysis);
   }
 
   const relatorio = mapRelatorioCompativel(inteligencia, analysis);

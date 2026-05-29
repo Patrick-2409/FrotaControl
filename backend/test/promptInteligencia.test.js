@@ -16,13 +16,16 @@ test("montarPromptIA inclui contexto, dados, inconsistências e insights", () =>
 
   assert.match(prompt, /gestor de frota/i);
   assert.match(prompt, /COMPLEMENTAR o motor interno/i);
+  assert.match(prompt, /complemento_executivo/i);
+  assert.match(prompt, /hipotese_provavel/i);
+  assert.match(prompt, /PROIBIDO REPETIR/i);
   assert.match(prompt, /MOTOR INTERNO/i);
   assert.match(prompt, /NÃO invente números/i);
   assert.match(prompt, /"baseEmTeste": true/);
   assert.match(prompt, /"totalLitros": 100/);
   assert.match(prompt, /consumo sem produção/);
   assert.match(prompt, /CONCENTRACAO/);
-  assert.match(prompt, /diagnostico_detalhado/);
+  assert.match(prompt, /consequencia/);
   assert.match(prompt, /REGRA DE OURO/i);
   assert.match(prompt, /dados_suficientes/);
 });
@@ -56,6 +59,7 @@ test("prepararPayloadPromptIA agrega inconsistências, insights e motor interno"
   assert.equal(payload.motor_interno.status, "ALERTA");
   assert.ok(payload.regra_de_ouro);
   assert.equal(typeof payload.regra_de_ouro.dados_suficientes, "boolean");
+  assert.ok(payload.conteudo_proibido_repetir);
 });
 
 test("buildPromptSistemaIA inclui escopo e formato JSON", () => {
@@ -65,6 +69,6 @@ test("buildPromptSistemaIA inclui escopo e formato JSON", () => {
   });
 
   assert.match(prompt, /ESCOPO OBRIGATÓRIO \(transporte\)/);
-  assert.match(prompt, /resumo_executivo/);
-  assert.match(prompt, /JSON válido/i);
+  assert.match(prompt, /complemento_executivo/);
+  assert.match(prompt, /hipotese_provavel/);
 });

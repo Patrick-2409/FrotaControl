@@ -9,6 +9,7 @@ import ExecutiveRiskPanel, {
   ExecutiveFinancialRiskBlock,
   ExecutiveImmediateActionBlock,
 } from "./ExecutiveRiskPanel";
+import ExecutiveGptComplementBlock from "./ExecutiveGptComplementBlock";
 
 function ExecutivePanelCard({ title, tone = "default", children, className = "" }) {
   const styles = getExecutiveToneStyles(tone);
@@ -84,8 +85,12 @@ export default function IntelligenceExecutivePanel({
   const insights = normalizeMensagens(overview?.insights);
   const recomendacoes = normalizeMensagens(overview?.recomendacoes);
   const complementoGpt = overview?.complemento_gpt || null;
-  const diagnosticoGpt = complementoGpt?.diagnostico || "";
-  const impactoGpt = complementoGpt?.impacto || "";
+  const hasComplementoGpt = Boolean(
+    complementoGpt?.hipotese_provavel ||
+      complementoGpt?.consequencia ||
+      complementoGpt?.risco_futuro ||
+      complementoGpt?.acao_recomendada
+  );
   const painelExecutivo = overview?.painel_executivo || overview?.mio?.painel_executivo || null;
   const narrativaExecutiva = overview?.narrativa_executiva || overview?.mio?.narrativa_executiva || null;
   const topRiscos = overview?.top_riscos || overview?.priorizacao?.top_riscos || [];
@@ -178,15 +183,9 @@ export default function IntelligenceExecutivePanel({
         </ExecutivePanelCard>
       ) : null}
 
-      {diagnosticoGpt ? (
-        <ExecutivePanelCard title="Diagnóstico complementar (IA)" tone={tone}>
-          <p className="text-base leading-relaxed text-zinc-100 sm:text-sm">{diagnosticoGpt}</p>
-        </ExecutivePanelCard>
-      ) : null}
-
-      {impactoGpt ? (
-        <ExecutivePanelCard title="Impacto financeiro (IA)" tone="warning">
-          <p className="text-base leading-relaxed text-zinc-100 sm:text-sm">{impactoGpt}</p>
+      {hasComplementoGpt ? (
+        <ExecutivePanelCard title="Complemento estratégico (IA)" tone={tone}>
+          <ExecutiveGptComplementBlock complemento={complementoGpt} variant="dark" />
         </ExecutivePanelCard>
       ) : null}
 
