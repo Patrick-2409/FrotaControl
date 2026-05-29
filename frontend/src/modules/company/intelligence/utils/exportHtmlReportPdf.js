@@ -74,6 +74,117 @@ const resolveScale = (element) => {
   return Math.max(1, maxCanvasEdge / Math.max(element.scrollWidth, element.scrollHeight));
 };
 
+/** html2canvas não entende oklch/oklab (Tailwind v4) — inlinar RGB computado pelo browser */
+const INLINE_PROPS = [
+  "display",
+  "position",
+  "boxSizing",
+  "width",
+  "height",
+  "minWidth",
+  "minHeight",
+  "maxWidth",
+  "maxHeight",
+  "margin",
+  "marginTop",
+  "marginRight",
+  "marginBottom",
+  "marginLeft",
+  "padding",
+  "paddingTop",
+  "paddingRight",
+  "paddingBottom",
+  "paddingLeft",
+  "flex",
+  "flexDirection",
+  "flexWrap",
+  "flexGrow",
+  "flexShrink",
+  "alignItems",
+  "justifyContent",
+  "gap",
+  "gridTemplateColumns",
+  "gridTemplateRows",
+  "color",
+  "backgroundColor",
+  "backgroundImage",
+  "border",
+  "borderRadius",
+  "borderColor",
+  "borderWidth",
+  "borderStyle",
+  "borderTop",
+  "borderRight",
+  "borderBottom",
+  "borderLeft",
+  "fontSize",
+  "fontWeight",
+  "fontFamily",
+  "lineHeight",
+  "textAlign",
+  "textTransform",
+  "letterSpacing",
+  "whiteSpace",
+  "wordBreak",
+  "overflow",
+  "overflowX",
+  "overflowY",
+  "opacity",
+  "boxShadow",
+  "outline",
+  "fill",
+  "stroke",
+  "verticalAlign",
+];
+
+const UNSUPPORTED_COLOR_FN = /oklch|oklab|color-mix|lab\(/i;
+
+const inlineComputedStylesPair = (sourceNode, cloneNode) => {
+  if (!(sourceNode instanceof Element) || !(cloneNode instanceof Element)) return;
+
+  const computed = window.getComputedStyle(sourceNode);
+  INLINE_PROPS.forEach((prop) => {
+    const value = computed[prop];
+    if (!value || value === "none" || value === "auto" || value === "normal") return;
+    if (typeof value === "string" && UNSUPPORTED_COLOR_FN.test(value)) return;
+    try {
+      cloneNode.style[prop] = value;
+    } catch {
+      /* propriedade não suportada em inline style */
+    }
+  });
+
+  const sourceChildren = sourceNode.children;
+  const cloneChildren = cloneNode.children;
+  for (let i = 0; i < sourceChildren.length; i += 1) {
+    if (cloneChildren[i]) {
+      inlineComputedStylesPair(sourceChildren[i], cloneChildren[i]);
+    }
+  }
+};
+
+const sanitizeStylesheetNodes = (clonedDoc) => {
+  clonedDoc.querySelectorAll("style").forEach((styleEl) => {
+    if (!styleEl.textContent) return;
+    styleEl.textContent = styleEl.textContent
+      .replace(/oklch\([^)]*\)/gi, "#334155")
+      .replace(/oklab\([^)]*\)/gi, "#334155")
+      .replace(/color-mix\([^)]*\)/gi, "#334155");
+  });
+  clonedDoc.querySelectorAll('link[rel="stylesheet"]').forEach((link) => link.remove());
+};
+
+const prepareCloneForHtml2Canvas = (sourceRoot, clonedDoc, clonedRoot) => {
+  removeHiddenNodes(clonedRoot);
+  fixRechartsInClone(sourceRoot, clonedRoot);
+  inlineComputedStylesPair(sourceRoot, clonedRoot);
+  sanitizeStylesheetNodes(clonedDoc);
+  clonedRoot.style.boxShadow = "none";
+  clonedRoot.style.maxWidth = `${sourceRoot.scrollWidth}px`;
+  clonedRoot.style.width = `${sourceRoot.scrollWidth}px`;
+  clonedRoot.style.backgroundColor = "#ffffff";
+};
+
 export async function exportHtmlReportToPdf(element, filename = "relatorio-inteligencia.pdf") {
   if (!element) {
     throw new Error("Conteúdo do relatório não encontrado.");
@@ -100,12 +211,8 @@ export async function exportHtmlReportToPdf(element, filename = "relatorio-intel
       height: element.scrollHeight,
       windowWidth: element.scrollWidth,
       windowHeight: element.scrollHeight,
-      onclone: (_clonedDoc, clonedElement) => {
-        removeHiddenNodes(clonedElement);
-        fixRechartsInClone(element, clonedElement);
-        clonedElement.style.boxShadow = "none";
-        clonedElement.style.maxWidth = `${element.scrollWidth}px`;
-        clonedElement.style.width = `${element.scrollWidth}px`;
+      onclone: (clonedDoc, clonedElement) => {
+        prepareCloneForHtml2Canvas(element, clonedDoc, clonedElement);
       },
     });
 

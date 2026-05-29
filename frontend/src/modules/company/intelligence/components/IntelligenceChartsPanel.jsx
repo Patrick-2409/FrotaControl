@@ -234,14 +234,6 @@ export default function IntelligenceChartsPanel({
     };
   }, []);
 
-  useEffect(() => {
-    console.log("[INTELIGENCIA] dados gráficos:", {
-      consumo_por_veiculo: pieData,
-      custo_por_periodo: lineData,
-      consumo_vs_producao: barData,
-    });
-  }, [pieData, lineData, barData]);
-
   const canUseRecharts = ENABLE_RECHARTS && !rechartsFailed && typeof RechartsChartsPanel === "function";
 
   const content = (
