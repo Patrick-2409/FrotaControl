@@ -8,23 +8,88 @@ const logPdf = (message, extra) => {
   console.log(`${PDF_LOG_PREFIX} ${message}`);
 };
 
-const getFrontendBaseUrl = () => {
-  const configured = String(
-    process.env.FRONTEND_URL || process.env.PUBLIC_FRONTEND_URL || process.env.VITE_FRONTEND_URL || ""
-  )
+const normalizeBaseUrl = (value) =>
+  String(value || "")
     .trim()
     .replace(/\/+$/, "");
-  if (configured) return configured;
-  if (process.env.NODE_ENV !== "production") {
-    return "http://127.0.0.1:5173";
+
+const isPublicHttpOrigin = (value) => {
+  const normalized = normalizeBaseUrl(value);
+  if (!/^https?:\/\//i.test(normalized)) return "";
+
+  try {
+    const parsed = new URL(normalized);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "";
+    const host = parsed.hostname.toLowerCase();
+    if (process.env.NODE_ENV === "production") {
+      if (host === "localhost" || host === "127.0.0.1" || host.endsWith(".local")) return "";
+    }
+    return normalizeBaseUrl(`${parsed.protocol}//${parsed.host}`);
+  } catch {
+    return "";
   }
+};
+
+const resolveFrontendUrlFromBody = (req) => {
+  const raw = String(
+    req?.body?.frontend_url ||
+      req?.body?.frontendUrl ||
+      req?.query?.frontend_url ||
+      req?.query?.frontendUrl ||
+      ""
+  ).trim();
+  return isPublicHttpOrigin(raw);
+};
+
+const resolveFrontendUrlFromRequest = (req) => {
+  if (!req?.headers) return "";
+
+  const fromBody = resolveFrontendUrlFromBody(req);
+  if (fromBody) return fromBody;
+
+  const origin = isPublicHttpOrigin(req.headers.origin);
+  if (origin) return origin;
+
+  const referer = String(req.headers.referer || req.headers.referrer || "").trim();
+  if (!referer) return "";
+
+  try {
+    const parsed = new URL(referer);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return isPublicHttpOrigin(`${parsed.protocol}//${parsed.host}`);
+    }
+  } catch {
+    /* ignore */
+  }
+
   return "";
 };
 
-const buildReportPageUrl = (filters = {}) => {
-  const base = getFrontendBaseUrl();
+const getFrontendBaseUrl = (req) => {
+  const configured = normalizeBaseUrl(
+    process.env.FRONTEND_URL || process.env.PUBLIC_FRONTEND_URL || process.env.VITE_FRONTEND_URL || ""
+  );
+  if (configured) return configured;
+
+  const fromRequest = resolveFrontendUrlFromRequest(req);
+  if (fromRequest) {
+    logPdf("FRONTEND_URL derivada do request", { base: fromRequest });
+    return fromRequest;
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    return "http://127.0.0.1:5173";
+  }
+
+  return "";
+};
+
+const buildReportPageUrl = (filters = {}, req) => {
+  const base = getFrontendBaseUrl(req);
   if (!base) {
-    const error = new Error("FRONTEND_URL não configurada no servidor para exportação PDF.");
+    const error = new Error(
+      "FRONTEND_URL não configurada no servidor para exportação PDF. Defina a variável no Render ou acesse pelo domínio do frontend."
+    );
     error.statusCode = 503;
     throw error;
   }
@@ -60,11 +125,32 @@ const resolveLaunchOptions = async () => {
 
   if (isHostedRuntime && !configuredPath) {
     const chromium = require("@sparticuz/chromium");
+    const puppeteer = require("puppeteer-core");
+
+    chromium.setGraphicsMode = false;
+
+    const mergedArgs = [...chromium.args, ...baseArgs];
+    const args =
+      typeof puppeteer.defaultArgs === "function"
+        ? await puppeteer.defaultArgs({ args: mergedArgs, headless: "shell" })
+        : mergedArgs;
+
+    let executablePath;
+    try {
+      executablePath = await chromium.executablePath();
+    } catch (launchErr) {
+      const error = new Error(
+        `Falha ao preparar Chromium (@sparticuz/chromium): ${launchErr?.message || launchErr}`
+      );
+      error.statusCode = 503;
+      throw error;
+    }
+
     return {
-      args: [...chromium.args, ...baseArgs],
-      defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
+      args,
+      defaultViewport: chromium.defaultViewport || { width: 1280, height: 900, deviceScaleFactor: 2 },
+      executablePath,
+      headless: "shell",
     };
   }
 
@@ -100,7 +186,13 @@ const launchBrowser = async () => {
     throw error;
   }
 
-  return puppeteer.launch(launchOptions);
+  try {
+    return await puppeteer.launch(launchOptions);
+  } catch (launchErr) {
+    const error = new Error(`Falha ao iniciar Chromium: ${launchErr?.message || launchErr}`);
+    error.statusCode = 503;
+    throw error;
+  }
 };
 
 const waitForReportReady = async (page, timeoutMs = 120_000) => {
@@ -187,11 +279,11 @@ const injectAuthSession = async (page, { token, userJson }) => {
   );
 };
 
-const generateIntelligencePdfFromReportPage = async ({ token, user, filters = {} }) => {
-  const url = buildReportPageUrl(filters);
+const generateIntelligencePdfFromReportPage = async ({ token, user, filters = {}, req }) => {
+  const url = buildReportPageUrl(filters, req);
   let browser = null;
 
-  logPdf("carregando página", { url: url.replace(/pdfExport=1/, "pdfExport=1") });
+  logPdf("carregando página", { url });
 
   try {
     browser = await launchBrowser();
@@ -228,6 +320,12 @@ const generateIntelligencePdfFromReportPage = async ({ token, user, filters = {}
       buffer: Buffer.from(pdfBuffer),
       filename: buildPdfFilename(filters),
     };
+  } catch (error) {
+    if (!error.statusCode && /timeout|Navigation|net::/i.test(String(error?.message || ""))) {
+      error.statusCode = 503;
+      error.message = `Timeout ou falha ao carregar o relatório para PDF: ${error.message}`;
+    }
+    throw error;
   } finally {
     if (browser) {
       await browser.close().catch(() => {});
@@ -239,5 +337,7 @@ module.exports = {
   buildReportPageUrl,
   buildPdfFilename,
   getFrontendBaseUrl,
+  resolveFrontendUrlFromRequest,
+  resolveFrontendUrlFromBody,
   generateIntelligencePdfFromReportPage,
 };

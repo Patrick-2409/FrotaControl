@@ -197,7 +197,9 @@ const exportarPdfInteligencia = async (req, res) => {
     const { payload } = parseAnalysisPayload(req);
     const { buffer, filename } = await generateIntelligencePdfFromReportPage({
       token,
+      user: req.user || null,
       filters: payload,
+      req,
     });
 
     res.setHeader("Content-Type", "application/pdf");

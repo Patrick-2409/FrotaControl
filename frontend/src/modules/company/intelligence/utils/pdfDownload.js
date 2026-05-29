@@ -52,12 +52,16 @@ export const buildInteligenciaPdfPayload = (filters) => {
   const periodo = filters.periodo || "mes";
   const veiculoId = Number(filters.veiculoId);
   const motoristaId = Number(filters.motoristaId);
-  return {
+  const payload = {
     periodo,
     veiculo_id: Number.isFinite(veiculoId) && veiculoId > 0 ? veiculoId : null,
     motorista_id: Number.isFinite(motoristaId) && motoristaId > 0 ? motoristaId : null,
     tipo_analise: filters.tipoAnalise || "geral",
   };
+  if (typeof window !== "undefined" && window.location?.origin) {
+    payload.frontend_url = window.location.origin;
+  }
+  return payload;
 };
 
 const isPdfDisabledResponse = (data) =>
@@ -71,11 +75,17 @@ export const downloadInteligenciaPdf = async (
   { fallbackName = "relatorio-inteligencia.pdf", timeoutMs = 120000 } = {}
 ) => {
   const payload = buildInteligenciaPdfPayload(filters);
-  const pdfResponse = await api.post("/inteligencia/pdf", payload, {
-    responseType: "blob",
-    timeout: timeoutMs,
-    skipGlobalErrorToast: true,
-  });
+  let pdfResponse;
+  try {
+    pdfResponse = await api.post("/inteligencia/pdf", payload, {
+      responseType: "blob",
+      timeout: timeoutMs,
+      skipGlobalErrorToast: true,
+    });
+  } catch (error) {
+    const message = await parseBlobErrorMessage(error, PDF_DESATIVADO_MENSAGEM);
+    throw new Error(message);
+  }
 
   const contentType = String(pdfResponse?.headers?.["content-type"] || "").toLowerCase();
   const data = pdfResponse?.data;
