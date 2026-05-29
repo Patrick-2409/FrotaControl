@@ -1,5 +1,93 @@
 const HIDDEN_SELECTORS = [".fc-report-export-skip", ".print\\:hidden"];
 
+const UNSUPPORTED_COLOR_FN = /oklch|oklab|color-mix|\blab\(|\blch\(/i;
+
+const COLOR_PROPS = new Set([
+  "color",
+  "backgroundColor",
+  "borderColor",
+  "borderTopColor",
+  "borderRightColor",
+  "borderBottomColor",
+  "borderLeftColor",
+  "outlineColor",
+  "fill",
+  "stroke",
+  "stopColor",
+  "floodColor",
+  "lightingColor",
+]);
+
+const INLINE_PROPS = [
+  "display",
+  "position",
+  "boxSizing",
+  "width",
+  "height",
+  "minWidth",
+  "minHeight",
+  "maxWidth",
+  "maxHeight",
+  "margin",
+  "marginTop",
+  "marginRight",
+  "marginBottom",
+  "marginLeft",
+  "padding",
+  "paddingTop",
+  "paddingRight",
+  "paddingBottom",
+  "paddingLeft",
+  "flex",
+  "flexDirection",
+  "flexWrap",
+  "flexGrow",
+  "flexShrink",
+  "alignItems",
+  "justifyContent",
+  "alignSelf",
+  "gap",
+  "gridTemplateColumns",
+  "gridTemplateRows",
+  "gridColumn",
+  "gridRow",
+  "color",
+  "backgroundColor",
+  "backgroundImage",
+  "backgroundSize",
+  "backgroundPosition",
+  "border",
+  "borderRadius",
+  "borderColor",
+  "borderWidth",
+  "borderStyle",
+  "borderTop",
+  "borderRight",
+  "borderBottom",
+  "borderLeft",
+  "fontSize",
+  "fontWeight",
+  "fontFamily",
+  "lineHeight",
+  "textAlign",
+  "textTransform",
+  "letterSpacing",
+  "whiteSpace",
+  "wordBreak",
+  "overflow",
+  "overflowX",
+  "overflowY",
+  "opacity",
+  "boxShadow",
+  "outline",
+  "fill",
+  "stroke",
+  "strokeWidth",
+  "verticalAlign",
+  "listStyle",
+  "listStyleType",
+];
+
 const blobToDataUrl = (blob) =>
   new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -23,7 +111,7 @@ const temporarilyInlineImages = async (root) => {
         restores.push({ img, original });
         img.src = dataUrl;
       } catch {
-        /* logo externo sem CORS — html2canvas ignora ou usa fallback */
+        /* logo externo sem CORS */
       }
     })
   );
@@ -35,9 +123,112 @@ const temporarilyInlineImages = async (root) => {
   };
 };
 
-const removeHiddenNodes = (root) => {
-  HIDDEN_SELECTORS.forEach((selector) => {
-    root.querySelectorAll(selector).forEach((node) => node.remove());
+const toSafeColor = (value, property = "color") => {
+  const raw = String(value || "").trim();
+  if (!raw || raw === "none" || raw === "transparent" || raw === "currentcolor") return raw;
+  if (!UNSUPPORTED_COLOR_FN.test(raw)) return raw;
+
+  const probe = document.createElement("span");
+  probe.style.setProperty("position", "absolute");
+  probe.style.setProperty("visibility", "hidden");
+  probe.style.setProperty(property, raw);
+  document.body.appendChild(probe);
+  const resolved = getComputedStyle(probe).getPropertyValue(property) || getComputedStyle(probe).color;
+  probe.remove();
+  if (resolved && !UNSUPPORTED_COLOR_FN.test(resolved)) return resolved;
+  return property.includes("background") ? "#ffffff" : "#334155";
+};
+
+const sanitizeCSSValue = (prop, value) => {
+  if (!value || value === "none" || value === "auto" || value === "normal" || value === "initial") return null;
+  const text = String(value);
+  if (UNSUPPORTED_COLOR_FN.test(text)) {
+    return COLOR_PROPS.has(prop) ? toSafeColor(text, prop) : null;
+  }
+  return text;
+};
+
+const collectElements = (root) => [root, ...root.querySelectorAll("*")];
+
+const shouldIgnoreForExport = (node) => {
+  if (!(node instanceof Element)) return false;
+  if (node.classList?.contains("print:hidden") || node.classList?.contains("fc-report-export-skip")) {
+    return true;
+  }
+  return HIDDEN_SELECTORS.some((selector) => {
+    try {
+      return node.matches(selector);
+    } catch {
+      return false;
+    }
+  });
+};
+
+const applyInlineExportStyles = (element) => {
+  const entries = [];
+  collectElements(element).forEach((el) => {
+    if (!(el instanceof Element)) return;
+    entries.push({
+      el,
+      className: el.getAttribute("class"),
+      style: el.getAttribute("style"),
+    });
+
+    const computed = window.getComputedStyle(el);
+    el.removeAttribute("class");
+
+    INLINE_PROPS.forEach((prop) => {
+      const safe = sanitizeCSSValue(prop, computed[prop]);
+      if (!safe) return;
+      try {
+        el.style.setProperty(prop.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`), safe);
+      } catch {
+        try {
+          el.style[prop] = safe;
+        } catch {
+          /* ignore */
+        }
+      }
+    });
+
+    if (el instanceof SVGElement) {
+      ["fill", "stroke"].forEach((attr) => {
+        const safe = sanitizeCSSValue(attr, computed.getPropertyValue(attr) || computed[attr]);
+        if (safe && safe !== "none") el.setAttribute(attr, safe);
+      });
+    }
+  });
+
+  return () => {
+    entries.forEach(({ el, className, style }) => {
+      if (className == null) el.removeAttribute("class");
+      else el.setAttribute("class", className);
+      if (style == null) el.removeAttribute("style");
+      else el.setAttribute("style", style);
+    });
+  };
+};
+
+const stripStylesheetsFromClone = (clonedDoc, clonedRoot) => {
+  clonedDoc.querySelectorAll("style, link[rel='stylesheet'], link[rel=\"stylesheet\"]").forEach((node) => {
+    node.remove();
+  });
+  clonedRoot.querySelectorAll("style, link[rel='stylesheet'], link[rel=\"stylesheet\"]").forEach((node) => {
+    node.remove();
+  });
+
+  collectElements(clonedRoot).forEach((el) => {
+    el.removeAttribute("class");
+    const styleAttr = el.getAttribute("style");
+    if (styleAttr && UNSUPPORTED_COLOR_FN.test(styleAttr)) {
+      el.setAttribute(
+        "style",
+        styleAttr
+          .replace(/oklch\([^;)]*\)/gi, "#334155")
+          .replace(/oklab\([^;)]*\)/gi, "#334155")
+          .replace(/color-mix\([^;)]*\)/gi, "#334155")
+      );
+    }
   });
 };
 
@@ -74,117 +265,6 @@ const resolveScale = (element) => {
   return Math.max(1, maxCanvasEdge / Math.max(element.scrollWidth, element.scrollHeight));
 };
 
-/** html2canvas não entende oklch/oklab (Tailwind v4) — inlinar RGB computado pelo browser */
-const INLINE_PROPS = [
-  "display",
-  "position",
-  "boxSizing",
-  "width",
-  "height",
-  "minWidth",
-  "minHeight",
-  "maxWidth",
-  "maxHeight",
-  "margin",
-  "marginTop",
-  "marginRight",
-  "marginBottom",
-  "marginLeft",
-  "padding",
-  "paddingTop",
-  "paddingRight",
-  "paddingBottom",
-  "paddingLeft",
-  "flex",
-  "flexDirection",
-  "flexWrap",
-  "flexGrow",
-  "flexShrink",
-  "alignItems",
-  "justifyContent",
-  "gap",
-  "gridTemplateColumns",
-  "gridTemplateRows",
-  "color",
-  "backgroundColor",
-  "backgroundImage",
-  "border",
-  "borderRadius",
-  "borderColor",
-  "borderWidth",
-  "borderStyle",
-  "borderTop",
-  "borderRight",
-  "borderBottom",
-  "borderLeft",
-  "fontSize",
-  "fontWeight",
-  "fontFamily",
-  "lineHeight",
-  "textAlign",
-  "textTransform",
-  "letterSpacing",
-  "whiteSpace",
-  "wordBreak",
-  "overflow",
-  "overflowX",
-  "overflowY",
-  "opacity",
-  "boxShadow",
-  "outline",
-  "fill",
-  "stroke",
-  "verticalAlign",
-];
-
-const UNSUPPORTED_COLOR_FN = /oklch|oklab|color-mix|lab\(/i;
-
-const inlineComputedStylesPair = (sourceNode, cloneNode) => {
-  if (!(sourceNode instanceof Element) || !(cloneNode instanceof Element)) return;
-
-  const computed = window.getComputedStyle(sourceNode);
-  INLINE_PROPS.forEach((prop) => {
-    const value = computed[prop];
-    if (!value || value === "none" || value === "auto" || value === "normal") return;
-    if (typeof value === "string" && UNSUPPORTED_COLOR_FN.test(value)) return;
-    try {
-      cloneNode.style[prop] = value;
-    } catch {
-      /* propriedade não suportada em inline style */
-    }
-  });
-
-  const sourceChildren = sourceNode.children;
-  const cloneChildren = cloneNode.children;
-  for (let i = 0; i < sourceChildren.length; i += 1) {
-    if (cloneChildren[i]) {
-      inlineComputedStylesPair(sourceChildren[i], cloneChildren[i]);
-    }
-  }
-};
-
-const sanitizeStylesheetNodes = (clonedDoc) => {
-  clonedDoc.querySelectorAll("style").forEach((styleEl) => {
-    if (!styleEl.textContent) return;
-    styleEl.textContent = styleEl.textContent
-      .replace(/oklch\([^)]*\)/gi, "#334155")
-      .replace(/oklab\([^)]*\)/gi, "#334155")
-      .replace(/color-mix\([^)]*\)/gi, "#334155");
-  });
-  clonedDoc.querySelectorAll('link[rel="stylesheet"]').forEach((link) => link.remove());
-};
-
-const prepareCloneForHtml2Canvas = (sourceRoot, clonedDoc, clonedRoot) => {
-  removeHiddenNodes(clonedRoot);
-  fixRechartsInClone(sourceRoot, clonedRoot);
-  inlineComputedStylesPair(sourceRoot, clonedRoot);
-  sanitizeStylesheetNodes(clonedDoc);
-  clonedRoot.style.boxShadow = "none";
-  clonedRoot.style.maxWidth = `${sourceRoot.scrollWidth}px`;
-  clonedRoot.style.width = `${sourceRoot.scrollWidth}px`;
-  clonedRoot.style.backgroundColor = "#ffffff";
-};
-
 export async function exportHtmlReportToPdf(element, filename = "relatorio-inteligencia.pdf") {
   if (!element) {
     throw new Error("Conteúdo do relatório não encontrado.");
@@ -196,6 +276,7 @@ export async function exportHtmlReportToPdf(element, filename = "relatorio-intel
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
   const restoreImages = await temporarilyInlineImages(element);
+  const restoreInlineStyles = applyInlineExportStyles(element);
 
   try {
     const scale = resolveScale(element);
@@ -211,8 +292,14 @@ export async function exportHtmlReportToPdf(element, filename = "relatorio-intel
       height: element.scrollHeight,
       windowWidth: element.scrollWidth,
       windowHeight: element.scrollHeight,
+      ignoreElements: (node) => shouldIgnoreForExport(node),
       onclone: (clonedDoc, clonedElement) => {
-        prepareCloneForHtml2Canvas(element, clonedDoc, clonedElement);
+        stripStylesheetsFromClone(clonedDoc, clonedElement);
+        fixRechartsInClone(element, clonedElement);
+        clonedElement.style.boxShadow = "none";
+        clonedElement.style.maxWidth = `${element.scrollWidth}px`;
+        clonedElement.style.width = `${element.scrollWidth}px`;
+        clonedElement.style.backgroundColor = "#ffffff";
       },
     });
 
@@ -239,6 +326,7 @@ export async function exportHtmlReportToPdf(element, filename = "relatorio-intel
     pdf.save(filename);
     return filename;
   } finally {
+    restoreInlineStyles();
     restoreImages();
   }
 }
