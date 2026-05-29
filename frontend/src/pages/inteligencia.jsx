@@ -286,7 +286,7 @@ export default function InteligenciaPage() {
         emitToast(result.mensagem, "warning");
         return;
       }
-      emitToast(`PDF compacto baixado (${result.filename}). Formato diferente do relatório HTML.`, "success");
+      emitToast(`PDF baixado (${result.filename}).`, "success");
     } catch (error) {
       const friendlyMessage = await parseBlobErrorMessage(error, "Falha ao gerar PDF no servidor.");
       emitToast(friendlyMessage, "error");
@@ -411,10 +411,10 @@ export default function InteligenciaPage() {
               onClick={() => void baixarPdfCompacto()}
               disabled={analysisLoading || compactPdfLoading}
             >
-              {compactPdfLoading ? "Gerando PDF..." : "PDF compacto (servidor — formato antigo)"}
+              {compactPdfLoading ? "Gerando PDF..." : "Baixar PDF (layout BI)"}
             </button>
             <p className="text-xs text-zinc-500">
-              O PDF fiel ao layout BI está em «Relatório HTML → Baixar PDF (layout BI)».
+              Gera o PDF a partir da página do relatório HTML (Puppeteer no servidor), com gráficos e layout idênticos à tela.
             </p>
             {analysisError ? <p className="text-sm text-red-400">{analysisError}</p> : null}
           </div>

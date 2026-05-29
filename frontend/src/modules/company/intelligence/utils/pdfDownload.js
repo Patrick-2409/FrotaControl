@@ -1,7 +1,7 @@
 import api, { extractApiErrorMessage, getFriendlyApiErrorMessage } from "../../../../services/api";
 
 export const PDF_DESATIVADO_MENSAGEM =
-  "PDF desativado temporariamente para estabilização do sistema";
+  "PDF indisponível no servidor. Verifique FRONTEND_URL e Puppeteer no backend.";
 
 export const getFilenameFromDisposition = (contentDisposition, fallback = "inteligencia-operacional.pdf") => {
   const raw = String(contentDisposition || "");
@@ -66,14 +66,34 @@ const isPdfDisabledResponse = (data) =>
   (data.ok === true || data.disabled === true) &&
   typeof (data.mensagem || data.message) === "string";
 
-export const downloadInteligenciaPdf = async (filters, { fallbackName = "inteligencia-operacional.pdf" } = {}) => {
+export const downloadInteligenciaPdf = async (
+  filters,
+  { fallbackName = "relatorio-inteligencia.pdf", timeoutMs = 120000 } = {}
+) => {
   const payload = buildInteligenciaPdfPayload(filters);
   const pdfResponse = await api.post("/inteligencia/pdf", payload, {
+    responseType: "blob",
+    timeout: timeoutMs,
     skipGlobalErrorToast: true,
   });
 
   const contentType = String(pdfResponse?.headers?.["content-type"] || "").toLowerCase();
   const data = pdfResponse?.data;
+
+  if (contentType.includes("application/json") && data instanceof Blob) {
+    try {
+      const parsed = JSON.parse(await data.text());
+      if (isPdfDisabledResponse(parsed)) {
+        return {
+          disabled: true,
+          mensagem: parsed.mensagem || parsed.message || PDF_DESATIVADO_MENSAGEM,
+        };
+      }
+      throw new Error(parsed?.erro || parsed?.error || parsed?.message || "Resposta inválida ao exportar PDF.");
+    } catch (err) {
+      if (err instanceof Error && err.message !== "Resposta inválida ao exportar PDF.") throw err;
+    }
+  }
 
   if (contentType.includes("application/json") || isPdfDisabledResponse(data)) {
     if (isPdfDisabledResponse(data)) {

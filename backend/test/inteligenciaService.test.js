@@ -127,6 +127,10 @@ test("buildOverviewResponse monta payload para GET /inteligencia/overview", () =
   assert.ok(overview.modulos_leitura?.combustivel?.leitura);
   assert.equal(overview.origem, "motor_operacional");
   assert.equal(overview.vazio, false);
+  assert.ok(overview.painel_executivo?.score_geral);
+  assert.ok(overview.narrativa_executiva?.o_que_aconteceu);
+  assert.ok(overview.mio?.motores);
+  assert.ok(Array.isArray(overview.top_riscos));
 });
 
 test("mesclarComplementoGpt preserva motor e adiciona complemento da IA", () => {

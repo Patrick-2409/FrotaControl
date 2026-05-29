@@ -45,6 +45,7 @@ npm run db:init
 | Chave | Notas |
 |--------|--------|
 | `PUBLIC_BASE_URL` ou `BACKEND_PUBLIC_URL` | `https://seu-api.onrender.com` — URLs absolutas em PDFs e logos |
+| `FRONTEND_URL` | URL do static site — usada pelo Puppeteer para PDF do Relatório BI |
 | `CORS_STRICT` | `false` (padrão) = `origin: true` para o frontend Render |
 | `CORS_STRICT` + `CORS_ORIGINS` | Se `CORS_STRICT=true`, liste origens separadas por vírgula |
 | `DATABASE_SSL` | `false` apenas se o Postgres local não usar SSL |
@@ -53,9 +54,17 @@ npm run db:init
 
 Em `NODE_ENV=production`, o pool usa SSL por padrão. Para Postgres local sem SSL: `DATABASE_SSL=false`.
 
-### PDF
+### PDF (Relatório BI)
 
-As exportações PDF estão temporariamente em manutenção (endpoint retorna 501).
+Exportação via **Puppeteer**: o backend abre a página React `/relatorio-inteligencia` e gera PDF fiel ao HTML.
+
+| Chave | Notas |
+|--------|--------|
+| `FRONTEND_URL` | URL pública do static site (ex.: `https://seu-app.onrender.com`) — **obrigatória** para PDF |
+| `PUPPETEER_EXECUTABLE_PATH` | (Opcional) Caminho do Chromium no servidor, se não usar o bundled |
+| `PUPPETEER_SKIP_CHROMIUM_DOWNLOAD` | `true` se usar Chromium do sistema |
+
+O build do backend instala o Chromium do Puppeteer (`npm install`). Em planos Render limitados, configure `PUPPETEER_EXECUTABLE_PATH` para um Chromium disponível no ambiente.
 
 ## 3. Frontend (Static Site)
 

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { CHART_GUIDES } from "../utils/chartGuides";
 
 const fmtMoney = (value) =>
@@ -224,8 +225,24 @@ export function ReportChartCard({
   extra,
   className = "",
 }) {
+  const chartRef = useRef(null);
+
+  useEffect(() => {
+    const node = chartRef.current;
+    if (!node) return undefined;
+    node.setAttribute("data-fc-chart-ready", "false");
+    const markReady = () => node.setAttribute("data-fc-chart-ready", "true");
+    const frame = requestAnimationFrame(() => requestAnimationFrame(markReady));
+    return () => cancelAnimationFrame(frame);
+  }, [children, title, subtitle, legend, discussion, extra]);
+
   return (
-    <article className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ${className}`}>
+    <article
+      ref={chartRef}
+      data-fc-chart-block="true"
+      data-fc-chart-ready="false"
+      className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ${className}`}
+    >
       <header>
         <h3 className="text-base font-semibold text-slate-900">{title}</h3>
         {subtitle ? <p className="mt-1 text-sm text-slate-500">{subtitle}</p> : null}

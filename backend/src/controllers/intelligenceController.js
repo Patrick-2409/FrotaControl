@@ -3,6 +3,7 @@ const { resolveEmpresaScopeWrite } = require("../domain/tenantContext");
 const { getCompanyById } = require("../models/companyModel");
 const { analyzeOperationalData } = require("../services/intelligenceAnalysisService");
 const { generateIntelligenceHtml } = require("../services/intelligencePdfService");
+const { generateIntelligencePdfFromReportPage } = require("../services/intelligenceReportPdfPuppeteerService");
 const { generateIntelligenceReport } = require("../services/intelligenceAiService");
 const {
   montarRespostaInteligente,
@@ -181,16 +182,37 @@ const exportarHtmlInteligencia = async (req, res) => {
   }
 };
 
-const PDF_DESATIVADO_MENSAGEM = "PDF desativado temporariamente para estabilização do sistema";
-
 const exportarPdfInteligencia = async (req, res) => {
   try {
-    return res.status(200).json({
-      ok: true,
-      mensagem: PDF_DESATIVADO_MENSAGEM,
+    const authHeader = String(req.headers.authorization || "");
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        error: "Token ausente",
+        message: "Token ausente para exportação PDF.",
+      });
+    }
+
+    const { payload } = parseAnalysisPayload(req);
+    const { buffer, filename } = await generateIntelligencePdfFromReportPage({
+      token,
+      filters: payload,
     });
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("X-Report-Format", "pdf-layout-bi");
+    return res.status(200).send(buffer);
   } catch (error) {
-    return res.status(500).json({ erro: error?.message || "Falha ao processar solicitação de PDF." });
+    const statusCode = error?.statusCode && Number.isInteger(error.statusCode) ? error.statusCode : 500;
+    console.error("[PDF] falha na exportação:", error?.message || error);
+    return res.status(statusCode).json({
+      success: false,
+      error: error?.message || "Falha ao exportar PDF de inteligência.",
+      message: error?.message || "Falha ao exportar PDF de inteligência.",
+    });
   }
 };
 
@@ -241,10 +263,7 @@ const getIntelligenceOverview = async (req, res) => {
 
 const debugPdfInteligencia = async (req, res) => {
   try {
-    return res.status(200).json({
-      ok: true,
-      mensagem: PDF_DESATIVADO_MENSAGEM,
-    });
+    return exportarPdfInteligencia(req, res);
   } catch (error) {
     return res.status(500).json({ erro: error?.message || "Falha ao processar PDF de debug." });
   }

@@ -1273,8 +1273,35 @@ textarea:focus-visible,
   .fc-report-page .rounded-2xl,
   .fc-report-page section,
   .fc-report-page article,
-  .fc-report-section {
+  .fc-report-section,
+  .fc-report-page [data-fc-chart-block],
+  .fc-report-page table {
     break-inside: avoid;
     page-break-inside: avoid;
   }
+}
+
+body.fc-pdf-export-mode .fc-empresa-shell-header,
+body.fc-pdf-export-mode .fc-empresa-sidebar,
+body.fc-pdf-export-mode .fc-empresa-nav-backdrop,
+body.fc-pdf-export-mode .fc-empresa-drawer,
+body.fc-pdf-export-mode .fc-empresa-nav-trigger,
+body.fc-pdf-export-mode .print\:hidden {
+  display: none !important;
+}
+
+body.fc-pdf-export-mode .fc-empresa-main-grid,
+body.fc-pdf-export-mode .fc-empresa-main-pad,
+body.fc-pdf-export-mode .fc-page,
+body.fc-pdf-export-mode .fc-report-page {
+  display: block !important;
+  max-width: 100% !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+body.fc-pdf-export-mode .fc-theme-empresa.fc-empresa-shell-root,
+body.fc-pdf-export-mode .fc-report-page {
+  background: #fff !important;
+  min-height: auto !important;
 }

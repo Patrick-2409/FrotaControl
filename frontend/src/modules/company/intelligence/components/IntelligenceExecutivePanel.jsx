@@ -4,6 +4,11 @@ import {
   mapStatusTone,
   normalizeMensagens,
 } from "../utils/overviewInteligencia";
+import ExecutiveMioPanel, { ExecutiveMioNarrativeBlock } from "./ExecutiveMioPanel";
+import ExecutiveRiskPanel, {
+  ExecutiveFinancialRiskBlock,
+  ExecutiveImmediateActionBlock,
+} from "./ExecutiveRiskPanel";
 
 function ExecutivePanelCard({ title, tone = "default", children, className = "" }) {
   const styles = getExecutiveToneStyles(tone);
@@ -81,6 +86,12 @@ export default function IntelligenceExecutivePanel({
   const complementoGpt = overview?.complemento_gpt || null;
   const diagnosticoGpt = complementoGpt?.diagnostico || "";
   const impactoGpt = complementoGpt?.impacto || "";
+  const painelExecutivo = overview?.painel_executivo || overview?.mio?.painel_executivo || null;
+  const narrativaExecutiva = overview?.narrativa_executiva || overview?.mio?.narrativa_executiva || null;
+  const topRiscos = overview?.top_riscos || overview?.priorizacao?.top_riscos || [];
+  const acaoImediata = overview?.acao_imediata || overview?.priorizacao?.acao_imediata || null;
+  const riscoFinanceiroEstimado =
+    overview?.risco_financeiro_estimado || overview?.priorizacao?.risco_financeiro_estimado || null;
 
   if (!error && overview?.vazio) {
     const mensagem = overview?.mensagem || overview?.resumo;
@@ -106,6 +117,48 @@ export default function IntelligenceExecutivePanel({
           ) : null}
         </div>
       </ExecutivePanelCard>
+
+      {painelExecutivo ? (
+        <ExecutivePanelCard title="Painel executivo (MIO)" tone={tone}>
+          <ExecutiveMioPanel painelExecutivo={painelExecutivo} />
+        </ExecutivePanelCard>
+      ) : null}
+
+      {narrativaExecutiva?.o_que_aconteceu ? (
+        <ExecutivePanelCard title="O que aconteceu" tone={tone}>
+          <ExecutiveMioNarrativeBlock narrativa={narrativaExecutiva.o_que_aconteceu} variant="dark" />
+        </ExecutivePanelCard>
+      ) : null}
+
+      {narrativaExecutiva?.por_que_importa ? (
+        <ExecutivePanelCard title="Por que isso importa" tone={tone === "critical" ? "critical" : "warning"}>
+          <ExecutiveMioNarrativeBlock narrativa={narrativaExecutiva.por_que_importa} variant="dark" />
+        </ExecutivePanelCard>
+      ) : null}
+
+      {narrativaExecutiva?.acao_prioritaria ? (
+        <ExecutivePanelCard title="Ação prioritária" tone="warning">
+          <ExecutiveMioNarrativeBlock narrativa={narrativaExecutiva.acao_prioritaria} variant="dark" />
+        </ExecutivePanelCard>
+      ) : null}
+
+      {topRiscos.length > 0 ? (
+        <ExecutivePanelCard title="Top 5 riscos operacionais" tone={topRiscos[0]?.classificacao === "CRITICO" ? "critical" : "warning"}>
+          <ExecutiveRiskPanel topRiscos={topRiscos} />
+        </ExecutivePanelCard>
+      ) : null}
+
+      {acaoImediata ? (
+        <ExecutivePanelCard title="Ação imediata recomendada" tone="critical">
+          <ExecutiveImmediateActionBlock acao={acaoImediata} variant="dark" />
+        </ExecutivePanelCard>
+      ) : null}
+
+      {riscoFinanceiroEstimado?.mensagem ? (
+        <ExecutivePanelCard title="Risco financeiro estimado" tone="warning">
+          <ExecutiveFinancialRiskBlock riscoFinanceiro={riscoFinanceiroEstimado} variant="dark" />
+        </ExecutivePanelCard>
+      ) : null}
 
       {resumo ? (
         <ExecutivePanelCard title="Resumo executivo" tone={tone}>

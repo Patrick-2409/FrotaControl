@@ -7,11 +7,15 @@ import ExecutiveReportParteDiaria from "../modules/company/intelligence/componen
 import { ExecutiveReportIndex, ExecutiveReportSection } from "../modules/company/intelligence/components/ExecutiveReportSection";
 import ExecutiveInconsistenciasBlock from "../modules/company/intelligence/components/ExecutiveInconsistenciasBlock";
 import { ExecutiveRegraDeOuroCard, resolveRegraDeOuro } from "../modules/company/intelligence/components/ExecutiveRegraDeOuroCard";
+import ExecutiveMioPanel, { ExecutiveMioNarrativeBlock } from "../modules/company/intelligence/components/ExecutiveMioPanel";
+import ExecutiveRiskPanel, {
+  ExecutiveFinancialRiskBlock,
+  ExecutiveImmediateActionBlock,
+} from "../modules/company/intelligence/components/ExecutiveRiskPanel";
 import { mapOrigemIa } from "../modules/company/intelligence/components/ChartReportBlocks";
 import { useAuth } from "../services/auth";
-import { downloadInteligenciaPdf, parseBlobErrorMessage } from "../modules/company/intelligence/utils/pdfDownload";
 import { getDadosGraficos } from "../modules/company/intelligence/utils/overviewInteligencia";
-import { exportHtmlReportToPdf } from "../modules/company/intelligence/utils/exportHtmlReportPdf";
+import { downloadInteligenciaPdf, parseBlobErrorMessage } from "../modules/company/intelligence/utils/pdfDownload";
 import api, { extractApiErrorMessage, getFriendlyApiErrorMessage } from "../services/api";
 import { emitToast } from "../services/uiEvents";
 
@@ -107,6 +111,13 @@ function KpiCard({ label, value, sub }) {
 
 const REPORT_SECTIONS = [
   { id: "regra-de-ouro", icon: "⚖️", label: "Regra de ouro" },
+  { id: "painel-executivo", icon: "🎯", label: "Painel Executivo" },
+  { id: "o-que-aconteceu", icon: "📌", label: "O que aconteceu" },
+  { id: "por-que-importa", icon: "❗", label: "Por que isso importa" },
+  { id: "acao-prioritaria", icon: "🚀", label: "Ação prioritária" },
+  { id: "top-riscos", icon: "🔥", label: "Top 5 riscos operacionais" },
+  { id: "acao-imediata", icon: "⚡", label: "Ação imediata recomendada" },
+  { id: "risco-financeiro-estimado", icon: "💸", label: "Risco financeiro estimado" },
   { id: "resumo-executivo", icon: "📊", label: "Resumo Executivo" },
   { id: "inconsistencias", icon: "⚠️", label: "Inconsistências detectadas" },
   { id: "indicadores", icon: "📈", label: "Indicadores principais" },
@@ -136,6 +147,7 @@ export default function RelatorioInteligenciaPage() {
   const [compactPdfLoading, setCompactPdfLoading] = useState(false);
   const [htmlPdfLoading, setHtmlPdfLoading] = useState(false);
   const [error, setError] = useState("");
+  const isPdfExportMode = searchParams.get("pdfExport") === "1";
 
   const indicadores = overview?.indicadores || {};
   const tipoAnalise = filters.tipoAnalise || "geral";
@@ -281,48 +293,86 @@ export default function RelatorioInteligenciaPage() {
     });
   }, []);
 
+  useEffect(() => {
+    if (!isPdfExportMode) return undefined;
+    document.body.classList.add("fc-pdf-export-mode");
+    return () => {
+      document.body.classList.remove("fc-pdf-export-mode");
+    };
+  }, [isPdfExportMode]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    if (loading || analysisLoading || error) {
+      window.__FC_REPORT_PDF_READY__ = false;
+      document.documentElement.removeAttribute("data-fc-report-pdf-ready");
+      return undefined;
+    }
+
+    let cancelled = false;
+    const markReady = () => {
+      if (cancelled) return;
+      window.__FC_REPORT_PDF_READY__ = true;
+      document.documentElement.setAttribute("data-fc-report-pdf-ready", "true");
+    };
+
+    const timer = window.setTimeout(() => {
+      requestAnimationFrame(() => requestAnimationFrame(markReady));
+    }, 600);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      window.__FC_REPORT_PDF_READY__ = false;
+      document.documentElement.removeAttribute("data-fc-report-pdf-ready");
+    };
+  }, [loading, analysisLoading, error, overview, relatorio, chartData]);
+
+  const requestLayoutPdf = useCallback(async () => {
+    emitToast("Gerando PDF fiel ao layout da tela (Puppeteer)...", "info");
+    const periodo = filters.periodo || "mes";
+    const fallbackName = `relatorio-inteligencia-${periodo}.pdf`;
+    const result = await downloadInteligenciaPdf(filters, { fallbackName });
+    if (result?.disabled) {
+      emitToast(result.mensagem, "warning");
+      return;
+    }
+    emitToast(`PDF baixado (${result.filename}).`, "success");
+  }, [filters]);
+
   const handleExportPdf = useCallback(async () => {
     if (loading || analysisLoading) {
       emitToast("Aguarde o relatório terminar de carregar.", "warning");
       return;
     }
-    const node = reportRef.current;
-    if (!node) {
-      emitToast("Conteúdo do relatório não encontrado.", "error");
-      return;
-    }
-
     setHtmlPdfLoading(true);
-    emitToast("Gerando PDF igual ao layout da tela...", "info");
     try {
-      const periodo = filters.periodo || "mes";
-      const filename = `relatorio-inteligencia-${periodo}.pdf`;
-      await exportHtmlReportToPdf(node, filename);
-      emitToast("PDF baixado com sucesso.");
+      await requestLayoutPdf();
     } catch (err) {
-      console.error("Falha ao exportar PDF HTML:", err);
-      emitToast(err?.message || "Falha ao gerar PDF. Tente novamente em alguns segundos.", "error");
+      const message = await parseBlobErrorMessage(err, "Falha ao gerar PDF. Tente novamente em alguns segundos.");
+      console.error("Falha ao exportar PDF:", err);
+      emitToast(message, "error");
     } finally {
       setHtmlPdfLoading(false);
     }
-  }, [loading, analysisLoading, filters.periodo]);
+  }, [loading, analysisLoading, requestLayoutPdf]);
 
   const handleDownloadCompactPdf = useCallback(async () => {
+    if (loading || analysisLoading) {
+      emitToast("Aguarde o relatório terminar de carregar.", "warning");
+      return;
+    }
     setCompactPdfLoading(true);
     try {
-      const result = await downloadInteligenciaPdf(filters);
-      if (result?.disabled) {
-        emitToast(result.mensagem, "warning");
-        return;
-      }
-      emitToast(`PDF compacto baixado (${result.filename}).`, "success");
+      await requestLayoutPdf();
     } catch (err) {
       const message = await parseBlobErrorMessage(err, "Falha ao gerar PDF no servidor.");
       emitToast(message, "error");
     } finally {
       setCompactPdfLoading(false);
     }
-  }, [filters]);
+  }, [loading, analysisLoading, requestLayoutPdf]);
 
   const resumoExecutivo = overview?.resumo || relatorio?.resumoExecutivo || relatorio?.resumo_executivo || "";
   const diagnostico =
@@ -363,6 +413,12 @@ export default function RelatorioInteligenciaPage() {
     return raw.map((item) => (typeof item === "string" ? { tipo: "INSIGHT", mensagem: item } : item));
   }, [overview]);
   const regraDeOuro = useMemo(() => resolveRegraDeOuro({ overview, relatorio }), [overview, relatorio]);
+  const painelExecutivo = overview?.painel_executivo || overview?.mio?.painel_executivo || null;
+  const narrativaExecutiva = overview?.narrativa_executiva || overview?.mio?.narrativa_executiva || null;
+  const topRiscos = overview?.top_riscos || overview?.priorizacao?.top_riscos || [];
+  const acaoImediata = overview?.acao_imediata || overview?.priorizacao?.acao_imediata || null;
+  const riscoFinanceiroEstimado =
+    overview?.risco_financeiro_estimado || overview?.priorizacao?.risco_financeiro_estimado || null;
   const modulosLeitura = overview?.modulos_leitura || relatorio?.analiseModulos || relatorio?.analise_modulos || {};
   const modulos = {
     combustivel: modulosLeitura.combustivel?.leitura || modulosLeitura.combustivel || "",
@@ -416,7 +472,7 @@ export default function RelatorioInteligenciaPage() {
               disabled={loading || compactPdfLoading}
               className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60"
             >
-              {compactPdfLoading ? "Gerando..." : "PDF compacto (servidor)"}
+              {compactPdfLoading ? "Gerando..." : "Baixar PDF (servidor)"}
             </button>
           </div>
         </div>
@@ -433,8 +489,8 @@ export default function RelatorioInteligenciaPage() {
               (motor operacional, sem GPT).
             </li>
             <li>
-              <strong>Baixar PDF (layout BI)</strong> gera um arquivo igual ao que você vê na tela (gráficos, cores e
-              textos). O botão «PDF compacto» usa o formato antigo do servidor.
+              <strong>Baixar PDF (layout BI)</strong> gera o PDF a partir da página renderizada (Puppeteer no servidor),
+              com os mesmos gráficos, cores e textos exibidos na tela.
             </li>
           </ul>
         </div>
@@ -501,6 +557,97 @@ export default function RelatorioInteligenciaPage() {
 
           <div id="regra-de-ouro" className="mt-8 scroll-mt-6">
             <ExecutiveRegraDeOuroCard regra={regraDeOuro} loading={loading} />
+          </div>
+
+          <div className="mt-8 space-y-8">
+            <ExecutiveReportSection
+              id="painel-executivo"
+              icon="🎯"
+              title="Painel Executivo"
+              subtitle="Scores calculados pelo Motor de Inteligência Operacional (MIO) com base nos lançamentos reais"
+              source="dados"
+              tone="default"
+            >
+              <ExecutiveMioPanel painelExecutivo={painelExecutivo} loading={loading} />
+            </ExecutiveReportSection>
+
+            <ExecutiveReportSection
+              id="o-que-aconteceu"
+              icon="📌"
+              title="O que aconteceu"
+              subtitle="Síntese factual derivada da correlação entre módulos operacionais"
+              source="dados"
+              tone="default"
+              isEmpty={!loading && !narrativaExecutiva?.o_que_aconteceu}
+              emptyMessage="Sem eventos correlacionados no período."
+            >
+              <ExecutiveMioNarrativeBlock narrativa={narrativaExecutiva?.o_que_aconteceu} loading={loading} />
+            </ExecutiveReportSection>
+
+            <ExecutiveReportSection
+              id="por-que-importa"
+              icon="❗"
+              title="Por que isso importa"
+              subtitle="Impacto executivo do principal achado operacional"
+              source="dados"
+              tone={status.label === "CRÍTICO" ? "critical" : "default"}
+              isEmpty={!loading && !narrativaExecutiva?.por_que_importa}
+              emptyMessage="Sem impacto prioritário identificado."
+            >
+              <ExecutiveMioNarrativeBlock narrativa={narrativaExecutiva?.por_que_importa} loading={loading} />
+            </ExecutiveReportSection>
+
+            <ExecutiveReportSection
+              id="acao-prioritaria"
+              icon="🚀"
+              title="Ação prioritária"
+              subtitle="Recomendação imediata com base nos dados do período"
+              source="dados"
+              tone="default"
+              isEmpty={!loading && !narrativaExecutiva?.acao_prioritaria}
+              emptyMessage="Nenhuma ação prioritária derivada dos dados."
+            >
+              <ExecutiveMioNarrativeBlock narrativa={narrativaExecutiva?.acao_prioritaria} loading={loading} />
+            </ExecutiveReportSection>
+
+            <ExecutiveReportSection
+              id="top-riscos"
+              icon="🔥"
+              title="Top 5 Riscos Operacionais"
+              subtitle="Priorização automática por score de risco (0–100) — financeiro, operacional, recorrência e confiabilidade"
+              source="dados"
+              tone="default"
+              isEmpty={!loading && !topRiscos.length}
+              emptyMessage="Nenhum risco operacional prioritário no período."
+            >
+              <ExecutiveRiskPanel topRiscos={topRiscos} loading={loading} />
+            </ExecutiveReportSection>
+
+            <ExecutiveReportSection
+              id="acao-imediata"
+              icon="⚡"
+              title="Ação imediata recomendada"
+              subtitle="Uma única ação prioritária derivada do risco de maior pontuação"
+              source="dados"
+              tone={topRiscos[0]?.classificacao === "CRITICO" ? "critical" : "default"}
+              isEmpty={!loading && !acaoImediata}
+              emptyMessage="Sem ação imediata derivada dos riscos identificados."
+            >
+              <ExecutiveImmediateActionBlock acao={acaoImediata} loading={loading} />
+            </ExecutiveReportSection>
+
+            <ExecutiveReportSection
+              id="risco-financeiro-estimado"
+              icon="💸"
+              title="Risco financeiro estimado"
+              subtitle="Exposição potencial calculada com base nos valores reais do período"
+              source="dados"
+              tone="warning"
+              isEmpty={!loading && !riscoFinanceiroEstimado?.mensagem}
+              emptyMessage="Estimativa financeira indisponível para o recorte."
+            >
+              <ExecutiveFinancialRiskBlock riscoFinanceiro={riscoFinanceiroEstimado} loading={loading} />
+            </ExecutiveReportSection>
           </div>
 
           <div className="mt-8 space-y-8">

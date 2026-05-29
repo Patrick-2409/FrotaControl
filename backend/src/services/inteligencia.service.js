@@ -17,6 +17,8 @@ const {
 } = require("./inteligencia/operacionalRules");
 const { avaliarRegraDeOuro } = require("./inteligencia/regraDeOuro");
 const { classificarVeiculos } = require("./inteligencia/classificarVeiculos");
+const { runIntelligenceEngine } = require("./intelligenceEngine");
+const { runRiskEngine } = require("./riskEngine");
 
 const STATUS = {
   CRITICO: "CRITICO",
@@ -330,14 +332,25 @@ const montarRespostaInteligente = (analysis = {}) => {
   const validacao = validarConsistencia(dados);
   const contexto = gerarContexto({ ...dados, contextoParcial: null });
   const dadosComValidacao = { ...dados, validacao, contextoParcial: contexto.operacional };
-  const insights = gerarInsights(dadosComValidacao);
+  const mio = runIntelligenceEngine(analysis, dados, validacao);
+  const priorizacao = runRiskEngine({ analysis, normalized: dados, validacao, mio });
+  const insightsLegados = gerarInsights(dadosComValidacao);
+  const insights = [...mio.insights_compat, ...insightsLegados].filter(
+    (item, index, arr) =>
+      arr.findIndex(
+        (other) =>
+          (other.tipo && other.tipo === item.tipo) ||
+          (other.mensagem && item.mensagem && other.mensagem === item.mensagem)
+      ) === index
+  );
   const status = resolverStatus({
     validacao,
     contexto,
     indicadores: dados.indicadores,
   });
   const resumo = gerarResumo(status, dados, validacao, contexto);
-  const recomendacoes = gerarRecomendacoes(dadosComValidacao, validacao);
+  const recomendacoesBase = gerarRecomendacoes(dadosComValidacao, validacao);
+  const recomendacoes = [...new Set([...mio.recomendacoes_mio, ...recomendacoesBase])].slice(0, 8);
 
   const regraDeOuro = avaliarRegraDeOuro({
     indicadores: dados.indicadores,
@@ -366,6 +379,13 @@ const montarRespostaInteligente = (analysis = {}) => {
       regraDeOuro,
     },
     origem: "motor_operacional",
+    mio,
+    priorizacao,
+    painel_executivo: mio.painel_executivo,
+    narrativa_executiva: mio.narrativa_executiva,
+    top_riscos: priorizacao.top_riscos,
+    acao_imediata: priorizacao.acao_imediata,
+    risco_financeiro_estimado: priorizacao.risco_financeiro_estimado,
     modulos: {
       transporte: dados.transporte,
       apoio: dados.apoio,
@@ -605,6 +625,14 @@ const buildOverviewResponse = (analysis = {}, inteligencia = {}) => {
     },
     contexto_operacional: inteligencia.contexto?.operacional || null,
     regra_de_ouro: inteligencia.contexto?.regraDeOuro || null,
+    mio: inteligencia.mio || null,
+    priorizacao: inteligencia.priorizacao || null,
+    painel_executivo: inteligencia.painel_executivo || inteligencia.mio?.painel_executivo || null,
+    narrativa_executiva: inteligencia.narrativa_executiva || inteligencia.mio?.narrativa_executiva || null,
+    top_riscos: inteligencia.top_riscos || inteligencia.priorizacao?.top_riscos || [],
+    acao_imediata: inteligencia.acao_imediata || inteligencia.priorizacao?.acao_imediata || null,
+    risco_financeiro_estimado:
+      inteligencia.risco_financeiro_estimado || inteligencia.priorizacao?.risco_financeiro_estimado || null,
   };
 };
 
