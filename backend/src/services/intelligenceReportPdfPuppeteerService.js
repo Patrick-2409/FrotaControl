@@ -46,9 +46,11 @@ const buildPdfFilename = (filters = {}) => {
   return `relatorio-inteligencia-${periodo}.pdf`;
 };
 
-const resolveLaunchOptions = () => {
-  const executablePath = String(process.env.PUPPETEER_EXECUTABLE_PATH || "").trim();
-  const args = [
+const resolveLaunchOptions = async () => {
+  const configuredPath = String(process.env.PUPPETEER_EXECUTABLE_PATH || "").trim();
+  const isHostedRuntime = Boolean(process.env.RENDER) || process.env.NODE_ENV === "production";
+
+  const baseArgs = [
     "--no-sandbox",
     "--disable-setuid-sandbox",
     "--disable-dev-shm-usage",
@@ -56,14 +58,24 @@ const resolveLaunchOptions = () => {
     "--font-render-hinting=none",
   ];
 
+  if (isHostedRuntime && !configuredPath) {
+    const chromium = require("@sparticuz/chromium");
+    return {
+      args: [...chromium.args, ...baseArgs],
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
+    };
+  }
+
   const options = {
     headless: true,
-    args,
+    args: baseArgs,
     defaultViewport: { width: 1280, height: 900, deviceScaleFactor: 2 },
   };
 
-  if (executablePath) {
-    options.executablePath = executablePath;
+  if (configuredPath) {
+    options.executablePath = configuredPath;
   }
 
   return options;
@@ -72,14 +84,23 @@ const resolveLaunchOptions = () => {
 const launchBrowser = async () => {
   let puppeteer;
   try {
-    puppeteer = require("puppeteer");
+    puppeteer = require("puppeteer-core");
   } catch {
-    const error = new Error("Puppeteer não instalado no servidor. Execute npm install puppeteer no backend.");
+    const error = new Error("puppeteer-core não instalado no servidor.");
     error.statusCode = 503;
     throw error;
   }
 
-  return puppeteer.launch(resolveLaunchOptions());
+  const launchOptions = await resolveLaunchOptions();
+  if (!launchOptions.executablePath) {
+    const error = new Error(
+      "Chromium indisponível. Em produção use @sparticuz/chromium; localmente defina PUPPETEER_EXECUTABLE_PATH."
+    );
+    error.statusCode = 503;
+    throw error;
+  }
+
+  return puppeteer.launch(launchOptions);
 };
 
 const waitForReportReady = async (page, timeoutMs = 120_000) => {

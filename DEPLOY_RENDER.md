@@ -56,15 +56,15 @@ Em `NODE_ENV=production`, o pool usa SSL por padrão. Para Postgres local sem SS
 
 ### PDF (Relatório BI)
 
-Exportação via **Puppeteer**: o backend abre a página React `/relatorio-inteligencia` e gera PDF fiel ao HTML.
+Exportação via **Puppeteer** (`puppeteer-core` + `@sparticuz/chromium`): o backend abre a página React `/relatorio-inteligencia` e gera PDF fiel ao HTML. O build **não** baixa Chrome via postinstall do Puppeteer.
 
 | Chave | Notas |
 |--------|--------|
 | `FRONTEND_URL` | URL pública do static site (ex.: `https://seu-app.onrender.com`) — **obrigatória** para PDF |
-| `PUPPETEER_EXECUTABLE_PATH` | (Opcional) Caminho do Chromium no servidor, se não usar o bundled |
-| `PUPPETEER_SKIP_CHROMIUM_DOWNLOAD` | `true` se usar Chromium do sistema |
+| `PUPPETEER_EXECUTABLE_PATH` | (Opcional) Caminho do Chromium — só necessário fora do Render ou se substituir o `@sparticuz/chromium` |
+| `PUPPETEER_SKIP_DOWNLOAD` | `true` no Render (já no `render.yaml`) — evita download de browser no `npm install` |
 
-O build do backend instala o Chromium do Puppeteer (`npm install`). Em planos Render limitados, configure `PUPPETEER_EXECUTABLE_PATH` para um Chromium disponível no ambiente.
+No Render, o Chromium vem do pacote `@sparticuz/chromium` em runtime. Localmente, defina `PUPPETEER_EXECUTABLE_PATH` apontando para o Chrome/Edge instalado.
 
 ## 3. Frontend (Static Site)
 
