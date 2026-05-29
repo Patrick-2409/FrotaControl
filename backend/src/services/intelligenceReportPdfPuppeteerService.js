@@ -195,14 +195,51 @@ const launchBrowser = async () => {
   }
 };
 
+const getPdfTimeouts = () => {
+  const isHosted = Boolean(process.env.RENDER) || process.env.NODE_ENV === "production";
+  return {
+    reportReadyMs: Number(process.env.PDF_REPORT_READY_MS || (isHosted ? 90_000 : 120_000)),
+    chartsMs: Number(process.env.PDF_CHARTS_READY_MS || (isHosted ? 25_000 : 60_000)),
+    navigationMs: Number(process.env.PDF_NAVIGATION_MS || (isHosted ? 90_000 : 120_000)),
+  };
+};
+
 const waitForReportReady = async (page, timeoutMs = 120_000) => {
-  await page.waitForSelector(".fc-report-document", { timeout: timeoutMs });
-  await page.waitForFunction(
-    () =>
-      document.documentElement.getAttribute("data-fc-report-pdf-ready") === "true" ||
-      window.__FC_REPORT_PDF_READY__ === true,
-    { timeout: timeoutMs }
-  );
+  await page.waitForSelector(".fc-report-document", { timeout: Math.min(timeoutMs, 45_000) });
+
+  try {
+    await page.waitForFunction(
+      () =>
+        document.documentElement.getAttribute("data-fc-report-pdf-ready") === "true" ||
+        window.__FC_REPORT_PDF_READY__ === true,
+      { timeout: timeoutMs }
+    );
+    return;
+  } catch (error) {
+    const snapshot = await page.evaluate(() => ({
+      ready:
+        document.documentElement.getAttribute("data-fc-report-pdf-ready") === "true" ||
+        window.__FC_REPORT_PDF_READY__ === true,
+      hasDocument: Boolean(document.querySelector(".fc-report-document")),
+      hasError: Boolean(document.querySelector(".fc-report-page")?.textContent?.includes("Falha ao carregar")),
+      loading: Boolean(document.body?.textContent?.match(/Carregando|Atualizando|PROCESSANDO/i)),
+    }));
+
+    logPdf("timeout aguardando sinal pdf-ready", snapshot);
+
+    if (snapshot.ready || (snapshot.hasDocument && !snapshot.loading && !snapshot.hasError)) {
+      logPdf("prosseguindo com fallback — documento visível");
+      return;
+    }
+
+    if (snapshot.hasError) {
+      const err = new Error("A página do relatório retornou erro ao carregar dados para o PDF.");
+      err.statusCode = 503;
+      throw err;
+    }
+
+    throw error;
+  }
 };
 
 const waitForChartsRendered = async (page, timeoutMs = 60_000) => {
@@ -285,20 +322,22 @@ const generateIntelligencePdfFromReportPage = async ({ token, user, filters = {}
 
   logPdf("carregando página", { url });
 
+  const timeouts = getPdfTimeouts();
+
   try {
     browser = await launchBrowser();
     const page = await browser.newPage();
-    page.setDefaultNavigationTimeout(120_000);
-    page.setDefaultTimeout(120_000);
+    page.setDefaultNavigationTimeout(timeouts.navigationMs);
+    page.setDefaultTimeout(timeouts.navigationMs);
 
     const userJson = user ? JSON.stringify(user) : null;
     await injectAuthSession(page, { token, userJson });
 
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 120_000 });
-    await page.waitForNetworkIdle({ idleTime: 500, timeout: 60_000 }).catch(() => {});
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeouts.navigationMs });
+    await page.waitForNetworkIdle({ idleTime: 500, timeout: 20_000 }).catch(() => {});
 
-    await waitForReportReady(page);
-    await waitForChartsRendered(page);
+    await waitForReportReady(page, timeouts.reportReadyMs);
+    await waitForChartsRendered(page, timeouts.chartsMs);
     logPdf("gráficos renderizados");
 
     await page.evaluate(() => document.fonts.ready);

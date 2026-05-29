@@ -72,7 +72,7 @@ const isPdfDisabledResponse = (data) =>
 
 export const downloadInteligenciaPdf = async (
   filters,
-  { fallbackName = "relatorio-inteligencia.pdf", timeoutMs = 120000 } = {}
+  { fallbackName = "relatorio-inteligencia.pdf", timeoutMs = 180000 } = {}
 ) => {
   const payload = buildInteligenciaPdfPayload(filters);
   let pdfResponse;
@@ -119,12 +119,16 @@ export const downloadInteligenciaPdf = async (
     throw new Error("Resposta inválida ao exportar PDF.");
   }
 
+  if (data.size < 512) {
+    throw new Error("O servidor retornou um PDF vazio ou inválido.");
+  }
+
   const filename = getFilenameFromDisposition(pdfResponse?.headers?.["content-disposition"], fallbackName);
   const blobUrl = URL.createObjectURL(data);
   const downloaded = triggerPdfDownload(blobUrl, filename);
   if (!downloaded) {
     window.open(blobUrl, "_blank", "noopener,noreferrer");
   }
-  setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
-  return { disabled: false, filename };
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 300_000);
+  return { disabled: false, filename, blobUrl, size: data.size };
 };

@@ -146,6 +146,7 @@ export default function RelatorioInteligenciaPage() {
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [compactPdfLoading, setCompactPdfLoading] = useState(false);
   const [htmlPdfLoading, setHtmlPdfLoading] = useState(false);
+  const [pdfManualDownload, setPdfManualDownload] = useState(null);
   const [error, setError] = useState("");
   const isPdfExportMode = searchParams.get("pdfExport") === "1";
 
@@ -241,6 +242,25 @@ export default function RelatorioInteligenciaPage() {
     setError("");
     try {
       const params = buildApiFilters(activeFilters);
+      if (isPdfExportMode) {
+        const { data } = await api.get("/inteligencia/overview", {
+          params: {
+            periodo: params.periodo,
+            tipoAnalise: params.tipoAnalise,
+            ...(params.veiculoId ? { veiculoId: params.veiculoId } : {}),
+            ...(params.motoristaId ? { motoristaId: params.motoristaId } : {}),
+          },
+          timeout: 90000,
+        });
+        setOverview(data);
+        setRelatorio(null);
+        setMeta({
+          periodo: data?.periodo,
+          tipoAnalise: params.tipoAnalise,
+        });
+        return;
+      }
+
       const { data } = await api.post("/inteligencia/gerar", {
         periodo: params.periodo,
         veiculo_id: params.veiculoId ?? null,
@@ -262,24 +282,26 @@ export default function RelatorioInteligenciaPage() {
       setLoading(false);
       setAnalysisLoading(false);
     }
-  }, []);
+  }, [isPdfExportMode]);
 
   useEffect(() => {
+    if (isPdfExportMode) return;
     void loadFiltersOptions();
-  }, [loadFiltersOptions]);
+  }, [isPdfExportMode, loadFiltersOptions]);
 
   useEffect(() => {
     void loadReport(filters);
   }, [filters, loadReport]);
 
   useEffect(() => {
+    if (isPdfExportMode) return;
     const next = new URLSearchParams();
     next.set("periodo", filters.periodo);
     next.set("tipoAnalise", filters.tipoAnalise);
     if (filters.veiculoId !== "todos") next.set("veiculoId", filters.veiculoId);
     if (filters.motoristaId !== "todos") next.set("motoristaId", filters.motoristaId);
     setSearchParams(next, { replace: true });
-  }, [filters, setSearchParams]);
+  }, [filters, isPdfExportMode, setSearchParams]);
 
   const onFiltersChange = useCallback((updater) => {
     setFilters((prev) => {
@@ -317,9 +339,12 @@ export default function RelatorioInteligenciaPage() {
       document.documentElement.setAttribute("data-fc-report-pdf-ready", "true");
     };
 
-    const timer = window.setTimeout(() => {
-      requestAnimationFrame(() => requestAnimationFrame(markReady));
-    }, 600);
+    const timer = window.setTimeout(
+      () => {
+        requestAnimationFrame(() => requestAnimationFrame(markReady));
+      },
+      isPdfExportMode ? 250 : 600
+    );
 
     return () => {
       cancelled = true;
@@ -327,18 +352,22 @@ export default function RelatorioInteligenciaPage() {
       window.__FC_REPORT_PDF_READY__ = false;
       document.documentElement.removeAttribute("data-fc-report-pdf-ready");
     };
-  }, [loading, analysisLoading, error, overview, relatorio, chartData]);
+  }, [loading, analysisLoading, error, overview, relatorio, chartData, isPdfExportMode]);
 
   const requestLayoutPdf = useCallback(async () => {
-    emitToast("Gerando PDF fiel ao layout da tela (Puppeteer)...", "info");
+    emitToast("Gerando PDF no servidor (pode levar até 2 min)...", "info");
     const periodo = filters.periodo || "mes";
     const fallbackName = `relatorio-inteligencia-${periodo}.pdf`;
     const result = await downloadInteligenciaPdf(filters, { fallbackName });
     if (result?.disabled) {
       emitToast(result.mensagem, "warning");
-      return;
+      return result;
     }
-    emitToast(`PDF baixado (${result.filename}).`, "success");
+    if (result?.blobUrl) {
+      setPdfManualDownload({ url: result.blobUrl, filename: result.filename });
+    }
+    emitToast(`PDF pronto (${result.filename}).`, "success");
+    return result;
   }, [filters]);
 
   const handleExportPdf = useCallback(async () => {
@@ -347,6 +376,7 @@ export default function RelatorioInteligenciaPage() {
       return;
     }
     setHtmlPdfLoading(true);
+    setPdfManualDownload(null);
     try {
       await requestLayoutPdf();
     } catch (err) {
@@ -364,6 +394,7 @@ export default function RelatorioInteligenciaPage() {
       return;
     }
     setCompactPdfLoading(true);
+    setPdfManualDownload(null);
     try {
       await requestLayoutPdf();
     } catch (err) {
@@ -476,6 +507,22 @@ export default function RelatorioInteligenciaPage() {
             </button>
           </div>
         </div>
+
+        {pdfManualDownload ? (
+          <div className="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 print:hidden">
+            <p className="text-sm font-semibold text-emerald-900">PDF gerado com sucesso</p>
+            <p className="mt-1 text-sm text-emerald-800">
+              Se o arquivo não baixou automaticamente, clique no botão abaixo.
+            </p>
+            <a
+              href={pdfManualDownload.url}
+              download={pdfManualDownload.filename}
+              className="mt-3 inline-flex rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
+            >
+              Baixar {pdfManualDownload.filename}
+            </a>
+          </div>
+        ) : null}
 
         <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-slate-700 print:hidden">
           <p className="font-semibold text-slate-900">Relatório alimentado pelo backend</p>
