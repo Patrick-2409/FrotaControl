@@ -163,23 +163,23 @@ export const EMPRESA_SIDEBAR_SECTIONS = filterEmpresaSidebarSections([
     title: "Operação",
     items: [
       { to: "/empresa/transporte", label: "Transporte", icon: "transport", exact: false },
-      { to: "/empresa/parte-diaria", label: "Parte Diária", icon: "diary", exact: false },
+      { to: "/empresa/parte-diaria", label: "Parte diária", icon: "diary", exact: false },
     ],
   },
   {
     id: "combustivel",
     title: "Combustível",
-    items: [{ to: "/empresa/combustivel", label: "Dashboard Combustível", icon: "fuel", exact: false }],
+    items: [{ to: "/empresa/combustivel", label: "Combustível", icon: "fuel", exact: false }],
   },
   {
     id: "frota",
     title: "Frota",
-    items: [{ to: "/empresa/frota", label: "Painel frota", icon: "fleet", exact: false }],
+    items: [{ to: "/empresa/frota", label: "Frota", icon: "fleet", exact: false }],
   },
   {
     id: "pessoas",
     title: "Pessoas",
-    items: [{ to: "/empresa/pessoas", label: "Gestão de pessoas", icon: "people", exact: false }],
+    items: [{ to: "/empresa/pessoas", label: "Pessoas", icon: "people", exact: false }],
   },
   {
     id: "inteligencia",
@@ -202,6 +202,23 @@ export const EMPRESA_SIDEBAR_SECTIONS = filterEmpresaSidebarSections([
 ]);
 
 export const EMPRESA_SIDEBAR_FOOTER = [{ to: "/dashboard/perfil", label: "Meu Perfil", icon: "profile", exact: false }];
+
+export const EMPRESA_MOBILE_NAV_ITEMS = [
+  { to: "/empresa/dashboard", label: "Início", icon: "overview", exact: true },
+  { to: "/empresa/transporte", label: "Transporte", icon: "transport", exact: false },
+  { to: "/empresa/combustivel", label: "Combust.", icon: "fuel", exact: false },
+  { to: "/empresa/frota", label: "Frota", icon: "fleet", exact: false },
+  { to: "/empresa/pessoas", label: "Pessoas", icon: "people", exact: false },
+];
+
+export function getEmpresaActiveLabel(pathname, search) {
+  const sections = [...EMPRESA_SIDEBAR_SECTIONS, { id: "conta", items: EMPRESA_SIDEBAR_FOOTER }];
+  for (const section of sections) {
+    const found = (section.items || []).find((tab) => empresaSidebarTabIsActive(pathname, search, tab));
+    if (found) return found.label;
+  }
+  return "";
+}
 
 export function empresaSidebarTabIsActive(pathname, search, tab) {
   const sp = new URLSearchParams(search && search.startsWith("?") ? search.slice(1) : search || "");

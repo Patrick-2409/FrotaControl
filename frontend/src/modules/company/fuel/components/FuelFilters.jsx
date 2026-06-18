@@ -35,7 +35,7 @@ function FuelFilters({
               key={p.id}
               type="button"
               onClick={() => onPeriodoChange(p.id)}
-              className={`fc-btn min-h-[44px] rounded-md border px-3 py-2.5 text-sm font-medium transition-colors sm:min-h-0 sm:py-2 ${
+              className={`fc-btn min-h-[44px] flex-1 rounded-md border px-3 py-2.5 text-sm font-medium transition-colors sm:min-h-0 sm:flex-none sm:py-2 ${
                 periodo === p.id
                   ? "border-zinc-500 bg-zinc-800 text-zinc-50"
                   : "border-zinc-700 bg-zinc-950/80 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200"
@@ -78,7 +78,7 @@ function FuelFilters({
         <div className="flex items-end sm:col-span-2 lg:col-span-2">
           <button
             type="button"
-            className="fc-btn rounded-md border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm font-medium text-zinc-300 hover:border-zinc-600 hover:text-zinc-100"
+          className="fc-btn w-full rounded-md border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm font-medium text-zinc-300 hover:border-zinc-600 hover:text-zinc-100 sm:w-auto"
             onClick={onClearVeiculoMotorista}
           >
             Limpar filtros de veículo e motorista

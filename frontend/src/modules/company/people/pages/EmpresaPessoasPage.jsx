@@ -7,7 +7,7 @@ import BIDashboardShell from "../../bi/components/BIDashboardShell";
 import EmpresaModuleErrorPanel from "../../shared/components/EmpresaModuleErrorPanel";
 import ExecutiveKpiCard from "../components/ExecutiveKpiCard";
 import { resolveBackendAssetUrl } from "../../../../services/api";
-import { FROTA_PANEL_PATH } from "../../../../components/empresaSidebarConstants";
+import { EmpresaMenuIcon, FROTA_PANEL_PATH } from "../../../../components/empresaSidebarConstants";
 import PeopleRoleFilter from "../components/PeopleRoleFilter";
 import { useEmpresaPeople } from "../hooks/useEmpresaPeople";
 import { CNH_CATEGORIAS, cnhBadgeClass, cnhStatusLabel, getCnhStatus } from "../../../../utils/cnhStatus";
@@ -42,7 +42,7 @@ function cnhCardTone(count, kind) {
 
 function RankingTable({ rows, p, showMotivo = false, showNaoAplicavel = false, emptyMessage, onEditRow }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-zinc-800/90">
+    <div className="fc-erp-table-scroll overflow-x-auto rounded-xl border border-zinc-800/90">
       <table className="min-w-[640px] w-full border-collapse text-left text-sm">
         <thead>
           <tr className="border-b border-zinc-800 bg-zinc-900/60 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
@@ -155,13 +155,13 @@ export default function EmpresaPessoasPage() {
     <>
       <Link
         to="/empresa/alertas"
-        className="rounded-lg border border-amber-700/50 bg-amber-950/30 px-4 py-2 text-sm font-medium text-amber-100 hover:border-amber-500/60"
+        className="fc-btn fc-btn-empresa-secondary w-full justify-center rounded-lg border border-amber-700/50 bg-amber-950/30 px-4 py-2 text-sm font-medium text-amber-100 hover:border-amber-500/60 sm:w-auto"
       >
         Alertas pessoas
       </Link>
       <Link
         to="/dashboard/gestao"
-        className="rounded-lg border border-zinc-600 bg-zinc-900/80 px-4 py-2 text-sm text-zinc-200 hover:border-zinc-500"
+        className="fc-btn fc-btn-empresa-secondary w-full justify-center rounded-lg border border-zinc-600 bg-zinc-900/80 px-4 py-2 text-sm text-zinc-200 hover:border-zinc-500 sm:w-auto"
       >
         Contas de acesso
       </Link>
@@ -209,7 +209,7 @@ export default function EmpresaPessoasPage() {
         <section className="space-y-3" aria-label="Indicadores de pessoas">
           <div className={KPI_GRID}>
             <ExecutiveKpiCard
-              icon="🚛"
+              icon={<EmpresaMenuIcon type="transport" />}
               label="Transporte"
               value={transportValue}
               subtitle={transportSubtitle}
@@ -217,7 +217,7 @@ export default function EmpresaPessoasPage() {
               tooltip={RISCO_TOOLTIP}
             />
             <ExecutiveKpiCard
-              icon="⚠️"
+              icon={<EmpresaMenuIcon type="bell" />}
               label="Risco operacional"
               value={riscoStatus}
               subtitle={riscoSubtitle}
@@ -235,7 +235,7 @@ export default function EmpresaPessoasPage() {
               }
             />
             <ExecutiveKpiCard
-              icon="👥"
+              icon={<EmpresaMenuIcon type="people" />}
               label="Motoristas ativos"
               value={p.fmtInt(motoristasAtivos)}
               subtitle={`${p.fmtInt(p.summary?.motoristas)} mot. · ${p.fmtInt(p.summary?.apontadores)} apont.`}
@@ -244,28 +244,28 @@ export default function EmpresaPessoasPage() {
           </div>
           <div className={KPI_GRID}>
             <ExecutiveKpiCard
-              icon="📄"
+              icon={<EmpresaMenuIcon type="reports" />}
               label="Lançamentos"
               value={p.fmtInt(p.summary?.romaneios_7d)}
               subtitle={`Partes diárias: ${p.fmtInt(p.summary?.parte_diaria_7d)} · 7 dias`}
               tone="neutral"
             />
             <ExecutiveKpiCard
-              icon="🪪"
+              icon={<EmpresaMenuIcon type="profile" />}
               label="CNH vencidas"
               value={p.fmtInt(cnhVencidas)}
               subtitle="Validade expirada"
               tone={cnhCardTone(cnhVencidas, "vencidas")}
             />
             <ExecutiveKpiCard
-              icon="🪪"
+              icon={<EmpresaMenuIcon type="profile" />}
               label="CNH vencendo"
               value={p.fmtInt(cnhVencendo)}
               subtitle="Próximos 60 dias"
               tone={cnhCardTone(cnhVencendo, "vencendo")}
             />
             <ExecutiveKpiCard
-              icon="🪪"
+              icon={<EmpresaMenuIcon type="profile" />}
               label="CNH válidas"
               value={p.fmtInt(cnhValidas)}
               subtitle="Acima de 60 dias"
@@ -465,7 +465,7 @@ export default function EmpresaPessoasPage() {
                 Motoristas de transporte em atenção (7 dias)
               </h3>
               <p className="mt-1 text-xs text-zinc-500">
-                Apenas quem deve registar romaneios de transporte de material.
+                    Apenas quem deve registrar romaneios de transporte de material.
               </p>
               {p.riscoFilterLoading || p.listLoading ? (
                 <div className="mt-3">
@@ -508,7 +508,7 @@ export default function EmpresaPessoasPage() {
           </div>
         ) : !p.listError ? (
           <>
-            <div className="mt-4 overflow-x-auto rounded-xl border border-zinc-800/90">
+            <div className="fc-erp-table-scroll mt-4 overflow-x-auto rounded-xl border border-zinc-800/90">
               <table className="min-w-[760px] w-full border-collapse text-left text-sm">
                 <thead>
                   <tr className="border-b border-zinc-800 bg-zinc-900/60 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
@@ -882,7 +882,7 @@ export default function EmpresaPessoasPage() {
               </div>
             </div>
 
-            <div className="sticky bottom-0 border-t border-zinc-800 bg-zinc-950 px-4 py-3">
+            <div className="fc-empresa-sticky-actions sticky bottom-0 border-t border-zinc-800 bg-zinc-950 px-4 py-3">
               <button
                 type="button"
                 disabled={p.saving}

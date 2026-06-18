@@ -1,4 +1,4 @@
-# FrotaControl
+# FrotaMax
 
 Sistema SaaS de controle operacional de frota com app motorista mobile-first, painel web gestor, funcionamento offline-first e sincronização automática.
 

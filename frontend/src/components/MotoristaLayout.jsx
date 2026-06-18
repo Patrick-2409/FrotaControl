@@ -33,7 +33,7 @@ export default function MotoristaLayout({ children, onSync, pendingCount, online
 
   useEffect(() => {
     refreshUser?.().catch(() => {});
-  }, []);
+  }, [refreshUser]);
 
   useEffect(() => {
     const onWindowClick = (event) => {

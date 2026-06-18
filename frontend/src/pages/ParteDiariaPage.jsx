@@ -154,6 +154,8 @@ export default function ParteDiariaPage({ onSaved }) {
   const [recentVisible, setRecentVisible] = useState(false);
   const [deleteLoadingId, setDeleteLoadingId] = useState("");
   const [editingSourceId, setEditingSourceId] = useState(null);
+  const userEmpresaNome = user?.empresa_nome || "";
+  const userNome = user?.nome || "";
 
   useEffect(() => {
     let active = true;
@@ -251,8 +253,8 @@ export default function ParteDiariaPage({ onSaved }) {
         setForm({
           ...draft,
           data: normalizeDraftDatetime(draft?.data),
-          contratado: user?.empresa_nome || draft.contratado || "",
-          operador: user?.nome || draft.operador || "",
+          contratado: userEmpresaNome || draft.contratado || "",
+          operador: userNome || draft.operador || "",
           checklist: {
             ...buildEmptyChecklist(),
             ...(draft.checklist || {}),
@@ -265,7 +267,7 @@ export default function ParteDiariaPage({ onSaved }) {
     } finally {
       setInitializing(false);
     }
-  }, []);
+  }, [draftKey, userEmpresaNome, userNome]);
 
   useEffect(() => {
     localStorage.setItem(draftKey, JSON.stringify(form));
@@ -335,7 +337,7 @@ export default function ParteDiariaPage({ onSaved }) {
       });
     }
     return Array.from(byId.values());
-  }, [vehicles, user?.veiculo_id, user?.veiculo_nome, user?.placa]);
+  }, [vehicles, user?.veiculo_id, user?.veiculo_nome, user?.placa, user?.veiculo_marca, user?.veiculo_modelo]);
 
   const selectedVehicle = useMemo(
     () => vehicleOptions.find((vehicle) => Number(vehicle.id) === Number(form.veiculo_id)),

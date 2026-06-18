@@ -100,7 +100,7 @@ export default function EmpresaAlertasPage() {
     await loadAll();
   };
 
-  const items = feed?.items || [];
+  const items = useMemo(() => feed?.items || [], [feed?.items]);
   const sortedItems = useMemo(
     () =>
       [...items].sort((a, b) => {

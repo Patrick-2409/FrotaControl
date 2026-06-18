@@ -143,7 +143,6 @@ export const buildExecutiveBoardSummary = ({
   painelExecutivo,
   narrativaExecutiva,
   regraDeOuro,
-  statusLabel,
   indicadores = {},
 } = {}) => {
   const topRisco = topRiscos[0] || null;

@@ -219,7 +219,7 @@ function EmpresaTransportePageContent() {
                 key={p.id}
                 type="button"
                 onClick={() => tr.setPeriodoFiltro(p.id)}
-                className={`fc-btn rounded-md border px-3 py-2 text-sm font-medium transition ${
+                className={`fc-btn min-h-[44px] flex-1 rounded-md border px-3 py-2 text-sm font-medium transition sm:flex-none ${
                   tr.periodoFiltro === p.id
                     ? "border-amber-500/50 bg-zinc-800/80 text-zinc-50 shadow-inner"
                     : "border-zinc-700 bg-zinc-950/60 text-zinc-300 hover:border-zinc-600"
@@ -240,7 +240,7 @@ function EmpresaTransportePageContent() {
               key={t.id}
               type="button"
               onClick={() => setMaterialTab(t.id)}
-              className={`fc-btn rounded-md border px-3 py-2 text-sm font-medium transition ${
+              className={`fc-btn min-h-[44px] flex-1 rounded-md border px-3 py-2 text-sm font-medium transition sm:flex-none ${
                 materialTab === t.id
                   ? "border-amber-500/50 bg-zinc-800/80 text-zinc-50 shadow-inner"
                   : "border-zinc-700 bg-zinc-950/60 text-zinc-300 hover:border-zinc-600"
@@ -252,7 +252,7 @@ function EmpresaTransportePageContent() {
         </div>
 
         {!tr.viagensLoading && tr.viagensResumo && totalToneladasPeriodo <= 0 ? (
-          <p className="text-sm text-zinc-500">Sem toneladas com capacidade registada neste período.</p>
+          <p className="text-sm text-zinc-500">Sem toneladas com capacidade registrada neste período.</p>
         ) : null}
         </section>
       </AccordionSection>
@@ -463,7 +463,7 @@ function EmpresaTransportePageContent() {
               onChange={(ev) => tr.setPlanForm((p) => ({ ...p, meta_rocha_ton: ev.target.value }))}
             />
           </label>
-          <div className="flex flex-wrap gap-2 sm:col-span-2">
+          <div className="fc-empresa-action-row flex flex-wrap gap-2 sm:col-span-2">
             <button
               type="submit"
               disabled={tr.planSaving}
@@ -495,7 +495,7 @@ function EmpresaTransportePageContent() {
         </section>
       </AccordionSection>
 
-      <div className="flex flex-wrap gap-3">
+      <div className="fc-empresa-action-row flex flex-wrap gap-3">
         <Link
           to="/empresa/dashboard"
           className="fc-btn inline-flex rounded-md border border-zinc-600 px-4 py-3 text-center text-sm font-semibold text-zinc-200 hover:border-zinc-500"

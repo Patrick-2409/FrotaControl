@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- este arquivo compartilha blocos de relatório e helpers de tooltip. */
 import { useEffect, useRef } from "react";
 import { CHART_GUIDES } from "../utils/chartGuides";
 

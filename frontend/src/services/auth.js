@@ -102,7 +102,7 @@ export const AuthProvider = ({ children }) => {
     return () => window.removeEventListener("fc:auth-expired", onAuthExpired);
   }, []);
 
-  const login = async (payload) => {
+  const login = useCallback(async (payload) => {
     const { data } = await api.post("/auth/motorista-login", buildMotoristaLoginPayload(payload));
     const normalized = normalizeUser(data.user);
     localStorage.setItem("fc_token", data.token);
@@ -110,9 +110,9 @@ export const AuthProvider = ({ children }) => {
     setUser(normalized);
     const fresh = await refreshUser();
     return fresh;
-  };
+  }, [refreshUser]);
 
-  const adminEmpresaLogin = async (payload) => {
+  const adminEmpresaLogin = useCallback(async (payload) => {
     const { data } = await api.post("/auth/admin-empresa-login", buildUniversalLoginPayload(payload));
     const normalized = normalizeUser(data.user);
     localStorage.setItem("fc_token", data.token);
@@ -120,9 +120,9 @@ export const AuthProvider = ({ children }) => {
     setUser(normalized);
     const fresh = await refreshUser();
     return fresh;
-  };
+  }, [refreshUser]);
 
-  const apontadorLogin = async (payload) => {
+  const apontadorLogin = useCallback(async (payload) => {
     const { data } = await api.post("/auth/apontador-login", buildUniversalLoginPayload(payload));
     const normalized = normalizeUser(data.user);
     localStorage.setItem("fc_token", data.token);
@@ -130,9 +130,9 @@ export const AuthProvider = ({ children }) => {
     setUser(normalized);
     const fresh = await refreshUser();
     return fresh;
-  };
+  }, [refreshUser]);
 
-  const superAdminLogin = async (payload) => {
+  const superAdminLogin = useCallback(async (payload) => {
     const { data } = await api.post("/auth/super-admin-login", buildUniversalLoginPayload(payload));
     const normalized = normalizeUser(data.user);
     localStorage.setItem("fc_token", data.token);
@@ -140,13 +140,13 @@ export const AuthProvider = ({ children }) => {
     setUser(normalized);
     const fresh = await refreshUser();
     return fresh;
-  };
+  }, [refreshUser]);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     localStorage.removeItem("fc_token");
     localStorage.removeItem("fc_user");
     setUser(null);
-  };
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -165,7 +165,7 @@ export const AuthProvider = ({ children }) => {
       isMotoristaApoio: Boolean(user?.is_motorista_apoio),
       isApontador: user?.role === "APONTADOR",
     }),
-    [user, loading]
+    [user, loading, login, adminEmpresaLogin, apontadorLogin, superAdminLogin, logout, refreshUser]
   );
 
   return createElement(AuthContext.Provider, { value }, children);

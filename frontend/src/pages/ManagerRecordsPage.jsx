@@ -64,7 +64,7 @@ export default function ManagerRecordsPage() {
   const tipoExportLabel = typeLabelMap[filtro.tipo] || typeLabelMap[""];
   const periodoExportLabel = useMemo(
     () => formatExportPeriodoLinha(filtro),
-    [filtro.data, filtro.data_fim, filtro.data_inicio, filtro.mes, filtro.periodo, filtro.tipo]
+    [filtro]
   );
   const hasActiveFilters = useMemo(
     () =>

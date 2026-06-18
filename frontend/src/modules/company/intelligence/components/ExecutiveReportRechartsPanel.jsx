@@ -26,6 +26,7 @@ import {
 import {
   ColorLegend,
   createExecutiveTooltip,
+  ExecutiveChartTooltip,
   LineCostDataTable,
   ReportChartCard,
   StaticLegend,
@@ -89,25 +90,14 @@ export default function ExecutiveReportRechartsPanel({ pieData = [], lineData = 
   const lineStats = buildLineStats(lineData);
   const lineDiscussion = buildLineDiscussion(lineData);
   const barDiscussion = buildBarDiscussion(barData);
-
-  const LineTooltip = createExecutiveTooltip({
-    explanation: CHART_TOOLTIP_EXPLANATIONS.lineCusto,
-    labelFormatter: (label) => `Data: ${fmtDateTick(label)}`,
-    valueFormatter: (value) => {
-      const custo = Number(value);
-      const vsMedia =
-        lineStats?.media > 0
-          ? `${(((custo - lineStats.media) / lineStats.media) * 100).toFixed(1)}% vs média`
-          : "";
-      return [`${fmtMoney(value)}${vsMedia ? ` (${vsMedia})` : ""}`, CHART_LEGEND_ITEMS.custo.short];
-    },
-  });
-
-  const BarTooltip = createExecutiveTooltip({
-    explanation: CHART_TOOLTIP_EXPLANATIONS.barConsumoProducao,
-    labelFormatter: (label) => `Data: ${fmtDateTick(label)}`,
-    valueFormatter: (value, name) => [fmtNum(value), name],
-  });
+  const lineTooltipValueFormatter = (value) => {
+    const custo = Number(value);
+    const vsMedia =
+      lineStats?.media > 0
+        ? `${(((custo - lineStats.media) / lineStats.media) * 100).toFixed(1)}% vs média`
+        : "";
+    return [`${fmtMoney(value)}${vsMedia ? ` (${vsMedia})` : ""}`, CHART_LEGEND_ITEMS.custo.short];
+  };
 
   return (
     <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
@@ -197,7 +187,15 @@ export default function ExecutiveReportRechartsPanel({ pieData = [], lineData = 
                     style: { textAnchor: "middle" },
                   }}
                 />
-                <Tooltip content={<LineTooltip />} />
+                <Tooltip
+                  content={
+                    <ExecutiveChartTooltip
+                      explanation={CHART_TOOLTIP_EXPLANATIONS.lineCusto}
+                      labelFormatter={(label) => `Data: ${fmtDateTick(label)}`}
+                      valueFormatter={lineTooltipValueFormatter}
+                    />
+                  }
+                />
                 <Legend
                   verticalAlign="top"
                   wrapperStyle={{ fontSize: 12, paddingBottom: 4 }}
@@ -258,7 +256,15 @@ export default function ExecutiveReportRechartsPanel({ pieData = [], lineData = 
                 <CartesianGrid strokeDasharray="3 3" stroke={REPORT_COLORS.grid} />
                 <XAxis dataKey="periodo" stroke={REPORT_COLORS.axis} fontSize={11} tickFormatter={fmtDateTick} />
                 <YAxis stroke={REPORT_COLORS.axis} fontSize={11} />
-                <Tooltip content={<BarTooltip />} />
+                <Tooltip
+                  content={
+                    <ExecutiveChartTooltip
+                      explanation={CHART_TOOLTIP_EXPLANATIONS.barConsumoProducao}
+                      labelFormatter={(label) => `Data: ${fmtDateTick(label)}`}
+                      valueFormatter={(value, name) => [fmtNum(value), name]}
+                    />
+                  }
+                />
                 <Legend
                   verticalAlign="top"
                   wrapperStyle={{ fontSize: 12, paddingBottom: 4 }}

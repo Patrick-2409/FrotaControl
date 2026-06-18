@@ -1,5 +1,5 @@
 import { Component, useEffect, useState } from "react";
-import { CHART_COLORS, getColorByIndex } from "../utils/chartColors";
+import { CHART_COLORS } from "../utils/chartColors";
 import { BiPieLegend, enrichPieChartData } from "../utils/pieChartHelpers";
 
 const ENABLE_RECHARTS = String(import.meta.env.VITE_ENABLE_RECHARTS || "").trim().toLowerCase() === "true";

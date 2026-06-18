@@ -115,7 +115,7 @@ export default function EmpresaExecutiveDashboardPage() {
     <BIDashboardShell
       eyebrow="Indicadores"
       title="Executivo"
-      lead="Visão consolidada e acionável por módulo. Toque em qualquer card para abrir a área correspondente."
+      lead="Visão consolidada e acionável por módulo. Abra um card para entrar na área correspondente."
     >
       <PeriodoHeader periodo={periodo} setPeriodo={setPeriodo} />
 
@@ -128,13 +128,14 @@ export default function EmpresaExecutiveDashboardPage() {
       <AccordionSection
         id="exec-resumo-modulos"
         title="Dashboard rápido por módulo"
-        description="Toque no card para abrir o módulo correspondente."
+        description="Resumo executivo com acesso direto aos módulos operacionais."
         defaultOpenDesktop
         defaultOpenMobile={false}
       >
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="Resumo por módulo">
         <ExecutiveModuleCard
           title="Transporte"
+          iconType="transport"
           to="/empresa/transporte"
           accent="amber"
           tooltipText="Mostra o volume total transportado no período. É calculado pela soma das toneladas de estéril e rocha. Quanto maior, melhor o ritmo frente à meta."
@@ -167,6 +168,7 @@ export default function EmpresaExecutiveDashboardPage() {
 
         <ExecutiveModuleCard
           title="Combustível"
+          iconType="fuel"
           to="/empresa/combustivel"
           accent="blue"
           tooltipText="Representa o custo total de combustível no período e a eficiência por litro. Valor muito alto indica pressão de custo e necessidade de revisão de consumo/preço."
@@ -188,6 +190,7 @@ export default function EmpresaExecutiveDashboardPage() {
 
         <ExecutiveModuleCard
           title="Parte diária"
+          iconType="diary"
           to="/empresa/parte-diaria"
           accent="emerald"
           tooltipText="Quantidade de lançamentos de parte diária no período. É comparada com motoristas ativos para medir cobertura operacional. Valor baixo pode indicar falha de registro."
@@ -209,6 +212,7 @@ export default function EmpresaExecutiveDashboardPage() {
 
         <ExecutiveModuleCard
           title="Frota"
+          iconType="fleet"
           to="/empresa/frota"
           accent="zinc"
           tooltipText="Total de veículos com movimento no período. O indicador cruza atividade da frota com equipe ativa. Valor baixo pode sinalizar ociosidade ou indisponibilidade."
@@ -226,6 +230,7 @@ export default function EmpresaExecutiveDashboardPage() {
 
         <ExecutiveModuleCard
           title="Pessoas"
+          iconType="people"
           to="/empresa/pessoas"
           accent="violet"
           tooltipText="Motoristas com lançamentos no período. É calculado por usuários ativos com registro operacional. Valor baixo reduz capacidade de execução da frota."

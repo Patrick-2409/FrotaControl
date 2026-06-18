@@ -23,7 +23,7 @@ const TABLE_EXPORT_LAYOUT_PARAMS = Object.freeze({ layout: "profissional" });
 const REPORT_TYPES = [
   { key: "romaneio", label: "Transporte" },
   { key: "combustivel", label: "Combustível" },
-  { key: "parte_diaria", label: "Pessoas" },
+  { key: "parte_diaria", label: "Parte diária" },
 ];
 
 const VALID_REPORT_TYPES = new Set(REPORT_TYPES.map((item) => item.key));
@@ -356,7 +356,7 @@ export default function EmpresaRelatoriosPage() {
           <div>
             <p className="fc-erp-eyebrow text-zinc-400">Recentes</p>
             {!recent.length ? (
-              <p className="mt-2 text-xs text-zinc-500">Escolha um tipo na árvore para registar aqui.</p>
+              <p className="mt-2 text-xs text-zinc-500">Escolha um tipo na árvore para registrar aqui.</p>
             ) : (
               <ul className="mt-2 space-y-1">
                 {recent.map((r) => (
@@ -371,7 +371,7 @@ export default function EmpresaRelatoriosPage() {
           <div>
             <p className="fc-erp-eyebrow text-zinc-400">Últimas exportações (este dispositivo)</p>
             {!exportHistory.length ? (
-              <p className="mt-2 text-xs text-zinc-500">Ainda sem exportações registadas.</p>
+              <p className="mt-2 text-xs text-zinc-500">Ainda sem exportações registradas.</p>
             ) : (
               <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto pr-1">
                 {exportHistory.map((h, i) => (
@@ -401,7 +401,7 @@ export default function EmpresaRelatoriosPage() {
                   key={reportType.key}
                   type="button"
                   onClick={() => setFiltro((prev) => ({ ...prev, tipo: reportType.key }))}
-                  className={`fc-btn rounded-lg border px-3 py-2 text-sm ${
+                  className={`fc-btn min-h-[44px] rounded-lg border px-3 py-2 text-sm font-medium ${
                     filtro.tipo === reportType.key
                       ? "border-blue-500 bg-blue-500/20 text-blue-100"
                       : "border-zinc-700 bg-zinc-950/50 text-zinc-300"
@@ -424,7 +424,7 @@ export default function EmpresaRelatoriosPage() {
                   key={id}
                   type="button"
                   onClick={() => setFiltro((prev) => applyPeriodPreset(prev, id))}
-                  className={`fc-btn rounded-lg border px-3 py-2 text-xs ${
+                  className={`fc-btn min-h-[44px] rounded-lg border px-3 py-2 text-xs font-medium ${
                     filtro.preset === id
                       ? "border-blue-500 bg-blue-500/20 text-blue-100"
                       : "border-zinc-700 bg-zinc-950/50 text-zinc-300"
@@ -466,7 +466,7 @@ export default function EmpresaRelatoriosPage() {
                 onChange={(e) => setFiltro((prev) => ({ ...prev, veiculo: e.target.value }))}
               />
             </div>
-            <div className="mt-3 flex justify-end">
+            <div className="fc-empresa-action-row mt-3 flex justify-end">
               <button type="button" onClick={clearFilters} className="fc-btn rounded-lg border border-zinc-600 px-3 py-2 text-xs text-zinc-200">
                 Limpar filtros
               </button>
@@ -488,7 +488,7 @@ export default function EmpresaRelatoriosPage() {
               <p className="rounded-lg border border-red-800/60 bg-red-950/30 px-4 py-3 text-sm text-red-200">{previewError}</p>
             ) : previewLoading ? (
               <div className="flex flex-col items-center gap-3 py-12">
-                <InlineSpinner label="A carregar fichas…" />
+                <InlineSpinner label="Carregando fichas…" />
               </div>
             ) : (
               <>
@@ -515,8 +515,8 @@ export default function EmpresaRelatoriosPage() {
                         Mostrando {PREVIEW_RECORD_LIMIT} de {previewTotal} registros
                       </p>
                     ) : null}
-                    <div className="overflow-x-auto rounded-lg border border-zinc-800/90">
-                      <table className="w-full text-left text-sm">
+                    <div className="fc-erp-table-scroll overflow-x-auto rounded-lg border border-zinc-800/90">
+                      <table className="min-w-[720px] w-full text-left text-sm">
                         <thead className="bg-zinc-950/70 text-xs uppercase tracking-wide text-zinc-500">
                           <tr>
                             <th className="w-10 px-3 py-2">
@@ -589,7 +589,7 @@ export default function EmpresaRelatoriosPage() {
             <p className="mt-1 text-xs text-zinc-500">
               Tipo: <strong>{tipoExportLabel}</strong> • Período: <strong>{periodoExportLabel}</strong>
             </p>
-            <div className="mt-4 flex flex-wrap items-center gap-2">
+            <div className="fc-empresa-action-row mt-4 flex flex-wrap items-center gap-2">
               {hasSelection ? (
                 <button
                   type="button"
@@ -649,7 +649,7 @@ export default function EmpresaRelatoriosPage() {
               <p><strong>Litros:</strong> {fmtLitros(detailRow.litros)} L</p>
               <p><strong>Valor:</strong> {fmtMoney(detailRow.valor_total)}</p>
             </div>
-            <div className="mt-5 flex flex-wrap gap-2">
+            <div className="fc-empresa-action-row mt-5 flex flex-wrap gap-2">
               <button
                 type="button"
                 disabled={Boolean(exporting)}

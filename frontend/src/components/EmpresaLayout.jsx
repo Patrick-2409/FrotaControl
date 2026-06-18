@@ -1,31 +1,14 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { LogOut, Menu, X } from "lucide-react";
 import { useAuth } from "../services/auth";
 import useHaptics from "../hooks/useHaptics";
 import CompanyLogo from "./CompanyLogo";
 import Avatar from "./Avatar";
 import EmpresaNotificationsBell from "./EmpresaNotificationsBell";
 import EmpresaSidebar from "./EmpresaSidebar";
-import { EMPRESA_SIDEBAR_FOOTER, EMPRESA_SIDEBAR_SECTIONS } from "./empresaSidebarConstants";
-
-function MenuIcon({ open }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className="h-6 w-6" aria-hidden="true">
-      {open ? (
-        <path
-          d="M6 6l12 12M18 6L6 18"
-          stroke="currentColor"
-          strokeWidth="1.85"
-          strokeLinecap="round"
-        />
-      ) : (
-        <>
-          <path d="M5 7h14M5 12h14M5 17h14" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
-        </>
-      )}
-    </svg>
-  );
-}
+import EmpresaMobileNav from "./EmpresaMobileNav";
+import { EMPRESA_SIDEBAR_FOOTER, EMPRESA_SIDEBAR_SECTIONS, getEmpresaActiveLabel } from "./empresaSidebarConstants";
 
 /**
  * Shell corporativo único do admin empresa (/empresa/* e /dashboard/*).
@@ -36,6 +19,7 @@ export default function EmpresaLayout({ children }) {
   const { pathname, search } = useLocation();
   const { tap } = useHaptics();
   const [navOpen, setNavOpen] = useState(false);
+  const activeLabel = getEmpresaActiveLabel(pathname, search);
 
   useEffect(() => {
     refreshUser?.().catch(() => {});
@@ -77,7 +61,7 @@ export default function EmpresaLayout({ children }) {
                 setNavOpen(true);
               }}
             >
-              <MenuIcon open={false} />
+              <Menu className="h-5 w-5" aria-hidden="true" />
             </button>
             <CompanyLogo
               logoUrl={user?.logo_url}
@@ -89,6 +73,7 @@ export default function EmpresaLayout({ children }) {
               <h1 className="truncate text-base font-semibold tracking-tight text-zinc-50 sm:text-lg">
                 {user?.empresa_nome || "Empresa"}
               </h1>
+              {activeLabel ? <p className="mt-0.5 truncate text-xs text-zinc-500">{activeLabel}</p> : null}
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2 text-sm sm:gap-3">
@@ -97,10 +82,15 @@ export default function EmpresaLayout({ children }) {
             <p className="hidden max-w-[11rem] truncate text-zinc-400 sm:block">{user?.nome}</p>
             <button
               type="button"
-              onClick={logout}
-              className="fc-btn fc-btn-empresa-ghost rounded-md border border-zinc-600 bg-zinc-900 px-3 py-2 text-xs font-semibold text-zinc-100 sm:text-sm"
+              onClick={() => {
+                tap(6);
+                logout();
+              }}
+              className="fc-btn fc-btn-empresa-ghost inline-flex h-11 w-11 items-center justify-center gap-2 rounded-md border border-zinc-600 bg-zinc-900 p-0 text-xs font-semibold text-zinc-100 sm:h-auto sm:w-auto sm:px-3 sm:py-2 sm:text-sm"
+              aria-label="Sair do painel"
             >
-              Sair
+              <LogOut className="h-4 w-4" aria-hidden="true" />
+              <span className="hidden sm:inline">Sair</span>
             </button>
           </div>
         </div>
@@ -129,7 +119,7 @@ export default function EmpresaLayout({ children }) {
                 aria-label="Fechar"
                 onClick={closeNav}
               >
-                <MenuIcon open />
+                <X className="h-5 w-5" aria-hidden="true" />
               </button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 sm:px-4 sm:py-4">
@@ -165,6 +155,7 @@ export default function EmpresaLayout({ children }) {
           {children}
         </main>
       </div>
+      <EmpresaMobileNav pathname={pathname} search={search} onNavTap={() => tap(8)} />
     </div>
   );
 }

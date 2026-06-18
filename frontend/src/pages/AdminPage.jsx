@@ -155,6 +155,8 @@ export default function AdminPage() {
   const debouncedUserSearch = useDebouncedValue(searchUsers);
   const debouncedVehicleSearch = useDebouncedValue(searchVehicles);
   const debouncedGlobalSearch = useDebouncedValue(globalSearch);
+  const editingUserRole = editingUser?.role;
+  const editingUserEmpresaId = editingUser?.empresa_id;
 
   const loadOverview = useCallback(async () => {
     const { data } = await api.get("/super-admin/overview");
@@ -276,14 +278,14 @@ export default function AdminPage() {
   );
 
   useEffect(() => {
-    if (!editingUser || editingUser.role !== "MOTORISTA" || !editingUser.empresa_id) {
+    if (editingUserRole !== "MOTORISTA" || !editingUserEmpresaId) {
       setUserEditVehicles([]);
       return;
     }
     let cancelled = false;
     api
       .get("/super-admin/vehicles", {
-        params: { page: 1, limit: 200, empresa_id: Number(editingUser.empresa_id) },
+        params: { page: 1, limit: 200, empresa_id: Number(editingUserEmpresaId) },
       })
       .then(({ data }) => {
         if (!cancelled) setUserEditVehicles(dedupeById(data.items || []));
@@ -294,13 +296,13 @@ export default function AdminPage() {
     return () => {
       cancelled = true;
     };
-  }, [editingUser?.id, editingUser?.role, editingUser?.empresa_id]);
+  }, [editingUserRole, editingUserEmpresaId]);
 
   useEffect(() => {
     Promise.all([loadOverview(), loadCompanyOptions()]).catch(() => {
       emitToast("Não foi possível carregar o resumo inicial.", "error");
     });
-  }, []);
+  }, [loadOverview, loadCompanyOptions]);
 
   useEffect(() => {
     loadCompanies().catch(() => emitToast("Falha ao carregar empresas.", "error"));

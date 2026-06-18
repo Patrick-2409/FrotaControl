@@ -84,7 +84,7 @@ export const downloadInteligenciaPdf = async (
     });
   } catch (error) {
     const message = await parseBlobErrorMessage(error, PDF_DESATIVADO_MENSAGEM);
-    throw new Error(message);
+    throw new Error(message, { cause: error });
   }
 
   const contentType = String(pdfResponse?.headers?.["content-type"] || "").toLowerCase();

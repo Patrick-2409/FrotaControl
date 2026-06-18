@@ -1,19 +1,20 @@
 import { memo } from "react";
 import { NavLink } from "react-router-dom";
+import { EmpresaMenuIcon } from "../../../../components/empresaSidebarConstants";
 
 const MODULES = [
-  { id: "executive", to: "/empresa/dashboard", label: "Executivo" },
-  { id: "transport", to: "/empresa/transporte", label: "Transporte" },
-  { id: "fuel", to: "/empresa/combustivel", label: "Combustível" },
-  { id: "fleet", to: "/empresa/frota", label: "Frota" },
-  { id: "people", to: "/empresa/pessoas", label: "Pessoas" },
+  { id: "executive", to: "/empresa/dashboard", label: "Executivo", icon: "overview" },
+  { id: "transport", to: "/empresa/transporte", label: "Transporte", icon: "transport" },
+  { id: "fuel", to: "/empresa/combustivel", label: "Combustível", icon: "fuel" },
+  { id: "fleet", to: "/empresa/frota", label: "Frota", icon: "fleet" },
+  { id: "people", to: "/empresa/pessoas", label: "Pessoas", icon: "people" },
 ];
 
 function BIModuleSwitcher() {
   return (
     <nav
-      className="fc-bi-module-switcher no-scrollbar mb-5 flex snap-x snap-mandatory gap-1.5 overflow-x-auto pb-1 sm:mb-6 sm:flex-wrap sm:overflow-visible sm:pb-0"
-      aria-label="Navegação entre áreas principais"
+      className="fc-bi-module-switcher no-scrollbar mb-5 hidden snap-x snap-mandatory gap-1.5 overflow-x-auto pb-1 sm:mb-6 sm:flex sm:flex-nowrap md:flex-wrap md:overflow-visible sm:pb-0"
+      aria-label="Navegação entre áreas executivas"
     >
       {MODULES.map((m) => (
         <NavLink
@@ -22,12 +23,13 @@ function BIModuleSwitcher() {
           end={m.id === "executive"}
           className={({ isActive }) =>
             [
-              "fc-bi-tab snap-start shrink-0 rounded-md px-3.5 py-3 text-xs font-semibold tracking-tight transition-colors min-h-[44px] inline-flex items-center justify-center sm:min-h-0 sm:px-3 sm:py-2 sm:text-[13px]",
+              "fc-bi-tab snap-start shrink-0 rounded-md px-3.5 py-3 text-xs font-semibold tracking-tight transition-colors min-h-[44px] inline-flex items-center justify-center whitespace-nowrap sm:min-h-0 sm:px-3 sm:py-2 sm:text-[13px]",
               isActive ? "fc-bi-tab--active" : "fc-bi-tab--idle",
             ].join(" ")
           }
         >
-          {m.label}
+          <EmpresaMenuIcon type={m.icon} />
+          <span className="ml-2">{m.label}</span>
         </NavLink>
       ))}
     </nav>

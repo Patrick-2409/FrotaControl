@@ -1,4 +1,6 @@
 import { Link } from "react-router-dom";
+import { ArrowUpRight } from "lucide-react";
+import { EmpresaMenuIcon } from "../../../../components/empresaSidebarConstants";
 import TooltipInfo from "../../shared/components/TooltipInfo";
 
 const trendStyleMap = {
@@ -66,6 +68,7 @@ export default function ExecutiveModuleCard({
   progress = 0,
   miniSeries = [],
   tooltipText = "",
+  iconType = "",
   children,
 }) {
   const accentMap = {
@@ -80,16 +83,24 @@ export default function ExecutiveModuleCard({
   const safeProgress = Math.max(0, Math.min(100, Number(progress) || 0));
   const content = (
     <article
-      className={`fc-erp-module-card fc-erp-module-card--interactive fc-card flex h-full flex-col rounded-xl border p-4 sm:p-5 ${accentClass}`}
+      className={`fc-erp-module-card fc-erp-module-card--interactive fc-card flex h-full flex-col rounded-lg border p-4 sm:p-5 ${accentClass}`}
     >
       <header className="mb-2 flex items-center justify-between gap-3">
         <h3 className="flex min-w-0 items-center gap-2 text-xs font-bold uppercase tracking-[0.12em] text-zinc-100">
-          <span>{title}</span>
+          {iconType ? (
+            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-zinc-700/70 bg-zinc-950/55 text-zinc-300">
+              <EmpresaMenuIcon type={iconType} />
+            </span>
+          ) : null}
+          <span className="min-w-0 truncate">{title}</span>
           {tooltipText ? <TooltipInfo text={tooltipText} /> : null}
         </h3>
-        <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
-          {to ? "Abrir módulo" : "Somente leitura"}
-        </span>
+        {to ? (
+          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-zinc-700/80 bg-zinc-950/60 text-zinc-400 transition group-hover:border-zinc-500 group-hover:text-zinc-100">
+            <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+            <span className="sr-only">Abrir {title}</span>
+          </span>
+        ) : null}
       </header>
 
       <p className="break-words text-xl font-bold tracking-tight text-zinc-50 sm:text-3xl">{value}</p>
@@ -116,7 +127,7 @@ export default function ExecutiveModuleCard({
 
   if (!to) return content;
   return (
-    <Link to={to} className="group block h-full focus-visible:rounded-xl">
+    <Link to={to} className="group block h-full focus-visible:rounded-lg">
       {content}
     </Link>
   );

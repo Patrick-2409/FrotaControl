@@ -53,14 +53,14 @@ export default function EmpresaFrotaPage() {
       <button
         type="button"
         onClick={fl.openCreate}
-        className="rounded-lg bg-amber-500/90 px-4 py-2 text-sm font-semibold text-zinc-950 shadow-sm hover:bg-amber-400"
+        className="fc-btn fc-btn-empresa-accent w-full justify-center rounded-lg px-4 py-2 text-sm font-semibold shadow-sm sm:w-auto"
       >
         Novo veículo
       </button>
       <button
         type="button"
         onClick={() => fl.downloadFleetCsv()}
-        className="rounded-lg border border-zinc-600 bg-zinc-900/80 px-4 py-2 text-sm font-medium text-zinc-100 hover:border-zinc-500"
+        className="fc-btn fc-btn-empresa-secondary w-full justify-center rounded-lg border border-zinc-600 bg-zinc-900/80 px-4 py-2 text-sm font-medium text-zinc-100 hover:border-zinc-500 sm:w-auto"
       >
         Exportar CSV
       </button>
@@ -143,7 +143,7 @@ export default function EmpresaFrotaPage() {
             </p>
           </article>
           <article className="fc-card border-zinc-800/70 p-4">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Manutenções registadas</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Manutenções registradas</p>
             <p className="mt-2 text-xl font-semibold tabular-nums text-zinc-100">
               {fl.fmtInt(fl.summary.manutencoes_registradas)}
             </p>
@@ -170,7 +170,7 @@ export default function EmpresaFrotaPage() {
         defaultOpenMobile={false}
       >
       <section className="rounded-xl border border-zinc-800/90 bg-zinc-950/40 p-4 sm:p-5" aria-label="Telemetria futura">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Integrações planeadas</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Integrações planejadas</p>
         <p className="mt-2 text-sm text-zinc-400">
           GPS, telemetria, rastreamento e sensores — estrutura de dados preparada em{" "}
           <code className="rounded bg-zinc-800 px-1 py-0.5 text-[11px] text-zinc-300">fleet_telemetry_meta</code>{" "}
@@ -237,7 +237,7 @@ export default function EmpresaFrotaPage() {
           </div>
         ) : (
           <>
-        <div className="mt-4 overflow-x-auto rounded-xl border border-zinc-800/90">
+        <div className="fc-erp-table-scroll mt-4 overflow-x-auto rounded-xl border border-zinc-800/90">
             <table className="min-w-[720px] w-full border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-zinc-800 bg-zinc-900/60 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
@@ -259,7 +259,7 @@ export default function EmpresaFrotaPage() {
                 ) : fl.vehicles.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-3 py-8 text-center text-sm text-zinc-500">
-                      Nenhum veículo encontrado com os filtros actuais.
+                      Nenhum veículo encontrado com os filtros atuais.
                     </td>
                   </tr>
                 ) : (
@@ -566,12 +566,12 @@ export default function EmpresaFrotaPage() {
                       onClick={() => fl.addMaintenance()}
                       className="fc-btn fc-btn-empresa-accent w-full rounded-lg py-2 text-sm font-semibold disabled:opacity-40"
                     >
-                      Registar manutenção
+                      Registrar manutenção
                     </button>
                   </div>
                   <div className="mt-3 max-h-48 overflow-y-auto text-xs text-zinc-400">
                     {fl.maintLoading ? (
-                      <p>A carregar histórico…</p>
+                      <p>Carregando histórico…</p>
                     ) : fl.maintItems.length === 0 ? (
                       <p>Sem registros de manutenção.</p>
                     ) : (
@@ -608,7 +608,7 @@ export default function EmpresaFrotaPage() {
               ) : null}
             </div>
 
-            <div className="sticky bottom-0 flex flex-wrap gap-2 border-t border-zinc-800 bg-zinc-950 px-4 py-3">
+            <div className="fc-empresa-sticky-actions sticky bottom-0 flex flex-wrap gap-2 border-t border-zinc-800 bg-zinc-950 px-4 py-3">
               <button
                 type="button"
                 disabled={fl.saving}

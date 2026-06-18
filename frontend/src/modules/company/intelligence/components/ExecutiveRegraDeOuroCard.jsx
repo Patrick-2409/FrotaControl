@@ -1,5 +1,6 @@
+/* eslint-disable react-refresh/only-export-components -- componente e resolver ficam juntos para evitar divergência de regra. */
 function VerdictBadge({ label, value, loading = false, positiveWhenTrue = true }) {
-  const isGood = positiveWhenTrue ? Boolean(value) : !Boolean(value);
+  const isGood = positiveWhenTrue ? value : !value;
   const styles = isGood
     ? { wrap: "border-emerald-200 bg-emerald-50", dot: "bg-emerald-500", text: "text-emerald-900" }
     : { wrap: "border-red-200 bg-red-50", dot: "bg-red-500", text: "text-red-900" };
@@ -12,7 +13,7 @@ function VerdictBadge({ label, value, loading = false, positiveWhenTrue = true }
       ) : (
         <p className={`mt-1 flex items-center gap-2 text-lg font-bold ${styles.text}`}>
           <span className={`inline-block h-2.5 w-2.5 rounded-full ${styles.dot}`} aria-hidden="true" />
-          {Boolean(value) ? "Sim" : "Não"}
+          {value ? "Sim" : "Não"}
         </p>
       )}
     </article>

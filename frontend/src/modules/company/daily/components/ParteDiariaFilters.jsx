@@ -29,7 +29,7 @@ export default function ParteDiariaFilters({
               key={p.id}
               type="button"
               onClick={() => onFiltroChange((f) => ({ ...f, periodo: p.id }))}
-              className={`fc-btn rounded-md border px-3 py-2 text-sm font-medium transition ${
+              className={`fc-btn min-h-[44px] flex-1 rounded-md border px-3 py-2 text-sm font-medium transition sm:flex-none ${
                 filtro.periodo === p.id
                   ? "border-amber-500/50 bg-zinc-800/80 text-zinc-50 shadow-inner"
                   : "border-zinc-700 bg-zinc-950/60 text-zinc-300 hover:border-zinc-600"
@@ -99,7 +99,7 @@ export default function ParteDiariaFilters({
         <div className="flex items-end">
           <button
             type="button"
-            className="fc-btn rounded-md border border-zinc-600 bg-zinc-950/70 px-4 py-2 text-sm font-medium text-zinc-200 hover:border-zinc-500"
+            className="fc-btn w-full rounded-md border border-zinc-600 bg-zinc-950/70 px-4 py-2 text-sm font-medium text-zinc-200 hover:border-zinc-500 sm:w-auto"
             onClick={onClear}
           >
             Limpar filtros
@@ -133,7 +133,7 @@ export default function ParteDiariaFilters({
                 key={s.id}
                 type="button"
                 onClick={() => onStatusLocalChange?.(s.id)}
-                className={`fc-btn rounded-md border px-3 py-2 text-sm font-medium transition ${
+                className={`fc-btn min-h-[44px] flex-1 rounded-md border px-3 py-2 text-sm font-medium transition sm:flex-none ${
                   statusLocal === s.id
                     ? "border-amber-500/50 bg-zinc-800/80 text-zinc-50 shadow-inner"
                     : "border-zinc-700 bg-zinc-950/60 text-zinc-300 hover:border-zinc-600"

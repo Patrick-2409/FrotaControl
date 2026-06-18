@@ -1,4 +1,4 @@
-# Auditoria técnica do frontend — FrotaControl
+# Auditoria técnica do frontend — FrotaMax
 
 Documento gerado na auditoria incremental (PROMPT 4). Serve como mapa de riscos, duplicações e próximos passos seguros. **Não substitui testes E2E nem revisão de API.**
 
