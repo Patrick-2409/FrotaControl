@@ -9,4 +9,5 @@ export const mapVeiculoApi = (v) => ({
       : null,
 });
 
-export const storageKeyVeiculo = (empresaId) => `fc_apontador_veiculo_id:${empresaId ?? "default"}`;
+export const storageKeyVeiculo = (empresaId, userId) =>
+  `fc_apontador_veiculo_id:${empresaId ?? "default"}:${userId ?? "default"}`;

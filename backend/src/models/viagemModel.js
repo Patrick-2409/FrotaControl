@@ -1,14 +1,14 @@
 const { pool } = require("../db");
 
 const insertViagem = async (
-  { empresa_id, veiculo_id, motorista_id, tipo, marcacao },
+  { empresa_id, veiculo_id, motorista_id, apontador_id = null, tipo, marcacao },
   db = pool
 ) => {
   const { rows } = await db.query(
-    `INSERT INTO viagens (empresa_id, veiculo_id, motorista_id, tipo, marcacao)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING id, empresa_id, veiculo_id, motorista_id, tipo, marcacao, created_at`,
-    [empresa_id, veiculo_id, motorista_id, tipo, marcacao]
+    `INSERT INTO viagens (empresa_id, veiculo_id, motorista_id, apontador_id, tipo, marcacao)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, empresa_id, veiculo_id, motorista_id, apontador_id, tipo, marcacao, created_at`,
+    [empresa_id, veiculo_id, motorista_id, apontador_id, tipo, marcacao]
   );
   return rows[0];
 };
@@ -100,11 +100,52 @@ const countViagensHojeEmpresaSaoPaulo = async (empresa_id, db = pool) => {
   };
 };
 
-/**
- * Lista os últimos lançamentos do dia corrente no fuso America/Sao_Paulo.
- * @param {number} empresa_id
- * @param {number} limit
- */
+/** Contagem de viagens do dia corrente apenas do apontador autenticado. */
+const countViagensHojeApontadorSaoPaulo = async (empresa_id, apontador_id, db = pool) => {
+  const { rows } = await db.query(
+    `SELECT
+      COALESCE(COUNT(*) FILTER (WHERE vi.tipo = 'esteril'), 0)::int AS esteril,
+      COALESCE(COUNT(*) FILTER (WHERE vi.tipo = 'rocha'), 0)::int AS rocha,
+      COALESCE(
+        SUM(
+          CASE
+            WHEN vi.tipo = 'esteril' AND COALESCE(v.usa_para_transporte, false) = true
+            THEN COALESCE(v.capacidade_ton, 0)
+            ELSE 0
+          END
+        ),
+        0
+      )::double precision AS ton_esteril,
+      COALESCE(
+        SUM(
+          CASE
+            WHEN vi.tipo = 'rocha' AND COALESCE(v.usa_para_transporte, false) = true
+            THEN COALESCE(v.capacidade_ton, 0)
+            ELSE 0
+          END
+        ),
+        0
+      )::double precision AS ton_rocha
+     FROM viagens vi
+     INNER JOIN veiculos v ON v.id = vi.veiculo_id AND v.empresa_id = vi.empresa_id
+     WHERE vi.empresa_id = $1
+       AND vi.apontador_id = $2
+       AND (vi.marcacao AT TIME ZONE 'America/Sao_Paulo')::date
+         = (CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')::date`,
+    [empresa_id, apontador_id]
+  );
+  const row = rows[0];
+  const te = Number(row?.ton_esteril) || 0;
+  const tr = Number(row?.ton_rocha) || 0;
+  return {
+    esteril: row?.esteril ?? 0,
+    rocha: row?.rocha ?? 0,
+    ton_esteril: te,
+    ton_rocha: tr,
+    ton_total: te + tr,
+  };
+};
+
 const listRecentViagensHojeEmpresaSaoPaulo = async (empresa_id, limit = 5, db = pool) => {
   const parsedLimit = Math.min(Math.max(Number(limit) || 5, 1), 20);
   const { rows } = await db.query(
@@ -116,6 +157,22 @@ const listRecentViagensHojeEmpresaSaoPaulo = async (empresa_id, limit = 5, db = 
      ORDER BY marcacao DESC
      LIMIT $2`,
     [empresa_id, parsedLimit]
+  );
+  return rows;
+};
+
+const listRecentViagensHojeApontadorSaoPaulo = async (empresa_id, apontador_id, limit = 5, db = pool) => {
+  const parsedLimit = Math.min(Math.max(Number(limit) || 5, 1), 20);
+  const { rows } = await db.query(
+    `SELECT id, tipo, marcacao
+     FROM viagens
+     WHERE empresa_id = $1
+       AND apontador_id = $2
+       AND (marcacao AT TIME ZONE 'America/Sao_Paulo')::date
+         = (CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')::date
+     ORDER BY marcacao DESC
+     LIMIT $3`,
+    [empresa_id, apontador_id, parsedLimit]
   );
   return rows;
 };
@@ -170,16 +227,16 @@ const todaySaoPauloClause = `(marcacao AT TIME ZONE 'America/Sao_Paulo')::date =
  * @param {{ empresa_id: number, veiculo_id: number, motorista_id: number, tipo: string, timestamp_ms: number, viagem_id?: number|null }} p
  */
 const deleteViagemApontadorMatch = async (
-  { empresa_id, veiculo_id, motorista_id, tipo, timestamp_ms, viagem_id },
+  { empresa_id, apontador_id, veiculo_id, motorista_id, tipo, timestamp_ms, viagem_id },
   db = pool
 ) => {
   if (viagem_id != null && Number.isFinite(Number(viagem_id))) {
     const { rows } = await db.query(
       `DELETE FROM viagens
-       WHERE id = $1 AND empresa_id = $2 AND veiculo_id = $3 AND motorista_id = $4 AND tipo = $5
+       WHERE id = $1 AND empresa_id = $2 AND apontador_id = $3 AND veiculo_id = $4 AND motorista_id = $5 AND tipo = $6
          AND ${todaySaoPauloClause}
        RETURNING id`,
-      [viagem_id, empresa_id, veiculo_id, motorista_id, tipo]
+      [viagem_id, empresa_id, apontador_id, veiculo_id, motorista_id, tipo]
     );
     return rows[0] || null;
   }
@@ -190,16 +247,17 @@ const deleteViagemApontadorMatch = async (
        SELECT v.id
        FROM viagens v
        WHERE v.empresa_id = $1
-         AND v.veiculo_id = $2
-         AND v.motorista_id = $3
-         AND v.tipo = $4
+         AND v.apontador_id = $2
+         AND v.veiculo_id = $3
+         AND v.motorista_id = $4
+         AND v.tipo = $5
          AND ${todaySaoPauloClause.replace(/marcacao/g, "v.marcacao")}
-         AND ABS(EXTRACT(EPOCH FROM v.marcacao) * 1000 - $5::double precision) <= 15000
-       ORDER BY ABS(EXTRACT(EPOCH FROM v.marcacao) * 1000 - $5::double precision) ASC, v.marcacao DESC
+         AND ABS(EXTRACT(EPOCH FROM v.marcacao) * 1000 - $6::double precision) <= 15000
+       ORDER BY ABS(EXTRACT(EPOCH FROM v.marcacao) * 1000 - $6::double precision) ASC, v.marcacao DESC
        LIMIT 1
      )
      RETURNING id`,
-    [empresa_id, veiculo_id, motorista_id, tipo, timestamp_ms]
+    [empresa_id, apontador_id, veiculo_id, motorista_id, tipo, timestamp_ms]
   );
   return rows[0] || null;
 };
@@ -216,13 +274,28 @@ const deleteViagensEmpresaDiaAtualSaoPaulo = async (empresa_id, db = pool) => {
   return r.rowCount ?? 0;
 };
 
+const deleteViagensApontadorDiaAtualSaoPaulo = async ({ empresa_id, apontador_id }, db = pool) => {
+  const r = await db.query(
+    `DELETE FROM viagens
+     WHERE empresa_id = $1
+       AND apontador_id = $2
+       AND (marcacao AT TIME ZONE 'America/Sao_Paulo')::date
+         = (CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')::date`,
+    [empresa_id, apontador_id]
+  );
+  return r.rowCount ?? 0;
+};
+
 module.exports = {
   insertViagem,
   getViagensResumoProducao,
   countViagensHojeEmpresaSaoPaulo,
+  countViagensHojeApontadorSaoPaulo,
   listRecentViagensHojeEmpresaSaoPaulo,
+  listRecentViagensHojeApontadorSaoPaulo,
   utcBoundsFromDateRangeYmd,
   listViagensByVehicleDay,
   deleteViagemApontadorMatch,
   deleteViagensEmpresaDiaAtualSaoPaulo,
+  deleteViagensApontadorDiaAtualSaoPaulo,
 };

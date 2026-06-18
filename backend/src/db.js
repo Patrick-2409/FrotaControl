@@ -292,11 +292,27 @@ const initDb = async () => {
       empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
       veiculo_id INTEGER NOT NULL REFERENCES veiculos(id) ON DELETE CASCADE,
       motorista_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE RESTRICT,
+      apontador_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
       tipo VARCHAR(20) NOT NULL CHECK (tipo IN ('esteril', 'rocha')),
       marcacao TIMESTAMPTZ NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    ALTER TABLE viagens ADD COLUMN IF NOT EXISTS apontador_id INTEGER;
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'viagens_apontador_id_fkey'
+      ) THEN
+        ALTER TABLE viagens
+          ADD CONSTRAINT viagens_apontador_id_fkey
+          FOREIGN KEY (apontador_id) REFERENCES usuarios(id) ON DELETE SET NULL;
+      END IF;
+    END
+    $$;
     CREATE INDEX IF NOT EXISTS idx_viagens_empresa_marcacao ON viagens (empresa_id, marcacao DESC);
+    CREATE INDEX IF NOT EXISTS idx_viagens_empresa_apontador_marcacao
+      ON viagens (empresa_id, apontador_id, marcacao DESC)
+      WHERE apontador_id IS NOT NULL;
 
     CREATE TABLE IF NOT EXISTS planejamento_semanal (
       id SERIAL PRIMARY KEY,

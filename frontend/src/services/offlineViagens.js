@@ -12,6 +12,28 @@ const STORE = "viagens";
 /** @type {Promise<IDBDatabase> | null} */
 let dbOpenPromise = null;
 
+function resolveApontadorOwner() {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const rawUser = localStorage.getItem("fc_user");
+    if (!rawUser) return null;
+    const user = JSON.parse(rawUser);
+    if (user?.role !== "APONTADOR") return null;
+    const empresaId = Number(user?.empresa_id);
+    const apontadorId = Number(user?.id);
+    if (!Number.isFinite(empresaId) || empresaId <= 0 || !Number.isFinite(apontadorId) || apontadorId <= 0) {
+      return null;
+    }
+    return {
+      owner_scope: `APONTADOR:${empresaId}:${apontadorId}`,
+      empresa_id: empresaId,
+      apontador_id: apontadorId,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function hasIndexedDB() {
   return typeof indexedDB !== "undefined" && indexedDB != null;
 }
@@ -57,6 +79,10 @@ export async function saveOfflineViagem(viagem) {
   if (!viagem || typeof viagem !== "object") {
     throw new Error("saveOfflineViagem: payload inválido.");
   }
+  const owner = resolveApontadorOwner();
+  if (!owner) {
+    throw new Error("saveOfflineViagem: perfil de apontador invalido.");
+  }
   const veiculo_id = Number(viagem.veiculo_id);
   const motorista_id = Number(viagem.motorista_id);
   const timestamp = Number(viagem.timestamp);
@@ -86,6 +112,9 @@ export async function saveOfflineViagem(viagem) {
     motorista_id,
     tipo,
     timestamp,
+    owner_scope: owner.owner_scope,
+    empresa_id: owner.empresa_id,
+    apontador_id: owner.apontador_id,
     status: "pendente",
   };
 
@@ -107,6 +136,8 @@ export async function saveOfflineViagem(viagem) {
  */
 export async function getPendingViagens() {
   if (!hasIndexedDB()) return [];
+  const owner = resolveApontadorOwner();
+  if (!owner) return [];
 
   const db = await openDatabase();
 
@@ -117,7 +148,10 @@ export async function getPendingViagens() {
     const req = index.getAll("pendente");
 
     req.onerror = () => reject(req.error ?? new Error("Falha ao ler viagens pendentes."));
-    req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result : []);
+    req.onsuccess = () => {
+      const rows = Array.isArray(req.result) ? req.result : [];
+      resolve(rows.filter((row) => row?.owner_scope === owner.owner_scope));
+    };
     tx.onerror = () => reject(tx.error ?? new Error("Transação IndexedDB falhou."));
   });
 }
@@ -129,6 +163,11 @@ export async function getPendingViagens() {
 export async function markAsSynced(id_local) {
   if (typeof id_local !== "string" || !id_local.trim()) {
     throw new Error("markAsSynced: id_local inválido.");
+  }
+
+  const owner = resolveApontadorOwner();
+  if (!owner) {
+    throw new Error("markAsSynced: perfil de apontador invalido.");
   }
 
   const db = await openDatabase();
@@ -145,6 +184,10 @@ export async function markAsSynced(id_local) {
       const row = getReq.result;
       if (!row) {
         reject(new Error(`markAsSynced: registro não encontrado (${key}).`));
+        return;
+      }
+      if (row.owner_scope !== owner.owner_scope) {
+        reject(new Error("markAsSynced: registro pertence a outro perfil."));
         return;
       }
       row.status = "sincronizado";
@@ -167,6 +210,8 @@ export async function deleteViagemLocal(id_local) {
     throw new Error("deleteViagemLocal: id_local inválido.");
   }
   if (!hasIndexedDB()) return;
+  const owner = resolveApontadorOwner();
+  if (!owner) return;
 
   const db = await openDatabase();
   const key = id_local.trim();
@@ -174,9 +219,18 @@ export async function deleteViagemLocal(id_local) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, "readwrite");
     const store = tx.objectStore(STORE);
-    const req = store.delete(key);
-    req.onerror = () => reject(req.error ?? new Error("Falha ao remover registro offline."));
-    req.onsuccess = () => resolve();
+    const getReq = store.get(key);
+    getReq.onerror = () => reject(getReq.error ?? new Error("Falha ao ler registro offline."));
+    getReq.onsuccess = () => {
+      const row = getReq.result;
+      if (!row || row.owner_scope !== owner.owner_scope) {
+        resolve();
+        return;
+      }
+      const delReq = store.delete(key);
+      delReq.onerror = () => reject(delReq.error ?? new Error("Falha ao remover registro offline."));
+      delReq.onsuccess = () => resolve();
+    };
     tx.onerror = () => reject(tx.error ?? new Error("Transação IndexedDB falhou."));
   });
 }
@@ -191,6 +245,8 @@ export async function clearLocalViagensForSpTodayMatchingVehicles(veiculoIds) {
     ? [...new Set(veiculoIds.map((n) => Number(n)).filter((n) => Number.isFinite(n) && n > 0))]
     : [];
   if (!hasIndexedDB() || ids.length === 0) return 0;
+  const owner = resolveApontadorOwner();
+  if (!owner) return 0;
 
   const alvo = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
   const permitidos = new Set(ids);
@@ -209,6 +265,10 @@ export async function clearLocalViagensForSpTodayMatchingVehicles(veiculoIds) {
         return;
       }
       const row = cursor.value;
+      if (row?.owner_scope !== owner.owner_scope) {
+        cursor.continue();
+        return;
+      }
       const vid = Number(row?.veiculo_id);
       if (permitidos.has(vid)) {
         const ymd = new Date(Number(row.timestamp)).toLocaleDateString("sv-SE", {

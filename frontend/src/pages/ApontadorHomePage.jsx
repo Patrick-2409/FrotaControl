@@ -226,16 +226,16 @@ export default function ApontadorHomePage() {
 
   const persistVeiculoId = useCallback(
     (id) => {
-      const key = storageKeyVeiculo(user?.empresa_id);
+      const key = storageKeyVeiculo(user?.empresa_id, user?.id);
       if (id) localStorage.setItem(key, String(id));
       else localStorage.removeItem(key);
     },
-    [user?.empresa_id]
+    [user?.empresa_id, user?.id]
   );
 
   useEffect(() => {
     if (loadingVeiculos || veiculos.length === 0) return;
-    const key = storageKeyVeiculo(user?.empresa_id);
+    const key = storageKeyVeiculo(user?.empresa_id, user?.id);
     const saved = localStorage.getItem(key);
     if (saved && veiculos.some((v) => String(v.id) === String(saved))) {
       setVeiculoId(String(saved));
@@ -246,7 +246,7 @@ export default function ApontadorHomePage() {
       const prefer = veiculos.find((v) => v.motorista?.id) ?? veiculos[0];
       return String(prefer.id);
     });
-  }, [loadingVeiculos, veiculos, user?.empresa_id]);
+  }, [loadingVeiculos, veiculos, user?.empresa_id, user?.id]);
 
   useEffect(() => {
     if (!veiculoId || veiculos.length === 0) return;
@@ -485,8 +485,8 @@ export default function ApontadorHomePage() {
             </h2>
             <p className="mt-3 text-sm leading-relaxed text-slate-300">
               Isto apaga no <strong className="text-slate-100">dispositivo</strong> as viagens de hoje (fuso São Paulo)
-              dos veículos desta lista, e no <strong className="text-slate-100">servidor</strong> todas as viagens de
-              hoje da empresa. A ação fica registada em auditoria.
+              dos veículos desta lista, e no <strong className="text-slate-100">servidor</strong> apenas as suas viagens
+              de hoje neste perfil. A ação fica registada em auditoria.
             </p>
             <p className="mt-2 text-xs text-amber-200/90">Não pode ser desfeita automaticamente.</p>
             <div className="mt-5 flex flex-wrap gap-2">

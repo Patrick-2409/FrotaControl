@@ -1,10 +1,10 @@
 const { listVehicles } = require("../models/vehicleModel");
 const {
   insertViagem,
-  countViagensHojeEmpresaSaoPaulo,
-  listRecentViagensHojeEmpresaSaoPaulo,
+  countViagensHojeApontadorSaoPaulo,
+  listRecentViagensHojeApontadorSaoPaulo,
   deleteViagemApontadorMatch,
-  deleteViagensEmpresaDiaAtualSaoPaulo,
+  deleteViagensApontadorDiaAtualSaoPaulo,
 } = require("../models/viagemModel");
 const { pool } = require("../db");
 const { z } = require("zod");
@@ -68,10 +68,19 @@ const assertVeiculoMotoristaTransporte = async (empresaId, veiculo_id, motorista
   return { ok: true };
 };
 
-/** Lista veículos aptos ao apontamento: usa_para_transporte e capacidade_ton > 0. */
+const getApontadorScope = (req) => {
+  const empresaId = Number(req.user?.empresa_id);
+  const apontadorId = Number(req.user?.sub);
+  if (!Number.isFinite(empresaId) || empresaId <= 0 || !Number.isFinite(apontadorId) || apontadorId <= 0) {
+    return null;
+  }
+  return { empresaId, apontadorId };
+};
+
+/** Lista veiculos aptos ao apontamento: usa_para_transporte e capacidade_ton > 0. */
 const listVehiclesApontador = async (req, res) => {
-  const empresaId = req.user?.empresa_id;
-  if (!empresaId) {
+  const scope = getApontadorScope(req);
+  if (!scope) {
     return res.status(403).json({
       success: false,
       error: "Empresa não associada ao usuário.",
@@ -81,7 +90,7 @@ const listVehiclesApontador = async (req, res) => {
   const page = Number(req.query.page || 1);
   const limit = Math.min(Math.max(Number(req.query.limit || 100), 1), 200);
   const search = String(req.query.search || "");
-  const result = await listVehicles(empresaId, {
+  const result = await listVehicles(scope.empresaId, {
     page,
     limit,
     search,
@@ -98,16 +107,16 @@ const listVehiclesApontador = async (req, res) => {
 };
 
 const getContagemHojeApontador = async (req, res) => {
-  const empresaId = req.user?.empresa_id;
-  if (!empresaId) {
+  const scope = getApontadorScope(req);
+  if (!scope) {
     return res.status(403).json({
       success: false,
       error: "Empresa não associada ao usuário.",
       message: "Empresa não associada ao usuário.",
     });
   }
-  const counts = await countViagensHojeEmpresaSaoPaulo(empresaId);
-  const recentes = await listRecentViagensHojeEmpresaSaoPaulo(empresaId, 5);
+  const counts = await countViagensHojeApontadorSaoPaulo(scope.empresaId, scope.apontadorId);
+  const recentes = await listRecentViagensHojeApontadorSaoPaulo(scope.empresaId, scope.apontadorId, 5);
   return res.json({
     success: true,
     hoje: {
@@ -126,8 +135,8 @@ const getContagemHojeApontador = async (req, res) => {
 };
 
 const createViagemApontador = async (req, res) => {
-  const empresaId = req.user?.empresa_id;
-  if (!empresaId) {
+  const scope = getApontadorScope(req);
+  if (!scope) {
     return res.status(403).json({
       success: false,
       error: "Empresa não associada ao usuário.",
@@ -145,7 +154,7 @@ const createViagemApontador = async (req, res) => {
     });
   }
 
-  const gate = await assertVeiculoMotoristaTransporte(empresaId, body.veiculo_id, body.motorista_id);
+  const gate = await assertVeiculoMotoristaTransporte(scope.empresaId, body.veiculo_id, body.motorista_id);
   if (!gate.ok) {
     return res.status(gate.status).json({
       success: false,
@@ -155,7 +164,8 @@ const createViagemApontador = async (req, res) => {
   }
 
   const row = await insertViagem({
-    empresa_id: empresaId,
+    empresa_id: scope.empresaId,
+    apontador_id: scope.apontadorId,
     veiculo_id: body.veiculo_id,
     motorista_id: body.motorista_id,
     tipo: body.tipo,
@@ -171,6 +181,7 @@ const createViagemApontador = async (req, res) => {
       empresa_id: row.empresa_id,
       veiculo_id: row.veiculo_id,
       motorista_id: row.motorista_id,
+      apontador_id: row.apontador_id,
       tipo: row.tipo,
       timestamp: tsMs,
       created_at: row.created_at,
@@ -180,8 +191,8 @@ const createViagemApontador = async (req, res) => {
 
 /** Desfaz o último registo do apontador (mesmo dia, mesma marcação ou id devolvido no POST). */
 const deleteViagemApontadorUndo = async (req, res) => {
-  const empresaId = req.user?.empresa_id;
-  if (!empresaId) {
+  const scope = getApontadorScope(req);
+  if (!scope) {
     return res.status(403).json({
       success: false,
       error: "Empresa não associada ao usuário.",
@@ -190,7 +201,7 @@ const deleteViagemApontadorUndo = async (req, res) => {
   }
 
   const body = viagemUndoSchema.parse(req.body);
-  const gate = await assertVeiculoMotoristaTransporte(empresaId, body.veiculo_id, body.motorista_id);
+  const gate = await assertVeiculoMotoristaTransporte(scope.empresaId, body.veiculo_id, body.motorista_id);
   if (!gate.ok) {
     return res.status(gate.status).json({
       success: false,
@@ -212,7 +223,8 @@ const deleteViagemApontadorUndo = async (req, res) => {
   }
 
   const deleted = await deleteViagemApontadorMatch({
-    empresa_id: empresaId,
+    empresa_id: scope.empresaId,
+    apontador_id: scope.apontadorId,
     veiculo_id: body.veiculo_id,
     motorista_id: body.motorista_id,
     tipo: body.tipo,
@@ -234,10 +246,10 @@ const deleteViagemApontadorUndo = async (req, res) => {
   });
 };
 
-/** Limpa viagens de hoje (fuso São Paulo) para toda a empresa — uso controlado no apontador. */
+/** Limpa viagens de hoje (fuso Sao Paulo) apenas do apontador autenticado. */
 const resetViagensDiaApontador = async (req, res) => {
-  const empresaId = req.user?.empresa_id;
-  if (!empresaId) {
+  const scope = getApontadorScope(req);
+  if (!scope) {
     return res.status(403).json({
       success: false,
       error: "Empresa não associada ao usuário.",
@@ -245,8 +257,11 @@ const resetViagensDiaApontador = async (req, res) => {
     });
   }
 
-  const removidos = await deleteViagensEmpresaDiaAtualSaoPaulo(empresaId);
-  const registroId = `e${empresaId}|n${removidos}|t${Date.now()}`;
+  const removidos = await deleteViagensApontadorDiaAtualSaoPaulo({
+    empresa_id: scope.empresaId,
+    apontador_id: scope.apontadorId,
+  });
+  const registroId = `e${scope.empresaId}|a${scope.apontadorId}|n${removidos}|t${Date.now()}`;
   await logAudit({
     usuario_id: req.user.sub,
     acao: "reset_viagens_dia",
@@ -254,8 +269,8 @@ const resetViagensDiaApontador = async (req, res) => {
     registro_id: registroId.slice(0, 120),
   });
   logInfo("apontador_reset_viagens_dia", {
-    empresa_id: empresaId,
-    usuario_id: req.user.sub,
+    empresa_id: scope.empresaId,
+    usuario_id: scope.apontadorId,
     removidos_servidor: removidos,
   });
 
