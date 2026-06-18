@@ -201,7 +201,7 @@ export default function EmpresaPessoasPage() {
       ) : (
         <AccordionSection
           id="pessoas-dashboard-rapido"
-          title="Dashboard rápido"
+          title="Resumo de pessoas"
           description="Indicadores críticos de pessoas, CNH e risco operacional."
           defaultOpenDesktop
           defaultOpenMobile

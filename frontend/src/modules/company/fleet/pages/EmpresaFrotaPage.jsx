@@ -90,7 +90,7 @@ export default function EmpresaFrotaPage() {
       ) : (
         <AccordionSection
           id="frota-dashboard-rapido"
-          title="Dashboard rápido"
+          title="Painel da frota"
           description="Visão consolidada de disponibilidade, documentos e manutenção."
           defaultOpenDesktop
           defaultOpenMobile

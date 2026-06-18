@@ -132,10 +132,10 @@ export default function EmpresaAlertasPage() {
   return (
     <div className="space-y-8">
       <header className="fc-card border-zinc-800/90 p-5">
-        <p className="fc-erp-eyebrow text-zinc-400">Monitorização</p>
+        <p className="fc-erp-eyebrow text-zinc-400">Monitoramento</p>
         <h1 className="mt-1 text-xl font-semibold tracking-tight text-zinc-50 sm:text-2xl">Central de alertas</h1>
         <p className="mt-2 max-w-3xl text-sm text-zinc-400">Alertas da operação com prioridade e ação direta por módulo.</p>
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="fc-empresa-action-row mt-4 flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => loadAll()}
@@ -176,7 +176,7 @@ export default function EmpresaAlertasPage() {
             <TooltipInfo text="Indica o nível de criticidade do alerta com base nos dados operacionais." />
           </h2>
           <span className="text-xs text-zinc-500">
-            {feed?.cached ? "Resumo guardado no servidor" : "Leitura em tempo real"} ·{" "}
+            {feed?.cached ? "Resumo salvo no servidor" : "Leitura em tempo real"} ·{" "}
             {feed?.generated_at ? new Date(feed.generated_at).toLocaleString("pt-BR") : "—"}
           </span>
         </div>
@@ -221,7 +221,7 @@ export default function EmpresaAlertasPage() {
                   <TooltipInfo text="Explica a lógica que disparou o alerta, como ausência de registros ou consumo alto." />
                 </p>
                 <p className="mt-1 text-sm text-zinc-400">{it.body}</p>
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="fc-empresa-action-row mt-3 flex flex-wrap items-center justify-between gap-2">
                   <Link
                     to={routeByCategory[it.category] || "/empresa/dashboard"}
                     className={`fc-btn rounded-lg px-3 py-2 text-xs font-semibold ${
@@ -245,20 +245,20 @@ export default function EmpresaAlertasPage() {
 
       <AccordionSection
         id="alertas-historico"
-        title="Histórico guardado"
+        title="Histórico salvo"
         description="Eventos recentes, inclusive alertas já resolvidos."
         defaultOpenDesktop={false}
         defaultOpenMobile={false}
       >
         <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">Histórico guardado</h2>
-        <p className="mt-1 text-xs text-zinc-500">Últimos eventos da empresa, inclusive alertas que já deixaram de estar ativos.</p>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">Histórico salvo</h2>
+        <p className="mt-1 text-xs text-zinc-500">Últimos eventos da empresa, inclusive alertas que já não estão ativos.</p>
         {histLoading ? (
           <div className="mt-6 flex justify-center py-8">
             <span className="fc-spinner" aria-hidden="true" />
           </div>
         ) : !history.length ? (
-          <p className="mt-4 text-sm text-zinc-500">Ainda não há histórico guardado.</p>
+          <p className="mt-4 text-sm text-zinc-500">Ainda não há histórico salvo.</p>
         ) : (
           <div className="mt-4 space-y-3">
             {groupedHistory.map((group, index) => (

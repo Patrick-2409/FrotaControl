@@ -139,7 +139,7 @@ function EmpresaTransportePageContent() {
 
       <AccordionSection
         id="transporte-resumo-rapido"
-        title="Dashboard rápido"
+        title="Resumo de produção"
         description="Produção total e divisão por material no período."
         defaultOpenDesktop
         defaultOpenMobile

@@ -43,11 +43,11 @@ function MetricRow({ label, value, highlight = false }) {
 
 function PeriodoHeader({ periodo, setPeriodo }) {
   return (
-    <div className="mb-5 flex flex-col gap-3 sm:mb-6 sm:flex-row sm:items-center sm:justify-between">
-      <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+    <div className="w-full rounded-lg border border-zinc-800/80 bg-zinc-950/45 p-2.5 sm:min-w-[22rem]">
+      <p className="px-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
         Período: {periodoResumoLabel(periodo)}
       </p>
-      <ExecutivePeriodoToggle periodo={periodo} onChange={setPeriodo} className="sm:justify-end" />
+      <ExecutivePeriodoToggle periodo={periodo} onChange={setPeriodo} className="mt-2 sm:justify-end" />
     </div>
   );
 }
@@ -57,8 +57,12 @@ export default function EmpresaExecutiveDashboardPage() {
 
   if (loading) {
     return (
-      <BIDashboardShell eyebrow="Indicadores" title="Executivo" lead="">
-        <PeriodoHeader periodo={periodo} setPeriodo={setPeriodo} />
+      <BIDashboardShell
+        eyebrow="Indicadores"
+        title="Dashboard executivo"
+        lead=""
+        headerAside={<PeriodoHeader periodo={periodo} setPeriodo={setPeriodo} />}
+      >
         <div className="fc-card border-zinc-800/90 p-8">
           <SkeletonRows rows={6} />
         </div>
@@ -68,8 +72,12 @@ export default function EmpresaExecutiveDashboardPage() {
 
   if (!summary) {
     return (
-      <BIDashboardShell eyebrow="Indicadores" title="Executivo" lead="">
-        <PeriodoHeader periodo={periodo} setPeriodo={setPeriodo} />
+      <BIDashboardShell
+        eyebrow="Indicadores"
+        title="Dashboard executivo"
+        lead=""
+        headerAside={<PeriodoHeader periodo={periodo} setPeriodo={setPeriodo} />}
+      >
         <p className="text-sm text-rose-400/90">Não foi possível carregar o painel executivo.</p>
       </BIDashboardShell>
     );
@@ -114,11 +122,10 @@ export default function EmpresaExecutiveDashboardPage() {
   return (
     <BIDashboardShell
       eyebrow="Indicadores"
-      title="Executivo"
+      title="Dashboard executivo"
       lead="Visão consolidada e acionável por módulo. Abra um card para entrar na área correspondente."
+      headerAside={<PeriodoHeader periodo={periodo} setPeriodo={setPeriodo} />}
     >
-      <PeriodoHeader periodo={periodo} setPeriodo={setPeriodo} />
-
       {statsError ? (
         <p className="mb-4 text-sm text-amber-400/90" role="status">
           {statsError} Os demais indicadores podem estar incompletos.
@@ -127,7 +134,7 @@ export default function EmpresaExecutiveDashboardPage() {
 
       <AccordionSection
         id="exec-resumo-modulos"
-        title="Dashboard rápido por módulo"
+        title="Resumo por módulo"
         description="Resumo executivo com acesso direto aos módulos operacionais."
         defaultOpenDesktop
         defaultOpenMobile={false}

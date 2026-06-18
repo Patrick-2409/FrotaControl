@@ -49,7 +49,7 @@ export default function ProfilePage() {
     if (!file) return;
     const validTypes = ["image/png", "image/jpg", "image/jpeg", "image/webp"];
     if (!validTypes.includes(file.type)) {
-      emitToast("Formato invalido. Use PNG, JPG, JPEG ou WebP.", "warning");
+      emitToast("Formato inválido. Use PNG, JPG, JPEG ou WebP.", "warning");
       return;
     }
     if (file.size > 2 * 1024 * 1024) {
@@ -117,7 +117,7 @@ export default function ProfilePage() {
   return (
     <div className="space-y-6">
       <section className="fc-card border-blue-500/20 p-5">
-        <h2 className="mb-3 text-lg font-semibold text-white">Meu Perfil</h2>
+        <h2 className="mb-3 text-lg font-semibold text-white">Meu perfil</h2>
         <div className="flex flex-wrap items-center gap-4">
           <Avatar imageUrl={user?.profile_image_url} name={user?.nome} size="profile" />
           <div className="text-sm">
@@ -141,16 +141,16 @@ export default function ProfilePage() {
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="fc-btn btn-secondary rounded-lg px-4 py-2 text-sm"
+            className="fc-btn btn-secondary w-full justify-center rounded-lg px-4 py-2 text-sm sm:w-auto"
           >
             {uploading ? "Enviando foto..." : "Alterar foto"}
           </button>
-          <p className="mt-1 text-xs text-slate-400">Formatos: PNG/JPG/JPEG/WebP. Tamanho maximo: 2MB.</p>
+          <p className="mt-1 text-xs text-slate-400">Formatos: PNG/JPG/JPEG/WebP. Tamanho máximo: 2MB.</p>
         </div>
       </section>
 
       <section className="fc-card border-blue-500/20 p-5">
-        <h3 className="mb-3 text-base font-semibold text-white">Dados do perfil e seguranca</h3>
+        <h3 className="mb-3 text-base font-semibold text-white">Dados do perfil e segurança</h3>
         <form onSubmit={onUpdateProfile} className="mb-5 rounded-xl border border-slate-700/70 bg-slate-900/40 p-3">
           <h4 className="mb-2 text-sm font-semibold text-slate-100">Dados do perfil</h4>
           <FormField label="Nome completo">
@@ -163,7 +163,7 @@ export default function ProfilePage() {
           <button
             type="submit"
             disabled={savingProfile}
-            className="fc-btn btn-secondary rounded-lg px-4 py-2 text-sm"
+            className="fc-btn btn-secondary w-full justify-center rounded-lg px-4 py-2 text-sm sm:w-auto"
           >
             {savingProfile ? "Salvando perfil..." : "Salvar nome do perfil"}
           </button>
@@ -196,7 +196,7 @@ export default function ProfilePage() {
           <button
             type="submit"
             disabled={savingPassword}
-            className="fc-btn btn-primary rounded-lg px-4 py-2 text-sm font-semibold"
+            className="fc-btn btn-primary w-full justify-center rounded-lg px-4 py-2 text-sm font-semibold sm:w-auto"
           >
             {savingPassword ? "Salvando..." : "Alterar senha"}
           </button>

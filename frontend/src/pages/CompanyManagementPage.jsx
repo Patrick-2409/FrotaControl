@@ -114,6 +114,9 @@ export default function CompanyManagementPage() {
   if (searchParams.get("secao") === "veiculos") {
     return <Navigate to={FROTA_PANEL_PATH} replace />;
   }
+  if (searchParams.get("secao") === "motoristas") {
+    return <Navigate to="/empresa/pessoas" replace />;
+  }
 
   const onSaveUser = async (e) => {
     e.preventDefault();
@@ -202,18 +205,18 @@ export default function CompanyManagementPage() {
       <section className="fc-card border-blue-500/20 p-5">
         <h2 className="mb-1 text-lg font-semibold text-white">Contas de acesso</h2>
         <p className="text-sm text-slate-400">
-          Crie login e senha aqui. Perfil operacional (CNH, vínculo, produção) fica em{" "}
+          Crie e mantenha credenciais de motoristas, apontadores e administradores. Dados operacionais, CNH e vínculos ficam em{" "}
           <Link to="/empresa/pessoas" className="font-medium text-blue-300 hover:text-blue-200">
-            Pessoas → Gestão de pessoas
+            Pessoas
           </Link>
-          . Veículos (transporte/apoio, status, documentação) ficam em{" "}
+          ; cadastro e documentação da frota ficam em{" "}
           <Link to={FROTA_PANEL_PATH} className="font-medium text-blue-300 hover:text-blue-200">
-            Frota → Painel frota
+            Frota
           </Link>
           .
         </p>
         <p className="mt-3 text-xs text-slate-500">
-          Fluxo: criar conta → definir papel → vincular veículo (motoristas) → completar perfil em Pessoas.
+          Fluxo recomendado: criar conta, definir papel, vincular veículo quando for motorista e completar o cadastro operacional no módulo correto.
         </p>
       </section>
 
@@ -223,7 +226,7 @@ export default function CompanyManagementPage() {
               {userForm.id ? "Editar conta" : "Criar conta"}
             </h3>
             <p className="mb-4 text-sm text-slate-400">
-              E-mail e senha para entrar no sistema. O apontador usa o mesmo e-mail em{" "}
+              E-mail e senha para entrar no sistema. O apontador usa esse e-mail no acesso de{" "}
               <span className="text-slate-300">Apontador</span> na página inicial (romaneio).
             </p>
             <form onSubmit={onSaveUser}>
@@ -318,20 +321,22 @@ export default function CompanyManagementPage() {
                   </>
                 ) : null}
               </div>
-              <button className="fc-btn mt-3 rounded-lg bg-blue-600 px-4 py-3">{userForm.id ? "Atualizar conta" : "Criar conta"}</button>
+              <button className="fc-btn mt-3 w-full justify-center rounded-lg bg-blue-600 px-4 py-3 sm:w-auto">
+                {userForm.id ? "Atualizar conta" : "Criar conta"}
+              </button>
             </form>
           </article>
 
           <article className="fc-card border-blue-500/20 p-5">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-base font-semibold text-white">Pessoas cadastradas</h3>
+              <h3 className="text-base font-semibold text-white">Contas cadastradas</h3>
               <span className="rounded-full border border-slate-700 bg-slate-900/70 px-2 py-1 text-xs text-slate-300">
                 Página {usersPage} de {usersTotalPages}
               </span>
             </div>
             <input
               className={inputClass}
-              placeholder="Buscar usuário"
+              placeholder="Buscar por nome, e-mail ou CPF/ID"
               value={search.users}
               onChange={(e) => {
                 setUsersPage(1);
@@ -376,7 +381,7 @@ export default function CompanyManagementPage() {
                         </div>
                     </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="fc-empresa-action-row flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() =>

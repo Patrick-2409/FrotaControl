@@ -9,11 +9,13 @@ import { EmpresaMenuIcon, empresaSidebarTabIsActive } from "./empresaSidebarCons
 function EmpresaSidebar({ pathname, search, sections, footerItems, onNavTap, onNavigate, variant = "rail" }) {
   const isDrawer = variant === "drawer";
 
+  const isActive = (tab) => empresaSidebarTabIsActive(pathname, search, tab);
+
   const linkClass = (tab) =>
     [
       "fc-tab-link flex items-center gap-2.5 rounded-md px-3 py-3 text-sm font-medium sm:py-2.5",
       isDrawer ? "min-h-[44px] w-full whitespace-normal" : "shrink-0 whitespace-nowrap md:whitespace-normal",
-      empresaSidebarTabIsActive(pathname, search, tab) ? "active text-zinc-50" : "text-zinc-500 hover:bg-zinc-900/80 hover:text-zinc-200",
+      isActive(tab) ? "active text-zinc-50" : "text-zinc-500 hover:bg-zinc-900/80 hover:text-zinc-200",
     ].join(" ");
 
   const onLinkClick = () => {
@@ -57,7 +59,14 @@ function EmpresaSidebar({ pathname, search, sections, footerItems, onNavTap, onN
             ) : null}
             <div className="flex flex-col gap-0.5">
               {section.items.map((tab) => (
-                <Link key={`${section.id}-${tab.to}`} to={tab.to} onClick={onLinkClick} className={linkClass(tab)}>
+                <Link
+                  key={`${section.id}-${tab.to}`}
+                  to={tab.to}
+                  onClick={onLinkClick}
+                  className={linkClass(tab)}
+                  aria-current={isActive(tab) ? "page" : undefined}
+                  title={tab.label}
+                >
                   <EmpresaMenuIcon type={tab.icon} />
                   {tab.label}
                 </Link>
@@ -71,7 +80,14 @@ function EmpresaSidebar({ pathname, search, sections, footerItems, onNavTap, onN
           <p className={`mb-2 px-0.5 fc-erp-eyebrow ${isDrawer ? "block" : "hidden md:block"}`}>Conta</p>
           <div className={isDrawer ? "flex flex-col gap-1" : "flex flex-row gap-1 overflow-x-auto md:flex-col md:overflow-visible"}>
             {footerItems.map((tab) => (
-              <Link key={tab.to} to={tab.to} onClick={onLinkClick} className={linkClass(tab)}>
+              <Link
+                key={tab.to}
+                to={tab.to}
+                onClick={onLinkClick}
+                className={linkClass(tab)}
+                aria-current={isActive(tab) ? "page" : undefined}
+                title={tab.label}
+              >
                 <EmpresaMenuIcon type={tab.icon} />
                 {tab.label}
               </Link>

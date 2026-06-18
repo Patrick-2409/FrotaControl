@@ -154,7 +154,7 @@ export const EMPRESA_SIDEBAR_SECTIONS = filterEmpresaSidebarSections([
     id: "dash",
     title: null,
     items: [
-      { to: "/empresa/dashboard", label: "Dashboard", icon: "overview", exact: true },
+      { to: "/empresa/dashboard", label: "Dashboard executivo", icon: "overview", exact: true },
       { to: "/empresa/alertas", label: "Alertas", icon: "bell", exact: false },
     ],
   },
@@ -183,25 +183,25 @@ export const EMPRESA_SIDEBAR_SECTIONS = filterEmpresaSidebarSections([
   },
   {
     id: "inteligencia",
-    title: null,
+    title: "Análise",
     items: [
       { to: "/inteligencia", label: "Inteligência", icon: "brain", exact: false },
-      { to: "/relatorio-inteligencia", label: "Relatório BI", icon: "reports", exact: false },
+      { to: "/relatorio-inteligencia", label: "Relatório executivo", icon: "reports", exact: false },
     ],
   },
   {
     id: "relatorios",
-    title: null,
-    items: [{ to: "/empresa/relatorios", label: "Relatórios", icon: "reports", exact: false }],
+    title: "Relatórios",
+    items: [{ to: "/empresa/relatorios", label: "Central de relatórios", icon: "reports", exact: false }],
   },
   {
     id: "admin",
-    title: null,
+    title: "Administração",
     items: [{ to: "/dashboard/gestao", label: "Contas de acesso", icon: "management", match: "gestao-root" }],
   },
 ]);
 
-export const EMPRESA_SIDEBAR_FOOTER = [{ to: "/dashboard/perfil", label: "Meu Perfil", icon: "profile", exact: false }];
+export const EMPRESA_SIDEBAR_FOOTER = [{ to: "/dashboard/perfil", label: "Meu perfil", icon: "profile", exact: false }];
 
 export const EMPRESA_MOBILE_NAV_ITEMS = [
   { to: "/empresa/dashboard", label: "Início", icon: "overview", exact: true },

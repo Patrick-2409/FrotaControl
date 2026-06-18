@@ -3,7 +3,7 @@ import { NavLink } from "react-router-dom";
 import { EmpresaMenuIcon } from "../../../../components/empresaSidebarConstants";
 
 const MODULES = [
-  { id: "executive", to: "/empresa/dashboard", label: "Executivo", icon: "overview" },
+  { id: "executive", to: "/empresa/dashboard", label: "Dashboard", icon: "overview" },
   { id: "transport", to: "/empresa/transporte", label: "Transporte", icon: "transport" },
   { id: "fuel", to: "/empresa/combustivel", label: "Combustível", icon: "fuel" },
   { id: "fleet", to: "/empresa/frota", label: "Frota", icon: "fleet" },

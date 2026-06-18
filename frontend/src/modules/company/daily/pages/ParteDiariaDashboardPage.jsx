@@ -100,7 +100,7 @@ function ParteDiariaDashboardInner() {
       {!loadError && !loading ? (
         <AccordionSection
           id="parte-diaria-dashboard-rapido"
-          title="Dashboard rápido"
+          title="Resumo da parte diária"
           description="Visão resumida de volume, horas e atividade por motorista."
           defaultOpenDesktop
           defaultOpenMobile={false}
