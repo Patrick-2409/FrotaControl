@@ -145,6 +145,8 @@ const listManagerRecords = async ({
   mes,
   motorista,
   veiculo,
+  motorista_id,
+  veiculo_id,
   tipo,
   source_id,
   source_ids,
@@ -205,6 +207,14 @@ const listManagerRecords = async ({
       )`
     );
   }
+  if (veiculo_id != null) {
+    values.push(Number(veiculo_id));
+    where.push(`r.veiculo_id = $${values.length}`);
+  }
+  if (motorista_id != null) {
+    values.push(Number(motorista_id));
+    where.push(`r.usuario_id = $${values.length}`);
+  }
   if (usuario_id != null) {
     values.push(usuario_id);
     where.push(`r.usuario_id = $${values.length}`);
@@ -255,8 +265,8 @@ const listManagerRecords = async ({
        NULL::numeric AS valor_total,
        NULL::numeric AS preco_por_litro
      FROM romaneios r
-     JOIN usuarios u ON u.id = r.usuario_id
-     LEFT JOIN veiculos v ON v.id = r.veiculo_id
+     JOIN usuarios u ON u.id = r.usuario_id AND u.empresa_id = r.empresa_id
+     LEFT JOIN veiculos v ON v.id = r.veiculo_id AND v.empresa_id = r.empresa_id
      WHERE ${where.join(" AND ")}`,
     `SELECT
        c.id,
@@ -302,8 +312,8 @@ const listManagerRecords = async ({
        c.valor_total,
        c.preco_por_litro
      FROM combustiveis c
-     JOIN usuarios u ON u.id = c.usuario_id
-     LEFT JOIN veiculos v ON v.id = c.veiculo_id
+     JOIN usuarios u ON u.id = c.usuario_id AND u.empresa_id = c.empresa_id
+     LEFT JOIN veiculos v ON v.id = c.veiculo_id AND v.empresa_id = c.empresa_id
      WHERE ${where.join(" AND ").replaceAll("r.", "c.")}`,
     `SELECT
        p.id,
@@ -357,8 +367,8 @@ const listManagerRecords = async ({
        NULL::numeric AS valor_total,
        NULL::numeric AS preco_por_litro
      FROM parte_diaria p
-     JOIN usuarios u ON u.id = p.usuario_id
-     LEFT JOIN veiculos v ON v.id = p.veiculo_id
+     JOIN usuarios u ON u.id = p.usuario_id AND u.empresa_id = p.empresa_id
+     LEFT JOIN veiculos v ON v.id = p.veiculo_id AND v.empresa_id = p.empresa_id
      WHERE ${where.join(" AND ").replaceAll("r.", "p.")}`,
   ];
 
@@ -451,15 +461,15 @@ const dashboardStats = async ({ empresa_id = null, periodo = null } = {}) => {
       SELECT (timezone('America/Sao_Paulo', now()))::date AS hoje
     ),
     base AS (
-      SELECT DATE(COALESCE(recorded_at_client, data)) AS dia, usuario_id, 'romaneio' AS tipo
+      SELECT empresa_id, DATE(COALESCE(recorded_at_client, data)) AS dia, usuario_id, 'romaneio' AS tipo
       FROM romaneios
       ${companyWhere}
       UNION ALL
-      SELECT DATE(COALESCE(recorded_at_client, data)) AS dia, usuario_id, 'combustivel' AS tipo
+      SELECT empresa_id, DATE(COALESCE(recorded_at_client, data)) AS dia, usuario_id, 'combustivel' AS tipo
       FROM combustiveis
       ${companyWhere}
       UNION ALL
-      SELECT DATE(COALESCE(recorded_at_client, data)) AS dia, usuario_id, 'parte_diaria' AS tipo
+      SELECT empresa_id, DATE(COALESCE(recorded_at_client, data)) AS dia, usuario_id, 'parte_diaria' AS tipo
       FROM parte_diaria
       ${companyWhere}
     )
@@ -489,7 +499,7 @@ const dashboardStats = async ({ empresa_id = null, periodo = null } = {}) => {
       (SELECT json_agg(y) FROM (
         SELECT u.nome AS motorista, COUNT(*)::int AS total
         FROM base b
-        JOIN usuarios u ON u.id = b.usuario_id
+        JOIN usuarios u ON u.id = b.usuario_id AND u.empresa_id = b.empresa_id
         GROUP BY u.nome
         ORDER BY total DESC
       ) y) AS por_motorista,
@@ -623,7 +633,7 @@ const listMotoristaRecords = async ({ empresa_id, usuario_id }) => {
            'observacao', r.observacao
          ) AS payload
        FROM romaneios r
-       LEFT JOIN veiculos v ON v.id = r.veiculo_id
+       LEFT JOIN veiculos v ON v.id = r.veiculo_id AND v.empresa_id = r.empresa_id
        WHERE r.empresa_id = $1 AND r.usuario_id = $2
 
        UNION ALL
@@ -653,7 +663,7 @@ const listMotoristaRecords = async ({ empresa_id, usuario_id }) => {
            'hodometro', c.hodometro
          ) AS payload
        FROM combustiveis c
-       LEFT JOIN veiculos v ON v.id = c.veiculo_id
+       LEFT JOIN veiculos v ON v.id = c.veiculo_id AND v.empresa_id = c.empresa_id
        WHERE c.empresa_id = $1 AND c.usuario_id = $2
 
        UNION ALL
@@ -696,7 +706,7 @@ const listMotoristaRecords = async ({ empresa_id, usuario_id }) => {
            'producao', p.producao
          ) AS payload
        FROM parte_diaria p
-       LEFT JOIN veiculos v ON v.id = p.veiculo_id
+       LEFT JOIN veiculos v ON v.id = p.veiculo_id AND v.empresa_id = p.empresa_id
        WHERE p.empresa_id = $1 AND p.usuario_id = $2
      ) t
      ORDER BY t.sort_at DESC, t."updatedAt" DESC`,

@@ -138,47 +138,28 @@ export function useEmpresaFuelDashboard(options = {}) {
     try {
       const periodoApi = normalizePeriodoCombustivel(periodo);
       const periodParams = buildRegistrosParamsFromFuelPeriod(periodoApi);
+      const vid = debouncedVeiculoId === "" ? null : Number(debouncedVeiculoId);
+      const mid = debouncedMotoristaId === "" ? null : Number(debouncedMotoristaId);
       const { data } = await api.get("/dashboard/registros", {
         params: {
           page: 1,
           limit: ABASTECIMENTOS_LIMIT,
           tipo: "combustivel",
           ...periodParams,
+          ...(Number.isFinite(vid) && vid > 0 ? { veiculo_id: vid } : {}),
+          ...(Number.isFinite(mid) && mid > 0 ? { motorista_id: mid } : {}),
         },
         timeout: 12_000,
         skipErrorLog: true,
         skipGlobalErrorToast: true,
       });
-      let items = Array.isArray(data?.items) ? data.items : [];
-      const vid = debouncedVeiculoId === "" ? null : Number(debouncedVeiculoId);
-      if (Number.isFinite(vid) && vid > 0) {
-        const v = veiculosOpt.find((x) => Number(x.id) === vid);
-        const nome = String(v?.nome ?? "").trim().toLowerCase();
-        const placa = String(v?.placa ?? "").trim().toLowerCase();
-        items = items.filter((row) => {
-          const rn = String(row?.veiculo ?? "").trim().toLowerCase();
-          const rp = String(row?.placa ?? "").trim().toLowerCase();
-          if (nome && placa) return rn === nome && rp === placa;
-          if (placa) return rp === placa;
-          if (nome) return rn === nome;
-          return true;
-        });
-      }
-      const mid = debouncedMotoristaId === "" ? null : Number(debouncedMotoristaId);
-      if (Number.isFinite(mid) && mid > 0) {
-        const m = motoristasOpt.find((x) => Number(x.id) === mid);
-        const mn = String(m?.nome ?? "").trim().toLowerCase();
-        if (mn) {
-          items = items.filter((row) => String(row?.motorista ?? "").trim().toLowerCase() === mn);
-        }
-      }
-      setAbastecimentos(items);
+      setAbastecimentos(Array.isArray(data?.items) ? data.items : []);
     } catch {
       setAbastecimentos([]);
     } finally {
       setAbastecimentosLoading(false);
     }
-  }, [enabled, periodo, debouncedVeiculoId, debouncedMotoristaId, veiculosOpt, motoristasOpt]);
+  }, [enabled, periodo, debouncedVeiculoId, debouncedMotoristaId]);
 
   useEffect(() => {
     void loadAbastecimentos();

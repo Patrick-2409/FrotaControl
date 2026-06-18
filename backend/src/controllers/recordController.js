@@ -26,6 +26,32 @@ const sendSourceConflict = (res) =>
     message: sourceConflictMessage,
   });
 
+const invalidVehicleMessage = "Veiculo invalido para esta empresa.";
+
+const vehicleBelongsToCompany = async (empresa_id, veiculo_id) => {
+  if (veiculo_id == null) return true;
+  const vehicleId = Number(veiculo_id);
+  const companyId = Number(empresa_id);
+  if (!Number.isFinite(vehicleId) || vehicleId <= 0 || !Number.isFinite(companyId) || companyId <= 0) {
+    return false;
+  }
+  const { rows } = await pool.query("SELECT 1 FROM veiculos WHERE id = $1 AND empresa_id = $2", [
+    vehicleId,
+    companyId,
+  ]);
+  return rows.length > 0;
+};
+
+const ensurePayloadVehicleBelongsToCompany = async (empresa_id, payload, res) => {
+  if (await vehicleBelongsToCompany(empresa_id, payload?.veiculo_id)) return true;
+  res.status(400).json({
+    success: false,
+    error: invalidVehicleMessage,
+    message: invalidVehicleMessage,
+  });
+  return false;
+};
+
 /** Aceita string pt-BR (ex.: 1.234,56) ou número. */
 const preprocessDecimal = (val) => {
   if (typeof val === "number" && Number.isFinite(val)) return val;
@@ -160,6 +186,7 @@ const createRomaneio = async (req, res) => {
     });
   }
   const payload = romaneioSchema.parse(req.body);
+  if (!(await ensurePayloadVehicleBelongsToCompany(req.user.empresa_id, payload, res))) return;
   const before = await pool.query(
     "SELECT id FROM romaneios WHERE empresa_id = $1 AND source_id = $2",
     [req.user.empresa_id, payload.source_id]
@@ -187,6 +214,7 @@ const createCombustivel = async (req, res) => {
     });
   }
   const payload = combustivelSchema.parse(req.body);
+  if (!(await ensurePayloadVehicleBelongsToCompany(req.user.empresa_id, payload, res))) return;
   const before = await pool.query(
     "SELECT id FROM combustiveis WHERE empresa_id = $1 AND source_id = $2",
     [req.user.empresa_id, payload.source_id]
@@ -229,6 +257,7 @@ const updateCombustivelBySourceId = async (req, res) => {
     client_id: params.id,
   };
   const payload = combustivelSchema.parse(body);
+  if (!(await ensurePayloadVehicleBelongsToCompany(req.user.empresa_id, payload, res))) return;
   const before = await pool.query(
     "SELECT id, usuario_id FROM combustiveis WHERE empresa_id = $1 AND source_id = $2",
     [req.user.empresa_id, payload.source_id]
@@ -274,6 +303,7 @@ const createParteDiaria = async (req, res) => {
     });
   }
   const payload = parteSchema.parse(req.body);
+  if (!(await ensurePayloadVehicleBelongsToCompany(req.user.empresa_id, payload, res))) return;
   const before = await pool.query(
     "SELECT id FROM parte_diaria WHERE empresa_id = $1 AND source_id = $2",
     [req.user.empresa_id, payload.source_id]
@@ -299,12 +329,27 @@ const syncSchema = z.object({
 
 const syncPending = async (req, res) => {
   logInfo("record:sync-pending", { user_id: req.user?.sub, empresa_id: req.user?.empresa_id });
+  if (req.user.empresa_id == null) {
+    return res.status(400).json({
+      success: false,
+      error: "Usuario sem empresa vinculada.",
+      message: "Usuario sem empresa vinculada.",
+    });
+  }
   const data = syncSchema.parse(req.body);
   const result = {
     romaneios: [],
     combustiveis: [],
     parteDiaria: [],
   };
+
+  for (const item of [
+    ...(data.romaneios || []),
+    ...(data.combustiveis || []),
+    ...(data.parteDiaria || []),
+  ]) {
+    if (!(await ensurePayloadVehicleBelongsToCompany(req.user.empresa_id, item, res))) return;
+  }
 
   for (const item of data.romaneios || []) {
     const row = await upsertRomaneio(req.user.empresa_id, req.user.sub, item);
