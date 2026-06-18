@@ -312,7 +312,14 @@ export default function HistoricoPage({ reloadKey }) {
     return () => observer.disconnect();
   }, [groupedByMonth.length]);
 
+  const canEditRow = (row) => row?.module === "combustiveis" || row?.module === "parteDiaria";
+  const canDeleteRow = (row) => row?.module !== "romaneios";
+
   const onDelete = async (row) => {
+    if (!canDeleteRow(row)) {
+      emitToast("Registros de transporte sao somente leitura no app do motorista.", "warning");
+      return;
+    }
     const ok = window.confirm("Tem certeza que deseja excluir?");
     if (!ok) return;
     await deleteHistoryItem(row);
@@ -389,14 +396,13 @@ export default function HistoricoPage({ reloadKey }) {
   };
 
   const onEdit = (row) => {
-    if (row?.module !== "combustiveis") {
+    if (!canEditRow(row)) {
+      emitToast("Registros de transporte sao somente leitura no app do motorista.", "warning");
+      return;
+    }
+    if (row?.module === "parteDiaria") {
       localStorage.setItem("fc_edit_record", JSON.stringify(row));
-      const pathMap = {
-        romaneios: "/app/romaneio",
-        combustiveis: "/app/combustivel",
-        parteDiaria: "/app/parte-diaria",
-      };
-      navigate(pathMap[row.module]);
+      navigate("/app/parte-diaria");
       return;
     }
     const payload = row?.payload || {};
@@ -594,18 +600,22 @@ export default function HistoricoPage({ reloadKey }) {
                                 >
                                   Visualizar
                                 </button>
-                                <button
-                                  onClick={() => onDelete(row)}
-                                  className="fc-btn rounded-lg border border-red-600/70 bg-red-900/20 px-4 py-2 text-sm text-red-200"
-                                >
-                                  Excluir
-                                </button>
-                                <button
-                                  onClick={() => onEdit(row)}
-                                  className="fc-btn btn-primary rounded-lg px-4 py-2 text-sm"
-                                >
-                                  Editar
-                                </button>
+                                {canDeleteRow(row) ? (
+                                  <button
+                                    onClick={() => onDelete(row)}
+                                    className="fc-btn rounded-lg border border-red-600/70 bg-red-900/20 px-4 py-2 text-sm text-red-200"
+                                  >
+                                    Excluir
+                                  </button>
+                                ) : null}
+                                {canEditRow(row) ? (
+                                  <button
+                                    onClick={() => onEdit(row)}
+                                    className="fc-btn btn-primary rounded-lg px-4 py-2 text-sm"
+                                  >
+                                    Editar
+                                  </button>
+                                ) : null}
                               </div>
                             </article>
                           );

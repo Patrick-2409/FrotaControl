@@ -47,9 +47,9 @@ export default function ProfilePage() {
 
   const onUploadPhoto = async (file) => {
     if (!file) return;
-    const validTypes = ["image/png", "image/jpg", "image/jpeg"];
+    const validTypes = ["image/png", "image/jpg", "image/jpeg", "image/webp"];
     if (!validTypes.includes(file.type)) {
-      emitToast("Formato inválido. Use PNG, JPG ou JPEG.", "warning");
+      emitToast("Formato invalido. Use PNG, JPG, JPEG ou WebP.", "warning");
       return;
     }
     if (file.size > 2 * 1024 * 1024) {
@@ -132,7 +132,7 @@ export default function ProfilePage() {
             ref={fileInputRef}
             id="profile-image-upload"
             type="file"
-            accept=".png,.jpg,.jpeg,image/png,image/jpeg,image/jpg"
+            accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/jpg,image/webp"
             className="hidden"
             onChange={(e) => onUploadPhoto(e.target.files?.[0])}
             disabled={uploading}
@@ -145,12 +145,12 @@ export default function ProfilePage() {
           >
             {uploading ? "Enviando foto..." : "Alterar foto"}
           </button>
-          <p className="mt-1 text-xs text-slate-400">Formatos: PNG/JPG/JPEG. Tamanho máximo: 2MB.</p>
+          <p className="mt-1 text-xs text-slate-400">Formatos: PNG/JPG/JPEG/WebP. Tamanho maximo: 2MB.</p>
         </div>
       </section>
 
       <section className="fc-card border-blue-500/20 p-5">
-        <h3 className="mb-3 text-base font-semibold text-white">Alterar senha</h3>
+        <h3 className="mb-3 text-base font-semibold text-white">Dados do perfil e seguranca</h3>
         <form onSubmit={onUpdateProfile} className="mb-5 rounded-xl border border-slate-700/70 bg-slate-900/40 p-3">
           <h4 className="mb-2 text-sm font-semibold text-slate-100">Dados do perfil</h4>
           <FormField label="Nome completo">

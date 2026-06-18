@@ -71,7 +71,7 @@ function ParteDiariaDashboardInner() {
         <p className="fc-erp-lead mt-3">Horas, checklist e ocorrências da operação.</p>
         <div className="mt-5 flex flex-wrap gap-3 text-sm">
           <Link
-            to="/dashboard/registros"
+            to="/empresa/relatorios?tipo=parte_diaria"
             className="fc-btn inline-flex rounded-md border border-zinc-600 px-3 py-2 font-medium text-zinc-200 hover:border-zinc-500"
           >
             Abrir registro detalhado

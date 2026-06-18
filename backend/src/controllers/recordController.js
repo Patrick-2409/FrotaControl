@@ -18,6 +18,14 @@ const normalizeClientPayload = (value) => {
   };
 };
 
+const sourceConflictMessage = "Registro ja existe para outro perfil.";
+const sendSourceConflict = (res) =>
+  res.status(409).json({
+    success: false,
+    error: sourceConflictMessage,
+    message: sourceConflictMessage,
+  });
+
 /** Aceita string pt-BR (ex.: 1.234,56) ou número. */
 const preprocessDecimal = (val) => {
   if (typeof val === "number" && Number.isFinite(val)) return val;
@@ -157,6 +165,9 @@ const createRomaneio = async (req, res) => {
     [req.user.empresa_id, payload.source_id]
   );
   const row = await upsertRomaneio(req.user.empresa_id, req.user.sub, payload);
+  if (!row) {
+    return sendSourceConflict(res);
+  }
   await logAudit({
     usuario_id: req.user.sub,
     acao: before.rowCount ? "editou" : "criou",
@@ -181,6 +192,9 @@ const createCombustivel = async (req, res) => {
     [req.user.empresa_id, payload.source_id]
   );
   const row = await upsertCombustivel(req.user.empresa_id, req.user.sub, payload);
+  if (!row) {
+    return sendSourceConflict(res);
+  }
   await logAudit({
     usuario_id: req.user.sub,
     acao: before.rowCount ? "editou" : "criou",
@@ -216,7 +230,7 @@ const updateCombustivelBySourceId = async (req, res) => {
   };
   const payload = combustivelSchema.parse(body);
   const before = await pool.query(
-    "SELECT id FROM combustiveis WHERE empresa_id = $1 AND source_id = $2",
+    "SELECT id, usuario_id FROM combustiveis WHERE empresa_id = $1 AND source_id = $2",
     [req.user.empresa_id, payload.source_id]
   );
   if (!before.rowCount) {
@@ -226,7 +240,21 @@ const updateCombustivelBySourceId = async (req, res) => {
       message: "Abastecimento não encontrado",
     });
   }
+  if (Number(before.rows[0]?.usuario_id) !== Number(req.user.sub)) {
+    return res.status(404).json({
+      success: false,
+      error: "Abastecimento não encontrado",
+      message: "Abastecimento não encontrado",
+    });
+  }
   const row = await upsertCombustivel(req.user.empresa_id, req.user.sub, payload);
+  if (!row) {
+    return res.status(404).json({
+      success: false,
+      error: "Abastecimento não encontrado",
+      message: "Abastecimento não encontrado",
+    });
+  }
   await logAudit({
     usuario_id: req.user.sub,
     acao: "editou",
@@ -251,6 +279,9 @@ const createParteDiaria = async (req, res) => {
     [req.user.empresa_id, payload.source_id]
   );
   const row = await upsertParteDiaria(req.user.empresa_id, req.user.sub, payload);
+  if (!row) {
+    return sendSourceConflict(res);
+  }
   await logAudit({
     usuario_id: req.user.sub,
     acao: before.rowCount ? "editou" : "criou",
@@ -277,6 +308,9 @@ const syncPending = async (req, res) => {
 
   for (const item of data.romaneios || []) {
     const row = await upsertRomaneio(req.user.empresa_id, req.user.sub, item);
+    if (!row) {
+      return sendSourceConflict(res);
+    }
     result.romaneios.push(row);
     await logAudit({
       usuario_id: req.user.sub,
@@ -287,6 +321,9 @@ const syncPending = async (req, res) => {
   }
   for (const item of data.combustiveis || []) {
     const row = await upsertCombustivel(req.user.empresa_id, req.user.sub, item);
+    if (!row) {
+      return sendSourceConflict(res);
+    }
     result.combustiveis.push(row);
     await logAudit({
       usuario_id: req.user.sub,
@@ -297,6 +334,9 @@ const syncPending = async (req, res) => {
   }
   for (const item of data.parteDiaria || []) {
     const row = await upsertParteDiaria(req.user.empresa_id, req.user.sub, item);
+    if (!row) {
+      return sendSourceConflict(res);
+    }
     result.parteDiaria.push(row);
     await logAudit({
       usuario_id: req.user.sub,

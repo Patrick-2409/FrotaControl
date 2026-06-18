@@ -221,7 +221,7 @@ const getMotoristaByLogin = async (loginInput) => {
             COALESCE(v.usa_para_transporte, false) AS veiculo_usa_para_transporte
      FROM usuarios u
      JOIN empresas e ON e.id = u.empresa_id
-     LEFT JOIN veiculos v ON v.id = u.veiculo_id
+     LEFT JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
      WHERE u.role = 'MOTORISTA'
        AND (${whereClauses.join(" OR ")})
        AND COALESCE(u.conta_status, 'ativo') = 'ativo'`,
@@ -261,7 +261,7 @@ const getUsersByRoleLogin = async (role, loginInput) => {
             COALESCE(v.usa_para_transporte, false) AS veiculo_usa_para_transporte
      FROM usuarios u
      LEFT JOIN empresas e ON e.id = u.empresa_id
-     LEFT JOIN veiculos v ON v.id = u.veiculo_id
+     LEFT JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
      WHERE u.role = $1
        AND (${whereClauses.join(" OR ")})
        AND COALESCE(u.conta_status, 'ativo') = 'ativo'
@@ -309,7 +309,7 @@ const getUserById = async (id, empresa_id) => {
             COALESCE(v.usa_para_transporte, false) AS veiculo_usa_para_transporte
      FROM usuarios u
      LEFT JOIN empresas e ON e.id = u.empresa_id
-     LEFT JOIN veiculos v ON v.id = u.veiculo_id
+     LEFT JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
      WHERE u.id = $1 ${companyFilter}`,
     values
   );
@@ -366,7 +366,7 @@ const listUsersByCompany = async (
             u.equipamento_vinculo, u.operacao_escopo, u.status_operacional, u.conta_status, u.created_at,
             v.nome AS veiculo_nome, v.placa, v.marca AS veiculo_marca, v.modelo AS veiculo_modelo
      FROM usuarios u
-     LEFT JOIN veiculos v ON v.id = u.veiculo_id
+     LEFT JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
      WHERE ${whereSql}
      ORDER BY u.created_at DESC
      LIMIT ${limitPlaceholder} OFFSET ${offsetPlaceholder}`,
@@ -534,7 +534,7 @@ const getUserByIdForSuperAdmin = async (id) => {
         v.nome AS veiculo_nome, v.placa
      FROM usuarios u
      LEFT JOIN empresas e ON e.id = u.empresa_id
-     LEFT JOIN veiculos v ON v.id = u.veiculo_id
+     LEFT JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
      WHERE u.id = $1 AND u.role IN ('MOTORISTA', 'ADMIN_EMPRESA', 'APONTADOR', 'SUPER_ADMIN')`,
     [id]
   );

@@ -156,6 +156,40 @@ const getCompanyId = (req) => {
   }
   return Number(req.user.empresa_id);
 };
+
+const vehicleBelongsToCompany = async (empresa_id, veiculo_id) => {
+  const companyId = Number(empresa_id);
+  const vehicleId = Number(veiculo_id);
+  if (!Number.isFinite(companyId) || companyId <= 0 || !Number.isFinite(vehicleId) || vehicleId <= 0) {
+    return false;
+  }
+  const { rowCount } = await pool.query(
+    "SELECT 1 FROM veiculos WHERE id = $1 AND empresa_id = $2",
+    [vehicleId, companyId]
+  );
+  return rowCount > 0;
+};
+
+const userBelongsToCompany = async (empresa_id, usuario_id) => {
+  const companyId = Number(empresa_id);
+  const userId = Number(usuario_id);
+  if (!Number.isFinite(companyId) || companyId <= 0 || !Number.isFinite(userId) || userId <= 0) {
+    return false;
+  }
+  const { rowCount } = await pool.query(
+    "SELECT 1 FROM usuarios WHERE id = $1 AND empresa_id = $2 AND role <> 'SUPER_ADMIN'",
+    [userId, companyId]
+  );
+  return rowCount > 0;
+};
+
+const sendVehicleScopeError = (res) =>
+  res.status(400).json({
+    success: false,
+    error: "Veiculo vinculado nao pertence a empresa.",
+    message: "Veiculo vinculado nao pertence a empresa.",
+  });
+
 const getPagination = (req) => ({
   page: Number(req.query.page || 1),
   limit: Number(req.query.limit || 10),
@@ -406,6 +440,9 @@ const createUserCtrl = async (req, res) => {
       message: "Motorista deve ter veículo vinculado",
     });
   }
+  if (payload.role === "MOTORISTA" && !(await vehicleBelongsToCompany(empresa_id, payload.veiculo_id))) {
+    return sendVehicleScopeError(res);
+  }
   if (!payload.senha) {
     return res.status(400).json({
       success: false,
@@ -479,7 +516,7 @@ const listUsersCtrl = async (req, res) => {
       SELECT COUNT(*)::int AS total
       FROM usuarios u
       LEFT JOIN empresas e ON e.id = u.empresa_id
-      LEFT JOIN veiculos v ON v.id = u.veiculo_id
+      LEFT JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
       ${where}
       `,
       values
@@ -491,7 +528,7 @@ const listUsersCtrl = async (req, res) => {
         v.nome AS veiculo_nome, v.placa
       FROM usuarios u
       LEFT JOIN empresas e ON e.id = u.empresa_id
-      LEFT JOIN veiculos v ON v.id = u.veiculo_id
+      LEFT JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
       ${where}
       ORDER BY u.created_at DESC
       LIMIT $${idx} OFFSET $${idx + 1}
@@ -585,6 +622,16 @@ const updateUserCtrl = async (req, res) => {
       message: "Motorista deve ter veículo vinculado",
     });
   }
+  if (req.user.role === "ADMIN_EMPRESA" && !(await userBelongsToCompany(empresa_id, req.params.id))) {
+    return res.status(404).json({
+      success: false,
+      error: "Utilizador não encontrado.",
+      message: "Utilizador não encontrado.",
+    });
+  }
+  if (payload.role === "MOTORISTA" && !(await vehicleBelongsToCompany(empresa_id, payload.veiculo_id))) {
+    return sendVehicleScopeError(res);
+  }
   const identityError = await checkRoleScopedUniqueness({
     role: payload.role,
     email: payload.email,
@@ -659,22 +706,21 @@ const setUsuarioContaStatus = async (req, idRaw, nextStatus) => {
     };
   }
 
-  const pre = await pool.query(`SELECT id, conta_status, empresa_id, role FROM usuarios WHERE id = $1`, [id]);
+  const empresa_id = req.user.role === "ADMIN_EMPRESA" ? getCompanyId(req) : null;
+  const pre =
+    req.user.role === "ADMIN_EMPRESA"
+      ? await pool.query(
+          `SELECT id, conta_status, empresa_id, role
+           FROM usuarios
+           WHERE id = $1 AND empresa_id = $2 AND role <> 'SUPER_ADMIN'`,
+          [id, empresa_id]
+        )
+      : await pool.query(`SELECT id, conta_status, empresa_id, role FROM usuarios WHERE id = $1`, [id]);
   if (!pre.rowCount) {
     return { ok: false, status: 404, body: { success: false, message: "Utilizador não encontrado." } };
   }
   const rowPre = pre.rows[0];
   const antes = rowPre.conta_status === "inativo" ? "inativo" : "ativo";
-
-  if (req.user.role === "ADMIN_EMPRESA") {
-    const empresa_id = getCompanyId(req);
-    if (!empresa_id || Number(rowPre.empresa_id) !== Number(empresa_id)) {
-      return { ok: false, status: 403, body: { success: false, message: "Acesso negado." } };
-    }
-    if (rowPre.role === "SUPER_ADMIN") {
-      return { ok: false, status: 403, body: { success: false, message: "Acesso negado." } };
-    }
-  }
 
   let upd;
   if (req.user.role === "SUPER_ADMIN") {
@@ -686,7 +732,6 @@ const setUsuarioContaStatus = async (req, idRaw, nextStatus) => {
       [nextStatus, id]
     );
   } else {
-    const empresa_id = getCompanyId(req);
     upd = await pool.query(
       `UPDATE usuarios SET conta_status = $1 WHERE id = $2 AND empresa_id = $3 RETURNING *`,
       [nextStatus, id, empresa_id]
@@ -778,7 +823,7 @@ const listVehiclesCtrl = async (req, res) => {
       SELECT COUNT(*)::int AS total
       FROM veiculos v
       LEFT JOIN empresas e ON e.id = v.empresa_id
-      LEFT JOIN usuarios u ON u.veiculo_id = v.id AND u.role = 'MOTORISTA'
+      LEFT JOIN usuarios u ON u.veiculo_id = v.id AND u.empresa_id = v.empresa_id AND u.role = 'MOTORISTA'
       ${where}
       `,
       values
@@ -791,7 +836,7 @@ const listVehiclesCtrl = async (req, res) => {
         u.id AS motorista_id, u.nome AS motorista_nome
       FROM veiculos v
       LEFT JOIN empresas e ON e.id = v.empresa_id
-      LEFT JOIN usuarios u ON u.veiculo_id = v.id AND u.role = 'MOTORISTA'
+      LEFT JOIN usuarios u ON u.veiculo_id = v.id AND u.empresa_id = v.empresa_id AND u.role = 'MOTORISTA'
       ${where}
       ORDER BY v.created_at DESC
       LIMIT $${idx} OFFSET $${idx + 1}
@@ -881,6 +926,13 @@ const updateVehicleCtrl = async (req, res) => {
     });
   }
   const row = await updateVehicle(Number(req.params.id), empresa_id, payload);
+  if (!row) {
+    return res.status(404).json({
+      success: false,
+      error: "Veículo não encontrado.",
+      message: "Veículo não encontrado.",
+    });
+  }
   await logAudit({
     usuario_id: req.user?.sub,
     acao: "editou",
@@ -910,7 +962,14 @@ const deleteVehicleCtrl = async (req, res) => {
       message: "empresa_id é obrigatório",
     });
   }
-  await deleteVehicle(id, empresa_id);
+  const deleted = await deleteVehicle(id, empresa_id);
+  if (!deleted) {
+    return res.status(404).json({
+      success: false,
+      error: "Veículo não encontrado.",
+      message: "Veículo não encontrado.",
+    });
+  }
   await logAudit({
     usuario_id: req.user?.sub,
     acao: "excluiu",
@@ -989,7 +1048,7 @@ const companyDetailsCtrl = async (req, res) => {
         v.id, v.nome, v.placa, v.created_at,
         u.id AS motorista_id, u.nome AS motorista_nome
       FROM veiculos v
-      LEFT JOIN usuarios u ON u.veiculo_id = v.id AND u.role = 'MOTORISTA'
+      LEFT JOIN usuarios u ON u.veiculo_id = v.id AND u.empresa_id = v.empresa_id AND u.role = 'MOTORISTA'
       WHERE v.empresa_id = $1
       ORDER BY v.nome`,
       [companyId]

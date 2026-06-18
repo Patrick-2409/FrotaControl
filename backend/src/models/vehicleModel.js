@@ -361,7 +361,8 @@ const updateVehicle = async (id, empresa_id, data) => {
 };
 
 const deleteVehicle = async (id, empresa_id) => {
-  await pool.query("DELETE FROM veiculos WHERE id = $1 AND empresa_id = $2", [id, empresa_id]);
+  const result = await pool.query("DELETE FROM veiculos WHERE id = $1 AND empresa_id = $2", [id, empresa_id]);
+  return result.rowCount > 0;
 };
 
 const getVehicleById = async (id, empresa_id) => {

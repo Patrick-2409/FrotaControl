@@ -89,7 +89,7 @@ export default function ManagerDashboardPage() {
           Parte diária
         </Link>
         <Link
-          to="/dashboard/relatorios"
+          to="/empresa/relatorios"
           className="fc-btn inline-flex rounded-md border border-amber-500/45 bg-zinc-800/80 px-4 py-3 text-center text-sm font-semibold text-zinc-50 hover:border-amber-500/60"
         >
           Abrir relatórios completos

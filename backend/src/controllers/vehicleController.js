@@ -15,7 +15,7 @@ const create = async (req, res) => {
 };
 
 const list = async (req, res) => {
-  const empresaId = req.user?.empresa_id || Number(req.query.empresa_id);
+  const empresaId = Number(req.user?.empresa_id);
   if (!empresaId) {
     return res.status(400).json({
       success: false,
@@ -29,9 +29,6 @@ const list = async (req, res) => {
   const status_operacional = String(req.query.status_operacional || "").trim();
   const tipo = String(req.query.tipo || "").trim();
   const result = await listVehicles(empresaId, { page, limit, search, status_operacional, tipo });
-  if (!req.user) {
-    return res.json(result.items);
-  }
   return res.json({
     success: true,
     ...result,
@@ -44,11 +41,25 @@ const update = async (req, res) => {
   const parsed = schema.parse(req.body);
   const data = toVehicleWritePayload(parsed);
   const vehicle = await updateVehicle(Number(req.params.id), req.user.empresa_id, data);
+  if (!vehicle) {
+    return res.status(404).json({
+      success: false,
+      error: "Veículo não encontrado.",
+      message: "Veículo não encontrado.",
+    });
+  }
   return res.json(vehicle);
 };
 
 const remove = async (req, res) => {
-  await deleteVehicle(Number(req.params.id), req.user.empresa_id);
+  const deleted = await deleteVehicle(Number(req.params.id), req.user.empresa_id);
+  if (!deleted) {
+    return res.status(404).json({
+      success: false,
+      error: "Veículo não encontrado.",
+      message: "Veículo não encontrado.",
+    });
+  }
   return res.status(204).send();
 };
 

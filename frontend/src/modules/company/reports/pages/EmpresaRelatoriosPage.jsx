@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../../../services/auth";
 import api from "../../../../services/api";
 import EmptyState from "../../../../components/EmptyState";
@@ -24,6 +25,8 @@ const REPORT_TYPES = [
   { key: "combustivel", label: "Combustível" },
   { key: "parte_diaria", label: "Pessoas" },
 ];
+
+const VALID_REPORT_TYPES = new Set(REPORT_TYPES.map((item) => item.key));
 
 const addDays = (ymd, delta) => {
   const d = new Date(`${ymd}T12:00:00`);
@@ -79,6 +82,15 @@ const defaultFiltro = () => ({
   preset: "hoje",
 });
 
+const initialFiltroFromSearch = (searchParams) => {
+  const initial = defaultFiltro();
+  const tipo = String(searchParams?.get("tipo") || "").trim();
+  if (VALID_REPORT_TYPES.has(tipo)) {
+    initial.tipo = tipo;
+  }
+  return initial;
+};
+
 const asRowKey = (row) => `${row?.tipo || "tipo"}::${row?.source_id || row?.id || "sem-id"}`;
 const fmtMoney = (value) =>
   Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -86,8 +98,9 @@ const fmtLitros = (value) => Number(value || 0).toLocaleString("pt-BR", { minimu
 
 export default function EmpresaRelatoriosPage() {
   const { user } = useAuth();
-  const [filtro, setFiltro] = useState(defaultFiltro);
-  const [queryFiltro, setQueryFiltro] = useState(defaultFiltro);
+  const [searchParams] = useSearchParams();
+  const [filtro, setFiltro] = useState(() => initialFiltroFromSearch(searchParams));
+  const [queryFiltro, setQueryFiltro] = useState(() => initialFiltroFromSearch(searchParams));
   const [previewRows, setPreviewRows] = useState([]);
   const [previewTotal, setPreviewTotal] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -101,10 +114,16 @@ export default function EmpresaRelatoriosPage() {
     extraParams: TABLE_EXPORT_LAYOUT_PARAMS,
   });
 
+  useEffect(() => {
+    const tipo = String(searchParams.get("tipo") || "").trim();
+    if (!VALID_REPORT_TYPES.has(tipo)) return;
+    setFiltro((prev) => (prev.tipo === tipo ? prev : { ...prev, tipo }));
+  }, [searchParams]);
+
   const tipoExportLabel = typeLabelMap[queryFiltro.tipo] || typeLabelMap[""];
   const periodoExportLabel = useMemo(
     () => formatExportPeriodoLinha(queryFiltro),
-    [queryFiltro.data, queryFiltro.data_fim, queryFiltro.data_inicio, queryFiltro.mes, queryFiltro.periodo, queryFiltro.tipo]
+    [queryFiltro]
   );
 
   useEffect(() => {
@@ -119,7 +138,7 @@ export default function EmpresaRelatoriosPage() {
     return () => {
       clearTimeout(timer);
     };
-  }, [filtro.data, filtro.data_fim, filtro.data_inicio, filtro.mes, filtro.motorista, filtro.veiculo, filtro.periodo, filtro.tipo, filtro.preset]);
+  }, [filtro]);
 
   useEffect(() => {
     const queryKey = JSON.stringify({

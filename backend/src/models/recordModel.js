@@ -1,8 +1,8 @@
 const { pool } = require("../db");
 const { logError } = require("../services/loggerService");
 
-const upsertRomaneio = async (empresa_id, usuario_id, payload) => {
-  const { rows } = await pool.query(
+const upsertRomaneio = async (empresa_id, usuario_id, payload, db = pool) => {
+  const { rows } = await db.query(
     `INSERT INTO romaneios
       (empresa_id, usuario_id, veiculo_id, source_id, version_of, data, recorded_at_client, tipo_transporte, destino, observacao)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
@@ -15,6 +15,7 @@ const upsertRomaneio = async (empresa_id, usuario_id, payload) => {
        observacao = EXCLUDED.observacao,
        veiculo_id = EXCLUDED.veiculo_id,
        updated_at = NOW()
+     WHERE romaneios.usuario_id = EXCLUDED.usuario_id
      RETURNING *`,
     [
       empresa_id,
@@ -32,8 +33,8 @@ const upsertRomaneio = async (empresa_id, usuario_id, payload) => {
   return rows[0];
 };
 
-const upsertCombustivel = async (empresa_id, usuario_id, payload) => {
-  const { rows } = await pool.query(
+const upsertCombustivel = async (empresa_id, usuario_id, payload, db = pool) => {
+  const { rows } = await db.query(
     `INSERT INTO combustiveis
       (empresa_id, usuario_id, veiculo_id, source_id, version_of, data, recorded_at_client, litros, valor_total, preco_por_litro, tipo_combustivel, horimetro, hodometro)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,($9::numeric / NULLIF($8::numeric, 0)),$10,$11,$12)
@@ -49,6 +50,7 @@ const upsertCombustivel = async (empresa_id, usuario_id, payload) => {
        hodometro = EXCLUDED.hodometro,
        veiculo_id = EXCLUDED.veiculo_id,
        updated_at = NOW()
+     WHERE combustiveis.usuario_id = EXCLUDED.usuario_id
      RETURNING *`,
     [
       empresa_id,
@@ -68,8 +70,8 @@ const upsertCombustivel = async (empresa_id, usuario_id, payload) => {
   return rows[0];
 };
 
-const upsertParteDiaria = async (empresa_id, usuario_id, payload) => {
-  const { rows } = await pool.query(
+const upsertParteDiaria = async (empresa_id, usuario_id, payload, db = pool) => {
+  const { rows } = await db.query(
     `INSERT INTO parte_diaria
       (empresa_id, usuario_id, veiculo_id, source_id, version_of, data, recorded_at_client, contratado, operador, equipamento,
        marca_modelo, local, expediente, periodo, clima, horimetro_inicio, horimetro_fim, total_horas,
@@ -100,6 +102,7 @@ const upsertParteDiaria = async (empresa_id, usuario_id, payload) => {
        producao = EXCLUDED.producao,
        veiculo_id = EXCLUDED.veiculo_id,
        updated_at = NOW()
+     WHERE parte_diaria.usuario_id = EXCLUDED.usuario_id
      RETURNING *`,
     [
       empresa_id,
