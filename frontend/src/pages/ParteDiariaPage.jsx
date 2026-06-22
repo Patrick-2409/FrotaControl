@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import FormField, { inputClass, primaryButtonClass } from "../components/FormField";
+import ConfirmActionModal from "../components/ConfirmActionModal";
 import { deleteHistoryItem, saveWithOffline } from "../services/syncService";
 import { useAuth } from "../services/auth";
 import { emitToast } from "../services/uiEvents";
 import { generateId } from "../utils/id";
 import api from "../services/api";
+import {
+  clearScopedEditRecord,
+  getEditRecordScopeFromUser,
+  readScopedEditRecord,
+  writeScopedEditRecord,
+} from "../services/editRecordStorage";
 import { nowLocalDateTimeString, toIsoWithCurrentTimeIfDateOnly } from "../utils/datetime";
 import { listHistory } from "../offline/offlineRepo";
 
@@ -120,7 +127,12 @@ const getRecordSourceId = (row) => row?.source_id || row?.payload?.source_id || 
 
 export default function ParteDiariaPage({ onSaved }) {
   const { user } = useAuth();
-  const draftKey = `fc_draft_parte_${user?.id || "anon"}`;
+  const editRecordScope = useMemo(
+    () => getEditRecordScopeFromUser(user),
+    [user]
+  );
+  const draftKey = `fc_draft_parte_${user?.empresa_id || "sem_empresa"}_${user?.id || "anon"}`;
+  const legacyDraftKey = `fc_draft_parte_${user?.id || "anon"}`;
   const [initializing, setInitializing] = useState(true);
   const [error, setError] = useState(null);
   const [vehicles, setVehicles] = useState([]);
@@ -153,9 +165,8 @@ export default function ParteDiariaPage({ onSaved }) {
   const [formVisible, setFormVisible] = useState(false);
   const [recentVisible, setRecentVisible] = useState(false);
   const [deleteLoadingId, setDeleteLoadingId] = useState("");
+  const [pendingDeleteRow, setPendingDeleteRow] = useState(null);
   const [editingSourceId, setEditingSourceId] = useState(null);
-  const userEmpresaNome = user?.empresa_nome || "";
-  const userNome = user?.nome || "";
 
   useEffect(() => {
     let active = true;
@@ -226,40 +237,44 @@ export default function ParteDiariaPage({ onSaved }) {
     // Limpa rascunho legado compartilhado entre usuários para evitar contaminação de perfil.
     localStorage.removeItem("fc_draft_parte");
     try {
-      const raw = localStorage.getItem("fc_edit_record");
-      if (raw) {
-        const record = JSON.parse(raw);
-        if (record?.module === "parteDiaria") {
-          setEditingSourceId(record?.source_id || record?.payload?.source_id || record?.payload?.client_id || null);
-          setFormVisible(true);
-          setForm({
-            ...record.payload,
-            data: toDatetimeLocal(record.payload?.data),
-            horimetro_inicio: String(record.payload?.horimetro_inicio ?? ""),
-            horimetro_fim: String(record.payload?.horimetro_fim ?? ""),
-            hodometro_inicio: String(record.payload?.hodometro_inicio ?? ""),
-            hodometro_fim: String(record.payload?.hodometro_fim ?? ""),
-            checklist: {
-              ...buildEmptyChecklist(),
-              ...(record.payload?.checklist || {}),
-            },
-          });
-        }
+      const record = readScopedEditRecord(editRecordScope);
+      if (record?.module === "parteDiaria") {
+        setEditingSourceId(record?.source_id || record?.payload?.source_id || record?.payload?.client_id || null);
+        setFormVisible(true);
+        setForm({
+          ...record.payload,
+          data: toDatetimeLocal(record.payload?.data),
+          horimetro_inicio: String(record.payload?.horimetro_inicio ?? ""),
+          horimetro_fim: String(record.payload?.horimetro_fim ?? ""),
+          hodometro_inicio: String(record.payload?.hodometro_inicio ?? ""),
+          hodometro_fim: String(record.payload?.hodometro_fim ?? ""),
+          checklist: {
+            ...buildEmptyChecklist(),
+            ...(record.payload?.checklist || {}),
+          },
+        });
         return;
       }
       const userDraftRaw = localStorage.getItem(draftKey);
-      if (userDraftRaw) {
-        const draft = JSON.parse(userDraftRaw);
-        setForm({
+      const legacyDraftRaw = !userDraftRaw ? localStorage.getItem(legacyDraftKey) : null;
+      const draftRaw = userDraftRaw || legacyDraftRaw;
+      if (draftRaw) {
+        const draft = JSON.parse(draftRaw);
+        const normalizedDraft = {
           ...draft,
           data: normalizeDraftDatetime(draft?.data),
-          contratado: userEmpresaNome || draft.contratado || "",
-          operador: userNome || draft.operador || "",
+          contratado: user?.empresa_nome || draft.contratado || "",
+          operador: user?.nome || draft.operador || "",
           checklist: {
             ...buildEmptyChecklist(),
             ...(draft.checklist || {}),
           },
-        });
+        };
+        setForm(normalizedDraft);
+        if (legacyDraftRaw) {
+          localStorage.setItem(draftKey, JSON.stringify(normalizedDraft));
+          localStorage.removeItem(legacyDraftKey);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -267,11 +282,14 @@ export default function ParteDiariaPage({ onSaved }) {
     } finally {
       setInitializing(false);
     }
-  }, [draftKey, userEmpresaNome, userNome]);
+  }, [draftKey, editRecordScope, legacyDraftKey, user?.empresa_nome, user?.nome]);
 
   useEffect(() => {
     localStorage.setItem(draftKey, JSON.stringify(form));
-  }, [form, draftKey]);
+    if (legacyDraftKey !== draftKey) {
+      localStorage.removeItem(legacyDraftKey);
+    }
+  }, [form, draftKey, legacyDraftKey]);
 
   const total = useMemo(() => {
     const ini = Number(form.horimetro_inicio || 0);
@@ -436,7 +454,7 @@ export default function ParteDiariaPage({ onSaved }) {
   }, []);
 
   const resetForCreate = useCallback(() => {
-    localStorage.removeItem("fc_edit_record");
+    clearScopedEditRecord(editRecordScope);
     setEditingSourceId(null);
     setFeedback(null);
     setForm((prev) => ({
@@ -453,33 +471,49 @@ export default function ParteDiariaPage({ onSaved }) {
       producao: "",
       outros_descricao: "",
     }));
-  }, []);
+  }, [editRecordScope]);
 
   const startEditRecord = useCallback((row) => {
     const payload = row?.payload || {};
-    localStorage.setItem("fc_edit_record", JSON.stringify(row));
+    writeScopedEditRecord(editRecordScope, row);
     setEditingSourceId(getRecordSourceId(row));
     setFeedback(null);
     hydrateFormFromPayload(payload);
     setFormVisible(true);
-  }, [hydrateFormFromPayload]);
+  }, [hydrateFormFromPayload, editRecordScope]);
 
-  const onDeleteRecord = useCallback(async (row) => {
+  const onDeleteRecord = useCallback((row) => {
     const sourceId = getRecordSourceId(row);
     if (!sourceId) return;
-    const ok = window.confirm("Deseja excluir este registro de parte diária?");
-    if (!ok) return;
+    setPendingDeleteRow(row);
+  }, []);
+
+  const confirmDeleteRecord = useCallback(async () => {
+    if (!pendingDeleteRow) return;
+    const sourceId = getRecordSourceId(pendingDeleteRow);
+    if (!sourceId) {
+      setPendingDeleteRow(null);
+      return;
+    }
     setDeleteLoadingId(sourceId);
     try {
-      await deleteHistoryItem(row);
+      await deleteHistoryItem(pendingDeleteRow);
       await refreshHistory();
       emitToast("Registro excluído com sucesso.", "success");
     } catch (err) {
       emitToast(err?.response?.data?.message || "Não foi possível excluir o registro.", "error");
     } finally {
       setDeleteLoadingId("");
+      setPendingDeleteRow(null);
     }
-  }, [refreshHistory]);
+  }, [pendingDeleteRow, refreshHistory]);
+
+  const closeDeleteConfirm = useCallback(() => {
+    if (!pendingDeleteRow) return;
+    const sourceId = getRecordSourceId(pendingDeleteRow);
+    if (sourceId && deleteLoadingId === sourceId) return;
+    setPendingDeleteRow(null);
+  }, [pendingDeleteRow, deleteLoadingId]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -500,8 +534,7 @@ export default function ParteDiariaPage({ onSaved }) {
     }
     setLoading(true);
     try {
-      const editRaw = localStorage.getItem("fc_edit_record");
-      const editRecord = editRaw ? JSON.parse(editRaw) : null;
+      const editRecord = readScopedEditRecord(editRecordScope);
       const executionDate = editRecord ? toIsoWithCurrentTimeIfDateOnly(form.data) : nowLocalDateTimeString();
       const createPayloadIdentity = editRecord
         ? {}
@@ -534,8 +567,9 @@ export default function ParteDiariaPage({ onSaved }) {
           : "Registro salvo com sucesso (pendente de sincronização)",
         result.status === "synced" ? "success" : result.status === "syncing" ? "error" : "warning"
       );
-      localStorage.removeItem("fc_edit_record");
+      clearScopedEditRecord(editRecordScope);
       localStorage.removeItem(draftKey);
+      localStorage.removeItem(legacyDraftKey);
       setEditingSourceId(null);
       await refreshHistory();
       setFormVisible(false);
@@ -912,6 +946,19 @@ export default function ParteDiariaPage({ onSaved }) {
           <p className="text-sm text-slate-400">Os registros recentes ficam ocultos para deixar a operação mais enxuta.</p>
         )}
       </section>
+
+      <ConfirmActionModal
+        open={Boolean(pendingDeleteRow)}
+        title="Excluir parte diária"
+        description="Este lançamento de parte diária será removido do histórico da operação."
+        consequence="A exclusão é permanente e não pode ser revertida."
+        confirmLabel="Excluir registro"
+        confirmLoadingLabel="Excluindo..."
+        tone="danger"
+        loading={Boolean(pendingDeleteRow && deleteLoadingId === getRecordSourceId(pendingDeleteRow))}
+        onClose={closeDeleteConfirm}
+        onConfirm={() => void confirmDeleteRecord()}
+      />
     </div>
   );
 }

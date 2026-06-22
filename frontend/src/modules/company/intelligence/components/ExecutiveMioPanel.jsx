@@ -60,7 +60,8 @@ function ScoreWhyBlock({ narrative }) {
 function ScoreGaugeCard({ label, scoreKey, score, narrative, compact = false }) {
   const valor = Number(score?.valor ?? 0);
   const classificacao = score?.classificacao || "ATENCAO";
-  const faixa = score?.faixa || "Atenção";
+  const faixaRaw = score?.faixa || "Alerta";
+  const faixa = String(faixaRaw).toUpperCase().includes("ATEN") ? "Alerta" : faixaRaw;
   const palette = SCORE_COLORS[classificacao] || SCORE_COLORS.ATENCAO;
   const angle = Math.max(0, Math.min(180, (valor / 100) * 180));
   const radius = compact ? 42 : 52;
@@ -144,7 +145,7 @@ export default function ExecutiveMioPanel({ painelExecutivo, loading = false }) 
         compact
       />
       <ScoreGaugeCard
-        label="Confiabilidade"
+        label="Score de Aderência"
         scoreKey="score_confiabilidade"
         score={painelExecutivo.score_confiabilidade}
         narrative={narrativas.score_confiabilidade}

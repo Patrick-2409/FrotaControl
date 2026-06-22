@@ -81,7 +81,7 @@ export default function ExecutiveBoardSummaryPage({
       aria-label="Resumo executivo para diretoria"
     >
       <header className="border-b border-slate-200/80 pb-5 text-center">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500">FrotaMax · Inteligência</p>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500">FrotaControl · Inteligência</p>
         <h2 className="mt-2 text-xl font-black uppercase tracking-wide text-slate-900 sm:text-2xl">
           Resumo Executivo para Diretoria
         </h2>

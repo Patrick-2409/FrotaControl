@@ -69,9 +69,9 @@ function ParteDiariaDashboardInner() {
       <header className="border-b border-zinc-800 pb-6">
         <h1 className="fc-erp-h1">Parte diária</h1>
         <p className="fc-erp-lead mt-3">Horas, checklist e ocorrências da operação.</p>
-        <div className="fc-empresa-action-row mt-5 flex flex-wrap gap-3 text-sm">
+        <div className="mt-5 flex flex-wrap gap-3 text-sm">
           <Link
-            to="/empresa/relatorios?tipo=parte_diaria"
+            to="/dashboard/registros"
             className="fc-btn inline-flex rounded-md border border-zinc-600 px-3 py-2 font-medium text-zinc-200 hover:border-zinc-500"
           >
             Abrir registro detalhado
@@ -100,7 +100,7 @@ function ParteDiariaDashboardInner() {
       {!loadError && !loading ? (
         <AccordionSection
           id="parte-diaria-dashboard-rapido"
-          title="Resumo da parte diária"
+          title="Dashboard rápido"
           description="Visão resumida de volume, horas e atividade por motorista."
           defaultOpenDesktop
           defaultOpenMobile={false}

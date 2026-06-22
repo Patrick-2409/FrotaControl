@@ -98,6 +98,7 @@ export default function InteligenciaPage() {
   const [vehicleOptions, setVehicleOptions] = useState(DEFAULT_VEHICLE_OPTIONS);
   const [driverOptions, setDriverOptions] = useState(DEFAULT_DRIVER_OPTIONS);
   const [overview, setOverview] = useState(EMPTY_OVERVIEW);
+  const [, setAnalysis] = useState(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [overviewError, setOverviewError] = useState("");
@@ -252,6 +253,7 @@ export default function InteligenciaPage() {
         tipo_analise: apiFilters.tipoAnalise,
       };
       const { data } = await api.post("/inteligencia/gerar", payload);
+      setAnalysis(data || null);
       if (data?.overview) {
         setOverview(data.overview);
       } else if (data?.inteligencia) {
@@ -267,6 +269,7 @@ export default function InteligenciaPage() {
       }
     } catch (error) {
       console.error("Erro ao gerar análise:", error);
+      setAnalysis(null);
       const friendlyMessage = await parseBlobErrorMessage(error, "Falha ao gerar análise inteligente.");
       setAnalysisError(friendlyMessage);
       emitToast(friendlyMessage, "error");

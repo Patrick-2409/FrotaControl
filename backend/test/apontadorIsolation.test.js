@@ -117,3 +117,93 @@ test("reset do dia apaga somente viagens do apontador autenticado", async () => 
   assert.deepStrictEqual(db.calls[0].params, [7, 9]);
   assert.strictEqual(removed, 3);
 });
+
+test("apontador A cria e apontador B da mesma empresa não enxerga no contador", async () => {
+  const db = createDb([
+    {
+      rows: [
+        {
+          id: 100,
+          empresa_id: 7,
+          veiculo_id: 11,
+          motorista_id: 13,
+          apontador_id: 101,
+          tipo: "esteril",
+          marcacao: new Date("2026-06-18T12:00:00.000Z"),
+        },
+      ],
+    },
+    {
+      rows: [{ esteril: 0, rocha: 0, ton_esteril: 0, ton_rocha: 0 }],
+    },
+  ]);
+
+  const created = await insertViagem(
+    {
+      empresa_id: 7,
+      veiculo_id: 11,
+      motorista_id: 13,
+      apontador_id: 101,
+      tipo: "esteril",
+      marcacao: new Date("2026-06-18T12:00:00.000Z"),
+    },
+    db
+  );
+  const countB = await countViagensHojeApontadorSaoPaulo(7, 202, db);
+
+  assert.strictEqual(created.apontador_id, 101);
+  assert.deepStrictEqual(db.calls[1].params, [7, 202]);
+  assert.deepStrictEqual(countB, {
+    esteril: 0,
+    rocha: 0,
+    ton_esteril: 0,
+    ton_rocha: 0,
+    ton_total: 0,
+  });
+});
+
+test("apontador B não desfaz lançamento do apontador A", async () => {
+  const db = createDb([{ rows: [] }]);
+
+  const deleted = await deleteViagemApontadorMatch(
+    {
+      empresa_id: 7,
+      apontador_id: 202,
+      veiculo_id: 11,
+      motorista_id: 13,
+      tipo: "esteril",
+      timestamp_ms: 1770000000000,
+      viagem_id: 100,
+    },
+    db
+  );
+
+  assert.strictEqual(deleted, null);
+  assert.match(db.calls[0].sql, /apontador_id = \$3/);
+  assert.deepStrictEqual(db.calls[0].params, [100, 7, 202, 11, 13, "esteril"]);
+});
+
+test("reset do dia do apontador A não afeta apontador B", async () => {
+  const db = createDb([
+    { rows: [], rowCount: 2 }, // A remove dois
+    { rows: [], rowCount: 1 }, // B remove um (escopo próprio)
+  ]);
+
+  const removedA = await deleteViagensApontadorDiaAtualSaoPaulo({ empresa_id: 7, apontador_id: 101 }, db);
+  const removedB = await deleteViagensApontadorDiaAtualSaoPaulo({ empresa_id: 7, apontador_id: 202 }, db);
+
+  assert.strictEqual(removedA, 2);
+  assert.strictEqual(removedB, 1);
+  assert.deepStrictEqual(db.calls[0].params, [7, 101]);
+  assert.deepStrictEqual(db.calls[1].params, [7, 202]);
+});
+
+test("isolamento por empresa permanece mesmo com mesmo apontador_id", async () => {
+  const db = createDb([{ rows: [] }]);
+
+  await listRecentViagensHojeApontadorSaoPaulo(99, 101, 5, db);
+
+  assert.match(db.calls[0].sql, /empresa_id = \$1/);
+  assert.match(db.calls[0].sql, /apontador_id = \$2/);
+  assert.deepStrictEqual(db.calls[0].params, [99, 101, 5]);
+});

@@ -11,12 +11,17 @@ export const getDadosGraficos = (overview) => {
 export const mapStatusTone = (status) => {
   const normalized = String(status || "OK").toUpperCase();
   if (normalized.includes("CRIT")) return "critical";
-  if (normalized.includes("ALERT")) return "warning";
+  if (normalized.includes("ALERT") || normalized.includes("ATEN")) return "warning";
   return "ok";
 };
 
-export const mapStatusLabel = (overview) =>
-  overview?.status_operacao?.label || overview?.status || "OK";
+export const mapStatusLabel = (overview) => {
+  const raw = overview?.status_operacao?.label || overview?.status || "OK";
+  const normalized = String(raw).toUpperCase();
+  if (normalized.includes("CRIT")) return "CRÍTICO";
+  if (normalized.includes("ALERT") || normalized.includes("ATEN")) return "ALERTA";
+  return "OK";
+};
 
 export const normalizeMensagens = (items = []) =>
   (Array.isArray(items) ? items : [])

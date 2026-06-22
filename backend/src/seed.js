@@ -4,12 +4,37 @@ const { logInfo } = require("./services/loggerService");
 
 /** CPF interno só para satisfazer NOT NULL; super admin não usa login por CPF. */
 const SUPER_ADMIN_SEED_CPF = "00000000001";
+const SUPERADMIN_SEED_ENABLE_ENV = "ENABLE_SUPERADMIN_SEED";
+
+const isTruthy = (value) => ["1", "true", "yes", "on"].includes(String(value || "").trim().toLowerCase());
+
+const isPasswordSecure = (password) =>
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}$/.test(String(password || ""));
 
 /**
  * Garante um usuário com role SUPER_ADMIN (enum do PostgreSQL; equivalente a "superadmin" no produto).
  * Roda em qualquer NODE_ENV, inclusive produção (Render).
  */
 const ensureSuperAdminSeed = async () => {
+  const nodeEnv = String(process.env.NODE_ENV || "development").trim().toLowerCase();
+  const seedExplicitlyEnabled = isTruthy(process.env[SUPERADMIN_SEED_ENABLE_ENV]);
+
+  if (nodeEnv === "production" && seedExplicitlyEnabled) {
+    throw new Error(
+      `${SUPERADMIN_SEED_ENABLE_ENV}=true não é permitido em produção. ` +
+        "Crie o SUPER_ADMIN por processo manual seguro."
+    );
+  }
+
+  const seedAllowed = nodeEnv === "development" || nodeEnv === "test" || seedExplicitlyEnabled;
+  if (!seedAllowed) {
+    logInfo("seed:super-admin-skip", {
+      reason: "seed-disabled",
+      node_env: nodeEnv,
+    });
+    return;
+  }
+
   const existing = await pool.query(
     `SELECT 1 FROM usuarios WHERE role = 'SUPER_ADMIN' LIMIT 1`
   );
@@ -18,16 +43,31 @@ const ensureSuperAdminSeed = async () => {
     return;
   }
 
-  const senha_hash = await bcrypt.hash("123456", 10);
+  const initialPassword = String(process.env.SUPERADMIN_INITIAL_PASSWORD || "").trim();
+  if (!initialPassword) {
+    throw new Error(
+      "SUPERADMIN_INITIAL_PASSWORD é obrigatório para criação automática de SUPER_ADMIN."
+    );
+  }
+  if (!isPasswordSecure(initialPassword)) {
+    throw new Error(
+      "SUPERADMIN_INITIAL_PASSWORD deve ter no mínimo 12 caracteres, com maiúscula, minúscula, número e símbolo."
+    );
+  }
+
+  const superAdminEmail = String(process.env.SUPERADMIN_INITIAL_EMAIL || "admin@frotacontrol.com").trim();
+  const superAdminNome = String(process.env.SUPERADMIN_INITIAL_NAME || "Super Admin").trim() || "Super Admin";
+
+  const senha_hash = await bcrypt.hash(initialPassword, 10);
   await pool.query(
     `INSERT INTO usuarios (empresa_id, nome, email, cpf_id, senha_hash, role, veiculo_id)
      VALUES (NULL, $1, $2, $3, $4, 'SUPER_ADMIN', NULL)`,
-    ["Super Admin", "admin@frotacontrol.com", SUPER_ADMIN_SEED_CPF, senha_hash]
+    [superAdminNome, superAdminEmail, SUPER_ADMIN_SEED_CPF, senha_hash]
   );
 
   console.log("Superadmin criado automaticamente");
   logInfo("seed:super-admin-auto", {
-    email: "admin@frotacontrol.com",
+    email: superAdminEmail,
     message: "Superadmin criado automaticamente",
   });
 };

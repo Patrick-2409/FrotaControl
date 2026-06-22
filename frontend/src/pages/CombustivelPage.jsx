@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../services/auth";
 import FormField, { inputClass, primaryButtonClass } from "../components/FormField";
+import ConfirmActionModal from "../components/ConfirmActionModal";
 import { deleteHistoryItem, saveWithOffline } from "../services/syncService";
 import { emitToast } from "../services/uiEvents";
 import { generateId } from "../utils/id";
@@ -123,6 +124,7 @@ export default function CombustivelPage({ onSaved }) {
   const [createSuccess, setCreateSuccess] = useState(false);
   const [editingSourceId, setEditingSourceId] = useState(null);
   const [deleteLoadingId, setDeleteLoadingId] = useState("");
+  const [pendingDeleteRow, setPendingDeleteRow] = useState(null);
   const [activeGraphPoint, setActiveGraphPoint] = useState(null);
   const [recentVisible, setRecentVisible] = useState(false);
 
@@ -337,22 +339,38 @@ export default function CombustivelPage({ onSaved }) {
     }
   };
 
-  const onDeleteRecord = useCallback(async (row) => {
+  const onDeleteRecord = useCallback((row) => {
     const sourceId = getRecordSourceId(row);
     if (!sourceId) return;
-    const ok = window.confirm("Deseja excluir este abastecimento? Esta ação não pode ser desfeita.");
-    if (!ok) return;
+    setPendingDeleteRow(row);
+  }, []);
+
+  const confirmDeleteRecord = useCallback(async () => {
+    if (!pendingDeleteRow) return;
+    const sourceId = getRecordSourceId(pendingDeleteRow);
+    if (!sourceId) {
+      setPendingDeleteRow(null);
+      return;
+    }
     setDeleteLoadingId(sourceId);
     try {
-      await deleteHistoryItem(row);
+      await deleteHistoryItem(pendingDeleteRow);
       await refreshHistory();
       emitToast("Registro excluído com sucesso.", "success");
     } catch (err) {
       emitToast(extractApiErrorMessage(err) || "Não foi possível excluir o abastecimento.", "error");
     } finally {
       setDeleteLoadingId("");
+      setPendingDeleteRow(null);
     }
-  }, [refreshHistory]);
+  }, [pendingDeleteRow, refreshHistory]);
+
+  const closeDeleteConfirm = useCallback(() => {
+    if (!pendingDeleteRow) return;
+    const sourceId = getRecordSourceId(pendingDeleteRow);
+    if (sourceId && deleteLoadingId === sourceId) return;
+    setPendingDeleteRow(null);
+  }, [pendingDeleteRow, deleteLoadingId]);
 
   if (initializing) return <div className="fc-card p-4 text-sm text-slate-300">Carregando...</div>;
   if (error) return <div className="fc-card p-4 text-sm text-red-300">{error}</div>;
@@ -550,6 +568,19 @@ export default function CombustivelPage({ onSaved }) {
           <p className="text-sm text-slate-400">Os registros recentes ficam ocultos para reduzir poluição visual.</p>
         )}
       </section>
+
+      <ConfirmActionModal
+        open={Boolean(pendingDeleteRow)}
+        title="Excluir abastecimento"
+        description="Este registro será removido do histórico operacional e financeiro."
+        consequence="A exclusão é permanente e não pode ser desfeita."
+        confirmLabel="Excluir abastecimento"
+        confirmLoadingLabel="Excluindo..."
+        tone="danger"
+        loading={Boolean(pendingDeleteRow && deleteLoadingId === getRecordSourceId(pendingDeleteRow))}
+        onClose={closeDeleteConfirm}
+        onConfirm={() => void confirmDeleteRecord()}
+      />
     </div>
   );
 }

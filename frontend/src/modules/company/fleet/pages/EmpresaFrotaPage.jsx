@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
+import ConfirmActionModal from "../../../../components/ConfirmActionModal";
 import PaginationControls from "../../../../components/PaginationControls";
 import SkeletonRows from "../../../../components/SkeletonRows";
 import BIDashboardShell from "../../bi/components/BIDashboardShell";
@@ -37,6 +38,24 @@ function statusLabel(s) {
 
 export default function EmpresaFrotaPage() {
   const fl = useEmpresaFleet();
+  const [confirmAction, setConfirmAction] = useState(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+
+  const closeConfirmAction = useCallback(() => {
+    if (confirmLoading) return;
+    setConfirmAction(null);
+  }, [confirmLoading]);
+
+  const confirmFleetAction = useCallback(async () => {
+    if (!confirmAction?.onConfirm) return;
+    setConfirmLoading(true);
+    try {
+      await confirmAction.onConfirm();
+      setConfirmAction(null);
+    } finally {
+      setConfirmLoading(false);
+    }
+  }, [confirmAction]);
 
   const fleetSpark = useMemo(() => {
     const s = fl.summary;
@@ -53,14 +72,14 @@ export default function EmpresaFrotaPage() {
       <button
         type="button"
         onClick={fl.openCreate}
-        className="fc-btn fc-btn-empresa-accent w-full justify-center rounded-lg px-4 py-2 text-sm font-semibold shadow-sm sm:w-auto"
+        className="rounded-lg bg-amber-500/90 px-4 py-2 text-sm font-semibold text-zinc-950 shadow-sm hover:bg-amber-400"
       >
         Novo veículo
       </button>
       <button
         type="button"
         onClick={() => fl.downloadFleetCsv()}
-        className="fc-btn fc-btn-empresa-secondary w-full justify-center rounded-lg border border-zinc-600 bg-zinc-900/80 px-4 py-2 text-sm font-medium text-zinc-100 hover:border-zinc-500 sm:w-auto"
+        className="rounded-lg border border-zinc-600 bg-zinc-900/80 px-4 py-2 text-sm font-medium text-zinc-100 hover:border-zinc-500"
       >
         Exportar CSV
       </button>
@@ -90,7 +109,7 @@ export default function EmpresaFrotaPage() {
       ) : (
         <AccordionSection
           id="frota-dashboard-rapido"
-          title="Painel da frota"
+          title="Dashboard rápido"
           description="Visão consolidada de disponibilidade, documentos e manutenção."
           defaultOpenDesktop
           defaultOpenMobile
@@ -143,7 +162,7 @@ export default function EmpresaFrotaPage() {
             </p>
           </article>
           <article className="fc-card border-zinc-800/70 p-4">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Manutenções registradas</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Manutenções registadas</p>
             <p className="mt-2 text-xl font-semibold tabular-nums text-zinc-100">
               {fl.fmtInt(fl.summary.manutencoes_registradas)}
             </p>
@@ -170,7 +189,7 @@ export default function EmpresaFrotaPage() {
         defaultOpenMobile={false}
       >
       <section className="rounded-xl border border-zinc-800/90 bg-zinc-950/40 p-4 sm:p-5" aria-label="Telemetria futura">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Integrações planejadas</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Integrações planeadas</p>
         <p className="mt-2 text-sm text-zinc-400">
           GPS, telemetria, rastreamento e sensores — estrutura de dados preparada em{" "}
           <code className="rounded bg-zinc-800 px-1 py-0.5 text-[11px] text-zinc-300">fleet_telemetry_meta</code>{" "}
@@ -237,7 +256,7 @@ export default function EmpresaFrotaPage() {
           </div>
         ) : (
           <>
-        <div className="fc-erp-table-scroll mt-4 overflow-x-auto rounded-xl border border-zinc-800/90">
+        <div className="mt-4 overflow-x-auto rounded-xl border border-zinc-800/90">
             <table className="min-w-[720px] w-full border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-zinc-800 bg-zinc-900/60 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
@@ -259,7 +278,7 @@ export default function EmpresaFrotaPage() {
                 ) : fl.vehicles.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-3 py-8 text-center text-sm text-zinc-500">
-                      Nenhum veículo encontrado com os filtros atuais.
+                      Nenhum veículo encontrado com os filtros actuais.
                     </td>
                   </tr>
                 ) : (
@@ -566,12 +585,12 @@ export default function EmpresaFrotaPage() {
                       onClick={() => fl.addMaintenance()}
                       className="fc-btn fc-btn-empresa-accent w-full rounded-lg py-2 text-sm font-semibold disabled:opacity-40"
                     >
-                      Registrar manutenção
+                      Registar manutenção
                     </button>
                   </div>
                   <div className="mt-3 max-h-48 overflow-y-auto text-xs text-zinc-400">
                     {fl.maintLoading ? (
-                      <p>Carregando histórico…</p>
+                      <p>A carregar histórico…</p>
                     ) : fl.maintItems.length === 0 ? (
                       <p>Sem registros de manutenção.</p>
                     ) : (
@@ -594,7 +613,17 @@ export default function EmpresaFrotaPage() {
                             </div>
                             <button
                               type="button"
-                              onClick={() => fl.removeMaintenance(m.id)}
+                              onClick={() =>
+                                setConfirmAction({
+                                  title: "Remover manutenção",
+                                  description: "Este registro de manutenção será removido do histórico do veículo.",
+                                  consequence: "A exclusão é permanente e pode afetar rastreabilidade da frota.",
+                                  confirmLabel: "Remover registro",
+                                  confirmLoadingLabel: "Removendo...",
+                                  tone: "danger",
+                                  onConfirm: () => fl.removeMaintenance(m.id),
+                                })
+                              }
                               className="shrink-0 text-rose-400 hover:text-rose-300"
                             >
                               Remover
@@ -608,7 +637,7 @@ export default function EmpresaFrotaPage() {
               ) : null}
             </div>
 
-            <div className="fc-empresa-sticky-actions sticky bottom-0 flex flex-wrap gap-2 border-t border-zinc-800 bg-zinc-950 px-4 py-3">
+            <div className="sticky bottom-0 flex flex-wrap gap-2 border-t border-zinc-800 bg-zinc-950 px-4 py-3">
               <button
                 type="button"
                 disabled={fl.saving}
@@ -620,7 +649,17 @@ export default function EmpresaFrotaPage() {
               {fl.selected?.id ? (
                 <button
                   type="button"
-                  onClick={() => fl.deleteVehicle(fl.selected.id)}
+                  onClick={() =>
+                    setConfirmAction({
+                      title: "Excluir veículo",
+                      description: "Este veículo será removido do cadastro de frota da empresa.",
+                      consequence: "A ação é irreversível e pode impactar dados vinculados.",
+                      confirmLabel: "Excluir veículo",
+                      confirmLoadingLabel: "Excluindo...",
+                      tone: "danger",
+                      onConfirm: () => fl.deleteVehicle(fl.selected.id),
+                    })
+                  }
                   className="rounded-lg border border-rose-800/70 px-3 py-2.5 text-sm text-rose-200 hover:bg-rose-950/50"
                 >
                   Excluir
@@ -630,6 +669,19 @@ export default function EmpresaFrotaPage() {
           </div>
         </div>
       ) : null}
+
+      <ConfirmActionModal
+        open={Boolean(confirmAction)}
+        title={confirmAction?.title || "Confirmar ação"}
+        description={confirmAction?.description || ""}
+        consequence={confirmAction?.consequence || ""}
+        confirmLabel={confirmAction?.confirmLabel || "Confirmar"}
+        confirmLoadingLabel={confirmAction?.confirmLoadingLabel || "Confirmando..."}
+        tone={confirmAction?.tone || "danger"}
+        loading={confirmLoading}
+        onClose={closeConfirmAction}
+        onConfirm={() => void confirmFleetAction()}
+      />
     </BIDashboardShell>
   );
 }

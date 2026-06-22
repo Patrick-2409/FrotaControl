@@ -100,7 +100,7 @@ const countViagensHojeEmpresaSaoPaulo = async (empresa_id, db = pool) => {
   };
 };
 
-/** Contagem de viagens do dia corrente apenas do apontador autenticado. */
+/** Contagem de viagens do dia corrente por apontador (isolamento empresa + apontador). */
 const countViagensHojeApontadorSaoPaulo = async (empresa_id, apontador_id, db = pool) => {
   const { rows } = await db.query(
     `SELECT
@@ -146,6 +146,11 @@ const countViagensHojeApontadorSaoPaulo = async (empresa_id, apontador_id, db = 
   };
 };
 
+/**
+ * Lista os últimos lançamentos do dia corrente no fuso America/Sao_Paulo.
+ * @param {number} empresa_id
+ * @param {number} limit
+ */
 const listRecentViagensHojeEmpresaSaoPaulo = async (empresa_id, limit = 5, db = pool) => {
   const parsedLimit = Math.min(Math.max(Number(limit) || 5, 1), 20);
   const { rows } = await db.query(
@@ -161,6 +166,12 @@ const listRecentViagensHojeEmpresaSaoPaulo = async (empresa_id, limit = 5, db = 
   return rows;
 };
 
+/**
+ * Lista os últimos lançamentos do dia corrente no fuso America/Sao_Paulo por apontador.
+ * @param {number} empresa_id
+ * @param {number} apontador_id
+ * @param {number} limit
+ */
 const listRecentViagensHojeApontadorSaoPaulo = async (empresa_id, apontador_id, limit = 5, db = pool) => {
   const parsedLimit = Math.min(Math.max(Number(limit) || 5, 1), 20);
   const { rows } = await db.query(
@@ -224,7 +235,7 @@ const todaySaoPauloClause = `(marcacao AT TIME ZONE 'America/Sao_Paulo')::date =
 /**
  * Remove uma viagem do apontador: por id (se fornecido) ou a mais recente do dia
  * que coincida com veículo, motorista, tipo e marcação temporal (~15s).
- * @param {{ empresa_id: number, veiculo_id: number, motorista_id: number, tipo: string, timestamp_ms: number, viagem_id?: number|null }} p
+ * @param {{ empresa_id: number, apontador_id: number, veiculo_id: number, motorista_id: number, tipo: string, timestamp_ms: number, viagem_id?: number|null }} p
  */
 const deleteViagemApontadorMatch = async (
   { empresa_id, apontador_id, veiculo_id, motorista_id, tipo, timestamp_ms, viagem_id },
@@ -274,6 +285,7 @@ const deleteViagensEmpresaDiaAtualSaoPaulo = async (empresa_id, db = pool) => {
   return r.rowCount ?? 0;
 };
 
+/** Apaga viagens de hoje apenas do apontador autenticado (isolamento por perfil). */
 const deleteViagensApontadorDiaAtualSaoPaulo = async ({ empresa_id, apontador_id }, db = pool) => {
   const r = await db.query(
     `DELETE FROM viagens

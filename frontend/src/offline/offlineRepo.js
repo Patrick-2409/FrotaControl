@@ -27,18 +27,23 @@ const resolveOwnerScope = () => {
   }
 };
 
-const adoptOwnerScopeIfMissing = async (db, storeName, rows, ownerScope) => {
+const getStorePrimaryKey = (storeName, row) => {
+  if (storeName === "history") return row?.source_id ?? null;
+  return row?.id ?? null;
+};
+
+const purgeRowsWithoutOwnerScope = async (db, storeName, rows) => {
   const legacyRows = rows.filter((row) => !row?.owner_scope);
   if (!legacyRows.length) return rows;
+
   await Promise.all(
-    legacyRows.map((row) =>
-      db.put(storeName, {
-        ...row,
-        owner_scope: ownerScope,
-      })
-    )
+    legacyRows.map((row) => {
+      const key = getStorePrimaryKey(storeName, row);
+      if (key == null) return Promise.resolve();
+      return db.delete(storeName, key).catch(() => {});
+    })
   );
-  return rows.map((row) => (row?.owner_scope ? row : { ...row, owner_scope: ownerScope }));
+  return rows.filter((row) => row?.owner_scope);
 };
 
 const normalizeClientId = (record = {}) =>
@@ -107,7 +112,7 @@ export const getPending = async () => {
   const db = await dbPromise;
   const ownerScope = resolveOwnerScope();
   const allRows = await db.getAll("pending");
-  const rows = await adoptOwnerScopeIfMissing(db, "pending", allRows, ownerScope);
+  const rows = await purgeRowsWithoutOwnerScope(db, "pending", allRows);
   return rows
     .filter((row) => row?.owner_scope === ownerScope)
     .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
@@ -183,7 +188,7 @@ export const listHistory = async () => {
   const db = await dbPromise;
   const ownerScope = resolveOwnerScope();
   const allRows = await db.getAll("history");
-  const rows = await adoptOwnerScopeIfMissing(db, "history", allRows, ownerScope);
+  const rows = await purgeRowsWithoutOwnerScope(db, "history", allRows);
   const normalized = rows.map((row) => ({
     ...row,
     module: normalizeType(row),
@@ -283,9 +288,13 @@ export const listRecentErrors = async (limit = 5) => {
 export const getSyncDiagnostics = async ({ errorsLimit = 5, metricsWindow = 100 } = {}) => {
   const db = await dbPromise;
   const ownerScope = resolveOwnerScope();
-  const pending = (await db.getAll("pending")).filter((row) => row?.owner_scope === ownerScope);
+  const pendingAll = await db.getAll("pending");
+  const pendingScoped = await purgeRowsWithoutOwnerScope(db, "pending", pendingAll);
+  const pending = pendingScoped.filter((row) => row?.owner_scope === ownerScope);
   const errors = await listRecentErrors(errorsLimit);
-  const allMetrics = (await db.getAll("sync_metrics")).filter((row) => row?.owner_scope === ownerScope);
+  const metricsAll = await db.getAll("sync_metrics");
+  const metricsScoped = await purgeRowsWithoutOwnerScope(db, "sync_metrics", metricsAll);
+  const allMetrics = metricsScoped.filter((row) => row?.owner_scope === ownerScope);
   const recentMetrics = allMetrics
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
     .slice(0, metricsWindow);
@@ -302,4 +311,29 @@ export const getSyncDiagnostics = async ({ errorsLimit = 5, metricsWindow = 100 
     failureCount,
     lastErrors: errors,
   };
+};
+
+export const purgeUnscopedOfflineData = async () => {
+  const db = await dbPromise;
+  const stores = ["pending", "history", "error_logs", "sync_metrics"];
+  await Promise.all(
+    stores.map(async (storeName) => {
+      const rows = await db.getAll(storeName);
+      await purgeRowsWithoutOwnerScope(db, storeName, rows);
+    })
+  );
+};
+
+/**
+ * Limpa totalmente o cache offline local da aplicação.
+ * Usado no logout para evitar retenção de dados em dispositivos compartilhados.
+ */
+export const clearAllOfflineData = async () => {
+  const db = await dbPromise;
+  const stores = ["pending", "history", "error_logs", "sync_metrics"];
+  await Promise.all(
+    stores.map((storeName) =>
+      db.clear(storeName).catch(() => {})
+    )
+  );
 };

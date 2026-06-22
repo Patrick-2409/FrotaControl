@@ -150,9 +150,18 @@ const listManagerRecords = async ({
   tipo,
   source_id,
   source_ids,
+  allow_global = false,
   page = 1,
   limit = 20,
 }) => {
+  if (empresa_id == null && allow_global !== true) {
+    const err = new Error(
+      "Escopo da empresa é obrigatório para esta listagem. Use escopo global explícito quando necessário."
+    );
+    err.statusCode = 400;
+    throw err;
+  }
+
   const values = [];
   const where = [];
   if (empresa_id != null) {

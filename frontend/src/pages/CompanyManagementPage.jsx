@@ -7,6 +7,7 @@ import { inputClass } from "../components/FormField";
 import PaginationControls from "../components/PaginationControls";
 import SkeletonRows from "../components/SkeletonRows";
 import EmptyState from "../components/EmptyState";
+import ConfirmActionModal from "../components/ConfirmActionModal";
 import { emitToast } from "../services/uiEvents";
 import { CenteredSpinner } from "../components/LoadingState";
 import useDebouncedValue from "../hooks/useDebouncedValue";
@@ -51,6 +52,7 @@ export default function CompanyManagementPage() {
   const [search, setSearch] = useState({ users: "" });
   const [usersPage, setUsersPage] = useState(1);
   const [usersTotalPages, setUsersTotalPages] = useState(1);
+  const [pendingContaStatusAction, setPendingContaStatusAction] = useState(null);
   const debouncedUsers = useDebouncedValue(search.users);
 
   const emptyUserForm = () => ({
@@ -110,13 +112,6 @@ export default function CompanyManagementPage() {
   useEffect(() => {
     loadVehiclePicklist();
   }, [loadVehiclePicklist]);
-
-  if (searchParams.get("secao") === "veiculos") {
-    return <Navigate to={FROTA_PANEL_PATH} replace />;
-  }
-  if (searchParams.get("secao") === "motoristas") {
-    return <Navigate to="/empresa/pessoas" replace />;
-  }
 
   const onSaveUser = async (e) => {
     e.preventDefault();
@@ -181,21 +176,47 @@ export default function CompanyManagementPage() {
     }
   };
 
-  const onPatchUserContaStatus = async (id, conta_status) => {
-    if (conta_status === "inativo") {
-      if (!window.confirm("Desativar este usuário? Não poderá fazer login até ser reativado.")) return;
-    }
+  const applyUserContaStatus = useCallback(async (id, conta_status) => {
     setLoading(true);
     try {
       await api.patch(`/dashboard/manage/users/${id}/conta-status`, { conta_status });
       emitToast(conta_status === "inativo" ? "Usuário desativado." : "Usuário reativado.");
       await loadUsers();
+      return true;
     } catch (err) {
       emitToast(extractApiErrorMessage(err) || "Erro ao atualizar conta.", "error");
+      return false;
     } finally {
       setLoading(false);
     }
-  };
+  }, [loadUsers]);
+
+  const onPatchUserContaStatus = useCallback((id, conta_status) => {
+    if (conta_status === "inativo") {
+      setPendingContaStatusAction({ id, conta_status });
+      return;
+    }
+    void applyUserContaStatus(id, conta_status);
+  }, [applyUserContaStatus]);
+
+  const closeContaStatusModal = useCallback(() => {
+    if (loading) return;
+    setPendingContaStatusAction(null);
+  }, [loading]);
+
+  const confirmContaStatusModal = useCallback(async () => {
+    if (!pendingContaStatusAction) return;
+    const { id, conta_status } = pendingContaStatusAction;
+    await applyUserContaStatus(id, conta_status);
+    setPendingContaStatusAction(null);
+  }, [pendingContaStatusAction, applyUserContaStatus]);
+
+  if (searchParams.get("secao") === "veiculos") {
+    return <Navigate to={FROTA_PANEL_PATH} replace />;
+  }
+  if (searchParams.get("secao") === "motoristas") {
+    return <Navigate to="/empresa/pessoas" replace />;
+  }
 
   const vehicleOptions = vehicles || [];
 
@@ -434,6 +455,18 @@ export default function CompanyManagementPage() {
             />
           </article>
         </section>
+      <ConfirmActionModal
+        open={Boolean(pendingContaStatusAction)}
+        title="Desativar conta de usuário"
+        description="Este usuário ficará sem acesso ao sistema até que a conta seja reativada."
+        consequence="A operação interrompe novos logins imediatamente."
+        confirmLabel="Desativar conta"
+        confirmLoadingLabel="Desativando..."
+        tone="warning"
+        loading={loading}
+        onClose={closeContaStatusModal}
+        onConfirm={() => void confirmContaStatusModal()}
+      />
     </div>
   );
 }

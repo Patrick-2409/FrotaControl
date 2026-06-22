@@ -32,7 +32,9 @@ export default function ExecutiveRiskPanel({ topRiscos = [], loading = false }) 
           <tr>
             <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Posição</th>
             <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Problema</th>
-            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Score</th>
+            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Risco (0-100)
+            </th>
             <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Classificação</th>
           </tr>
         </thead>

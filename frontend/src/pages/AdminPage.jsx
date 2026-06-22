@@ -11,6 +11,7 @@ import EmptyState from "../components/EmptyState";
 import Avatar from "../components/Avatar";
 import CompanyLogo from "../components/CompanyLogo";
 import UserDetailsModal from "../components/UserDetailsModal";
+import ConfirmActionModal from "../components/ConfirmActionModal";
 
 const resolveAsset = (value) => {
   return resolveBackendAssetUrl(value);
@@ -96,6 +97,15 @@ const hasFullName = (value) => {
   return normalized.split(" ").filter(Boolean).length >= 2;
 };
 
+const RESET_PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+const buildResetPasswordModalState = () => ({
+  open: false,
+  userId: null,
+  mode: "choice",
+  customPassword: "",
+  loading: false,
+});
+
 /** Indica se a linha da tabela pode estar incompleta e convém GET /super-admin/users/:id. */
 const userViewNeedsApiRefresh = (u) => {
   if (!u?.id) return false;
@@ -143,6 +153,9 @@ export default function AdminPage() {
   const [selectedUser, setSelectedUser] = useState(null);
   const [open, setOpen] = useState(false);
   const [userDetailLoading, setUserDetailLoading] = useState(false);
+  const [actionConfirm, setActionConfirm] = useState(null);
+  const [actionConfirmLoading, setActionConfirmLoading] = useState(false);
+  const [resetPasswordModal, setResetPasswordModal] = useState(() => buildResetPasswordModalState());
   const [companyForm, setCompanyForm] = useState({
     id: null,
     nome: "",
@@ -418,8 +431,23 @@ export default function AdminPage() {
     }
   };
 
-  const onDeleteCompany = async (id) => {
-    if (!window.confirm("Tem certeza que deseja excluir esta empresa?")) return;
+  const closeActionConfirm = useCallback(() => {
+    if (actionConfirmLoading) return;
+    setActionConfirm(null);
+  }, [actionConfirmLoading]);
+
+  const confirmAction = useCallback(async () => {
+    if (!actionConfirm?.onConfirm) return;
+    setActionConfirmLoading(true);
+    try {
+      await actionConfirm.onConfirm();
+      setActionConfirm(null);
+    } finally {
+      setActionConfirmLoading(false);
+    }
+  }, [actionConfirm]);
+
+  const deleteCompany = useCallback(async (id) => {
     try {
       await api.delete(`/super-admin/companies/${id}`);
       emitToast("Empresa excluída.");
@@ -430,10 +458,20 @@ export default function AdminPage() {
     } catch (err) {
       emitToast(err.response?.data?.message || "Falha ao excluir empresa.", "error");
     }
-  };
+  }, [selectedCompany, loadOverview, loadCompanies, loadCompanyOptions, loadUsers, loadVehicles]);
 
-  const onDeactivateUser = async (id) => {
-    if (!window.confirm("Desativar este usuário? Não poderá fazer login até ser reativado.")) return;
+  const onDeleteCompany = useCallback((id) => {
+    setActionConfirm({
+      title: "Excluir empresa",
+      description: "Esta exclusão remove a empresa selecionada da operação administrativa.",
+      consequence: "A ação pode impactar usuários e veículos vinculados e não possui reversão simples.",
+      confirmLabel: "Excluir empresa",
+      tone: "danger",
+      onConfirm: () => deleteCompany(id),
+    });
+  }, [deleteCompany]);
+
+  const deactivateUser = useCallback(async (id) => {
     try {
       const { data } = await api.patch(`/super-admin/users/${id}/conta-status`, { conta_status: "inativo" });
       setUsers((prev) => prev.map((x) => (x.id === id ? { ...x, ...data } : x)));
@@ -446,7 +484,18 @@ export default function AdminPage() {
     } catch (err) {
       emitToast(extractApiErrorMessage(err) || "Falha ao desativar usuário.", "error");
     }
-  };
+  }, [loadOverview, loadUsers, selectedCompany, loadCompanyDetails]);
+
+  const onDeactivateUser = useCallback((id) => {
+    setActionConfirm({
+      title: "Desativar usuário",
+      description: "A conta será bloqueada e o usuário não poderá iniciar sessão.",
+      consequence: "O acesso ficará suspenso até uma reativação administrativa.",
+      confirmLabel: "Desativar usuário",
+      tone: "warning",
+      onConfirm: () => deactivateUser(id),
+    });
+  }, [deactivateUser]);
 
   const onReactivateUser = async (id) => {
     try {
@@ -463,33 +512,53 @@ export default function AdminPage() {
     }
   };
 
-  const onResetPassword = async (id) => {
-    const useCustomPassword = window.confirm(
-      "Deseja definir uma nova senha manualmente?\n\nOK = definir senha personalizada\nCancelar = gerar senha temporária"
-    );
-    let payload = {};
-    if (useCustomPassword) {
-      const customPassword = window.prompt(
-        "Digite a nova senha (mín. 8 caracteres, com maiúscula, minúscula e número):"
-      );
-      if (customPassword == null) return;
-      if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(customPassword)) {
-        emitToast("Senha inválida. Use ao menos 8 caracteres, maiúscula, minúscula e número.", "error");
-        return;
-      }
-      payload = { new_password: customPassword };
+  const onResetPassword = useCallback((id) => {
+    setResetPasswordModal({
+      open: true,
+      userId: id,
+      mode: "choice",
+      customPassword: "",
+      loading: false,
+    });
+  }, []);
+
+  const closeResetPasswordModal = useCallback(() => {
+    setResetPasswordModal((prev) => (prev.loading ? prev : buildResetPasswordModalState()));
+  }, []);
+
+  const switchResetPasswordMode = useCallback((mode) => {
+    setResetPasswordModal((prev) => ({
+      ...prev,
+      mode,
+      customPassword: mode === "manual" ? prev.customPassword : "",
+    }));
+  }, []);
+
+  const confirmResetPassword = useCallback(async () => {
+    if (!resetPasswordModal.userId || resetPasswordModal.loading) return;
+
+    const isManual = resetPasswordModal.mode === "manual";
+    const customPassword = String(resetPasswordModal.customPassword || "");
+    if (isManual && !RESET_PASSWORD_REGEX.test(customPassword)) {
+      emitToast("Senha inválida. Use ao menos 8 caracteres, maiúscula, minúscula e número.", "error");
+      return;
     }
+
+    setResetPasswordModal((prev) => ({ ...prev, loading: true }));
     try {
-      const { data } = await api.post(`/super-admin/users/${id}/reset-password`, payload);
-      if (useCustomPassword) {
+      const payload = isManual ? { new_password: customPassword } : {};
+      const { data } = await api.post(`/super-admin/users/${resetPasswordModal.userId}/reset-password`, payload);
+      if (isManual) {
         emitToast("Senha atualizada com sucesso.");
       } else {
         emitToast(`Senha resetada. Temporária: ${data.temporary_password}`);
       }
+      setResetPasswordModal(buildResetPasswordModalState());
     } catch (err) {
       emitToast(err.response?.data?.message || "Falha ao resetar senha.", "error");
+      setResetPasswordModal((prev) => ({ ...prev, loading: false }));
     }
-  };
+  }, [resetPasswordModal]);
 
   const onSaveUserEdit = async () => {
     if (!editingUser) return;
@@ -544,8 +613,7 @@ export default function AdminPage() {
     }
   };
 
-  const onDeleteVehicle = async (id) => {
-    if (!window.confirm("Excluir veículo?")) return;
+  const deleteVehicle = useCallback(async (id) => {
     try {
       await api.delete(`/super-admin/vehicles/${id}`);
       emitToast("Veículo excluído.");
@@ -553,7 +621,18 @@ export default function AdminPage() {
     } catch (err) {
       emitToast(err.response?.data?.message || "Falha ao excluir veículo.", "error");
     }
-  };
+  }, [loadVehicles, loadOverview, selectedCompany, loadCompanyDetails]);
+
+  const onDeleteVehicle = useCallback((id) => {
+    setActionConfirm({
+      title: "Excluir veículo",
+      description: "Este veículo será removido do cadastro administrativo.",
+      consequence: "A ação pode afetar vínculos operacionais e não é facilmente reversível.",
+      confirmLabel: "Excluir veículo",
+      tone: "danger",
+      onConfirm: () => deleteVehicle(id),
+    });
+  }, [deleteVehicle]);
 
   const onSaveVehicleEdit = async () => {
     if (!editingVehicle) return;
@@ -1354,6 +1433,60 @@ export default function AdminPage() {
           </aside>
         </div>
       )}
+
+      <ConfirmActionModal
+        open={Boolean(actionConfirm)}
+        title={actionConfirm?.title || "Confirmar ação"}
+        description={actionConfirm?.description || ""}
+        consequence={actionConfirm?.consequence || ""}
+        confirmLabel={actionConfirm?.confirmLabel || "Confirmar"}
+        confirmLoadingLabel={actionConfirm?.confirmLoadingLabel || "Confirmando..."}
+        tone={actionConfirm?.tone || "danger"}
+        loading={actionConfirmLoading}
+        onClose={closeActionConfirm}
+        onConfirm={() => void confirmAction()}
+      />
+
+      <ConfirmActionModal
+        open={resetPasswordModal.open}
+        title={resetPasswordModal.mode === "manual" ? "Definir nova senha" : "Redefinir senha de usuário"}
+        description={
+          resetPasswordModal.mode === "manual"
+            ? "Informe uma nova senha forte para substituir a senha atual do usuário."
+            : "Escolha como deseja resetar a credencial de acesso deste usuário."
+        }
+        consequence={
+          resetPasswordModal.mode === "manual"
+            ? "A nova senha passará a valer imediatamente no próximo login."
+            : "A senha atual será invalidada e substituída por uma senha temporária."
+        }
+        confirmLabel={resetPasswordModal.mode === "manual" ? "Atualizar senha" : "Gerar senha temporária"}
+        confirmLoadingLabel={resetPasswordModal.mode === "manual" ? "Atualizando..." : "Gerando senha..."}
+        confirmDisabled={resetPasswordModal.mode === "manual" && !String(resetPasswordModal.customPassword || "").trim()}
+        secondaryActionLabel={resetPasswordModal.mode === "manual" ? "Usar senha temporária" : "Definir senha manual"}
+        onSecondaryAction={() => switchResetPasswordMode(resetPasswordModal.mode === "manual" ? "choice" : "manual")}
+        tone="warning"
+        loading={resetPasswordModal.loading}
+        onClose={closeResetPasswordModal}
+        onConfirm={() => void confirmResetPassword()}
+      >
+        {resetPasswordModal.mode === "manual" ? (
+          <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-950/20 p-3">
+            <label className="block text-xs font-semibold uppercase tracking-wide text-amber-100">
+              Nova senha
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={resetPasswordModal.customPassword}
+                onChange={(event) => setResetPasswordModal((prev) => ({ ...prev, customPassword: event.target.value }))}
+                className="mt-2 w-full rounded-lg border border-amber-400/45 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-amber-300"
+                placeholder="Mínimo 8 caracteres"
+              />
+            </label>
+            <p className="text-xs text-amber-200/90">Requisitos: ao menos 8 caracteres, com maiúscula, minúscula e número.</p>
+          </div>
+        ) : null}
+      </ConfirmActionModal>
 
       <UserDetailsModal open={open} onClose={closeUserDetailsModal} user={selectedUser} loading={userDetailLoading} />
 

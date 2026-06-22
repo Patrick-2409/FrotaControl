@@ -1,6 +1,18 @@
-import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import api, { resolveBackendAssetUrl } from "./api";
 import { isJwtExpired, sanitizePlainText } from "../utils/security";
+import {
+  getEditRecordScopeFromUser,
+  getEditRecordStorageKey,
+} from "./editRecordStorage";
+import {
+  clearSensitiveLocalCaches,
+  clearTemporarySessionStateCaches,
+  clearValidatedSessionRole,
+  setValidatedSessionRole,
+} from "./sessionSecurity";
+import { clearAllOfflineData, purgeUnscopedOfflineData } from "../offline/offlineRepo";
+import { clearAllOfflineViagens, purgeUnscopedOfflineViagens } from "./offlineViagens";
 
 const AuthContext = createContext(null);
 
@@ -55,59 +67,101 @@ const buildUniversalLoginPayload = (payload = {}) => {
 };
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(() => normalizeUser(readStoredUser()));
+  const [storedUser, setStoredUser] = useState(() => normalizeUser(readStoredUser()));
+  const [isSessionValidated, setIsSessionValidated] = useState(false);
   const [loading, setLoading] = useState(true);
+  const trustedUserScopeRef = useRef(null);
+
+  const user = isSessionValidated ? storedUser : null;
+
+  const sanitizeOfflineCaches = useCallback(() => {
+    Promise.resolve(purgeUnscopedOfflineData()).catch(() => {});
+    Promise.resolve(purgeUnscopedOfflineViagens()).catch(() => {});
+  }, []);
+
+  const clearOfflineCachesOnLogout = useCallback(() => {
+    Promise.resolve(clearAllOfflineData()).catch(() => {});
+    Promise.resolve(clearAllOfflineViagens()).catch(() => {});
+  }, []);
+
+  const clearSensitiveSessionCache = useCallback(() => {
+    clearSensitiveLocalCaches();
+    trustedUserScopeRef.current = null;
+    clearOfflineCachesOnLogout();
+  }, [clearOfflineCachesOnLogout]);
 
   const refreshUser = useCallback(async () => {
     const { data } = await api.get("/auth/me");
     const normalized = normalizeUser(data);
-    setUser(normalized);
+    setStoredUser(normalized);
+    setIsSessionValidated(true);
     localStorage.setItem("fc_user", JSON.stringify(normalized));
+    setValidatedSessionRole(normalized?.role);
+    sanitizeOfflineCaches();
     return normalized;
-  }, []);
+  }, [sanitizeOfflineCaches]);
+
+  useEffect(() => {
+    sanitizeOfflineCaches();
+  }, [sanitizeOfflineCaches]);
 
   useEffect(() => {
     const token = localStorage.getItem("fc_token");
     if (!token) {
+      clearSensitiveSessionCache();
+      setStoredUser(null);
+      setIsSessionValidated(false);
       setLoading(false);
       return;
     }
     if (isJwtExpired(token)) {
-      localStorage.removeItem("fc_token");
-      localStorage.removeItem("fc_user");
-      setUser(null);
+      clearSensitiveSessionCache();
+      setStoredUser(null);
+      setIsSessionValidated(false);
       setLoading(false);
       return;
     }
     refreshUser()
       .catch((err) => {
         const status = err?.response?.status;
-        // Em modo offline, mantemos a sessão local para navegação do app.
         if (status === 401 || status === 403) {
-          localStorage.removeItem("fc_token");
-          localStorage.removeItem("fc_user");
-          setUser(null);
+          clearSensitiveSessionCache();
+          setStoredUser(null);
         }
+        clearValidatedSessionRole();
+        setIsSessionValidated(false);
       })
       .finally(() => setLoading(false));
-  }, [refreshUser]);
+  }, [refreshUser, clearSensitiveSessionCache]);
 
   useEffect(() => {
     const onAuthExpired = () => {
-      localStorage.removeItem("fc_token");
-      localStorage.removeItem("fc_user");
-      setUser(null);
+      clearSensitiveSessionCache();
+      setStoredUser(null);
+      setIsSessionValidated(false);
     };
     window.addEventListener("fc:auth-expired", onAuthExpired);
     return () => window.removeEventListener("fc:auth-expired", onAuthExpired);
-  }, []);
+  }, [clearSensitiveSessionCache]);
+
+  useEffect(() => {
+    const nextScope = getEditRecordStorageKey(getEditRecordScopeFromUser(user));
+    const previousScope = trustedUserScopeRef.current;
+    if (previousScope && previousScope !== nextScope) {
+      clearTemporarySessionStateCaches();
+      sanitizeOfflineCaches();
+    }
+    trustedUserScopeRef.current = nextScope;
+  }, [user, sanitizeOfflineCaches]);
 
   const login = useCallback(async (payload) => {
     const { data } = await api.post("/auth/motorista-login", buildMotoristaLoginPayload(payload));
     const normalized = normalizeUser(data.user);
     localStorage.setItem("fc_token", data.token);
     localStorage.setItem("fc_user", JSON.stringify(normalized));
-    setUser(normalized);
+    setStoredUser(normalized);
+    setIsSessionValidated(false);
+    clearValidatedSessionRole();
     const fresh = await refreshUser();
     return fresh;
   }, [refreshUser]);
@@ -117,7 +171,9 @@ export const AuthProvider = ({ children }) => {
     const normalized = normalizeUser(data.user);
     localStorage.setItem("fc_token", data.token);
     localStorage.setItem("fc_user", JSON.stringify(normalized));
-    setUser(normalized);
+    setStoredUser(normalized);
+    setIsSessionValidated(false);
+    clearValidatedSessionRole();
     const fresh = await refreshUser();
     return fresh;
   }, [refreshUser]);
@@ -127,7 +183,9 @@ export const AuthProvider = ({ children }) => {
     const normalized = normalizeUser(data.user);
     localStorage.setItem("fc_token", data.token);
     localStorage.setItem("fc_user", JSON.stringify(normalized));
-    setUser(normalized);
+    setStoredUser(normalized);
+    setIsSessionValidated(false);
+    clearValidatedSessionRole();
     const fresh = await refreshUser();
     return fresh;
   }, [refreshUser]);
@@ -137,16 +195,18 @@ export const AuthProvider = ({ children }) => {
     const normalized = normalizeUser(data.user);
     localStorage.setItem("fc_token", data.token);
     localStorage.setItem("fc_user", JSON.stringify(normalized));
-    setUser(normalized);
+    setStoredUser(normalized);
+    setIsSessionValidated(false);
+    clearValidatedSessionRole();
     const fresh = await refreshUser();
     return fresh;
   }, [refreshUser]);
 
   const logout = useCallback(() => {
-    localStorage.removeItem("fc_token");
-    localStorage.removeItem("fc_user");
-    setUser(null);
-  }, []);
+    clearSensitiveSessionCache();
+    setStoredUser(null);
+    setIsSessionValidated(false);
+  }, [clearSensitiveSessionCache]);
 
   const value = useMemo(
     () => ({
@@ -158,6 +218,7 @@ export const AuthProvider = ({ children }) => {
       superAdminLogin,
       logout,
       refreshUser,
+      isAuthenticated: Boolean(user),
       isAdminEmpresa: user?.role === "ADMIN_EMPRESA",
       isSuperAdmin: user?.role === "SUPER_ADMIN",
       isMotorista: user?.role === "MOTORISTA",
@@ -168,6 +229,7 @@ export const AuthProvider = ({ children }) => {
     [user, loading, login, adminEmpresaLogin, apontadorLogin, superAdminLogin, logout, refreshUser]
   );
 
+  // eslint-disable-next-line react-hooks/refs
   return createElement(AuthContext.Provider, { value }, children);
 };
 

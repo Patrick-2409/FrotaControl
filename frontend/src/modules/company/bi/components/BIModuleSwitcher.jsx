@@ -13,7 +13,7 @@ const MODULES = [
 function BIModuleSwitcher() {
   return (
     <nav
-      className="fc-bi-module-switcher no-scrollbar mb-5 hidden snap-x snap-mandatory gap-1.5 overflow-x-auto pb-1 sm:mb-6 sm:flex sm:flex-nowrap md:flex-wrap md:overflow-visible sm:pb-0"
+      className="fc-bi-module-switcher no-scrollbar mb-5 flex snap-x snap-mandatory flex-nowrap gap-1.5 overflow-x-auto pb-1 sm:mb-6 md:flex-wrap md:overflow-visible sm:pb-0"
       aria-label="Navegação entre áreas executivas"
     >
       {MODULES.map((m) => (

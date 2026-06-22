@@ -1,4 +1,4 @@
-/* eslint-disable react-refresh/only-export-components -- helpers e componentes de gráfico são consumidos juntos. */
+/* eslint-disable react-refresh/only-export-components */
 import { useEffect, useState } from "react";
 import { assignUniqueChartColors, reportColorByIndex } from "./reportChartColors";
 

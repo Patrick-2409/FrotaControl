@@ -5,9 +5,11 @@ import { deleteHistoryItem } from "../services/syncService";
 import { listHistory } from "../offline/offlineRepo";
 import EmptyState from "../components/EmptyState";
 import FormField, { inputClass } from "../components/FormField";
+import ConfirmActionModal from "../components/ConfirmActionModal";
 import { emitToast } from "../services/uiEvents";
 import { parseDecimalInput } from "../utils/numberParse";
 import { useAuth } from "../services/auth";
+import { getEditRecordScopeFromUser, writeScopedEditRecord } from "../services/editRecordStorage";
 
 const OPERATION_TIMEZONE = "America/Sao_Paulo";
 
@@ -48,6 +50,9 @@ const dayKeyInOpsTz = (instant) =>
 
 const getFolderAnchorRaw = (row) =>
   row?.payload?.recorded_at_client || row?.updatedAt || row?.payload?.data;
+
+const historyRowKey = (row) =>
+  `${row?.module || "modulo"}:${row?.source_id || row?.payload?.source_id || row?.payload?.client_id || "sem-id"}`;
 
 const monthLabelPtBr = (monthKey) => {
   if (!/^\d{4}-\d{2}$/.test(monthKey)) return "Mês não informado";
@@ -99,6 +104,10 @@ const newEditForm = () => ({
 
 export default function HistoricoPage({ reloadKey }) {
   const { user } = useAuth();
+  const editRecordScope = useMemo(
+    () => getEditRecordScopeFromUser(user),
+    [user]
+  );
   const [rows, setRows] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [selectedYear, setSelectedYear] = useState("all");
@@ -112,6 +121,8 @@ export default function HistoricoPage({ reloadKey }) {
   const [editingLoading, setEditingLoading] = useState(false);
   const [selectedRow, setSelectedRow] = useState(null);
   const [exporting, setExporting] = useState("");
+  const [pendingDeleteRow, setPendingDeleteRow] = useState(null);
+  const [deleteLoadingKey, setDeleteLoadingKey] = useState("");
   const loadMoreRef = useRef(null);
   const navigate = useNavigate();
   const canSeeTransport = Boolean(user?.is_motorista_transporte);
@@ -312,18 +323,29 @@ export default function HistoricoPage({ reloadKey }) {
     return () => observer.disconnect();
   }, [groupedByMonth.length]);
 
-  const canEditRow = (row) => row?.module === "combustiveis" || row?.module === "parteDiaria";
-  const canDeleteRow = (row) => row?.module !== "romaneios";
+  const onDelete = (row) => {
+    setPendingDeleteRow(row);
+  };
 
-  const onDelete = async (row) => {
-    if (!canDeleteRow(row)) {
-      emitToast("Registros de transporte sao somente leitura no app do motorista.", "warning");
-      return;
+  const closeDeleteConfirm = () => {
+    if (deleteLoadingKey) return;
+    setPendingDeleteRow(null);
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDeleteRow) return;
+    const rowKey = historyRowKey(pendingDeleteRow);
+    setDeleteLoadingKey(rowKey);
+    try {
+      await deleteHistoryItem(pendingDeleteRow);
+      setRows((prev) => prev.filter((item) => historyRowKey(item) !== rowKey));
+      emitToast("Registro excluído com sucesso.", "success");
+      setPendingDeleteRow(null);
+    } catch (err) {
+      emitToast(err?.response?.data?.message || "Não foi possível excluir o registro.", "error");
+    } finally {
+      setDeleteLoadingKey("");
     }
-    const ok = window.confirm("Tem certeza que deseja excluir?");
-    if (!ok) return;
-    await deleteHistoryItem(row);
-    setRows((prev) => prev.filter((item) => `${item?.module}:${item?.source_id}` !== `${row?.module}:${row?.source_id}`));
   };
   const exportTypeByModule = {
     romaneios: "romaneio",
@@ -396,13 +418,14 @@ export default function HistoricoPage({ reloadKey }) {
   };
 
   const onEdit = (row) => {
-    if (!canEditRow(row)) {
-      emitToast("Registros de transporte sao somente leitura no app do motorista.", "warning");
-      return;
-    }
-    if (row?.module === "parteDiaria") {
-      localStorage.setItem("fc_edit_record", JSON.stringify(row));
-      navigate("/app/parte-diaria");
+    if (row?.module !== "combustiveis") {
+      writeScopedEditRecord(editRecordScope, row);
+      const pathMap = {
+        romaneios: "/app/romaneio",
+        combustiveis: "/app/combustivel",
+        parteDiaria: "/app/parte-diaria",
+      };
+      navigate(pathMap[row.module]);
       return;
     }
     const payload = row?.payload || {};
@@ -600,22 +623,19 @@ export default function HistoricoPage({ reloadKey }) {
                                 >
                                   Visualizar
                                 </button>
-                                {canDeleteRow(row) ? (
-                                  <button
-                                    onClick={() => onDelete(row)}
-                                    className="fc-btn rounded-lg border border-red-600/70 bg-red-900/20 px-4 py-2 text-sm text-red-200"
-                                  >
-                                    Excluir
-                                  </button>
-                                ) : null}
-                                {canEditRow(row) ? (
-                                  <button
-                                    onClick={() => onEdit(row)}
-                                    className="fc-btn btn-primary rounded-lg px-4 py-2 text-sm"
-                                  >
-                                    Editar
-                                  </button>
-                                ) : null}
+                                <button
+                                  onClick={() => onDelete(row)}
+                                  disabled={deleteLoadingKey === historyRowKey(row)}
+                                  className="fc-btn rounded-lg border border-red-600/70 bg-red-900/20 px-4 py-2 text-sm text-red-200"
+                                >
+                                  {deleteLoadingKey === historyRowKey(row) ? "Excluindo..." : "Excluir"}
+                                </button>
+                                <button
+                                  onClick={() => onEdit(row)}
+                                  className="fc-btn btn-primary rounded-lg px-4 py-2 text-sm"
+                                >
+                                  Editar
+                                </button>
                               </div>
                             </article>
                           );
@@ -640,6 +660,19 @@ export default function HistoricoPage({ reloadKey }) {
           Carregando meses anteriores...
         </div>
       ) : null}
+
+      <ConfirmActionModal
+        open={Boolean(pendingDeleteRow)}
+        title="Excluir registro do histórico"
+        description="Este item será removido do histórico local e da sincronização pendente."
+        consequence="A exclusão é permanente e pode impactar rastreabilidade da operação."
+        confirmLabel="Excluir registro"
+        confirmLoadingLabel="Excluindo..."
+        tone="danger"
+        loading={Boolean(pendingDeleteRow && deleteLoadingKey === historyRowKey(pendingDeleteRow))}
+        onClose={closeDeleteConfirm}
+        onConfirm={() => void confirmDelete()}
+      />
 
       {editingRow?.module === "combustiveis" && (
         <div className="fixed inset-0 z-50 grid overflow-y-auto bg-slate-950/70 p-4 sm:place-content-center">

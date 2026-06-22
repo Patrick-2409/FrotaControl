@@ -13,6 +13,7 @@ const {
   buildPayloadGeracaoIA,
   mesclarComplementoGpt,
 } = require("../services/inteligencia.service");
+const { logError } = require("../services/loggerService");
 
 const parseOptionalPositiveInt = (value) => {
   if (value == null || String(value).trim() === "") return null;
@@ -250,15 +251,24 @@ const getIntelligenceOverview = async (req, res) => {
 
     return res.status(200).json(overview);
   } catch (error) {
-    console.error("🔥 ERRO REAL INTELIGENCIA:");
-    console.error(error);
-    console.error(error?.stack);
-    return res.status(200).json({
-      ...buildOverviewVazio(),
-      erro: true,
-      erro_debug: true,
-      mensagem: error?.message || "Falha no overview de inteligência.",
+    const statusCode = error?.statusCode && Number.isInteger(error.statusCode) ? error.statusCode : 500;
+    const isServerError = statusCode >= 500;
+    const friendlyMessage = isServerError
+      ? "Não foi possível carregar o overview de inteligência no momento."
+      : error?.message || "Falha no overview de inteligência.";
+
+    logError("intelligence:overview-failed", {
+      statusCode,
+      message: error?.message || "overview_failed",
       stack: error?.stack || null,
+      empresa_id: req?.user?.empresa_id || null,
+      usuario_id: req?.user?.sub || null,
+    });
+
+    return res.status(statusCode).json({
+      success: false,
+      error: friendlyMessage,
+      message: friendlyMessage,
     });
   }
 };

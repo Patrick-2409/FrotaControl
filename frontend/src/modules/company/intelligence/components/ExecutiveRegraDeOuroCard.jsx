@@ -1,6 +1,7 @@
-/* eslint-disable react-refresh/only-export-components -- componente e resolver ficam juntos para evitar divergência de regra. */
+/* eslint-disable react-refresh/only-export-components */
 function VerdictBadge({ label, value, loading = false, positiveWhenTrue = true }) {
-  const isGood = positiveWhenTrue ? value : !value;
+  const hasValue = value ? true : false;
+  const isGood = positiveWhenTrue ? hasValue : !hasValue;
   const styles = isGood
     ? { wrap: "border-emerald-200 bg-emerald-50", dot: "bg-emerald-500", text: "text-emerald-900" }
     : { wrap: "border-red-200 bg-red-50", dot: "bg-red-500", text: "text-red-900" };
@@ -13,7 +14,7 @@ function VerdictBadge({ label, value, loading = false, positiveWhenTrue = true }
       ) : (
         <p className={`mt-1 flex items-center gap-2 text-lg font-bold ${styles.text}`}>
           <span className={`inline-block h-2.5 w-2.5 rounded-full ${styles.dot}`} aria-hidden="true" />
-          {value ? "Sim" : "Não"}
+          {hasValue ? "Sim" : "Não"}
         </p>
       )}
     </article>
@@ -36,23 +37,23 @@ export function ExecutiveRegraDeOuroCard({ regra, loading = false, className = "
   return (
     <section
       className={`rounded-2xl border p-5 shadow-sm sm:p-6 ${tone} ${className}`.trim()}
-      aria-label="Regra de ouro — confiabilidade dos dados"
+      aria-label="Regra de ouro — aderência dos dados"
     >
       <header className="mb-4 border-b border-slate-200/80 pb-3">
         <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900">
           <span aria-hidden="true">⚖️</span>
-          Regra de ouro — confiabilidade
+          Regra de ouro — aderência
         </h2>
         <p className="mt-1 text-sm text-slate-600">
-          Validação automática antes de qualquer diagnóstico ou decisão (dados reais + IA)
+          Validação automática de aderência antes do diagnóstico; quando necessário, sinaliza alerta operacional.
         </p>
       </header>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <VerdictBadge label="Dados suficientes?" value={dados} loading={loading} />
-        <VerdictBadge label="Há inconsistência?" value={inconsistencia} loading={loading} positiveWhenTrue={false} />
+        <VerdictBadge label="Há alerta operacional?" value={inconsistencia} loading={loading} positiveWhenTrue={false} />
         <VerdictBadge
-          label="Confiável para decisão?"
+          label="Aderência adequada para decisão?"
           value={confiavel}
           loading={loading}
         />

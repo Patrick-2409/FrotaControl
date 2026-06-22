@@ -31,6 +31,7 @@ const DEFAULT_FILTERS = {
 
 const DEFAULT_VEHICLE_OPTIONS = [{ value: "todos", label: "Todos os veículos" }];
 const DEFAULT_DRIVER_OPTIONS = [{ value: "todos", label: "Todos os motoristas" }];
+const EMPTY_INDICADORES = Object.freeze({});
 
 const toNumber = (value, fallback = 0) => {
   const parsed = Number(value);
@@ -70,7 +71,7 @@ const compactDate = (isoDate) => {
 
 const STATUS_STYLES = {
   CRÍTICO: { bg: "bg-red-50", border: "border-red-300", text: "text-red-800", badge: "bg-red-600" },
-  ATENÇÃO: { bg: "bg-amber-50", border: "border-amber-300", text: "text-amber-900", badge: "bg-amber-500" },
+  ALERTA: { bg: "bg-amber-50", border: "border-amber-300", text: "text-amber-900", badge: "bg-amber-500" },
   OK: { bg: "bg-emerald-50", border: "border-emerald-300", text: "text-emerald-900", badge: "bg-emerald-600" },
   ESTÁVEL: { bg: "bg-emerald-50", border: "border-emerald-300", text: "text-emerald-900", badge: "bg-emerald-600" },
   PROCESSANDO: { bg: "bg-slate-50", border: "border-slate-300", text: "text-slate-700", badge: "bg-slate-500" },
@@ -83,7 +84,7 @@ function resolveExecutiveStatus({ overview, loading }) {
     const normalized = String(overview.status).toUpperCase();
     const detail = overview.resumo || overview.status_operacao?.descricao || "";
     if (normalized.includes("CRIT")) return { label: "CRÍTICO", detail };
-    if (normalized.includes("ALERT")) return { label: "ATENÇÃO", detail };
+    if (normalized.includes("ALERT") || normalized.includes("ATEN")) return { label: "ALERTA", detail };
     return { label: "OK", detail };
   }
 
@@ -93,8 +94,8 @@ function resolveExecutiveStatus({ overview, loading }) {
     if (normalized.includes("CRÍT") || normalized.includes("CRIT")) {
       return { label: "CRÍTICO", detail: status.detail || status.descricao || "" };
     }
-    if (normalized.includes("ATEN")) {
-      return { label: "ATENÇÃO", detail: status.detail || status.descricao || "" };
+    if (normalized.includes("ATEN") || normalized.includes("ALERT")) {
+      return { label: "ALERTA", detail: status.detail || status.descricao || "" };
     }
     return { label: "OK", detail: status.detail || status.descricao || "" };
   }
@@ -154,7 +155,10 @@ export default function RelatorioInteligenciaPage() {
   const [error, setError] = useState("");
   const isPdfExportMode = searchParams.get("pdfExport") === "1";
 
-  const indicadores = useMemo(() => overview?.indicadores || {}, [overview?.indicadores]);
+  const indicadores = useMemo(
+    () => (overview?.indicadores ? overview.indicadores : EMPTY_INDICADORES),
+    [overview?.indicadores]
+  );
   const tipoAnalise = filters.tipoAnalise || "geral";
 
   const chartData = useMemo(() => {
@@ -683,7 +687,7 @@ export default function RelatorioInteligenciaPage() {
               id="top-riscos"
               icon="🔥"
               title="Top 5 Riscos Operacionais"
-              subtitle="Priorização automática por score de risco (0–100) — financeiro, operacional, recorrência e confiabilidade"
+              subtitle="Priorização automática por índice de risco (0–100) — financeiro, operacional, recorrência e aderência"
               source="dados"
               tone="default"
               isEmpty={!loading && !topRiscos.length}
@@ -696,7 +700,7 @@ export default function RelatorioInteligenciaPage() {
               id="acao-imediata"
               icon="⚡"
               title="Ação imediata recomendada"
-              subtitle="Uma única ação prioritária derivada do risco de maior pontuação"
+              subtitle="Uma única ação prioritária derivada do maior índice de risco"
               source="dados"
               tone={topRiscos[0]?.classificacao === "CRITICO" ? "critical" : "default"}
               isEmpty={!loading && !acaoImediata}
@@ -943,7 +947,7 @@ export default function RelatorioInteligenciaPage() {
           </div>
 
           <footer className="mt-10 border-t border-slate-200 pt-4 text-xs text-slate-500">
-            Gerado em {new Date().toLocaleString("pt-BR")} · FrotaMax Inteligência · Layout HTML premium (base para PDF)
+            Gerado em {new Date().toLocaleString("pt-BR")} · FrotaControl Inteligência · Layout HTML premium (base para PDF)
           </footer>
         </div>
       </div>

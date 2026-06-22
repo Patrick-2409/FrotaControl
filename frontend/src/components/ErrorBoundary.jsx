@@ -2,6 +2,7 @@ import { Component } from "react";
 import { createLogger } from "../services/logger";
 
 const log = createLogger("react");
+const showTechnicalReference = import.meta.env.DEV;
 
 export default class ErrorBoundary extends Component {
   constructor(props) {
@@ -34,9 +35,15 @@ export default class ErrorBoundary extends Component {
               Ocorreu um erro inesperado na interface. Os seus dados não foram alterados por este painel. Pode tentar
               recarregar a página ou voltar ao menu anterior.
             </p>
-            <p className="mt-4 rounded-md border border-slate-800 bg-slate-900/80 px-3 py-2 text-left text-xs text-slate-500">
-              Referência técnica (útil para suporte): {this.state.errorMessage}
-            </p>
+            {showTechnicalReference ? (
+              <p className="mt-4 rounded-md border border-slate-800 bg-slate-900/80 px-3 py-2 text-left text-xs text-slate-500">
+                Referência técnica (útil para suporte): {this.state.errorMessage}
+              </p>
+            ) : (
+              <p className="mt-4 rounded-md border border-slate-800 bg-slate-900/80 px-3 py-2 text-left text-xs text-slate-500">
+                Se o problema persistir, contacte o suporte e informe a data/hora do erro.
+              </p>
+            )}
             <button
               type="button"
               className="fc-btn mt-6 w-full rounded-lg border border-slate-600 bg-slate-800 px-4 py-3 text-sm font-semibold text-slate-100 hover:bg-slate-700"

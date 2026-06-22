@@ -51,6 +51,14 @@ const normalizeContaStatus = (v) => {
   return "ativo";
 };
 
+const sanitizeUser = (user) => {
+  if (!user || typeof user !== "object") return user;
+  const { senha_hash: _omitSenhaHash, ...safe } = user;
+  return safe;
+};
+
+const sanitizeUsers = (users = []) => users.map((row) => sanitizeUser(row));
+
 const mergeUserRow = (existing, data) => {
   const treinamentos =
     data.treinamentos !== undefined ? normalizeTreinamentos(data.treinamentos) : normalizeTreinamentos(existing.treinamentos);
@@ -139,7 +147,7 @@ const createUser = async (
       cs,
     ]
   );
-  return rows[0];
+  return sanitizeUser(rows[0]);
 };
 
 const normalizeMotoristaLoginInput = (loginInput) => {
@@ -302,7 +310,9 @@ const getUserById = async (id, empresa_id) => {
   }
 
   const { rows } = await pool.query(
-    `SELECT u.*,
+    `SELECT u.id, u.empresa_id, u.nome, u.email, u.cpf_id, u.role, u.veiculo_id, u.profile_image_url,
+            u.funcao, u.cnh_categoria, u.cnh_numero, u.cnh_validade, u.treinamentos, u.observacoes,
+            u.equipamento_vinculo, u.operacao_escopo, u.status_operacional, u.conta_status, u.created_at,
             e.nome AS empresa_nome, e.logo_url,
             v.nome AS veiculo_nome, v.placa, v.marca AS veiculo_marca, v.modelo AS veiculo_modelo,
             COALESCE(NULLIF(TRIM(v.tipo_operacao), ''), CASE WHEN COALESCE(v.usa_para_transporte, false) THEN 'transporte' ELSE 'apoio' END) AS veiculo_tipo_operacao,
@@ -313,7 +323,7 @@ const getUserById = async (id, empresa_id) => {
      WHERE u.id = $1 ${companyFilter}`,
     values
   );
-  return rows[0];
+  return sanitizeUser(rows[0]);
 };
 
 const listUsersByCompany = async (
@@ -373,7 +383,7 @@ const listUsersByCompany = async (
     params,
     { label: "usuarios-list" }
   );
-  return { items: rows, total: count.rows[0].total };
+  return { items: sanitizeUsers(rows), total: count.rows[0].total };
 };
 
 const updateUser = async (id, empresa_id, data) => {
@@ -425,7 +435,7 @@ const updateUser = async (id, empresa_id, data) => {
       m.conta_status,
     ]
   );
-  return rows[0];
+  return sanitizeUser(rows[0]);
 };
 
 /** Atualização por SUPER_ADMIN (sem filtro empresa na linha; validação de papel no controller). */
@@ -483,7 +493,7 @@ const updateUserAsSuperAdmin = async (id, data) => {
       m.conta_status,
     ]
   );
-  return rows[0];
+  return sanitizeUser(rows[0]);
 };
 
 const updateUserPassword = async (id, empresa_id, senha_hash) => {
@@ -529,7 +539,9 @@ const updateOwnProfileData = async (id, data) => {
 /** Uma linha de utilizador para SUPER_ADMIN (mesmo formato base que a listagem). */
 const getUserByIdForSuperAdmin = async (id) => {
   const { rows } = await pool.query(
-    `SELECT u.*,
+    `SELECT u.id, u.empresa_id, u.nome, u.email, u.cpf_id, u.role, u.veiculo_id, u.profile_image_url,
+            u.funcao, u.cnh_categoria, u.cnh_numero, u.cnh_validade, u.treinamentos, u.observacoes,
+            u.equipamento_vinculo, u.operacao_escopo, u.status_operacional, u.conta_status, u.created_at,
         e.nome AS empresa_nome,
         v.nome AS veiculo_nome, v.placa
      FROM usuarios u
@@ -538,7 +550,7 @@ const getUserByIdForSuperAdmin = async (id) => {
      WHERE u.id = $1 AND u.role IN ('MOTORISTA', 'ADMIN_EMPRESA', 'APONTADOR', 'SUPER_ADMIN')`,
     [id]
   );
-  return rows[0] || null;
+  return sanitizeUser(rows[0] || null);
 };
 
 module.exports = {
@@ -561,4 +573,5 @@ module.exports = {
   updateOwnUserPassword,
   updateOwnProfileImage,
   updateOwnProfileData,
+  sanitizeUser,
 };

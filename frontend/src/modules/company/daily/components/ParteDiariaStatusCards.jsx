@@ -12,7 +12,7 @@ function ParteDiariaStatusCards({ total, rowsOnPage, aggregates }) {
     statusOperacional === "sem_dados"
       ? "Sem registros nesta página"
       : statusOperacional === "atencao_checklist"
-        ? "Atenção: pendências no checklist"
+        ? "Alerta: pendências no checklist"
         : statusOperacional === "ocorrencias_texto"
           ? "Há observações ou paradas registradas"
           : "Operação regular (página atual)";

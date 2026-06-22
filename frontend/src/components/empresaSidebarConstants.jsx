@@ -154,7 +154,7 @@ export const EMPRESA_SIDEBAR_SECTIONS = filterEmpresaSidebarSections([
     id: "dash",
     title: null,
     items: [
-      { to: "/empresa/dashboard", label: "Dashboard executivo", icon: "overview", exact: true },
+      { to: "/empresa/dashboard", label: "Dashboard", icon: "overview", exact: true },
       { to: "/empresa/alertas", label: "Alertas", icon: "bell", exact: false },
     ],
   },
@@ -163,60 +163,73 @@ export const EMPRESA_SIDEBAR_SECTIONS = filterEmpresaSidebarSections([
     title: "Operação",
     items: [
       { to: "/empresa/transporte", label: "Transporte", icon: "transport", exact: false },
-      { to: "/empresa/parte-diaria", label: "Parte diária", icon: "diary", exact: false },
+      { to: "/empresa/parte-diaria", label: "Parte Diária", icon: "diary", exact: false },
     ],
   },
   {
     id: "combustivel",
     title: "Combustível",
-    items: [{ to: "/empresa/combustivel", label: "Combustível", icon: "fuel", exact: false }],
+    items: [{ to: "/empresa/combustivel", label: "Dashboard Combustível", icon: "fuel", exact: false }],
   },
   {
     id: "frota",
     title: "Frota",
-    items: [{ to: "/empresa/frota", label: "Frota", icon: "fleet", exact: false }],
+    items: [{ to: "/empresa/frota", label: "Painel frota", icon: "fleet", exact: false }],
   },
   {
     id: "pessoas",
     title: "Pessoas",
-    items: [{ to: "/empresa/pessoas", label: "Pessoas", icon: "people", exact: false }],
+    items: [{ to: "/empresa/pessoas", label: "Gestão de pessoas", icon: "people", exact: false }],
   },
   {
     id: "inteligencia",
-    title: "Análise",
+    title: null,
     items: [
       { to: "/inteligencia", label: "Inteligência", icon: "brain", exact: false },
-      { to: "/relatorio-inteligencia", label: "Relatório executivo", icon: "reports", exact: false },
+      { to: "/relatorio-inteligencia", label: "Relatório BI", icon: "reports", exact: false },
     ],
   },
   {
     id: "relatorios",
-    title: "Relatórios",
-    items: [{ to: "/empresa/relatorios", label: "Central de relatórios", icon: "reports", exact: false }],
+    title: null,
+    items: [{ to: "/empresa/relatorios", label: "Relatórios", icon: "reports", exact: false }],
   },
   {
     id: "admin",
-    title: "Administração",
+    title: null,
     items: [{ to: "/dashboard/gestao", label: "Contas de acesso", icon: "management", match: "gestao-root" }],
   },
 ]);
 
-export const EMPRESA_SIDEBAR_FOOTER = [{ to: "/dashboard/perfil", label: "Meu perfil", icon: "profile", exact: false }];
+export const EMPRESA_SIDEBAR_FOOTER = [{ to: "/dashboard/perfil", label: "Meu Perfil", icon: "profile", exact: false }];
 
-export const EMPRESA_MOBILE_NAV_ITEMS = [
-  { to: "/empresa/dashboard", label: "Início", icon: "overview", exact: true },
-  { to: "/empresa/transporte", label: "Transporte", icon: "transport", exact: false },
-  { to: "/empresa/combustivel", label: "Combust.", icon: "fuel", exact: false },
-  { to: "/empresa/frota", label: "Frota", icon: "fleet", exact: false },
-  { to: "/empresa/pessoas", label: "Pessoas", icon: "people", exact: false },
+const EMPRESA_SIDEBAR_ALL_ITEMS = [
+  ...EMPRESA_SIDEBAR_SECTIONS.flatMap((section) => section.items || []),
+  ...EMPRESA_SIDEBAR_FOOTER,
 ];
 
-export function getEmpresaActiveLabel(pathname, search) {
-  const sections = [...EMPRESA_SIDEBAR_SECTIONS, { id: "conta", items: EMPRESA_SIDEBAR_FOOTER }];
-  for (const section of sections) {
-    const found = (section.items || []).find((tab) => empresaSidebarTabIsActive(pathname, search, tab));
-    if (found) return found.label;
-  }
+const buildMobileNavItems = () => {
+  const orderedPaths = [
+    "/empresa/dashboard",
+    "/empresa/transporte",
+    "/empresa/combustivel",
+    "/empresa/frota",
+    "/empresa/pessoas",
+  ];
+  const ordered = orderedPaths
+    .map((path) => EMPRESA_SIDEBAR_ALL_ITEMS.find((item) => item.to === path))
+    .filter(Boolean);
+  return ordered.length ? ordered : EMPRESA_SIDEBAR_ALL_ITEMS.slice(0, 5);
+};
+
+/** Itens mobile derivados da mesma fonte de verdade da sidebar. */
+export const EMPRESA_MOBILE_NAV_ITEMS = buildMobileNavItems();
+
+/** Label da rota ativa (header do shell empresa). */
+export function getEmpresaActiveLabel(pathname, search = "") {
+  const active = EMPRESA_SIDEBAR_ALL_ITEMS.find((tab) => empresaSidebarTabIsActive(pathname, search, tab));
+  if (active?.label) return active.label;
+  if (pathname === "/dashboard/gestao") return "Contas de acesso";
   return "";
 }
 

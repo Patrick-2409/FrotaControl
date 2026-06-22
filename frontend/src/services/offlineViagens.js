@@ -285,6 +285,53 @@ export async function clearLocalViagensForSpTodayMatchingVehicles(veiculoIds) {
   });
 }
 
+/**
+ * Remove registros antigos sem owner_scope para evitar reaproveitamento cross-sessão.
+ * @returns {Promise<number>}
+ */
+export async function purgeUnscopedOfflineViagens() {
+  if (!hasIndexedDB()) return 0;
+  const db = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    const store = tx.objectStore(STORE);
+    const req = store.openCursor();
+    let removidos = 0;
+    req.onerror = () => reject(req.error ?? new Error("Falha ao percorrer viagens offline."));
+    req.onsuccess = (event) => {
+      const cursor = event.target.result;
+      if (!cursor) {
+        resolve(removidos);
+        return;
+      }
+      const row = cursor.value;
+      if (!row?.owner_scope) {
+        cursor.delete();
+        removidos += 1;
+      }
+      cursor.continue();
+    };
+    tx.onerror = () => reject(tx.error ?? new Error("Transação IndexedDB falhou."));
+  });
+}
+
+/**
+ * Remove toda a store de viagens offline local.
+ * Usado no logout para eliminar qualquer dado residual do dispositivo.
+ */
+export async function clearAllOfflineViagens() {
+  if (!hasIndexedDB()) return;
+  const db = await openDatabase();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    const store = tx.objectStore(STORE);
+    const req = store.clear();
+    req.onerror = () => reject(req.error ?? new Error("Falha ao limpar viagens offline."));
+    req.onsuccess = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error("Transação IndexedDB falhou."));
+  });
+}
+
 /** Fila global: evita dois syncs em paralelo (mesmo registo enviado duas vezes). */
 let syncTail = Promise.resolve();
 

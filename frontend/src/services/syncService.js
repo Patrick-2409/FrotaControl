@@ -1,5 +1,6 @@
 import api, { extractApiErrorMessage, getFriendlyApiErrorMessage } from "./api";
 import { createLogger } from "./logger";
+import { isValidatedSessionRole } from "./sessionSecurity";
 
 const syncLog = createLogger("sync");
 const SYNC_SLOW_MS = 5000;
@@ -20,16 +21,7 @@ const hasAuthSession = () => {
   const token = localStorage.getItem("fc_token");
   return Boolean(token && token !== "undefined" && token !== "null");
 };
-const hasMotoristaSession = () => {
-  try {
-    const raw = localStorage.getItem("fc_user");
-    if (!raw) return false;
-    const user = JSON.parse(raw);
-    return String(user?.role || "").toUpperCase() === "MOTORISTA";
-  } catch {
-    return false;
-  }
-};
+const hasMotoristaSession = () => isValidatedSessionRole("MOTORISTA");
 
 const safeLogOfflineError = async (context, err) => {
   try {

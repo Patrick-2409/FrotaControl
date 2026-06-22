@@ -7,6 +7,8 @@ const { buildRegistrosCsvContent } = require("../utils/registrosCsv");
 const { getCompanyById } = require("../models/companyModel");
 const viagemModel = require("../models/viagemModel");
 const { z } = require("zod");
+const { resolveSensitiveTenantScope } = require("../domain/tenantContext");
+const { logInfo } = require("../services/loggerService");
 
 const PDF_MAINTENANCE_MESSAGE = "Geração de PDF temporariamente desativada para manutenção";
 
@@ -21,16 +23,20 @@ const parseOperationalDate = (value) => {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 const resolveExportScope = (req) => {
-  const role = req.user?.role;
-  if (role === "MOTORISTA") {
-    return {
-      empresa_id: req.user?.empresa_id,
-      usuario_id: req.user?.sub,
-    };
+  const strictScope = resolveSensitiveTenantScope(req, {
+    allowSuperAdminGlobal: true,
+    requireSuperAdminExplicitScope: true,
+  });
+  if (!strictScope.ok) {
+    return strictScope;
   }
+
+  const role = req.user?.role;
   return {
-    empresa_id: req.user?.empresa_id,
-    usuario_id: null,
+    ok: true,
+    empresa_id: strictScope.empresa_id,
+    is_global: strictScope.is_global === true,
+    usuario_id: role === "MOTORISTA" ? req.user?.sub : null,
   };
 };
 const launchBrowser = async () => {
@@ -137,7 +143,7 @@ const parseChecklist = (value) => {
 const REPORT_TIMEZONE = "America/Sao_Paulo";
 
 /** Resumo textual dos filtros e metadados para capa PDF/Excel (dados reais da query). */
-const formatExportFiltersSummaryPt = (filter, recordCount = 0) => {
+const formatExportFiltersSummaryPt = (filter, recordCount = 0, scope = null) => {
   const lines = [];
   const tzLine = new Intl.DateTimeFormat("pt-BR", {
     dateStyle: "short",
@@ -162,6 +168,11 @@ const formatExportFiltersSummaryPt = (filter, recordCount = 0) => {
   }
   if (filter._autoSevenDays) {
     lines.push("Período automático: últimos 7 dias (pedido sem data, mês ou intervalo).");
+  }
+  if (scope?.is_global) {
+    lines.push("Escopo: todas as empresas (SUPER_ADMIN com scope=all).");
+  } else if (scope?.empresa_id) {
+    lines.push(`Escopo: empresa ${scope.empresa_id}.`);
   }
   if (lines.length === 2) lines.push("Sem filtros adicionais explícitos (âmbito: empresa autenticada).");
   return lines.join("\n");
@@ -199,6 +210,7 @@ const loadExportItems = async (scope, filters) => {
   const { total } = await listManagerRecords({
     empresa_id: scope.empresa_id,
     usuario_id: scope.usuario_id ?? null,
+    allow_global: scope.is_global === true,
     page: 1,
     limit: 1,
     ...filters,
@@ -209,6 +221,7 @@ const loadExportItems = async (scope, filters) => {
   const { items } = await listManagerRecords({
     empresa_id: scope.empresa_id,
     usuario_id: scope.usuario_id ?? null,
+    allow_global: scope.is_global === true,
     page: 1,
     limit: EXPORT_RECORD_CAP,
     ...filters,
@@ -2213,6 +2226,20 @@ const exportExcel = async (req, res) => {
     });
   }
   const scope = resolveExportScope(req);
+  if (!scope.ok) {
+    return res.status(scope.statusCode).json({
+      success: false,
+      error: scope.message,
+      message: scope.message,
+    });
+  }
+  if (scope.is_global) {
+    logInfo("export:global_scope", {
+      usuario_id: req.user?.sub || null,
+      role: req.user?.role || null,
+      endpoint: req.originalUrl || req.url || "/api/dashboard/export/excel",
+    });
+  }
   const filtersEffective = normalizeExportQueryFilters(filters);
   let data;
   try {
@@ -2227,20 +2254,21 @@ const exportExcel = async (req, res) => {
     }
     throw e;
   }
-  const company = await getCompanyById(scope.empresa_id);
+  const company = scope.empresa_id ? await getCompanyById(scope.empresa_id) : null;
+  const companyName = company?.nome || (scope.is_global ? "Todas as empresas" : "Empresa");
   const workbook = new ExcelJS.Workbook();
   const logoAssets = await resolveEmpresaLogoAssets(req, company);
   const excelImage = await toExcelCompatibleImage(logoAssets.htmlSrc, logoAssets.excelImage);
   const logoImageId = await loadLogoImage(workbook, excelImage);
-  const summaryText = formatExportFiltersSummaryPt(filtersEffective, data.length);
+  const summaryText = formatExportFiltersSummaryPt(filtersEffective, data.length, scope);
   const isProfessionalLayout = filtersEffective.layout === "profissional";
   if (!isProfessionalLayout) {
-    addExportSummaryWorksheet(workbook, { companyName: company?.nome || "Empresa", summaryText });
+    addExportSummaryWorksheet(workbook, { companyName, summaryText });
   }
 
   if (!data.length) {
     const empty = workbook.addWorksheet("Sem registros");
-    empty.getCell("A1").value = `Sem registros para exportação (${company?.nome || "Empresa"})`;
+    empty.getCell("A1").value = `Sem registros para exportação (${companyName})`;
     empty.getCell("A1").font = { name: "Arial", size: 12, bold: true };
   } else if (isProfessionalLayout) {
     const fichaRows = data.filter((row) => row.tipo === "combustivel");
@@ -2265,7 +2293,7 @@ const exportExcel = async (req, res) => {
       }
       const row = entry.row;
       if (row.tipo === "parte_diaria") {
-        addParteDiariaWorksheet(workbook, row, company?.nome || "Empresa", logoImageId, index);
+        addParteDiariaWorksheet(workbook, row, companyName, logoImageId, index);
         return;
       }
       addSimpleFormWorksheet(workbook, row, logoImageId, index);
@@ -2283,7 +2311,7 @@ const exportExcel = async (req, res) => {
           dataInicio: filtersEffective.data_inicio,
           dataFim: filtersEffective.data_fim,
           logoImageId,
-          companyName: company?.nome || "Empresa",
+          companyName,
         });
       } catch {
         // evita falhar exportação se agregação de viagens não estiver disponível
@@ -2318,6 +2346,20 @@ const exportCsv = async (req, res) => {
     });
   }
   const scope = resolveExportScope(req);
+  if (!scope.ok) {
+    return res.status(scope.statusCode).json({
+      success: false,
+      error: scope.message,
+      message: scope.message,
+    });
+  }
+  if (scope.is_global) {
+    logInfo("export:global_scope", {
+      usuario_id: req.user?.sub || null,
+      role: req.user?.role || null,
+      endpoint: req.originalUrl || req.url || "/api/dashboard/export/csv",
+    });
+  }
   const filtersEffective = normalizeExportQueryFilters(filters);
   let data;
   try {
@@ -2332,8 +2374,9 @@ const exportCsv = async (req, res) => {
     }
     throw e;
   }
-  const company = await getCompanyById(scope.empresa_id);
-  const csv = buildRegistrosCsvContent(data, company?.nome || "Empresa");
+  const company = scope.empresa_id ? await getCompanyById(scope.empresa_id) : null;
+  const companyName = company?.nome || (scope.is_global ? "Todas as empresas" : "Empresa");
+  const csv = buildRegistrosCsvContent(data, companyName);
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", "attachment; filename=registros.csv");
   res.send(Buffer.from(csv, "utf8"));

@@ -117,7 +117,7 @@ function FuelDashboardContent() {
                 </p>
                 <button
                   type="button"
-                  className="fc-btn mt-4 inline-flex w-full justify-center rounded-md border border-zinc-600 bg-zinc-900 px-4 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-800 sm:w-auto"
+                  className="fc-btn mt-4 inline-flex rounded-md border border-zinc-600 bg-zinc-900 px-4 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-800"
                   onClick={verPeriodoMes}
                 >
                   Ver mês
@@ -154,7 +154,7 @@ function FuelDashboardContent() {
             </p>
             <button
               type="button"
-              className="fc-btn mt-3 inline-flex w-full justify-center rounded-md border border-zinc-600 bg-zinc-900 px-4 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-800 sm:w-auto"
+              className="fc-btn mt-3 inline-flex rounded-md border border-zinc-600 bg-zinc-900 px-4 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-800"
               onClick={verPeriodoMes}
             >
               Ver mês
@@ -183,7 +183,7 @@ function FuelDashboardContent() {
         defaultOpenDesktop={false}
         defaultOpenMobile={false}
       >
-        <div className="fc-empresa-action-row flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-3">
           <Link
             to="/empresa/dashboard"
             className="fc-btn fc-btn-empresa-secondary inline-flex rounded-md border border-zinc-700 bg-zinc-900/80 px-4 py-3 text-center text-sm font-semibold text-zinc-200 hover:bg-zinc-800"

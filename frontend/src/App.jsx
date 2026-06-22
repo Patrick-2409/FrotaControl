@@ -10,70 +10,32 @@ import { ScreenLoading } from "./components/LoadingState";
 import { countPending, syncPending } from "./services/syncService";
 import { generateId } from "./utils/id";
 
-const CHUNK_RELOAD_KEY = "fc_chunk_reload_once";
-const isChunkLoadError = (error) => {
-  const message = String(error?.message || "").toLowerCase();
-  return message.includes("failed to fetch dynamically imported module") || message.includes("importing a module script failed");
-};
+const HomePage = lazy(() => import("./pages/HomePage"));
+const RomaneioPage = lazy(() => import("./pages/RomaneioPage"));
+const CombustivelPage = lazy(() => import("./pages/CombustivelPage"));
+const ParteDiariaPage = lazy(() => import("./pages/ParteDiariaPage"));
+const HistoricoPage = lazy(() => import("./pages/HistoricoPage"));
+const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 
-const importWithRetry = (factory, retries = 2, delayMs = 350) =>
-  factory()
-    .then((module) => {
-      try {
-        sessionStorage.removeItem(CHUNK_RELOAD_KEY);
-      } catch {
-        // sessionStorage pode estar indisponivel em navegadores restritos.
-      }
-      return module;
-    })
-    .catch((error) => {
-      if (isChunkLoadError(error)) {
-        try {
-          const alreadyReloaded = sessionStorage.getItem(CHUNK_RELOAD_KEY) === "1";
-          if (!alreadyReloaded) {
-            sessionStorage.setItem(CHUNK_RELOAD_KEY, "1");
-            window.location.reload();
-            return new Promise(() => {});
-          }
-        } catch {
-          window.location.reload();
-          return new Promise(() => {});
-        }
-      }
-      if (retries <= 0) throw error;
-      return new Promise((resolve) => {
-        setTimeout(() => resolve(importWithRetry(factory, retries - 1, delayMs)), delayMs);
-      });
-    });
-
-const lazyWithRetry = (factory) => lazy(() => importWithRetry(factory));
-
-const HomePage = lazyWithRetry(() => import("./pages/HomePage"));
-const RomaneioPage = lazyWithRetry(() => import("./pages/RomaneioPage"));
-const CombustivelPage = lazyWithRetry(() => import("./pages/CombustivelPage"));
-const ParteDiariaPage = lazyWithRetry(() => import("./pages/ParteDiariaPage"));
-const HistoricoPage = lazyWithRetry(() => import("./pages/HistoricoPage"));
-const ProfilePage = lazyWithRetry(() => import("./pages/ProfilePage"));
-
-const LandingPage = lazyWithRetry(() => import("./pages/LandingPage"));
-const LoginPage = lazyWithRetry(() => import("./pages/LoginPage"));
-const CompanyManagementPage = lazyWithRetry(() => import("./pages/CompanyManagementPage"));
-const AdminPage = lazyWithRetry(() => import("./pages/AdminPage"));
-const AdminHistoricoPage = lazyWithRetry(() => import("./pages/AdminHistoricoPage"));
-const AdminLoginPage = lazyWithRetry(() => import("./pages/AdminLoginPage"));
-const SuperAdminLoginPage = lazyWithRetry(() => import("./pages/SuperAdminLoginPage"));
-const ApontadorLoginPage = lazyWithRetry(() => import("./pages/ApontadorLoginPage"));
-const ApontadorHomePage = lazyWithRetry(() => import("./pages/ApontadorHomePage"));
-const EmpresaExecutiveDashboardPage = lazyWithRetry(() => import("./modules/company/dashboard/pages/EmpresaExecutiveDashboardPage"));
-const EmpresaTransportePage = lazyWithRetry(() => import("./modules/company/transport/pages/EmpresaTransportePage"));
-const EmpresaCombustivelPage = lazyWithRetry(() => import("./modules/company/fuel/pages/EmpresaCombustivelPage"));
-const EmpresaParteDiariaPage = lazyWithRetry(() => import("./modules/company/daily/pages/EmpresaParteDiariaPage"));
-const EmpresaFrotaPage = lazyWithRetry(() => import("./modules/company/fleet/pages/EmpresaFrotaPage"));
-const EmpresaPessoasPage = lazyWithRetry(() => import("./modules/company/people/pages/EmpresaPessoasPage"));
-const EmpresaRelatoriosPage = lazyWithRetry(() => import("./modules/company/reports/pages/EmpresaRelatoriosPage"));
-const EmpresaAlertasPage = lazyWithRetry(() => import("./modules/company/alerts/pages/EmpresaAlertasPage"));
-const InteligenciaPage = lazyWithRetry(() => import("./pages/inteligencia.jsx"));
-const RelatorioInteligenciaPage = lazyWithRetry(() => import("./pages/relatorio-inteligencia.jsx"));
+const LandingPage = lazy(() => import("./pages/LandingPage"));
+const LoginPage = lazy(() => import("./pages/LoginPage"));
+const CompanyManagementPage = lazy(() => import("./pages/CompanyManagementPage"));
+const AdminPage = lazy(() => import("./pages/AdminPage"));
+const AdminHistoricoPage = lazy(() => import("./pages/AdminHistoricoPage"));
+const AdminLoginPage = lazy(() => import("./pages/AdminLoginPage"));
+const SuperAdminLoginPage = lazy(() => import("./pages/SuperAdminLoginPage"));
+const ApontadorLoginPage = lazy(() => import("./pages/ApontadorLoginPage"));
+const ApontadorHomePage = lazy(() => import("./pages/ApontadorHomePage"));
+const EmpresaExecutiveDashboardPage = lazy(() => import("./modules/company/dashboard/pages/EmpresaExecutiveDashboardPage"));
+const EmpresaTransportePage = lazy(() => import("./modules/company/transport/pages/EmpresaTransportePage"));
+const EmpresaCombustivelPage = lazy(() => import("./modules/company/fuel/pages/EmpresaCombustivelPage"));
+const EmpresaParteDiariaPage = lazy(() => import("./modules/company/daily/pages/EmpresaParteDiariaPage"));
+const EmpresaFrotaPage = lazy(() => import("./modules/company/fleet/pages/EmpresaFrotaPage"));
+const EmpresaPessoasPage = lazy(() => import("./modules/company/people/pages/EmpresaPessoasPage"));
+const EmpresaRelatoriosPage = lazy(() => import("./modules/company/reports/pages/EmpresaRelatoriosPage"));
+const EmpresaAlertasPage = lazy(() => import("./modules/company/alerts/pages/EmpresaAlertasPage"));
+const InteligenciaPage = lazy(() => import("./pages/inteligencia.jsx"));
+const RelatorioInteligenciaPage = lazy(() => import("./pages/relatorio-inteligencia.jsx"));
 
 function Protected({ children }) {
   const { user, loading } = useAuth();

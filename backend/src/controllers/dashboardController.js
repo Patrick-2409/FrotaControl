@@ -1,9 +1,14 @@
 const { z } = require("zod");
 const { pool } = require("../db");
-const { resolveEmpresaScope, resolveEmpresaScopeWrite } = require("../domain/tenantContext");
+const {
+  resolveEmpresaScope,
+  resolveEmpresaScopeWrite,
+  resolveSensitiveTenantScope,
+} = require("../domain/tenantContext");
 const dailyOps = require("../services/dailyOperationsService");
 const fuelSvc = require("../services/fuelService");
 const transportSvc = require("../services/transportService");
+const { logInfo } = require("../services/loggerService");
 
 const planejamentoBodySchema = z
   .object({
@@ -21,7 +26,24 @@ const planejamentoBodySchema = z
 const dashboardPeriodoSchema = z.enum(["dia", "semana", "mes", "ano"]).optional();
 
 const dashboard = async (req, res) => {
-  const empresa_id = resolveEmpresaScope(req);
+  const scope = resolveSensitiveTenantScope(req, {
+    allowSuperAdminGlobal: true,
+    requireSuperAdminExplicitScope: true,
+  });
+  if (!scope.ok) {
+    return res.status(scope.statusCode).json({
+      success: false,
+      error: scope.message,
+      message: scope.message,
+    });
+  }
+  if (scope.is_global) {
+    logInfo("dashboard:global_scope", {
+      usuario_id: req.user?.sub || null,
+      role: req.user?.role || null,
+      endpoint: req.originalUrl || req.url || "/api/dashboard/stats",
+    });
+  }
   const rawPeriodo = req.query.periodo != null ? String(req.query.periodo).trim().toLowerCase() : "";
   const periodoParsed = dashboardPeriodoSchema.safeParse(rawPeriodo === "" ? undefined : rawPeriodo);
   if (!periodoParsed.success) {
@@ -32,7 +54,7 @@ const dashboard = async (req, res) => {
     });
   }
   const stats = await dailyOps.dashboardStats({
-    empresa_id: empresa_id != null ? Number(empresa_id) : null,
+    empresa_id: scope.empresa_id != null ? Number(scope.empresa_id) : null,
     periodo: periodoParsed.data ?? null,
   });
   return res.json(stats);
@@ -246,11 +268,30 @@ const list = async (req, res) => {
     })
     .parse(normalizedQuery);
 
+  const scope = resolveSensitiveTenantScope(req, {
+    allowSuperAdminGlobal: true,
+    requireSuperAdminExplicitScope: true,
+  });
+  if (!scope.ok) {
+    return res.status(scope.statusCode).json({
+      success: false,
+      error: scope.message,
+      message: scope.message,
+    });
+  }
+  if (scope.is_global) {
+    logInfo("dashboard:records_global_scope", {
+      usuario_id: req.user?.sub || null,
+      role: req.user?.role || null,
+      endpoint: req.originalUrl || req.url || "/api/dashboard/registros",
+    });
+  }
+
   const page = filter.page || 1;
   const limit = filter.limit || 20;
-  const empresa_id = resolveEmpresaScope(req);
   const result = await dailyOps.listManagerRecords({
-    empresa_id,
+    empresa_id: scope.empresa_id,
+    allow_global: scope.is_global === true,
     ...filter,
     page,
     limit,

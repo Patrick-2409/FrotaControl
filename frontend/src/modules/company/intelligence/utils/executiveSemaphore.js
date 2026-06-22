@@ -9,7 +9,7 @@ export const SEMAFORO_CORES = {
   AMARELO: {
     key: "AMARELO",
     emoji: "🟡",
-    label: "Atenção",
+    label: "Alerta",
     badge: "bg-amber-100 text-amber-900 border-amber-200",
     dot: "bg-amber-500",
   },
@@ -100,7 +100,7 @@ const buildConfiabilidadeSemaforo = ({ painelExecutivo, regraDeOuro, narrativas 
   if (confiavel === false || dadosSuficientes === false) {
     return {
       ...SEMAFORO_CORES.VERMELHO,
-      titulo: "Confiabilidade",
+      titulo: "Aderência",
       explicacao: "Dados insuficientes ou inconsistentes para decisão estratégica.",
     };
   }
@@ -110,14 +110,14 @@ const buildConfiabilidadeSemaforo = ({ painelExecutivo, regraDeOuro, narrativas 
 
   return {
     ...nivel,
-    titulo: "Confiabilidade",
+    titulo: "Aderência",
     explicacao:
       hint ||
       (nivel.key === "VERDE"
-        ? "Lançamentos coerentes — indicadores confiáveis para decisão."
+        ? "Dados aderentes ao processo — indicadores confiáveis para decisão."
         : nivel.key === "AMARELO"
-          ? "Qualidade dos dados requer cautela na interpretação."
-          : "Baixa confiabilidade — corrigir lançamentos antes de decidir."),
+          ? "Aderência parcial dos dados — exige cautela na interpretação."
+          : "Baixa aderência dos dados — corrigir lançamentos antes de decidir."),
   };
 };
 

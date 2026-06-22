@@ -1,6 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import SkeletonRows from "../../../../components/SkeletonRows";
+import ConfirmActionModal from "../../../../components/ConfirmActionModal";
 import BIDashboardShell from "../../bi/components/BIDashboardShell";
 import BIChartCard from "../../bi/components/BIChartCard";
 import TransportPlannedVsActualBars from "../components/TransportPlannedVsActualBars";
@@ -49,6 +50,7 @@ function pctTone(p) {
 
 function EmpresaTransportePageContent() {
   const { operations: tr, metrics: prod, materialTab, setMaterialTab } = useTransportMetrics();
+  const [confirmClearPlanOpen, setConfirmClearPlanOpen] = useState(false);
   const trendSorted = useMemo(
     () => [...(prod.trend || [])].sort((a, b) => new Date(a.dia) - new Date(b.dia)),
     [prod.trend]
@@ -139,7 +141,7 @@ function EmpresaTransportePageContent() {
 
       <AccordionSection
         id="transporte-resumo-rapido"
-        title="Resumo de produção"
+        title="Dashboard rápido"
         description="Produção total e divisão por material no período."
         defaultOpenDesktop
         defaultOpenMobile
@@ -219,7 +221,7 @@ function EmpresaTransportePageContent() {
                 key={p.id}
                 type="button"
                 onClick={() => tr.setPeriodoFiltro(p.id)}
-                className={`fc-btn min-h-[44px] flex-1 rounded-md border px-3 py-2 text-sm font-medium transition sm:flex-none ${
+                className={`fc-btn rounded-md border px-3 py-2 text-sm font-medium transition ${
                   tr.periodoFiltro === p.id
                     ? "border-amber-500/50 bg-zinc-800/80 text-zinc-50 shadow-inner"
                     : "border-zinc-700 bg-zinc-950/60 text-zinc-300 hover:border-zinc-600"
@@ -240,7 +242,7 @@ function EmpresaTransportePageContent() {
               key={t.id}
               type="button"
               onClick={() => setMaterialTab(t.id)}
-              className={`fc-btn min-h-[44px] flex-1 rounded-md border px-3 py-2 text-sm font-medium transition sm:flex-none ${
+              className={`fc-btn rounded-md border px-3 py-2 text-sm font-medium transition ${
                 materialTab === t.id
                   ? "border-amber-500/50 bg-zinc-800/80 text-zinc-50 shadow-inner"
                   : "border-zinc-700 bg-zinc-950/60 text-zinc-300 hover:border-zinc-600"
@@ -252,7 +254,7 @@ function EmpresaTransportePageContent() {
         </div>
 
         {!tr.viagensLoading && tr.viagensResumo && totalToneladasPeriodo <= 0 ? (
-          <p className="text-sm text-zinc-500">Sem toneladas com capacidade registrada neste período.</p>
+          <p className="text-sm text-zinc-500">Sem toneladas com capacidade registada neste período.</p>
         ) : null}
         </section>
       </AccordionSection>
@@ -463,7 +465,7 @@ function EmpresaTransportePageContent() {
               onChange={(ev) => tr.setPlanForm((p) => ({ ...p, meta_rocha_ton: ev.target.value }))}
             />
           </label>
-          <div className="fc-empresa-action-row flex flex-wrap gap-2 sm:col-span-2">
+          <div className="flex flex-wrap gap-2 sm:col-span-2">
             <button
               type="submit"
               disabled={tr.planSaving}
@@ -482,10 +484,7 @@ function EmpresaTransportePageContent() {
             <button
               type="button"
               disabled={tr.planSaving}
-              onClick={() => {
-                if (!window.confirm("Zerar as metas (estéril e rocha) do período de planejamento ativo?")) return;
-                void tr.clearPlanejamentoMetas();
-              }}
+              onClick={() => setConfirmClearPlanOpen(true)}
               className="fc-btn rounded-md border border-rose-500/40 bg-rose-950/30 px-4 py-2.5 text-sm font-semibold text-rose-100 hover:bg-rose-950/50 disabled:opacity-50"
             >
               Zerar metas do período ativo
@@ -495,7 +494,7 @@ function EmpresaTransportePageContent() {
         </section>
       </AccordionSection>
 
-      <div className="fc-empresa-action-row flex flex-wrap gap-3">
+      <div className="flex flex-wrap gap-3">
         <Link
           to="/empresa/dashboard"
           className="fc-btn inline-flex rounded-md border border-zinc-600 px-4 py-3 text-center text-sm font-semibold text-zinc-200 hover:border-zinc-500"
@@ -509,6 +508,30 @@ function EmpresaTransportePageContent() {
           Relatórios
         </Link>
       </div>
+
+      <ConfirmActionModal
+        open={confirmClearPlanOpen}
+        title="Zerar metas do planejamento ativo"
+        description="As metas de estéril e rocha do período atual serão zeradas."
+        consequence="A referência de desempenho do período ficará em zero até novo preenchimento."
+        confirmLabel="Zerar metas"
+        confirmLoadingLabel="Zerando..."
+        tone="warning"
+        loading={tr.planSaving}
+        onClose={() => {
+          if (tr.planSaving) return;
+          setConfirmClearPlanOpen(false);
+        }}
+        onConfirm={() => {
+          void (async () => {
+            try {
+              await tr.clearPlanejamentoMetas();
+            } finally {
+              setConfirmClearPlanOpen(false);
+            }
+          })();
+        }}
+      />
     </BIDashboardShell>
   );
 }

@@ -43,11 +43,11 @@ function MetricRow({ label, value, highlight = false }) {
 
 function PeriodoHeader({ periodo, setPeriodo }) {
   return (
-    <div className="w-full rounded-lg border border-zinc-800/80 bg-zinc-950/45 p-2.5 sm:min-w-[22rem]">
-      <p className="px-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+    <div className="mb-5 flex flex-col gap-3 sm:mb-6 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
         Período: {periodoResumoLabel(periodo)}
       </p>
-      <ExecutivePeriodoToggle periodo={periodo} onChange={setPeriodo} className="mt-2 sm:justify-end" />
+      <ExecutivePeriodoToggle periodo={periodo} onChange={setPeriodo} className="sm:justify-end" />
     </div>
   );
 }
@@ -57,12 +57,8 @@ export default function EmpresaExecutiveDashboardPage() {
 
   if (loading) {
     return (
-      <BIDashboardShell
-        eyebrow="Indicadores"
-        title="Dashboard executivo"
-        lead=""
-        headerAside={<PeriodoHeader periodo={periodo} setPeriodo={setPeriodo} />}
-      >
+      <BIDashboardShell eyebrow="Indicadores" title="Executivo" lead="">
+        <PeriodoHeader periodo={periodo} setPeriodo={setPeriodo} />
         <div className="fc-card border-zinc-800/90 p-8">
           <SkeletonRows rows={6} />
         </div>
@@ -72,12 +68,8 @@ export default function EmpresaExecutiveDashboardPage() {
 
   if (!summary) {
     return (
-      <BIDashboardShell
-        eyebrow="Indicadores"
-        title="Dashboard executivo"
-        lead=""
-        headerAside={<PeriodoHeader periodo={periodo} setPeriodo={setPeriodo} />}
-      >
+      <BIDashboardShell eyebrow="Indicadores" title="Executivo" lead="">
+        <PeriodoHeader periodo={periodo} setPeriodo={setPeriodo} />
         <p className="text-sm text-rose-400/90">Não foi possível carregar o painel executivo.</p>
       </BIDashboardShell>
     );
@@ -122,10 +114,11 @@ export default function EmpresaExecutiveDashboardPage() {
   return (
     <BIDashboardShell
       eyebrow="Indicadores"
-      title="Dashboard executivo"
-      lead="Visão consolidada e acionável por módulo. Abra um card para entrar na área correspondente."
-      headerAside={<PeriodoHeader periodo={periodo} setPeriodo={setPeriodo} />}
+      title="Executivo"
+      lead="Visão consolidada e acionável por módulo. Toque em qualquer card para abrir a área correspondente."
     >
+      <PeriodoHeader periodo={periodo} setPeriodo={setPeriodo} />
+
       {statsError ? (
         <p className="mb-4 text-sm text-amber-400/90" role="status">
           {statsError} Os demais indicadores podem estar incompletos.
@@ -134,15 +127,14 @@ export default function EmpresaExecutiveDashboardPage() {
 
       <AccordionSection
         id="exec-resumo-modulos"
-        title="Resumo por módulo"
-        description="Resumo executivo com acesso direto aos módulos operacionais."
+        title="Dashboard rápido por módulo"
+        description="Toque no card para abrir o módulo correspondente."
         defaultOpenDesktop
         defaultOpenMobile={false}
       >
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="Resumo por módulo">
         <ExecutiveModuleCard
           title="Transporte"
-          iconType="transport"
           to="/empresa/transporte"
           accent="amber"
           tooltipText="Mostra o volume total transportado no período. É calculado pela soma das toneladas de estéril e rocha. Quanto maior, melhor o ritmo frente à meta."
@@ -175,7 +167,6 @@ export default function EmpresaExecutiveDashboardPage() {
 
         <ExecutiveModuleCard
           title="Combustível"
-          iconType="fuel"
           to="/empresa/combustivel"
           accent="blue"
           tooltipText="Representa o custo total de combustível no período e a eficiência por litro. Valor muito alto indica pressão de custo e necessidade de revisão de consumo/preço."
@@ -197,7 +188,6 @@ export default function EmpresaExecutiveDashboardPage() {
 
         <ExecutiveModuleCard
           title="Parte diária"
-          iconType="diary"
           to="/empresa/parte-diaria"
           accent="emerald"
           tooltipText="Quantidade de lançamentos de parte diária no período. É comparada com motoristas ativos para medir cobertura operacional. Valor baixo pode indicar falha de registro."
@@ -219,7 +209,6 @@ export default function EmpresaExecutiveDashboardPage() {
 
         <ExecutiveModuleCard
           title="Frota"
-          iconType="fleet"
           to="/empresa/frota"
           accent="zinc"
           tooltipText="Total de veículos com movimento no período. O indicador cruza atividade da frota com equipe ativa. Valor baixo pode sinalizar ociosidade ou indisponibilidade."
@@ -237,7 +226,6 @@ export default function EmpresaExecutiveDashboardPage() {
 
         <ExecutiveModuleCard
           title="Pessoas"
-          iconType="people"
           to="/empresa/pessoas"
           accent="violet"
           tooltipText="Motoristas com lançamentos no período. É calculado por usuários ativos com registro operacional. Valor baixo reduz capacidade de execução da frota."

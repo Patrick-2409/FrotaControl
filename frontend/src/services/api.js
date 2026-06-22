@@ -1,5 +1,6 @@
 import axios from "axios";
 import { createLogger } from "./logger";
+import { clearSensitiveLocalCaches } from "./sessionSecurity";
 
 const PROD_API_FALLBACK = "https://frotacontrol.onrender.com";
 const httpLogger = createLogger("http");
@@ -107,10 +108,7 @@ const api = axios.create({
 });
 
 const clearCriticalCache = () => {
-  localStorage.removeItem("fc_token");
-  localStorage.removeItem("fc_user");
-  localStorage.removeItem("fc_edit_record");
-  sessionStorage.clear();
+  clearSensitiveLocalCaches();
 };
 
 const getStoredToken = () => {

@@ -14,6 +14,7 @@ const {
   updateUser,
   updateUserAsSuperAdmin,
   updateUserPassword,
+  sanitizeUser,
 } = require("../models/userModel");
 const {
   createVehicle,
@@ -523,7 +524,9 @@ const listUsersCtrl = async (req, res) => {
     );
     const rows = await pool.query(
       `
-      SELECT u.*,
+      SELECT u.id, u.empresa_id, u.nome, u.email, u.cpf_id, u.role, u.veiculo_id, u.profile_image_url,
+        u.funcao, u.cnh_categoria, u.cnh_numero, u.cnh_validade, u.treinamentos, u.observacoes,
+        u.equipamento_vinculo, u.operacao_escopo, u.status_operacional, u.conta_status, u.created_at,
         e.nome AS empresa_nome,
         v.nome AS veiculo_nome, v.placa
       FROM usuarios u
@@ -535,8 +538,9 @@ const listUsersCtrl = async (req, res) => {
       `,
       [...values, limit, offset]
     );
+    const items = rows.rows.map((row) => sanitizeUser(row));
     return res.json({
-      items: rows.rows,
+      items,
       total: count.rows[0].total,
       page,
       totalPages: Math.max(1, Math.ceil(count.rows[0].total / limit)),
