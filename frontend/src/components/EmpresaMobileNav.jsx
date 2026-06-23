@@ -13,7 +13,6 @@ function EmpresaMobileNav({ pathname, search, onNavTap }) {
               key={item.to}
               to={item.to}
               onClick={onNavTap}
-              title={item.label}
               aria-current={active ? "page" : undefined}
               className={`fc-empresa-mobile-nav-link flex min-h-[3.35rem] min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-1 text-[10px] font-semibold transition ${
                 active ? "fc-empresa-mobile-nav-link--active text-zinc-50" : "text-zinc-500 active:bg-zinc-900 active:text-zinc-200"

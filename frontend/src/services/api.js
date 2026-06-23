@@ -172,7 +172,10 @@ api.interceptors.response.use(
 
     const skipErrorLog = Boolean(cfg.skipErrorLog);
     if (!isExpectedAuth401 && !skipErrorLog) {
-      httpLogger.error("api_request_failed", {
+      const method = String(cfg?.method || "GET").toUpperCase();
+      const failureCode = status ?? error?.code ?? "NO_RESPONSE";
+      const logUrl = requestUrl || "(sem url)";
+      httpLogger.error(`api_request_failed ${method} ${logUrl} status=${failureCode}`, {
         url: requestUrl,
         method: cfg?.method,
         status: status ?? null,

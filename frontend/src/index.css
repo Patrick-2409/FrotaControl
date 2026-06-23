@@ -1290,6 +1290,11 @@ textarea:focus-visible,
   background: linear-gradient(90deg, rgba(39, 39, 42, 0.35), rgba(24, 24, 27, 0.2));
 }
 
+.fc-tooltip-panel {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;

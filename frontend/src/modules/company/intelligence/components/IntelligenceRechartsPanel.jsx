@@ -22,6 +22,7 @@ import {
   PieConsumoTooltip,
   useChartBreakpoint,
 } from "../utils/pieChartHelpers";
+import TooltipInfo from "../../shared/components/TooltipInfo";
 
 const hasRows = (rows) => Array.isArray(rows) && rows.length > 0;
 const fmtDateTick = (value) => {
@@ -73,14 +74,7 @@ function ChartCard({ title, subtitle, helpText, children, className = "", legend
     <article className={`rounded-xl border border-zinc-800/90 bg-zinc-950/50 p-4 sm:p-5 ${className}`}>
       <p className="flex items-center gap-2 text-sm font-semibold text-zinc-100 sm:text-base">
         <span>{title}</span>
-        {helpText ? (
-          <span
-            className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-zinc-600 text-[10px] text-zinc-300"
-            title={helpText}
-          >
-            i
-          </span>
-        ) : null}
+        {helpText ? <TooltipInfo text={helpText} /> : null}
       </p>
       {subtitle ? <p className="mt-1 text-xs text-zinc-400 sm:text-sm">{subtitle}</p> : null}
       <div className={`mt-3 w-full overflow-hidden ${chartClassName}`}>

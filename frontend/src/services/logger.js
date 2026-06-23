@@ -1,5 +1,5 @@
 /**
- * Logger central do FrotaControl (browser).
+ * Logger central do FrotaMax (browser).
  * Níveis: debug < info < warn < error.
  * Metadados são sanitizados (nunca tokens/senhas em texto claro).
  *
@@ -58,10 +58,10 @@ function emit(level, namespace, message, meta) {
     namespace,
     message,
     meta: meta && typeof meta === "object" ? sanitizeMeta(meta) : meta,
-    source: "frotacontrol-web",
+    source: "frotamax-web",
   };
   forwardToMonitoring(entry);
-  const line = `[FrotaControl][${namespace}][${level.toUpperCase()}] ${message}`;
+  const line = `[FrotaMax][${namespace}][${level.toUpperCase()}] ${message}`;
   const payload = entry.meta !== undefined && entry.meta !== null ? entry.meta : "";
   if (level === "error") {
     console.error(line, payload);

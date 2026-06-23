@@ -1,4 +1,5 @@
 import { memo } from "react";
+import TooltipInfo from "../../shared/components/TooltipInfo";
 
 const TONE_BORDER = {
   critical: "border-rose-500/35 shadow-[0_0_18px_-10px_rgba(244,63,94,0.4)]",
@@ -39,16 +40,7 @@ function ExecutiveKpiCard({
             </span>
           ) : null}
           <span className="truncate">{label}</span>
-          {tooltip ? (
-            <button
-              type="button"
-              className="ml-auto inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-zinc-600/80 bg-zinc-800/80 text-[10px] font-bold leading-none text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
-              title={tooltip}
-              aria-label={tooltip}
-            >
-              ?
-            </button>
-          ) : null}
+          {tooltip ? <TooltipInfo text={tooltip} className="ml-auto" /> : null}
         </p>
         <p className={`mt-2 text-2xl font-semibold tabular-nums tracking-tight sm:text-3xl ${TONE_VALUE[tone] ?? TONE_VALUE.neutral}`}>
           {value}

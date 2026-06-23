@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 function InfoIcon() {
   return (
@@ -12,11 +13,32 @@ function InfoIcon() {
 
 export default function TooltipInfo({ text, className = "", panelClassName = "" }) {
   const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState(null);
   const ref = useRef(null);
+  const pointerOpenRef = useRef(false);
   const tipId = useId();
+
+  const updatePosition = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const viewportW = window.innerWidth || document.documentElement.clientWidth || 0;
+    const viewportH = window.innerHeight || document.documentElement.clientHeight || 0;
+    const margin = 12;
+    const maxPanelWidth = Math.min(288, Math.max(160, viewportW - margin * 2));
+    const half = maxPanelWidth / 2;
+    const center = rect.left + rect.width / 2;
+    const left = Math.min(Math.max(center, margin + half), Math.max(margin + half, viewportW - margin - half));
+    const hasRoomBelow = rect.bottom + 128 < viewportH;
+    const placement = hasRoomBelow || rect.top < 150 ? "bottom" : "top";
+    const top = placement === "bottom" ? rect.bottom + 8 : rect.top - 8;
+    setPosition({ left, top, placement, maxPanelWidth });
+  }, []);
 
   useEffect(() => {
     if (!open) return undefined;
+    updatePosition();
     const onDocClick = (ev) => {
       if (!ref.current?.contains(ev.target)) setOpen(false);
     };
@@ -26,19 +48,56 @@ export default function TooltipInfo({ text, className = "", panelClassName = "" 
     document.addEventListener("mousedown", onDocClick);
     document.addEventListener("touchstart", onDocClick, { passive: true });
     document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
     return () => {
       document.removeEventListener("mousedown", onDocClick);
       document.removeEventListener("touchstart", onDocClick);
       document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
     };
-  }, [open]);
+  }, [open, updatePosition]);
+
+  const show = () => {
+    setOpen(true);
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame?.(updatePosition);
+    }
+  };
+
+  const tooltipPanel =
+    open && position && typeof document !== "undefined"
+      ? createPortal(
+          <span
+            id={tipId}
+            role="tooltip"
+            className={`fc-tooltip-panel pointer-events-none fixed z-[90] rounded-md border border-zinc-700/85 bg-zinc-950/95 px-2.5 py-1.5 text-[11px] leading-snug text-zinc-100 shadow-2xl ring-1 ring-black/30 transition ${
+              open ? "scale-100 opacity-100" : "scale-95 opacity-0"
+            } ${panelClassName}`.trim()}
+            style={{
+              left: position.left,
+              top: position.top,
+              maxWidth: position.maxPanelWidth,
+              width: "max-content",
+              transform:
+                position.placement === "top" ? "translate(-50%, -100%)" : "translate(-50%, 0)",
+            }}
+          >
+            {text}
+          </span>,
+          document.body
+        )
+      : null;
 
   return (
     <span
       ref={ref}
-      className={`relative inline-flex items-center align-middle ${className}`.trim()}
-      onMouseEnter={() => setOpen(true)}
+      className={`inline-flex items-center align-middle ${className}`.trim()}
+      onMouseEnter={show}
       onMouseLeave={() => setOpen(false)}
+      onFocus={show}
+      onBlur={() => setOpen(false)}
     >
       <button
         type="button"
@@ -46,23 +105,22 @@ export default function TooltipInfo({ text, className = "", panelClassName = "" 
         aria-label="Mostrar explicação"
         aria-expanded={open}
         aria-describedby={open ? tipId : undefined}
+        onPointerDown={() => {
+          pointerOpenRef.current = open;
+        }}
         onClick={(ev) => {
           ev.preventDefault();
           ev.stopPropagation();
-          setOpen((prev) => !prev);
+          const next = !pointerOpenRef.current;
+          setOpen(next);
+          if (next && typeof window !== "undefined") {
+            window.requestAnimationFrame?.(updatePosition);
+          }
         }}
       >
         <InfoIcon />
       </button>
-      <span
-        id={tipId}
-        role="tooltip"
-        className={`fc-tooltip-panel pointer-events-none absolute left-1/2 top-full z-50 mt-2 w-max max-w-[18rem] -translate-x-1/2 rounded-md border border-zinc-700/85 bg-zinc-950/95 px-2.5 py-1.5 text-[11px] leading-snug text-zinc-100 shadow-xl transition ${
-          open ? "scale-100 opacity-100" : "scale-95 opacity-0"
-        } ${panelClassName}`.trim()}
-      >
-        {text}
-      </span>
+      {tooltipPanel}
     </span>
   );
 }

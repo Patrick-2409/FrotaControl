@@ -947,7 +947,7 @@ export default function RelatorioInteligenciaPage() {
           </div>
 
           <footer className="mt-10 border-t border-slate-200 pt-4 text-xs text-slate-500">
-            Gerado em {new Date().toLocaleString("pt-BR")} · FrotaControl Inteligência · Layout HTML premium (base para PDF)
+            Gerado em {new Date().toLocaleString("pt-BR")} · FrotaMax Inteligência · Layout HTML premium (base para PDF)
           </footer>
         </div>
       </div>
