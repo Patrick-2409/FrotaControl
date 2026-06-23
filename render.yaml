@@ -14,6 +14,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NODE_VERSION
+        value: "22"
       - key: PUPPETEER_SKIP_DOWNLOAD
         value: "true"
       - key: CORS_STRICT
@@ -46,5 +48,7 @@ services:
     envVars:
       - key: VITE_API_URL
         sync: false
+      - key: NODE_VERSION
+        value: "22"
       - key: NODE_ENV
         value: production
