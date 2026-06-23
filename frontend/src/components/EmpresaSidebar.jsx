@@ -65,7 +65,6 @@ function EmpresaSidebar({ pathname, search, sections, footerItems, onNavTap, onN
                   onClick={onLinkClick}
                   className={linkClass(tab)}
                   aria-current={isActive(tab) ? "page" : undefined}
-                  title={tab.label}
                 >
                   <EmpresaMenuIcon type={tab.icon} />
                   {tab.label}
@@ -86,7 +85,6 @@ function EmpresaSidebar({ pathname, search, sections, footerItems, onNavTap, onN
                 onClick={onLinkClick}
                 className={linkClass(tab)}
                 aria-current={isActive(tab) ? "page" : undefined}
-                title={tab.label}
               >
                 <EmpresaMenuIcon type={tab.icon} />
                 {tab.label}

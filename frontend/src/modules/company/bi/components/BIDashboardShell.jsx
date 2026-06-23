@@ -10,10 +10,12 @@ function BIDashboardShell({
   lead,
   headerAside,
   children,
+  className = "",
+  showModuleSwitcher = true,
 }) {
   return (
-    <div className="fc-bi-dashboard-root fc-erp-workspace">
-      <BIModuleSwitcher />
+    <div className={`fc-bi-dashboard-root fc-erp-workspace ${className}`.trim()}>
+      {showModuleSwitcher ? <BIModuleSwitcher /> : null}
 
       <header className="fc-bi-dashboard-header border-b border-zinc-800/90 pb-5 sm:pb-8">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">

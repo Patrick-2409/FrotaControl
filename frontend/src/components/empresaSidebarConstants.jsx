@@ -169,17 +169,17 @@ export const EMPRESA_SIDEBAR_SECTIONS = filterEmpresaSidebarSections([
   {
     id: "combustivel",
     title: "Combustível",
-    items: [{ to: "/empresa/combustivel", label: "Dashboard Combustível", icon: "fuel", exact: false }],
+    items: [{ to: "/empresa/combustivel", label: "Combustível", icon: "fuel", exact: false }],
   },
   {
     id: "frota",
     title: "Frota",
-    items: [{ to: "/empresa/frota", label: "Painel frota", icon: "fleet", exact: false }],
+    items: [{ to: "/empresa/frota", label: "Frota", icon: "fleet", exact: false }],
   },
   {
     id: "pessoas",
     title: "Pessoas",
-    items: [{ to: "/empresa/pessoas", label: "Gestão de pessoas", icon: "people", exact: false }],
+    items: [{ to: "/empresa/pessoas", label: "Pessoas", icon: "people", exact: false }],
   },
   {
     id: "inteligencia",

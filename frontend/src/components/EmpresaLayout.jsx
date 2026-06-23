@@ -48,7 +48,7 @@ export default function EmpresaLayout({ children }) {
   return (
     <div className="fc-theme-empresa fc-empresa-shell-root min-h-[100dvh] min-h-screen text-zinc-100 antialiased">
       <header className="fc-empresa-shell-header sticky top-0 z-50 border-b border-zinc-800/70 bg-zinc-950/92 backdrop-blur-md">
-        <div className="mx-auto flex w-full max-w-[90rem] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:gap-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex w-full max-w-[94rem] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:gap-4 sm:px-6 lg:px-8">
           <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
             <button
               type="button"
@@ -73,7 +73,7 @@ export default function EmpresaLayout({ children }) {
               <h1 className="truncate text-base font-semibold tracking-tight text-zinc-50 sm:text-lg">
                 {user?.empresa_nome || "Empresa"}
               </h1>
-              {activeLabel ? <p className="mt-0.5 truncate text-xs text-zinc-500">{activeLabel}</p> : null}
+              {activeLabel ? <p className="mt-0.5 truncate text-xs text-zinc-400">{activeLabel}</p> : null}
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2 text-sm sm:gap-3">
@@ -137,7 +137,7 @@ export default function EmpresaLayout({ children }) {
         </div>
       ) : null}
 
-      <div className="fc-empresa-main-grid mx-auto grid w-full max-w-[90rem] gap-5 px-4 py-5 sm:gap-6 sm:px-6 sm:py-6 lg:grid-cols-[minmax(0,17.5rem)_1fr] lg:gap-10 lg:px-8 lg:py-8">
+      <div className="fc-empresa-main-grid mx-auto grid w-full max-w-[94rem] gap-5 px-4 py-5 sm:gap-6 sm:px-6 sm:py-6 lg:grid-cols-[minmax(0,16.75rem)_1fr] lg:gap-7 lg:px-8 lg:py-7 xl:gap-8">
         <div className="hidden min-w-0 lg:block">
           <EmpresaSidebar
             pathname={pathname}

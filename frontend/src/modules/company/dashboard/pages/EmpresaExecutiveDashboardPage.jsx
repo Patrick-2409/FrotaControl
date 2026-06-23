@@ -4,7 +4,6 @@ import ExecutiveModuleCard from "../components/ExecutiveModuleCard";
 import ExecutivePeriodoToggle from "../components/ExecutivePeriodoToggle";
 import { useEmpresaExecutiveStats } from "../hooks/useEmpresaExecutiveStats";
 import { periodoResumoLabel } from "../lib/executivePeriodStorage";
-import AccordionSection from "../../shared/components/AccordionSection";
 
 const fmtTon = (n) =>
   Number(n || 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
@@ -32,8 +31,8 @@ const trendArrow = (direction) => {
 
 function MetricRow({ label, value, highlight = false }) {
   return (
-    <div className="flex items-baseline justify-between gap-3 border-b border-zinc-800/50 py-1.5 last:border-0">
-      <span className="text-xs text-zinc-500">{label}</span>
+    <div className="flex items-baseline justify-between gap-3 border-b border-zinc-800/70 py-1.5 last:border-0">
+      <span className="text-xs text-zinc-400">{label}</span>
       <span className={`tabular-nums ${highlight ? "text-lg font-bold text-zinc-50" : "font-semibold text-zinc-200"}`}>
         {value}
       </span>
@@ -43,9 +42,10 @@ function MetricRow({ label, value, highlight = false }) {
 
 function PeriodoHeader({ periodo, setPeriodo }) {
   return (
-    <div className="mb-5 flex flex-col gap-3 sm:mb-6 sm:flex-row sm:items-center sm:justify-between">
-      <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
-        Período: {periodoResumoLabel(periodo)}
+    <div className="fc-executive-period-header mb-5 flex flex-col gap-3 sm:mb-6 sm:flex-row sm:items-center sm:justify-between">
+      <p className="fc-executive-period-pill inline-flex w-fit items-center gap-2 rounded-md border px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em]">
+        <span>Período</span>
+        <strong className="tracking-normal">{periodoResumoLabel(periodo)}</strong>
       </p>
       <ExecutivePeriodoToggle periodo={periodo} onChange={setPeriodo} className="sm:justify-end" />
     </div>
@@ -57,7 +57,7 @@ export default function EmpresaExecutiveDashboardPage() {
 
   if (loading) {
     return (
-      <BIDashboardShell eyebrow="Indicadores" title="Executivo" lead="">
+      <BIDashboardShell eyebrow="Indicadores" title="Executivo" lead="" className="fc-executive-dashboard-page" showModuleSwitcher={false}>
         <PeriodoHeader periodo={periodo} setPeriodo={setPeriodo} />
         <div className="fc-card border-zinc-800/90 p-8">
           <SkeletonRows rows={6} />
@@ -68,7 +68,7 @@ export default function EmpresaExecutiveDashboardPage() {
 
   if (!summary) {
     return (
-      <BIDashboardShell eyebrow="Indicadores" title="Executivo" lead="">
+      <BIDashboardShell eyebrow="Indicadores" title="Executivo" lead="" className="fc-executive-dashboard-page" showModuleSwitcher={false}>
         <PeriodoHeader periodo={periodo} setPeriodo={setPeriodo} />
         <p className="text-sm text-rose-400/90">Não foi possível carregar o painel executivo.</p>
       </BIDashboardShell>
@@ -116,6 +116,8 @@ export default function EmpresaExecutiveDashboardPage() {
       eyebrow="Indicadores"
       title="Executivo"
       lead="Visão consolidada e acionável por módulo. Toque em qualquer card para abrir a área correspondente."
+      className="fc-executive-dashboard-page"
+      showModuleSwitcher={false}
     >
       <PeriodoHeader periodo={periodo} setPeriodo={setPeriodo} />
 
@@ -125,14 +127,19 @@ export default function EmpresaExecutiveDashboardPage() {
         </p>
       ) : null}
 
-      <AccordionSection
-        id="exec-resumo-modulos"
-        title="Dashboard rápido por módulo"
-        description="Toque no card para abrir o módulo correspondente."
-        defaultOpenDesktop
-        defaultOpenMobile={false}
-      >
-        <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="Resumo por módulo">
+      <section className="fc-executive-module-panel" aria-labelledby="exec-resumo-modulos">
+        <header className="fc-executive-module-panel__header">
+          <div className="min-w-0">
+            <h2 id="exec-resumo-modulos" className="text-base font-semibold tracking-tight text-zinc-50 sm:text-lg">
+              Dashboard rápido por módulo
+            </h2>
+            <p className="mt-1 text-sm text-zinc-400">
+              Selecione um card para acessar a área operacional correspondente.
+            </p>
+          </div>
+          <p className="fc-executive-module-panel__count">5 áreas</p>
+        </header>
+        <div className="fc-executive-module-panel__grid grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="Resumo por módulo">
         <ExecutiveModuleCard
           title="Transporte"
           to="/empresa/transporte"
@@ -240,8 +247,8 @@ export default function EmpresaExecutiveDashboardPage() {
           <MetricRow label="Motoristas ativos" value={fmtInt(pessoas.motoristasAtivos)} highlight />
           <p className="text-xs text-zinc-500">Com lançamento — {periodoHint.toLowerCase()}.</p>
         </ExecutiveModuleCard>
-        </section>
-      </AccordionSection>
+        </div>
+      </section>
     </BIDashboardShell>
   );
 }
