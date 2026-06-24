@@ -544,7 +544,7 @@ export default function RelatorioInteligenciaPage() {
               <CompanyLogo
                 logoUrl={user?.logo_url}
                 companyName={user?.empresa_nome || user?.nome || "Empresa"}
-                className="!h-14 !w-14 !rounded-xl !border-slate-200 !bg-white"
+                className="fc-report-cover-logo !h-16 !w-16 !rounded-xl !border-slate-200 !bg-white sm:!h-20 sm:!w-20"
               />
               <div>
                 <p className="text-xs font-semibold uppercase tracking-widest text-blue-700">Relatório Executivo</p>
@@ -557,7 +557,7 @@ export default function RelatorioInteligenciaPage() {
               </div>
             </div>
             <div
-              className={`rounded-2xl border px-6 py-4 text-center ${statusStyle.bg} ${statusStyle.border}`}
+              className={`fc-report-status-card rounded-2xl border px-6 py-4 text-center ${statusStyle.bg} ${statusStyle.border}`}
             >
               <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">Status</p>
               <p className={`mt-1 text-3xl font-black tracking-tight ${statusStyle.text}`}>{status.label}</p>

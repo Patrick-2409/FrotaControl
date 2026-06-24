@@ -28,7 +28,7 @@ export function ExecutiveReportSection({
       <header className="mb-5 flex flex-wrap items-start justify-between gap-3 border-b border-slate-200/80 pb-4">
         <div className="min-w-0">
           <h2 className="flex items-center gap-2 text-lg font-bold tracking-tight text-slate-900 sm:text-xl">
-            {icon ? <span aria-hidden="true">{icon}</span> : null}
+            {icon ? <span className="fc-report-section-marker" aria-hidden="true" /> : null}
             <span>{title}</span>
           </h2>
           {subtitle ? <p className="mt-1 text-sm text-slate-600">{subtitle}</p> : null}
@@ -61,7 +61,7 @@ export function ExecutiveReportIndex({ sections = [] }) {
               href={`#${item.id}`}
               className="flex items-center gap-2 rounded-lg border border-transparent px-2 py-1.5 text-sm text-slate-700 transition hover:border-slate-200 hover:bg-white"
             >
-              <span className="text-base">{item.icon}</span>
+              <span className="fc-report-section-marker !h-2 !w-2" aria-hidden="true" />
               <span>
                 {index + 1}. {item.label}
               </span>

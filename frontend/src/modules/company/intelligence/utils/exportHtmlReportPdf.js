@@ -1,4 +1,15 @@
-const HIDDEN_SELECTORS = [".fc-report-export-skip", ".print\\:hidden"];
+const HIDDEN_SELECTORS = [
+  ".fc-report-export-skip",
+  ".print\\:hidden",
+  ".fc-empresa-shell-header",
+  ".fc-empresa-sidebar",
+  ".fc-empresa-nav-backdrop",
+  ".fc-empresa-drawer",
+  ".fc-empresa-nav-trigger",
+  ".fc-empresa-mobile-nav",
+  ".fc-savebar-shell",
+  ".fc-skip-link",
+];
 
 const UNSUPPORTED_COLOR_FN = /oklch|oklab|color-mix|\blab\(|\blch\(/i;
 

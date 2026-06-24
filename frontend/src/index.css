@@ -750,6 +750,32 @@ textarea:focus-visible,
   letter-spacing: 0.03em;
 }
 
+.fc-report-section-marker,
+.fc-report-status-dot,
+.fc-report-semaphore-dot {
+  display: inline-flex;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  box-shadow: 0 0 0 3px rgba(226, 232, 240, 0.72);
+}
+
+.fc-report-section-marker {
+  width: 0.72rem;
+  height: 0.72rem;
+  background: linear-gradient(135deg, #1d4ed8, #38bdf8);
+}
+
+.fc-report-status-dot {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.fc-report-semaphore-dot {
+  width: 0.9rem;
+  height: 0.9rem;
+  margin-top: 0.2rem;
+}
+
 .fc-skip-link {
   position: fixed;
   left: 0.75rem;
@@ -1392,15 +1418,27 @@ textarea:focus-visible,
 @media print {
   @page {
     size: A4;
-    margin: 10mm;
+    margin: 9mm 10mm 11mm;
   }
 
   .fc-empresa-shell-header,
   .fc-empresa-sidebar,
   .fc-empresa-nav-backdrop,
   .fc-empresa-drawer,
-  .fc-empresa-nav-trigger {
+  .fc-empresa-nav-trigger,
+  .fc-empresa-mobile-nav,
+  .fc-savebar-shell,
+  .fc-skip-link,
+  .fc-report-export-skip,
+  .print\:hidden {
     display: none !important;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
   .fc-empresa-main-grid {
@@ -1427,29 +1465,109 @@ textarea:focus-visible,
   .fc-report-page {
     background: #fff !important;
     min-height: auto !important;
+    color: #0f172a !important;
   }
 
-  .fc-report-page .rounded-2xl,
-  .fc-report-page section,
+  .fc-report-page > div {
+    max-width: 100% !important;
+    padding: 0 !important;
+  }
+
+  .fc-report-document {
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+
+  .fc-report-cover {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 12mm !important;
+    border-bottom: 2px solid #dbe4f0 !important;
+    padding: 0 0 7mm !important;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  .fc-report-cover-logo {
+    height: 20mm !important;
+    width: 20mm !important;
+  }
+
+  .fc-report-cover h1,
+  .fc-report-cover-title {
+    font-size: 24pt !important;
+    line-height: 1.04 !important;
+    letter-spacing: 0 !important;
+  }
+
+  .fc-report-status-card {
+    min-width: 58mm;
+    border-radius: 10px !important;
+    padding: 5mm !important;
+  }
+
   .fc-report-page article,
-  .fc-report-section,
-  .fc-report-page [data-fc-chart-block],
   .fc-report-page [data-fc-score-card],
   .fc-report-page table {
     break-inside: avoid;
     page-break-inside: avoid;
   }
 
-  .fc-report-cover {
-    break-after: page;
-    page-break-after: always;
+  .fc-report-page section,
+  .fc-report-section {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  .fc-report-section > header,
+  .fc-report-page [data-fc-chart-block] {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 
   .fc-report-board-summary {
-    break-after: page;
-    page-break-after: always;
-    min-height: calc(100vh - 4rem);
+    break-after: auto;
+    page-break-after: auto;
+    min-height: auto !important;
     box-sizing: border-box;
+  }
+
+  .fc-report-section,
+  .fc-report-board-summary,
+  .fc-report-page article,
+  .fc-report-page [data-fc-chart-block],
+  .fc-report-page [data-fc-score-card] {
+    box-shadow: none !important;
+  }
+
+  .fc-report-section {
+    margin-top: 7mm !important;
+    padding: 5.5mm !important;
+    border-radius: 10px !important;
+  }
+
+  .fc-report-section h2,
+  .fc-report-board-summary h2 {
+    letter-spacing: 0.01em !important;
+  }
+
+  .fc-report-page p,
+  .fc-report-page li {
+    orphans: 3;
+    widows: 3;
+  }
+
+  .fc-report-page [data-fc-chart-block] {
+    border-radius: 10px !important;
+    padding: 5mm !important;
+  }
+
+  .fc-report-page [data-fc-chart-block] .recharts-wrapper {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }
 
@@ -1458,6 +1576,10 @@ body.fc-pdf-export-mode .fc-empresa-sidebar,
 body.fc-pdf-export-mode .fc-empresa-nav-backdrop,
 body.fc-pdf-export-mode .fc-empresa-drawer,
 body.fc-pdf-export-mode .fc-empresa-nav-trigger,
+body.fc-pdf-export-mode .fc-empresa-mobile-nav,
+body.fc-pdf-export-mode .fc-savebar-shell,
+body.fc-pdf-export-mode .fc-skip-link,
+body.fc-pdf-export-mode .fc-report-export-skip,
 body.fc-pdf-export-mode .print\:hidden {
   display: none !important;
 }
@@ -1476,4 +1598,15 @@ body.fc-pdf-export-mode .fc-theme-empresa.fc-empresa-shell-root,
 body.fc-pdf-export-mode .fc-report-page {
   background: #fff !important;
   min-height: auto !important;
+}
+
+body.fc-pdf-export-mode {
+  background: #fff !important;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+body.fc-pdf-export-mode .fc-report-page > div {
+  max-width: 100% !important;
+  padding: 0 !important;
 }

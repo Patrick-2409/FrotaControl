@@ -13,9 +13,7 @@ function SemaphoreCard({ item }) {
   return (
     <article className={`rounded-xl border p-4 ${item.badge}`}>
       <div className="flex items-start gap-3">
-        <span className="text-2xl leading-none" aria-hidden="true">
-          {item.emoji}
-        </span>
+        <span className={`fc-report-semaphore-dot ${item.dot || "bg-slate-400"}`} aria-hidden="true" />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-bold uppercase tracking-wide text-slate-900">{item.titulo}</p>
           <p className="mt-1.5 text-sm leading-relaxed text-slate-800">{item.explicacao}</p>
@@ -91,9 +89,7 @@ export default function ExecutiveBoardSummaryPage({
         <SummaryBlock label="1. Situação Geral">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
             <div className="flex items-center gap-3">
-              <span className="text-4xl leading-none" aria-hidden="true">
-                {situacao.emoji}
-              </span>
+              <span className={`fc-report-status-dot ${situacao.dot || "bg-slate-500"}`} aria-hidden="true" />
               <div>
                 <p className={`text-lg font-black uppercase tracking-wide ${situacao.accent}`}>{situacao.headline}</p>
                 <p className="mt-1 text-sm text-slate-600">
