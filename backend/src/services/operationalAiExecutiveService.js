@@ -132,6 +132,11 @@ const stableStringify = (value) => {
 };
 
 const sha256 = (value) => crypto.createHash("sha256").update(String(value || ""), "utf8").digest("hex");
+const buildOperationalDatasetHash = (dataset = {}) => {
+  const periodo = { ...(dataset?.periodo || {}) };
+  delete periodo.gerado_em;
+  return sha256(stableStringify({ ...dataset, periodo }));
+};
 const monthlyLimit = () => Math.max(1, Number(process.env.OP_AI_MONTHLY_LIMIT || MONTHLY_LIMIT_DEFAULT));
 const cooldownSeconds = () => Math.max(10, Number(process.env.OP_AI_COOLDOWN_SECONDS || COOLDOWN_SECONDS_DEFAULT));
 
@@ -820,6 +825,12 @@ const resolveLogoDataUrl = async (logoUrl) => {
   }
 };
 
+const pdfImageFromDataUrl = (dataUrl) => {
+  const match = String(dataUrl || "").match(/^data:image\/(png|jpe?g);base64,([a-z0-9+/=]+)$/i);
+  if (!match) return null;
+  return Buffer.from(match[2], "base64");
+};
+
 const yDomain = (values) => {
   const clean = values.filter((v) => Number.isFinite(v));
   const max = clean.length ? Math.max(...clean) : 0;
@@ -1190,13 +1201,38 @@ const launchBrowser = async () => {
   throw new Error(PDF_MAINTENANCE_MESSAGE);
 };
 
-const fallbackPdf = ({ dataset, ai }) =>
-  new Promise((resolve, reject) => {
+const fallbackPdf = async ({ dataset, ai }) => {
+  const logoDataUrl = await resolveLogoDataUrl(dataset?.empresa?.logo_url);
+  const logoBuffer = pdfImageFromDataUrl(logoDataUrl);
+
+  return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: "A4", margin: 36 });
     const chunks = [];
     doc.on("data", (chunk) => chunks.push(chunk));
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
+
+    const logoX = 36;
+    const logoY = 34;
+    const logoSize = 48;
+    doc.rect(logoX, logoY, logoSize, logoSize).lineWidth(0.8).stroke("#cbd5e1");
+    if (logoBuffer) {
+      try {
+        doc.image(logoBuffer, logoX + 4, logoY + 4, { fit: [logoSize - 8, logoSize - 8] });
+      } catch {
+        doc.font("Helvetica-Bold").fontSize(14).fillColor("#334155").text("LOGO", logoX, logoY + 17, {
+          width: logoSize,
+          align: "center",
+        });
+      }
+    } else {
+      const initial = String(dataset?.empresa?.nome || "E").trim().charAt(0).toUpperCase() || "E";
+      doc.font("Helvetica-Bold").fontSize(20).fillColor("#334155").text(initial, logoX, logoY + 14, {
+        width: logoSize,
+        align: "center",
+      });
+    }
+    doc.y = 96;
 
     doc.font("Helvetica-Bold").fontSize(17).fillColor("#111827").text("Relatório Executivo Operacional");
     doc.moveDown(0.2);
@@ -1218,6 +1254,7 @@ const fallbackPdf = ({ dataset, ai }) =>
     });
     doc.end();
   });
+};
 
 const renderPdfFromHtml = async (html) => {
   let browser = null;
@@ -1243,7 +1280,7 @@ const runAnalysis = async ({ empresaId, userId, periodo }) => {
   const p = PERIODOS.has(periodo) ? periodo : "mes";
   const range = rangeFromPeriodo(p);
   const dataset = await buildDataset(empresaId, p);
-  const hash = sha256(stableStringify(dataset));
+  const hash = buildOperationalDatasetHash(dataset);
 
   const cached = await findCached({
     empresaId,
@@ -1325,5 +1362,5 @@ const generateExecutivePdf = async ({ empresaId, userId, periodo }) => {
 
 module.exports = {
   generateExecutivePdf,
+  buildOperationalDatasetHash,
 };
-

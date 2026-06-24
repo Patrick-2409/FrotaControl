@@ -250,31 +250,12 @@ export default function RelatorioInteligenciaPage() {
     setError("");
     try {
       const params = buildApiFilters(activeFilters);
-      if (isPdfExportMode) {
-        const { data } = await api.get("/inteligencia/overview", {
-          params: {
-            periodo: params.periodo,
-            tipoAnalise: params.tipoAnalise,
-            ...(params.veiculoId ? { veiculoId: params.veiculoId } : {}),
-            ...(params.motoristaId ? { motoristaId: params.motoristaId } : {}),
-          },
-          timeout: 90000,
-        });
-        setOverview(data);
-        setRelatorio(null);
-        setMeta({
-          periodo: data?.periodo,
-          tipoAnalise: params.tipoAnalise,
-        });
-        return;
-      }
-
       const { data } = await api.post("/inteligencia/gerar", {
         periodo: params.periodo,
         veiculo_id: params.veiculoId ?? null,
         motorista_id: params.motoristaId ?? null,
         tipo_analise: params.tipoAnalise,
-      });
+      }, isPdfExportMode ? { timeout: 120000 } : undefined);
       const overviewData = data?.overview || data?.inteligencia || null;
       setOverview(overviewData);
       setRelatorio(data?.relatorio || null);
@@ -544,8 +525,8 @@ export default function RelatorioInteligenciaPage() {
               diária). Ao lançar dados novos, clique em «Atualizar relatório».
             </li>
             <li>
-              <strong>Resumo, diagnóstico, insights e ações</strong> vêm do endpoint <code>/inteligencia/overview</code>{" "}
-              (motor operacional, sem GPT).
+              <strong>Resumo, diagnóstico, insights e ações</strong> vêm do endpoint <code>/inteligencia/gerar</code>{" "}
+              (motor operacional com complemento IA quando disponível).
             </li>
             <li>
               <strong>Baixar PDF (layout BI)</strong> gera o PDF a partir da página renderizada (Puppeteer no servidor),

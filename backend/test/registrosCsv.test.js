@@ -16,6 +16,6 @@ test("buildRegistrosCsvContent inclui BOM e cabeçalho corporativo", () => {
     "ACME"
   );
   assert.ok(csv.startsWith("\ufeff"));
-  assert.match(csv, /# FrotaControl \| Empresa: ACME/);
+  assert.match(csv, /# FrotaMax \| Empresa: ACME/);
   assert.match(csv, /^tipo,id,source_id/m);
 });

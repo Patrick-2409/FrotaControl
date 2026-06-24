@@ -324,12 +324,42 @@ const ensureProtectionTables = async () => {
 };
 
 const buildCacheKey = (data) => {
+  const dataSignature = sha256(
+    stableStringify({
+      indicadores: data?.indicadores || null,
+      statusOperacao: data?.statusOperacao || null,
+      inconsistencias: data?.inconsistencias || [],
+      inconsistenciasDetalhadas: data?.inconsistenciasDetalhadas || [],
+      graficos: data?.graficos || {},
+      modulos: {
+        combustivel: {
+          indicadores: data?.modulos?.combustivel?.indicadores || {},
+          graficos: data?.modulos?.combustivel?.graficos || {},
+        },
+        transporte: {
+          indicadores: data?.modulos?.transporte?.indicadores || {},
+          graficos: data?.modulos?.transporte?.graficos || {},
+        },
+        frota: {
+          indicadores: data?.modulos?.frota?.indicadores || {},
+          graficos: data?.modulos?.frota?.graficos || {},
+        },
+      },
+      motor: {
+        status: data?.inteligenciaMotor?.status || null,
+        problemas: data?.inteligenciaMotor?.problemas || [],
+        insights: data?.inteligenciaMotor?.insights || [],
+        recomendacoes: data?.inteligenciaMotor?.recomendacoes || [],
+      },
+    })
+  );
   const base = {
     periodo: data?.periodo?.tipo || null,
     periodo_inicio: data?.periodo?.inicio || null,
     periodo_fim: data?.periodo?.fim || null,
     tipoAnalise: data?.tipoAnalise || null,
     filtros: data?.filtros || null,
+    data_signature: dataSignature,
   };
   return sha256(stableStringify(base));
 };
@@ -504,4 +534,5 @@ const generateIntelligenceReport = async (data = {}) => {
 
 module.exports = {
   generateIntelligenceReport,
+  buildCacheKey,
 };

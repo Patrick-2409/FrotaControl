@@ -54,7 +54,7 @@ function buildRegistrosCsvContent(rows, companyName) {
   const safeName = String(companyName || "Empresa")
     .replace(/\r?\n/g, " ")
     .slice(0, 240);
-  const headerLine = `# FrotaControl | Empresa: ${safeName}`;
+  const headerLine = `# FrotaMax | Empresa: ${safeName}`;
   const head = COLUMNS.map(([key]) => key).join(",");
   const body = (rows || []).map((row) => COLUMNS.map(([, pick]) => csvEscape(pick(row))).join(",")).join("\r\n");
   return `\ufeff${headerLine}\r\n${head}\r\n${body}\r\n`;

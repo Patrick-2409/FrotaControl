@@ -432,6 +432,14 @@ const resolveEmpresaLogoAssets = async (req, company) => {
   };
 };
 
+const toPdfCompatibleLogo = (logoAssets) => {
+  const image = logoAssets?.excelImage;
+  const extension = String(image?.extension || "").toLowerCase();
+  if (!image?.buffer) return null;
+  if (extension !== "png" && extension !== "jpeg" && extension !== "jpg") return null;
+  return { buffer: image.buffer, extension: extension === "jpg" ? "jpeg" : extension };
+};
+
 const marker = (checked) => (checked ? "&#10005;" : "&nbsp;");
 
 /** Data operacional em YYYY-MM-DD (America/Sao_Paulo) para agrupar romaneios por dia + veículo. */
@@ -773,7 +781,7 @@ const buildExportCoverSection = ({ companyName, logoUrl, summaryText }) => {
       <div class="logo-box"><img src="${escapeHtml(logoUrl)}" alt="Logótipo" /></div>
       <div>
         <div class="title">${escapeHtml(companyName)}</div>
-        <div class="subtitle">Exportação de registros operacionais · FrotaControl</div>
+        <div class="subtitle">Exportação de registros operacionais · FrotaMax</div>
       </div>
     </div>
     <h4>Resumo dos filtros e geração</h4>
@@ -871,7 +879,7 @@ const buildFallbackPdfBuffer = async ({ companyName, records, logoImage, filterS
       margin: 26,
       info: {
         Title: "Relatorio de Registros",
-        Author: "FrotaControl",
+        Author: "FrotaMax",
       },
     });
     const chunks = [];
@@ -996,7 +1004,16 @@ const buildFallbackPdfBuffer = async ({ companyName, records, logoImage, filterS
         y,
         58,
         [
-          { width: logoWidth, imageBuffer: logoImage?.buffer },
+          {
+            width: logoWidth,
+            imageBuffer: logoImage?.buffer,
+            text: logoImage?.buffer
+              ? undefined
+              : String(companyName || "Empresa").trim().slice(0, 2).toUpperCase() || "FM",
+            align: "center",
+            bold: true,
+            fontSize: 18,
+          },
           { width: infoWidth, text: `${title}\n${subtitle}`, fontSize: 11, bold: true },
         ],
         { fontSize: 11, bold: true, padding: 6 }
@@ -2070,7 +2087,7 @@ const addExportSummaryWorksheet = (workbook, { companyName, summaryText }) => {
     properties: { tabColor: { argb: "FF475569" } },
   });
   ws.getColumn(1).width = 72;
-  ws.getCell("A1").value = "FrotaControl — resumo da exportação";
+  ws.getCell("A1").value = "FrotaMax — resumo da exportação";
   ws.getCell("A1").font = { name: "Arial", size: 14, bold: true, color: { argb: "FF0F172A" } };
   ws.getCell("A3").value = "Empresa";
   ws.getCell("A3").font = { name: "Arial", bold: true, size: 11 };
@@ -2328,11 +2345,65 @@ const exportExcel = async (req, res) => {
   res.end();
 };
 
-const exportPdf = async (req, res) =>
-  res.status(501).json({
-    error: true,
-    message: PDF_MAINTENANCE_MESSAGE,
+const exportPdf = async (req, res) => {
+  let filters;
+  try {
+    filters = parseExportFilters(req.query);
+  } catch (err) {
+    return res.status(400).json({
+      success: false,
+      error: err.message || "Filtros invÃ¡lidos para exportaÃ§Ã£o.",
+      message: err.message || "Filtros invÃ¡lidos para exportaÃ§Ã£o.",
+    });
+  }
+  const scope = resolveExportScope(req);
+  if (!scope.ok) {
+    return res.status(scope.statusCode).json({
+      success: false,
+      error: scope.message,
+      message: scope.message,
+    });
+  }
+  if (scope.is_global) {
+    logInfo("export:global_scope", {
+      usuario_id: req.user?.sub || null,
+      role: req.user?.role || null,
+      endpoint: req.originalUrl || req.url || "/api/dashboard/export/pdf",
+    });
+  }
+
+  const filtersEffective = normalizeExportQueryFilters(filters);
+  let data;
+  try {
+    data = await loadExportItems(scope, filtersEffective);
+  } catch (e) {
+    if (e.message === EXPORT_TOO_MANY_MESSAGE) {
+      return res.status(400).json({
+        success: false,
+        error: EXPORT_TOO_MANY_MESSAGE,
+        message: EXPORT_TOO_MANY_MESSAGE,
+      });
+    }
+    throw e;
+  }
+
+  const company = scope.empresa_id ? await getCompanyById(scope.empresa_id) : null;
+  const companyName = company?.nome || (scope.is_global ? "Todas as empresas" : "Empresa");
+  const logoAssets = await resolveEmpresaLogoAssets(req, company);
+  const pdfLogo = toPdfCompatibleLogo(logoAssets);
+  const summaryText = formatExportFiltersSummaryPt(filtersEffective, data.length, scope);
+  const buffer = await buildFallbackPdfBuffer({
+    companyName,
+    records: data,
+    logoImage: pdfLogo,
+    filterSummary: summaryText,
   });
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", "attachment; filename=registros.pdf");
+  res.setHeader("Cache-Control", "no-store");
+  return res.status(200).send(buffer);
+};
 
 const exportCsv = async (req, res) => {
   let filters;
