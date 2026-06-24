@@ -71,7 +71,12 @@ async function getPeopleSummary(empresa_id) {
     ),
     queryTimed(
       `SELECT COUNT(*)::int AS c FROM usuarios u
+       INNER JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
        WHERE u.empresa_id = $1 AND u.role = 'MOTORISTA'
+         AND COALESCE(
+           NULLIF(TRIM(v.tipo_operacao), ''),
+           CASE WHEN COALESCE(v.usa_para_transporte, false) THEN 'transporte' ELSE 'apoio' END
+         ) = 'transporte'
          AND NOT EXISTS (
            SELECT 1 FROM romaneios r
            WHERE r.usuario_id = u.id AND r.empresa_id = $1
@@ -93,8 +98,13 @@ async function getPeopleSummary(empresa_id) {
        )
        SELECT COUNT(*)::int AS c
        FROM usuarios u
+       INNER JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
        INNER JOIN rom_stats rs ON rs.usuario_id = u.id
        WHERE u.empresa_id = $1 AND u.role = 'MOTORISTA'
+         AND COALESCE(
+           NULLIF(TRIM(v.tipo_operacao), ''),
+           CASE WHEN COALESCE(v.usa_para_transporte, false) THEN 'transporte' ELSE 'apoio' END
+         ) = 'transporte'
          AND rs.c7 < 0.4 * COALESCE(NULLIF(rs.cprev, 0), 0)
          AND COALESCE(rs.cprev, 0) >= 3`,
       [empresa_id],

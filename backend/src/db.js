@@ -275,7 +275,6 @@ const initDb = async () => {
       WHERE role = 'MOTORISTA';
     CREATE INDEX IF NOT EXISTS idx_veiculos_empresa_id ON veiculos (empresa_id);
     CREATE INDEX IF NOT EXISTS idx_veiculos_empresa_created ON veiculos (empresa_id, created_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_veiculos_empresa_status ON veiculos (empresa_id, status_operacional);
     CREATE INDEX IF NOT EXISTS idx_usuarios_veiculo_empresa ON usuarios (veiculo_id, empresa_id)
       WHERE veiculo_id IS NOT NULL;
     CREATE INDEX IF NOT EXISTS idx_romaneios_veiculo_empresa_data ON romaneios (veiculo_id, empresa_id, data DESC);
@@ -373,6 +372,10 @@ const initDb = async () => {
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS doc_seguro_validade DATE;
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS doc_inspecao_validade DATE;
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS fleet_telemetry_meta JSONB NOT NULL DEFAULT '{}'::jsonb;
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_veiculos_empresa_status ON veiculos (empresa_id, status_operacional);
   `);
 
   await pool.query(`

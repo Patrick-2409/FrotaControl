@@ -34,5 +34,18 @@ const start = async () => {
 
 start().catch((err) => {
   logError("server:startup-error", { message: err.message, stack: err.stack });
+  console.error(
+    JSON.stringify({
+      level: "error",
+      message: "server:startup-error",
+      meta: {
+        error: err.message,
+        code: err.code,
+        detail: err.detail,
+        constraint: err.constraint,
+        table: err.table,
+      },
+    })
+  );
   process.exit(1);
 });

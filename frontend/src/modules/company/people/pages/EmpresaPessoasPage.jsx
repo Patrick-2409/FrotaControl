@@ -40,10 +40,26 @@ function cnhCardTone(count, kind) {
   return count > 0 ? "ok" : "neutral";
 }
 
-function RankingTable({ rows, p, showMotivo = false, showNaoAplicavel = false, emptyMessage, onEditRow }) {
+function RankingTable({
+  rows,
+  p,
+  showMotivo = false,
+  showNaoAplicavel = false,
+  showRomaneios = true,
+  emptyMessage,
+  onEditRow,
+}) {
+  const colSpan =
+    3 +
+    (showMotivo ? 1 : 0) +
+    (showNaoAplicavel ? 1 : 0) +
+    (showRomaneios ? 1 : 0) +
+    1 +
+    (onEditRow ? 1 : 0);
+
   return (
     <div className="overflow-x-auto rounded-xl border border-zinc-800/90">
-      <table className="min-w-[640px] w-full border-collapse text-left text-sm">
+      <table className={`${showRomaneios ? "min-w-[640px]" : "min-w-[560px]"} w-full border-collapse text-left text-sm`}>
         <thead>
           <tr className="border-b border-zinc-800 bg-zinc-900/60 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
             <th className="px-3 py-3">Pessoa</th>
@@ -51,7 +67,7 @@ function RankingTable({ rows, p, showMotivo = false, showNaoAplicavel = false, e
             <th className="px-3 py-3">Vínculos</th>
             {showMotivo ? <th className="px-3 py-3">Motivo</th> : null}
             {showNaoAplicavel ? <th className="px-3 py-3">Atividade</th> : null}
-            <th className="px-3 py-3 text-right">Romaneios</th>
+            {showRomaneios ? <th className="px-3 py-3 text-right">Romaneios</th> : null}
             <th className="px-3 py-3 text-right">Parte diária</th>
             {onEditRow ? <th className="px-3 py-3 text-right">Ações</th> : null}
           </tr>
@@ -59,7 +75,7 @@ function RankingTable({ rows, p, showMotivo = false, showNaoAplicavel = false, e
         <tbody>
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={5 + (showMotivo ? 1 : 0) + (showNaoAplicavel ? 1 : 0) + (onEditRow ? 1 : 0)} className="px-3 py-6 text-center text-zinc-500">
+              <td colSpan={colSpan} className="px-3 py-6 text-center text-zinc-500">
                 {emptyMessage}
               </td>
             </tr>
@@ -96,7 +112,9 @@ function RankingTable({ rows, p, showMotivo = false, showNaoAplicavel = false, e
                 {showNaoAplicavel ? (
                   <td className="px-3 py-3 text-xs text-zinc-500">{foraControleProducaoLabel()}</td>
                 ) : null}
-                <td className="px-3 py-3 text-right tabular-nums text-zinc-200">{p.fmtInt(row.romaneios)}</td>
+                {showRomaneios ? (
+                  <td className="px-3 py-3 text-right tabular-nums text-zinc-200">{p.fmtInt(row.romaneios)}</td>
+                ) : null}
                 <td className="px-3 py-3 text-right tabular-nums text-zinc-200">{p.fmtInt(row.partes_diaria)}</td>
                 {onEditRow ? (
                   <td className="px-3 py-3 text-right">
@@ -362,6 +380,7 @@ export default function EmpresaPessoasPage() {
                     rows={foraRanking}
                     p={p}
                     showMotivo
+                    showRomaneios={false}
                     emptyMessage="Ninguém fora do ranking de transporte."
                   />
                 </div>
@@ -499,6 +518,7 @@ export default function EmpresaPessoasPage() {
                     rows={p.riscoCadastroLists?.foraControle ?? []}
                     p={p}
                     showNaoAplicavel
+                    showRomaneios={false}
                     emptyMessage="Ninguém fora do controle de produção."
                     onEditRow={handleEditFromRow}
                   />

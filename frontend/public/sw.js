@@ -1,6 +1,6 @@
-/** Bump a cada release que altera assets críticos — força activate nos clientes. */
-const CACHE_NAME = "frotamax-v3";
-const SHELL = ["/manifest.json", "/icons/icon-192.png"];
+/** Bump a cada release que altera assets criticos: forca activate nos clientes. */
+const CACHE_NAME = "frotamax-v4";
+const SHELL = ["/", "/manifest.json", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 const isHashedAsset = (pathname) =>
   pathname.startsWith("/assets/") || /\.(js|css|mjs)(\?|$)/i.test(pathname);
@@ -30,7 +30,7 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(event.request).catch(
         () =>
-          new Response(JSON.stringify({ success: false, error: "offline", message: "Sem ligação" }), {
+          new Response(JSON.stringify({ success: false, error: "offline", message: "Sem ligacao" }), {
             status: 503,
             headers: { "Content-Type": "application/json" },
           })
@@ -39,30 +39,61 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // HTML sempre da rede — evita index.html antigo apontando para chunks de deploy anterior.
+  // HTML segue network-first para atualizar quando online e manter fallback PWA quando offline.
   if (isHtmlNavigation(event.request)) {
     event.respondWith(
-      fetch(event.request).catch(
-        () =>
-          caches.match(event.request).then(
+      fetch(event.request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put("/", copy));
+          return response;
+        })
+        .catch(() =>
+          caches.match("/").then(
             (cached) =>
               cached ||
-              new Response("Sem ligação. Recarregue quando estiver online.", {
+              new Response("Sem ligacao. Recarregue quando estiver online.", {
                 status: 503,
                 headers: { "Content-Type": "text/plain; charset=utf-8" },
               })
           )
-      )
+        )
     );
     return;
   }
 
   if (isHashedAsset(url.pathname)) {
     event.respondWith(
-      fetch(event.request).catch(() => caches.match(event.request).then((cached) => cached || fetch(event.request)))
+      fetch(event.request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          return response;
+        })
+        .catch(() =>
+          caches.match(event.request).then(
+            (cached) =>
+              cached ||
+              new Response("Recurso indisponivel offline.", {
+                status: 503,
+                headers: { "Content-Type": "text/plain; charset=utf-8" },
+              })
+          )
+        )
     );
     return;
   }
 
-  event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
+  event.respondWith(
+    fetch(event.request).catch(() =>
+      caches.match(event.request).then(
+        (cached) =>
+          cached ||
+          new Response("Recurso indisponivel offline.", {
+            status: 503,
+            headers: { "Content-Type": "text/plain; charset=utf-8" },
+          })
+      )
+    )
+  );
 });
