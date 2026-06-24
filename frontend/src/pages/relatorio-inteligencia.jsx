@@ -344,7 +344,7 @@ export default function RelatorioInteligenciaPage() {
   }, [loading, analysisLoading, error, overview, relatorio, chartData, isPdfExportMode]);
 
   const requestLayoutPdf = useCallback(async () => {
-    emitToast("Gerando PDF no servidor (pode levar até 2 min)...", "info");
+    emitToast("Gerando PDF executivo (pode levar até 2 min)...", "info");
     const periodo = filters.periodo || "mes";
     const fallbackName = `relatorio-inteligencia-${periodo}.pdf`;
     const result = await downloadInteligenciaPdf(filters, { fallbackName });
@@ -387,7 +387,7 @@ export default function RelatorioInteligenciaPage() {
     try {
       await requestLayoutPdf();
     } catch (err) {
-      const message = await parseBlobErrorMessage(err, "Falha ao gerar PDF no servidor.");
+      const message = await parseBlobErrorMessage(err, "Falha ao gerar PDF executivo.");
       emitToast(message, "error");
     } finally {
       setCompactPdfLoading(false);
@@ -453,17 +453,17 @@ export default function RelatorioInteligenciaPage() {
   const origemIa = mapOrigemIa(overview?.origem || relatorio?.origem);
   const origemLabel =
     overview?.origem === "motor_operacional+gpt" || relatorio?.origem === "motor_operacional+gpt"
-      ? "Motor operacional + complemento GPT (diagnóstico, impacto e recomendações adicionais)."
+      ? "Análise avançada da IA FrotaMax com diagnóstico, impacto e recomendações adicionais."
       : overview?.origem === "motor_operacional" || relatorio?.origem === "motor_operacional"
-        ? "Texto gerado pelo motor operacional com base nos lançamentos do período."
+        ? "Análise gerada pela IA FrotaMax com base nos lançamentos do período."
         : relatorio?.origem === "openai"
-        ? "Resposta gerada pela IA com base nos lançamentos do período."
+        ? "Resposta gerada pela IA FrotaMax com base nos lançamentos do período."
         : relatorio?.origem === "cache"
-          ? "Resposta reutilizada (cache) — mesmos filtros e dados anteriores."
+          ? "Análise FrotaMax reutilizada para o mesmo conjunto de filtros e dados."
           : relatorio?.origem === "limit"
-            ? "Limite diário de IA atingido — texto gerado por regras automáticas."
+            ? "Análise FrotaMax gerada com base nos dados disponíveis do período."
             : overview?.origem || relatorio?.origem
-              ? "Texto gerado por regras automáticas com seus dados."
+              ? "Análise gerada pela inteligência FrotaMax com seus dados operacionais."
               : "";
 
   return (
@@ -488,7 +488,7 @@ export default function RelatorioInteligenciaPage() {
               disabled={loading || analysisLoading || htmlPdfLoading}
               className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-800 disabled:opacity-60"
             >
-              {htmlPdfLoading ? "Gerando PDF..." : "Baixar PDF (layout BI)"}
+              {htmlPdfLoading ? "Gerando PDF..." : "Baixar PDF executivo"}
             </button>
             <button
               type="button"
@@ -496,7 +496,7 @@ export default function RelatorioInteligenciaPage() {
               disabled={loading || compactPdfLoading}
               className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60"
             >
-              {compactPdfLoading ? "Gerando..." : "Baixar PDF (servidor)"}
+              {compactPdfLoading ? "Gerando..." : "Baixar PDF"}
             </button>
           </div>
         </div>
@@ -518,19 +518,19 @@ export default function RelatorioInteligenciaPage() {
         ) : null}
 
         <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-slate-700 print:hidden">
-          <p className="font-semibold text-slate-900">Relatório alimentado pelo backend</p>
+          <p className="font-semibold text-slate-900">Relatório inteligente FrotaMax</p>
           <ul className="mt-2 list-disc space-y-1 pl-5">
             <li>
-              <strong>Layout, KPIs e gráficos</strong> vêm dos lançamentos reais (abastecimentos, viagens, parte
-              diária). Ao lançar dados novos, clique em «Atualizar relatório».
+              <strong>KPIs, gráficos e leituras</strong> usam lançamentos reais de abastecimento, transporte e parte
+              diária. Ao lançar dados novos, clique em “Atualizar relatório”.
             </li>
             <li>
-              <strong>Resumo, diagnóstico, insights e ações</strong> vêm do endpoint <code>/inteligencia/gerar</code>{" "}
-              (motor operacional com complemento IA quando disponível).
+              <strong>Resumo, diagnóstico, insights e ações</strong> são organizados pela IA FrotaMax para apoiar a
+              decisão do gestor.
             </li>
             <li>
-              <strong>Baixar PDF (layout BI)</strong> gera o PDF a partir da página renderizada (Puppeteer no servidor),
-              com os mesmos gráficos, cores e textos exibidos na tela.
+              <strong>Baixar PDF</strong> gera um documento executivo com os mesmos indicadores, gráficos e textos
+              exibidos nesta visão.
             </li>
           </ul>
         </div>
@@ -618,7 +618,7 @@ export default function RelatorioInteligenciaPage() {
               id="painel-executivo"
               icon="🎯"
               title="Painel Executivo"
-              subtitle="Scores calculados pelo Motor de Inteligência Operacional (MIO) com base nos lançamentos reais"
+              subtitle="Scores da IA FrotaMax calculados com base nos lançamentos reais da operação"
               source="dados"
               tone="default"
             >
@@ -709,7 +709,7 @@ export default function RelatorioInteligenciaPage() {
               id="resumo-executivo"
               icon="📊"
               title="Resumo Executivo"
-              subtitle="Síntese para decisão — gerada pelo motor operacional com base nos lançamentos do período"
+              subtitle="Síntese para decisão gerada pela IA FrotaMax com base nos lançamentos do período"
               source={origemIa}
               tone={status.label === "CRÍTICO" ? "critical" : "default"}
               isEmpty={!loading && !resumoExecutivo}
@@ -765,7 +765,7 @@ export default function RelatorioInteligenciaPage() {
               id="graficos"
               icon="📉"
               title="Gráficos explicados"
-              subtitle="Visualização dos dados reais com leitura automática abaixo de cada gráfico (regras, não GPT)"
+              subtitle="Visualização dos dados reais com leitura interpretativa da IA FrotaMax"
               source="dados"
             >
               {insightsAutomaticos.length > 0 ? (
@@ -800,11 +800,11 @@ export default function RelatorioInteligenciaPage() {
               id="complemento-ia"
               icon="🧩"
               title="Complemento estratégico (IA)"
-              subtitle="Hipótese, consequência, risco futuro e ação — agrega valor sem repetir o motor operacional"
+              subtitle="Hipótese, consequência, risco futuro e ação priorizada pela inteligência do sistema"
               source="ia"
               tone="default"
               isEmpty={!loading && !hasComplementoGpt}
-              emptyMessage="Complemento IA disponível apenas quando o relatório é gerado com GPT (/inteligencia/gerar)."
+              emptyMessage="Complemento estratégico indisponível para este recorte."
             >
               <ExecutiveGptComplementBlock complemento={complementoGpt} loading={loading} />
             </ExecutiveReportSection>
@@ -887,7 +887,7 @@ export default function RelatorioInteligenciaPage() {
               id="recomendacoes"
               icon="🛠️"
               title="Recomendações"
-              subtitle="Ações práticas priorizadas pelo motor operacional para o recorte analisado"
+              subtitle="Ações práticas priorizadas pela IA FrotaMax para o recorte analisado"
               source={origemIa}
               tone="action"
               isEmpty={!loading && !acoes.length && !riscos.length}
@@ -928,7 +928,7 @@ export default function RelatorioInteligenciaPage() {
           </div>
 
           <footer className="mt-10 border-t border-slate-200 pt-4 text-xs text-slate-500">
-            Gerado em {new Date().toLocaleString("pt-BR")} · FrotaMax Inteligência · Layout HTML premium (base para PDF)
+            Gerado em {new Date().toLocaleString("pt-BR")} · FrotaMax Inteligência · Relatório executivo
           </footer>
         </div>
       </div>

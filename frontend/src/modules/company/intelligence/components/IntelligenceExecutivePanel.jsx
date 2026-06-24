@@ -124,7 +124,7 @@ export default function IntelligenceExecutivePanel({
       </ExecutivePanelCard>
 
       {painelExecutivo ? (
-        <ExecutivePanelCard title="Painel executivo (MIO)" tone={tone}>
+        <ExecutivePanelCard title="Painel executivo FrotaMax" tone={tone}>
           <ExecutiveMioPanel painelExecutivo={painelExecutivo} />
         </ExecutivePanelCard>
       ) : null}

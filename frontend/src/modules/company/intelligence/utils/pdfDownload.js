@@ -1,7 +1,7 @@
 import api, { extractApiErrorMessage, getFriendlyApiErrorMessage } from "../../../../services/api";
 
 export const PDF_DESATIVADO_MENSAGEM =
-  "PDF indisponível no servidor. Verifique FRONTEND_URL e Puppeteer no backend.";
+  "PDF indisponível no momento. Tente novamente em instantes.";
 
 export const getFilenameFromDisposition = (contentDisposition, fallback = "inteligencia-operacional.pdf") => {
   const raw = String(contentDisposition || "");
@@ -120,7 +120,7 @@ export const downloadInteligenciaPdf = async (
   }
 
   if (data.size < 512) {
-    throw new Error("O servidor retornou um PDF vazio ou inválido.");
+    throw new Error("O PDF gerado está vazio ou inválido.");
   }
 
   const filename = getFilenameFromDisposition(pdfResponse?.headers?.["content-disposition"], fallbackName);

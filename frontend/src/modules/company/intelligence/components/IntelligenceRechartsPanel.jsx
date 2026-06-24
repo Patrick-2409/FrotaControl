@@ -121,7 +121,7 @@ function ConsumoPorVeiculoPieChart({ pieData }) {
   return (
     <ChartCard
       title="Consumo por veículo"
-      subtitle="Participação percentual — paleta BI de alto contraste"
+      subtitle="Participação percentual - paleta corporativa FrotaMax"
       helpText="Mostra quais veículos concentram maior consumo e participação."
       chartClassName="h-auto min-h-0"
       legend={isMobile ? <BiPieLegend items={enrichedPieData} className="mt-4" /> : null}

@@ -21,9 +21,9 @@ export function SourceBadge({ type = "dados" }) {
     regras: "bg-amber-50 text-amber-900 border-amber-200",
   };
   const labels = {
-    ia: "IA (GPT) — analisa seus dados",
+    ia: "IA FrotaMax - análise avançada",
     dados: "Calculado dos seus lançamentos",
-    regras: "Regras automáticas + seus dados",
+    regras: "IA FrotaMax - dados operacionais",
   };
   return (
     <span

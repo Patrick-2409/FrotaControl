@@ -112,10 +112,10 @@ export default function ExecutiveReportRechartsPanel({ pieData = [], lineData = 
 
   return (
     <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-      {showCombustivel && enrichedPie.length > 1 ? (
+      {showCombustivel && enrichedPie.length > 0 ? (
         <ReportChartCard
           title={CHART_GUIDES.consumoPorVeiculo.titulo}
-          subtitle="Participação percentual por veículo — paleta Power BI"
+          subtitle="Participação percentual por veículo - paleta corporativa FrotaMax"
           guideKey="consumoPorVeiculo"
           legend={<ColorLegend title="Legenda — cor por veículo" items={pieLegend} required />}
           discussion={pieDiscussion}
@@ -160,7 +160,7 @@ export default function ExecutiveReportRechartsPanel({ pieData = [], lineData = 
           title={CHART_GUIDES.custoPorPeriodo.titulo}
           subtitle="Azul = custo diário · Laranja tracejado = média de referência"
           guideKey="custoPorPeriodo"
-          className={enrichedPie.length <= 1 ? "xl:col-span-2" : ""}
+          className={enrichedPie.length === 0 ? "xl:col-span-2" : ""}
           legend={
             <StaticLegend
               title="Legenda"
@@ -175,7 +175,7 @@ export default function ExecutiveReportRechartsPanel({ pieData = [], lineData = 
         >
           {hasRows(lineData) && lineStats ? (
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={lineData} margin={{ top: 28, right: 20, left: 4, bottom: 8 }}>
+              <LineChart data={lineData} margin={{ top: 34, right: 58, left: 4, bottom: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={REPORT_COLORS.grid} />
                 <XAxis
                   dataKey="periodo"
@@ -214,7 +214,7 @@ export default function ExecutiveReportRechartsPanel({ pieData = [], lineData = 
                   strokeWidth={2}
                   label={{
                     value: `Média ${fmtMoney(lineStats.media)}`,
-                    position: "insideTopRight",
+                    position: "right",
                     fill: CHART_LEGEND_ITEMS.media.color,
                     fontSize: 11,
                   }}

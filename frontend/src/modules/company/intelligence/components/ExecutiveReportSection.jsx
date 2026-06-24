@@ -8,6 +8,25 @@ const TONE_STYLES = {
   finance: "border-emerald-200 bg-emerald-50/40",
 };
 
+const ANALYSIS_LABELS = {
+  "painel-executivo": "Análise 01 - Score executivo",
+  "o-que-aconteceu": "Análise 02 - Fatos do período",
+  "por-que-importa": "Análise 03 - Impacto gerencial",
+  "acao-prioritaria": "Análise 04 - Prioridade de gestão",
+  "top-riscos": "Análise 05 - Riscos operacionais",
+  "acao-imediata": "Análise 06 - Ação imediata",
+  "risco-financeiro-estimado": "Análise 07 - Exposição financeira",
+  "resumo-executivo": "Análise 08 - Síntese executiva",
+  inconsistencias: "Análise 09 - Consistência dos dados",
+  indicadores: "Análise 10 - Indicadores principais",
+  graficos: "Análise 11 - Gráficos e tendências",
+  "complemento-ia": "Análise 12 - Inteligência FrotaMax",
+  "diagnostico-ia": "Análise 13 - Diagnóstico operacional",
+  "impacto-financeiro": "Análise 14 - Impacto financeiro",
+  recomendacoes: "Análise 15 - Recomendações",
+  "parte-diaria": "Análise 16 - Apoio e parte diária",
+};
+
 export function ExecutiveReportSection({
   id,
   icon,
@@ -20,6 +39,8 @@ export function ExecutiveReportSection({
   emptyMessage,
   isEmpty = false,
 }) {
+  const analysisLabel = ANALYSIS_LABELS[id];
+
   return (
     <section
       id={id}
@@ -27,6 +48,9 @@ export function ExecutiveReportSection({
     >
       <header className="mb-5 flex flex-wrap items-start justify-between gap-3 border-b border-slate-200/80 pb-4">
         <div className="min-w-0">
+          {analysisLabel ? (
+            <p className="mb-1 text-[10px] font-black uppercase tracking-[0.22em] text-blue-700">{analysisLabel}</p>
+          ) : null}
           <h2 className="flex items-center gap-2 text-lg font-bold tracking-tight text-slate-900 sm:text-xl">
             {icon ? <span className="fc-report-section-marker" aria-hidden="true" /> : null}
             <span>{title}</span>

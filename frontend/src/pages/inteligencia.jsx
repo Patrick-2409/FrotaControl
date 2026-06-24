@@ -261,11 +261,11 @@ export default function InteligenciaPage() {
       }
       const origemGpt = data?.gpt?.origem;
       if (origemGpt === "openai" || origemGpt === "cache") {
-        emitToast("Análise gerada com complemento IA sobre os dados do motor operacional.");
+        emitToast("Análise gerada pela IA FrotaMax com base nos dados da operação.");
       } else if (origemGpt === "limit") {
-        emitToast("Limite diário de IA atingido — apenas motor operacional aplicado.", "warning");
+        emitToast("Análise FrotaMax gerada com a base operacional disponível.", "warning");
       } else {
-        emitToast("Análise gerada pelo motor operacional (IA indisponível).", "warning");
+        emitToast("Análise gerada pela inteligência FrotaMax.", "warning");
       }
     } catch (error) {
       console.error("Erro ao gerar análise:", error);
@@ -288,7 +288,7 @@ export default function InteligenciaPage() {
       }
       emitToast(`PDF baixado (${result.filename}).`, "success");
     } catch (error) {
-      const friendlyMessage = await parseBlobErrorMessage(error, "Falha ao gerar PDF no servidor.");
+      const friendlyMessage = await parseBlobErrorMessage(error, "Falha ao gerar PDF executivo.");
       emitToast(friendlyMessage, "error");
     } finally {
       setCompactPdfLoading(false);
@@ -403,7 +403,7 @@ export default function InteligenciaPage() {
               to={reportHref}
               className="fc-btn w-full rounded-md border border-sky-700/60 bg-sky-950/30 px-4 py-3 text-center text-sm font-semibold text-sky-100 transition-all duration-300 hover:border-sky-500"
             >
-              Abrir relatório HTML (BI) — PDF visual
+              Abrir relatório executivo
             </Link>
             <button
               type="button"
@@ -411,10 +411,10 @@ export default function InteligenciaPage() {
               onClick={() => void baixarPdfCompacto()}
               disabled={analysisLoading || compactPdfLoading}
             >
-              {compactPdfLoading ? "Gerando PDF..." : "Baixar PDF (layout BI)"}
+              {compactPdfLoading ? "Gerando PDF..." : "Baixar PDF executivo"}
             </button>
             <p className="text-xs text-zinc-500">
-              Gera o PDF a partir da página do relatório HTML (Puppeteer no servidor), com gráficos e layout idênticos à tela.
+              Gera um relatório profissional com os mesmos indicadores, gráficos e análises da visão atual.
             </p>
             {analysisError ? <p className="text-sm text-red-400">{analysisError}</p> : null}
           </div>
