@@ -30,6 +30,12 @@ function IconRocha({ className }) {
   );
 }
 
+const formatCapacidadeTon = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return `${n.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} t`;
+};
+
 export const ApontadorRegistradoFlash = memo(function ApontadorRegistradoFlash({ open, visibleIn, message }) {
   if (!open) return null;
   const text = typeof message === "string" && message.trim() ? message.trim() : "+1 ✔";
@@ -93,34 +99,57 @@ export const ApontadorVeiculoField = memo(function ApontadorVeiculoField({
           disabled={veiculos.length === 0}
         >
           <option value="">Selecionar</option>
-          {veiculos.map((v) => (
-            <option key={v.id} value={String(v.id)}>
-              {v.placa} — {v.nome}
-            </option>
-          ))}
+          {veiculos.map((v) => {
+            const capacidadeEsteril = formatCapacidadeTon(v.capacidadeEsterilTon);
+            const capacidadeRocha = formatCapacidadeTon(v.capacidadeRochaTon);
+            const capacidades = [
+              capacidadeEsteril ? `Estéril ${capacidadeEsteril}` : null,
+              capacidadeRocha ? `Rocha ${capacidadeRocha}` : null,
+            ].filter(Boolean);
+            return (
+              <option key={v.id} value={String(v.id)}>
+                {v.placa} — {v.nome}
+                {capacidades.length ? ` · ${capacidades.join(" · ")}` : ""}
+              </option>
+            );
+          })}
         </select>
       )}
     </div>
   );
 });
 
-export const ApontadorTipoButtons = memo(function ApontadorTipoButtons({ podeRegistrar, onEsteril, onRocha, avisoInvalido }) {
+export const ApontadorTipoButtons = memo(function ApontadorTipoButtons({
+  podeRegistrar,
+  onEsteril,
+  onRocha,
+  avisoInvalido,
+  avisoMensagem,
+  capacidadeEsterilTon,
+  capacidadeRochaTon,
+}) {
+  const esterilDisponivel = podeRegistrar && Number(capacidadeEsterilTon) > 0;
+  const rochaDisponivel = podeRegistrar && Number(capacidadeRochaTon) > 0;
+  const capacidadeEsterilLabel = formatCapacidadeTon(capacidadeEsterilTon);
+  const capacidadeRochaLabel = formatCapacidadeTon(capacidadeRochaTon);
+  const esterilLabel = capacidadeEsterilLabel ? `${capacidadeEsterilLabel} por viagem` : "Sem capacidade";
+  const rochaLabel = capacidadeRochaLabel ? `${capacidadeRochaLabel} por viagem` : "Sem capacidade";
   const pressEsteril = useCallback(
     (e) => {
-      if (!podeRegistrar) return;
+      if (!esterilDisponivel) return;
       playTipoButtonTap(e.currentTarget, "esteril");
       onEsteril();
     },
-    [podeRegistrar, onEsteril]
+    [esterilDisponivel, onEsteril]
   );
 
   const pressRocha = useCallback(
     (e) => {
-      if (!podeRegistrar) return;
+      if (!rochaDisponivel) return;
       playTipoButtonTap(e.currentTarget, "rocha");
       onRocha();
     },
-    [podeRegistrar, onRocha]
+    [rochaDisponivel, onRocha]
   );
 
   return (
@@ -130,28 +159,38 @@ export const ApontadorTipoButtons = memo(function ApontadorTipoButtons({ podeReg
           className="w-full max-w-sm rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-center text-base font-semibold text-amber-100"
           role="alert"
         >
-          Selecione um veículo para iniciar
+          {avisoMensagem || "Selecione um veículo para iniciar"}
         </p>
       ) : null}
       <button
         type="button"
-        disabled={!podeRegistrar}
-        aria-disabled={!podeRegistrar}
+        disabled={!esterilDisponivel}
+        aria-disabled={!esterilDisponivel}
         onClick={pressEsteril}
-        className="fc-btn fc-apontador-tipo-btn flex w-full min-h-[88px] max-w-sm items-center justify-center gap-2.5 rounded-2xl border-2 border-cyan-400/85 bg-blue-600/60 px-4 py-5 text-2xl font-extrabold tracking-wide text-white shadow-xl shadow-cyan-950/45 ring-1 ring-white/10 transition enabled:hover:border-cyan-300 enabled:hover:bg-blue-500/75 enabled:hover:ring-white/15 disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-[96px] sm:gap-3 sm:text-3xl"
+        className="fc-btn fc-apontador-tipo-btn flex w-full min-h-[96px] max-w-sm items-center justify-center gap-2.5 rounded-2xl border-2 border-cyan-400/85 bg-blue-600/60 px-4 py-5 text-2xl font-extrabold tracking-wide text-white shadow-xl shadow-cyan-950/45 ring-1 ring-white/10 transition enabled:hover:border-cyan-300 enabled:hover:bg-blue-500/75 enabled:hover:ring-white/15 disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-[104px] sm:gap-3 sm:text-3xl"
       >
         <IconEsteril className="h-5 w-5 shrink-0 text-cyan-100/90 sm:h-6 sm:w-6" />
-        <span className="drop-shadow-sm">[ + ESTÉRIL ]</span>
+        <span className="flex min-w-0 flex-col items-center leading-tight drop-shadow-sm">
+          <span>[ + ESTÉRIL ]</span>
+          <span className="mt-1 text-xs font-semibold normal-case tracking-normal text-cyan-100/85 sm:text-sm">
+            {esterilLabel}
+          </span>
+        </span>
       </button>
       <button
         type="button"
-        disabled={!podeRegistrar}
-        aria-disabled={!podeRegistrar}
+        disabled={!rochaDisponivel}
+        aria-disabled={!rochaDisponivel}
         onClick={pressRocha}
-        className="fc-btn fc-apontador-tipo-btn flex w-full min-h-[88px] max-w-sm items-center justify-center gap-2.5 rounded-2xl border-2 border-orange-300/85 bg-gradient-to-b from-orange-500/55 to-orange-700/45 px-4 py-5 text-2xl font-extrabold tracking-wide text-orange-50 shadow-xl shadow-orange-950/40 ring-1 ring-orange-200/15 transition enabled:hover:border-amber-300 enabled:hover:from-orange-500/70 enabled:hover:to-orange-700/60 enabled:hover:ring-orange-100/20 disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-[96px] sm:gap-3 sm:text-3xl"
+        className="fc-btn fc-apontador-tipo-btn flex w-full min-h-[96px] max-w-sm items-center justify-center gap-2.5 rounded-2xl border-2 border-orange-300/85 bg-gradient-to-b from-orange-500/55 to-orange-700/45 px-4 py-5 text-2xl font-extrabold tracking-wide text-orange-50 shadow-xl shadow-orange-950/40 ring-1 ring-orange-200/15 transition enabled:hover:border-amber-300 enabled:hover:from-orange-500/70 enabled:hover:to-orange-700/60 enabled:hover:ring-orange-100/20 disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-[104px] sm:gap-3 sm:text-3xl"
       >
         <IconRocha className="h-5 w-5 shrink-0 text-orange-100/90 sm:h-6 sm:w-6" />
-        <span className="drop-shadow-sm">[ + ROCHA ]</span>
+        <span className="flex min-w-0 flex-col items-center leading-tight drop-shadow-sm">
+          <span>[ + ROCHA ]</span>
+          <span className="mt-1 text-xs font-semibold normal-case tracking-normal text-orange-100/85 sm:text-sm">
+            {rochaLabel}
+          </span>
+        </span>
       </button>
     </div>
   );

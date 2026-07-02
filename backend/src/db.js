@@ -183,6 +183,8 @@ const initDb = async () => {
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS marca VARCHAR(120);
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS modelo VARCHAR(120);
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS capacidade_ton NUMERIC(10, 2);
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS capacidade_esteril_ton NUMERIC(10, 2);
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS capacidade_rocha_ton NUMERIC(10, 2);
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS usa_para_transporte BOOLEAN NOT NULL DEFAULT false;
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS tipo_operacao VARCHAR(20) NOT NULL DEFAULT 'apoio';
     ALTER TABLE romaneios ADD COLUMN IF NOT EXISTS version_of VARCHAR(80);
@@ -221,6 +223,20 @@ const initDb = async () => {
 
     UPDATE veiculos
     SET tipo_operacao = CASE WHEN COALESCE(usa_para_transporte, false) THEN 'transporte' ELSE 'apoio' END;
+
+    UPDATE veiculos
+    SET capacidade_esteril_ton = capacidade_ton
+    WHERE COALESCE(usa_para_transporte, false) = true
+      AND capacidade_esteril_ton IS NULL
+      AND capacidade_ton IS NOT NULL
+      AND capacidade_ton > 0;
+
+    UPDATE veiculos
+    SET capacidade_rocha_ton = capacidade_ton
+    WHERE COALESCE(usa_para_transporte, false) = true
+      AND capacidade_rocha_ton IS NULL
+      AND capacidade_ton IS NOT NULL
+      AND capacidade_ton > 0;
   `);
 
   await pool.query(`

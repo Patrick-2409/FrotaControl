@@ -26,6 +26,8 @@ const emptyVehicleForm = () => ({
   combustivel_principal: "",
   capacidade_litros: "",
   capacidade_ton: "",
+  capacidade_esteril_ton: "",
+  capacidade_rocha_ton: "",
   horimetro_atual: "",
   hodometro_atual: "",
   usa_para_transporte: false,
@@ -60,6 +62,18 @@ function rowToForm(v) {
     combustivel_principal: v.combustivel_principal || "",
     capacidade_litros: v.capacidade_litros != null ? String(v.capacidade_litros) : "",
     capacidade_ton: v.capacidade_ton != null ? String(v.capacidade_ton) : "",
+    capacidade_esteril_ton:
+      v.capacidade_esteril_ton != null
+        ? String(v.capacidade_esteril_ton)
+        : v.capacidade_ton != null
+          ? String(v.capacidade_ton)
+          : "",
+    capacidade_rocha_ton:
+      v.capacidade_rocha_ton != null
+        ? String(v.capacidade_rocha_ton)
+        : v.capacidade_ton != null
+          ? String(v.capacidade_ton)
+          : "",
     horimetro_atual: v.horimetro_atual != null ? String(v.horimetro_atual) : "",
     hodometro_atual: v.hodometro_atual != null ? String(v.hodometro_atual) : "",
     usa_para_transporte: Boolean(v.usa_para_transporte),
@@ -88,6 +102,8 @@ function formToPayload(form) {
     return Number.isFinite(n) ? n : null;
   };
   const usa = Boolean(form.usa_para_transporte);
+  const capacidadeEsterilTon = num(form.capacidade_esteril_ton);
+  const capacidadeRochaTon = num(form.capacidade_rocha_ton);
   return {
     nome: form.nome.trim(),
     placa: form.placa.trim(),
@@ -100,7 +116,9 @@ function formToPayload(form) {
     chassi: form.chassi.trim() || null,
     combustivel_principal: form.combustivel_principal.trim() || null,
     capacidade_litros: num(form.capacidade_litros),
-    capacidade_ton: usa ? num(form.capacidade_ton) : null,
+    capacidade_ton: usa ? capacidadeEsterilTon ?? capacidadeRochaTon ?? num(form.capacidade_ton) : null,
+    capacidade_esteril_ton: usa ? capacidadeEsterilTon : null,
+    capacidade_rocha_ton: usa ? capacidadeRochaTon : null,
     horimetro_atual: num(form.horimetro_atual),
     hodometro_atual: num(form.hodometro_atual),
     usa_para_transporte: usa,

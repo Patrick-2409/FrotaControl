@@ -35,9 +35,11 @@ const parseMarcacao = (timestamp) => {
   return Number.isNaN(d.getTime()) ? null : d;
 };
 
-const assertVeiculoMotoristaTransporte = async (empresaId, veiculo_id, motorista_id) => {
+const assertVeiculoMotoristaTransporte = async (empresaId, veiculo_id, motorista_id, tipo = null) => {
   const { rows: validRows } = await pool.query(
-    `SELECT COALESCE(v.usa_para_transporte, false) AS usa_para_transporte
+    `SELECT COALESCE(v.usa_para_transporte, false) AS usa_para_transporte,
+            COALESCE(v.capacidade_esteril_ton, v.capacidade_ton, 0)::double precision AS capacidade_esteril_ton,
+            COALESCE(v.capacidade_rocha_ton, v.capacidade_ton, 0)::double precision AS capacidade_rocha_ton
      FROM veiculos v
      INNER JOIN usuarios u ON u.id = $3
        AND u.empresa_id = v.empresa_id
@@ -65,10 +67,26 @@ const assertVeiculoMotoristaTransporte = async (empresaId, veiculo_id, motorista
     };
   }
 
+  if (tipo === "esteril" && Number(validRows[0].capacidade_esteril_ton) <= 0) {
+    return {
+      ok: false,
+      status: 400,
+      message: "Veiculo sem capacidade de esteril configurada.",
+    };
+  }
+
+  if (tipo === "rocha" && Number(validRows[0].capacidade_rocha_ton) <= 0) {
+    return {
+      ok: false,
+      status: 400,
+      message: "Veiculo sem capacidade de rocha configurada.",
+    };
+  }
+
   return { ok: true };
 };
 
-/** Lista veículos aptos ao apontamento: usa_para_transporte e capacidade_ton > 0. */
+/** Lista veiculos aptos ao apontamento: transporte com capacidade de esteril ou rocha. */
 const listVehiclesApontador = async (req, res) => {
   const empresaId = req.user?.empresa_id;
   if (!empresaId) {
@@ -161,7 +179,7 @@ const createViagemApontador = async (req, res) => {
     });
   }
 
-  const gate = await assertVeiculoMotoristaTransporte(empresaId, body.veiculo_id, body.motorista_id);
+  const gate = await assertVeiculoMotoristaTransporte(empresaId, body.veiculo_id, body.motorista_id, body.tipo);
   if (!gate.ok) {
     return res.status(gate.status).json({
       success: false,

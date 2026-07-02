@@ -8,6 +8,8 @@ const vehicleBodySchema = z.object({
   marca: z.string().trim().optional().nullable(),
   modelo: z.string().trim().optional().nullable(),
   capacidade_ton: z.coerce.number().positive().optional().nullable(),
+  capacidade_esteril_ton: z.coerce.number().positive().optional().nullable(),
+  capacidade_rocha_ton: z.coerce.number().positive().optional().nullable(),
   usa_para_transporte: z.coerce.boolean().optional().default(false),
   tipo_operacao: z.enum(["transporte", "apoio"]).optional(),
   tipo: z.string().trim().max(80).optional().nullable(),
@@ -55,7 +57,11 @@ const toVehicleWritePayload = (parsed) => {
     placa: parsed.placa,
     usa_para_transporte: usa,
     tipo_operacao: tipo,
-    capacidade_ton: usa ? parsed.capacidade_ton ?? null : null,
+    capacidade_ton: usa
+      ? parsed.capacidade_ton ?? parsed.capacidade_esteril_ton ?? parsed.capacidade_rocha_ton ?? null
+      : null,
+    capacidade_esteril_ton: usa ? parsed.capacidade_esteril_ton ?? parsed.capacidade_ton ?? null : null,
+    capacidade_rocha_ton: usa ? parsed.capacidade_rocha_ton ?? parsed.capacidade_ton ?? null : null,
   };
   if (parsed.marca !== undefined) out.marca = trimOrNull(parsed.marca);
   if (parsed.modelo !== undefined) out.modelo = trimOrNull(parsed.modelo);

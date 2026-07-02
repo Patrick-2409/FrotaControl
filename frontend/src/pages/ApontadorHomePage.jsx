@@ -265,6 +265,10 @@ export default function ApontadorHomePage() {
     () => veiculos.find((v) => String(v.id) === String(veiculoId)),
     [veiculos, veiculoId]
   );
+  const capacidadeEsterilTon = Number(veiculoSelecionado?.capacidadePorMaterial?.esteril) || 0;
+  const capacidadeRochaTon = Number(veiculoSelecionado?.capacidadePorMaterial?.rocha) || 0;
+  const temMotoristaVinculado = Boolean(veiculoSelecionado?.motorista?.id);
+  const temMaterialConfigurado = capacidadeEsterilTon > 0 || capacidadeRochaTon > 0;
 
   const idsVeiculosEmpresa = useMemo(
     () => veiculos.map((v) => Number(v.id)).filter((n) => Number.isFinite(n) && n > 0),
@@ -314,6 +318,12 @@ export default function ApontadorHomePage() {
   const registrar = useCallback(
     async (tipo) => {
       if (!veiculoSelecionado?.motorista?.id) return;
+      const chaveTipo = tipo === "esteril" ? "esteril" : "rocha";
+      const capacidadeTipo = chaveTipo === "esteril" ? capacidadeEsterilTon : capacidadeRochaTon;
+      if (!Number.isFinite(capacidadeTipo) || capacidadeTipo <= 0) {
+        emitToast(`Capacidade de ${chaveTipo === "esteril" ? "estéril" : "rocha"} não configurada para este veículo.`, "warning");
+        return;
+      }
       try {
         if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
           navigator.vibrate(50);
@@ -322,7 +332,6 @@ export default function ApontadorHomePage() {
         /* ambientes sem vibração */
       }
       const ts = Date.now();
-      const chaveTipo = tipo === "esteril" ? "esteril" : "rocha";
       const viagem = {
         veiculo_id: veiculoSelecionado.id,
         motorista_id: veiculoSelecionado.motorista.id,
@@ -337,7 +346,11 @@ export default function ApontadorHomePage() {
         emitToast("Não foi possível salvar o registro no dispositivo.", "error");
         return;
       }
-      setHojeContagem((prev) => ({ ...prev, [chaveTipo]: prev[chaveTipo] + 1 }));
+      setHojeContagem((prev) => ({
+        ...prev,
+        [chaveTipo]: prev[chaveTipo] + 1,
+        tonTotal: (Number(prev.tonTotal) || 0) + capacidadeTipo,
+      }));
       pushLancamentoLocal({ tipo, timestamp: ts, localId: id_local });
       showRegistradoOk(tipo);
 
@@ -360,6 +373,7 @@ export default function ApontadorHomePage() {
           setHojeContagem((prev) => ({
             ...prev,
             [ctx.chaveTipo]: Math.max(0, prev[ctx.chaveTipo] - 1),
+            tonTotal: Math.max(0, (Number(prev.tonTotal) || 0) - capacidadeTipo),
           }));
           setUltimosLancamentos((prev) => prev.filter((item) => item.id !== ctx.id_local));
           void removerViagemNoServidor(ctx);
@@ -393,7 +407,16 @@ export default function ApontadorHomePage() {
       void refreshPendentesCount();
       void refreshContagemHoje();
     },
-    [veiculoSelecionado, showRegistradoOk, refreshPendentesCount, refreshContagemHoje, removerViagemNoServidor, pushLancamentoLocal]
+    [
+      veiculoSelecionado,
+      capacidadeEsterilTon,
+      capacidadeRochaTon,
+      showRegistradoOk,
+      refreshPendentesCount,
+      refreshContagemHoje,
+      removerViagemNoServidor,
+      pushLancamentoLocal,
+    ]
   );
 
   useEffect(() => {
@@ -413,7 +436,12 @@ export default function ApontadorHomePage() {
     return () => window.removeEventListener("keydown", onKey, true);
   }, [registrar, veiculoSelecionado]);
 
-  const podeRegistrar = Boolean(veiculoSelecionado?.motorista?.id);
+  const podeRegistrar = temMotoristaVinculado && temMaterialConfigurado;
+  const avisoApontador = !temMotoristaVinculado
+    ? "Selecione um veículo com motorista vinculado"
+    : !temMaterialConfigurado
+      ? "Cadastre a capacidade de estéril ou rocha para este veículo"
+      : "";
   const mostrarAvisoVeiculoInvalido =
     !loadingVeiculos && veiculos.length > 0 && !podeRegistrar;
 
@@ -449,13 +477,16 @@ export default function ApontadorHomePage() {
             <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-center text-sm text-amber-100">
               Nenhum veículo disponível para apontamento. O administrador deve cadastrar veículos de{" "}
               <strong className="text-amber-50">transporte (romaneio)</strong> com{" "}
-              <strong className="text-amber-50">capacidade em toneladas</strong> (maior que zero) na gestão da empresa.
+              <strong className="text-amber-50">capacidade para estéril ou rocha</strong> na gestão da empresa.
             </p>
           )}
 
           <ApontadorTipoButtons
             podeRegistrar={podeRegistrar}
             avisoInvalido={mostrarAvisoVeiculoInvalido}
+            avisoMensagem={avisoApontador}
+            capacidadeEsterilTon={capacidadeEsterilTon}
+            capacidadeRochaTon={capacidadeRochaTon}
             onEsteril={() => {
               void registrar("esteril");
             }}

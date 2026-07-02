@@ -82,7 +82,8 @@ async function gatherSignalsLite(empresaId) {
       queryTimed(
         `SELECT COUNT(*)::int AS c FROM veiculos
          WHERE empresa_id = $1 AND COALESCE(usa_para_transporte, false) = true
-           AND (capacidade_ton IS NULL OR capacidade_ton <= 0)`,
+           AND COALESCE(capacidade_esteril_ton, capacidade_ton, 0) <= 0
+           AND COALESCE(capacidade_rocha_ton, capacidade_ton, 0) <= 0`,
         [empresaId],
         { label: "feed-lite-cap", timeoutMs: 4000 }
       ),

@@ -244,6 +244,10 @@ const aggregateTransport = async (empresaId, bounds) => {
               COUNT(*)::int AS viagens,
               COALESCE(
                 SUM(CASE
+                      WHEN COALESCE(v.usa_para_transporte, false) = true AND vi.tipo = 'esteril'
+                      THEN COALESCE(v.capacidade_esteril_ton, v.capacidade_ton, 0)
+                      WHEN COALESCE(v.usa_para_transporte, false) = true AND vi.tipo = 'rocha'
+                      THEN COALESCE(v.capacidade_rocha_ton, v.capacidade_ton, 0)
                       WHEN COALESCE(v.usa_para_transporte, false) = true
                       THEN COALESCE(v.capacidade_ton, 0)
                       ELSE 0

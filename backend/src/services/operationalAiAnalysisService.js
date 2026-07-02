@@ -155,7 +155,15 @@ const queryTransportData = async (empresaId, bounds) => {
     pool.query(
       `SELECT v.id, COALESCE(v.nome, 'Sem nome') AS nome, COALESCE(v.placa, '-') AS placa,
               COUNT(vi.id)::int AS viagens,
-              COALESCE(SUM(CASE WHEN COALESCE(v.usa_para_transporte, false) = true THEN COALESCE(v.capacidade_ton, 0) ELSE 0 END), 0)::double precision AS toneladas
+              COALESCE(SUM(CASE
+                WHEN COALESCE(v.usa_para_transporte, false) = true AND vi.tipo = 'esteril'
+                  THEN COALESCE(v.capacidade_esteril_ton, v.capacidade_ton, 0)
+                WHEN COALESCE(v.usa_para_transporte, false) = true AND vi.tipo = 'rocha'
+                  THEN COALESCE(v.capacidade_rocha_ton, v.capacidade_ton, 0)
+                WHEN COALESCE(v.usa_para_transporte, false) = true
+                  THEN COALESCE(v.capacidade_ton, 0)
+                ELSE 0
+              END), 0)::double precision AS toneladas
        FROM veiculos v
        LEFT JOIN viagens vi
          ON vi.veiculo_id = v.id
@@ -835,4 +843,3 @@ const generateOperationalAnalysisPdf = async ({ empresaId, userId, periodo }) =>
 module.exports = {
   generateOperationalAnalysisPdf,
 };
-

@@ -492,14 +492,46 @@ export default function EmpresaFrotaPage() {
                   Usa para transporte (toneladas)
                 </label>
                 {fl.form.usa_para_transporte ? (
-                  <label className="block text-xs font-medium text-zinc-400 sm:col-span-2">
-                    Capacidade (t)
-                    <input
-                      className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
-                      value={fl.form.capacidade_ton}
-                      onChange={(e) => fl.setForm((f) => ({ ...f, capacidade_ton: e.target.value }))}
-                    />
-                  </label>
+                  <div className="sm:col-span-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-amber-100">
+                          Capacidade por material
+                        </p>
+                        <p className="mt-1 text-xs leading-relaxed text-zinc-400">
+                          Informe a tonelagem real por viagem para cada material que o veículo transporta.
+                        </p>
+                      </div>
+                      <span className="mt-1 inline-flex w-fit rounded-full border border-zinc-700 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 sm:mt-0">
+                        Apontador
+                      </span>
+                    </div>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <label className="block text-xs font-medium text-zinc-400">
+                        Estéril (t)
+                        <input
+                          inputMode="decimal"
+                          className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
+                          value={fl.form.capacidade_esteril_ton}
+                          onChange={(e) => fl.setForm((f) => ({ ...f, capacidade_esteril_ton: e.target.value }))}
+                          placeholder="Ex.: 32"
+                        />
+                      </label>
+                      <label className="block text-xs font-medium text-zinc-400">
+                        Rocha (t)
+                        <input
+                          inputMode="decimal"
+                          className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
+                          value={fl.form.capacidade_rocha_ton}
+                          onChange={(e) => fl.setForm((f) => ({ ...f, capacidade_rocha_ton: e.target.value }))}
+                          placeholder="Ex.: 28"
+                        />
+                      </label>
+                    </div>
+                    <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">
+                      Deixe vazio o material que este veículo não deve registrar. O PWA bloqueará esse lançamento.
+                    </p>
+                  </div>
                 ) : null}
               </div>
 

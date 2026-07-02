@@ -1841,7 +1841,8 @@ const addProducaoPortoSheets = async (workbook, { empresaId, dataInicio, dataFim
       vehiclesMap.set(id, {
         nome: r.veiculo_nome,
         placa: r.placa || "",
-        ton: Number(r.ton) || 0,
+        ton_esteril: Number(r.ton_esteril) || 0,
+        ton_rocha: Number(r.ton_rocha) || 0,
         esteril: {},
         rocha: {},
       });
@@ -1945,10 +1946,11 @@ const addProducaoPortoSheets = async (workbook, { empresaId, dataInicio, dataFim
 
     let dataRow = hr + 1;
     vehicles.forEach((v) => {
+      const capacidadeMaterial = Number(tipoKey === "esteril" ? v.ton_esteril : v.ton_rocha) || 0;
       let col = 1;
       ws.getCell(`${getColumnLetter(col)}${dataRow}`).value = asDisplayValue(v.nome);
       col += 1;
-      ws.getCell(`${getColumnLetter(col)}${dataRow}`).value = v.ton ? String(v.ton) : "-";
+      ws.getCell(`${getColumnLetter(col)}${dataRow}`).value = capacidadeMaterial ? String(capacidadeMaterial) : "-";
       col += 1;
       let tripSum = 0;
       days.forEach((d) => {
@@ -1959,7 +1961,7 @@ const addProducaoPortoSheets = async (workbook, { empresaId, dataInicio, dataFim
       });
       ws.getCell(`${getColumnLetter(col)}${dataRow}`).value = tripSum;
       col += 1;
-      const tonTot = (Number(v.ton) || 0) * tripSum;
+      const tonTot = capacidadeMaterial * tripSum;
       ws.getCell(`${getColumnLetter(col)}${dataRow}`).value = tonTot ? Math.round(tonTot * 10) / 10 : "";
       paintDataRow(ws, dataRow, 1, lastCol);
       dataRow += 1;
@@ -1974,8 +1976,9 @@ const addProducaoPortoSheets = async (workbook, { empresaId, dataInicio, dataFim
       0
     );
     const grandTon = vehicles.reduce((s, v) => {
+      const capacidadeMaterial = Number(tipoKey === "esteril" ? v.ton_esteril : v.ton_rocha) || 0;
       const trips = days.reduce((t, d) => t + (v[tipoKey][d] || 0), 0);
-      return s + (Number(v.ton) || 0) * trips;
+      return s + capacidadeMaterial * trips;
     }, 0);
 
     let col = 1;

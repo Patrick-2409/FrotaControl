@@ -1,5 +1,8 @@
 const { pool } = require("../db");
 
+const CAPACIDADE_ESTERIL_SQL = "COALESCE(v.capacidade_esteril_ton, v.capacidade_ton, 0)";
+const CAPACIDADE_ROCHA_SQL = "COALESCE(v.capacidade_rocha_ton, v.capacidade_ton, 0)";
+
 const insertViagem = async (
   { empresa_id, veiculo_id, motorista_id, apontador_id = null, tipo, marcacao },
   db = pool
@@ -27,7 +30,7 @@ const getViagensResumoProducao = async (empresa_id, bounds = {}, db = pool) => {
         SUM(
           CASE
             WHEN vi.tipo = 'esteril' AND COALESCE(v.usa_para_transporte, false) = true
-            THEN COALESCE(v.capacidade_ton, 0)
+            THEN ${CAPACIDADE_ESTERIL_SQL}
             ELSE 0
           END
         ),
@@ -37,7 +40,7 @@ const getViagensResumoProducao = async (empresa_id, bounds = {}, db = pool) => {
         SUM(
           CASE
             WHEN vi.tipo = 'rocha' AND COALESCE(v.usa_para_transporte, false) = true
-            THEN COALESCE(v.capacidade_ton, 0)
+            THEN ${CAPACIDADE_ROCHA_SQL}
             ELSE 0
           END
         ),
@@ -65,7 +68,7 @@ const countViagensHojeEmpresaSaoPaulo = async (empresa_id, db = pool) => {
         SUM(
           CASE
             WHEN vi.tipo = 'esteril' AND COALESCE(v.usa_para_transporte, false) = true
-            THEN COALESCE(v.capacidade_ton, 0)
+            THEN ${CAPACIDADE_ESTERIL_SQL}
             ELSE 0
           END
         ),
@@ -75,7 +78,7 @@ const countViagensHojeEmpresaSaoPaulo = async (empresa_id, db = pool) => {
         SUM(
           CASE
             WHEN vi.tipo = 'rocha' AND COALESCE(v.usa_para_transporte, false) = true
-            THEN COALESCE(v.capacidade_ton, 0)
+            THEN ${CAPACIDADE_ROCHA_SQL}
             ELSE 0
           END
         ),
@@ -110,7 +113,7 @@ const countViagensHojeApontadorSaoPaulo = async (empresa_id, apontador_id, db = 
         SUM(
           CASE
             WHEN vi.tipo = 'esteril' AND COALESCE(v.usa_para_transporte, false) = true
-            THEN COALESCE(v.capacidade_ton, 0)
+            THEN ${CAPACIDADE_ESTERIL_SQL}
             ELSE 0
           END
         ),
@@ -120,7 +123,7 @@ const countViagensHojeApontadorSaoPaulo = async (empresa_id, apontador_id, db = 
         SUM(
           CASE
             WHEN vi.tipo = 'rocha' AND COALESCE(v.usa_para_transporte, false) = true
-            THEN COALESCE(v.capacidade_ton, 0)
+            THEN ${CAPACIDADE_ROCHA_SQL}
             ELSE 0
           END
         ),
@@ -214,7 +217,8 @@ const listViagensByVehicleDay = async (empresa_id, startIso, endIso, db = pool) 
     `SELECT v.id AS veiculo_id,
             v.nome AS veiculo_nome,
             v.placa,
-            COALESCE(v.capacidade_ton, 0)::double precision AS ton,
+            ${CAPACIDADE_ESTERIL_SQL}::double precision AS ton_esteril,
+            ${CAPACIDADE_ROCHA_SQL}::double precision AS ton_rocha,
             (vi.marcacao AT TIME ZONE 'America/Sao_Paulo')::date AS dia_local,
             COUNT(*) FILTER (WHERE vi.tipo = 'esteril')::int AS esteril,
             COUNT(*) FILTER (WHERE vi.tipo = 'rocha')::int AS rocha
@@ -223,7 +227,8 @@ const listViagensByVehicleDay = async (empresa_id, startIso, endIso, db = pool) 
      WHERE vi.empresa_id = $1
        AND vi.marcacao >= $2::timestamptz
        AND vi.marcacao < $3::timestamptz
-     GROUP BY v.id, v.nome, v.placa, v.capacidade_ton, (vi.marcacao AT TIME ZONE 'America/Sao_Paulo')::date
+     GROUP BY v.id, v.nome, v.placa, v.capacidade_ton, v.capacidade_esteril_ton, v.capacidade_rocha_ton,
+       (vi.marcacao AT TIME ZONE 'America/Sao_Paulo')::date
      ORDER BY v.nome, dia_local`,
     [empresa_id, startIso, endIso]
   );

@@ -124,6 +124,8 @@ const exportVehiclesCsv = async (req, res) => {
     "ano",
     "combustivel_principal",
     "capacidade_ton",
+    "capacidade_esteril_ton",
+    "capacidade_rocha_ton",
     "capacidade_litros",
     "usa_para_transporte",
     "motorista_nome",

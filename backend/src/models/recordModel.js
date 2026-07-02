@@ -531,7 +531,11 @@ const dashboardStats = async ({ empresa_id = null, periodo = null } = {}) => {
               SUM(
                 CASE
                   WHEN COALESCE(v.usa_para_transporte, false) = true
-                  THEN COALESCE(v.capacidade_ton, 0)
+                  THEN CASE
+                    WHEN vi.tipo = 'esteril' THEN COALESCE(v.capacidade_esteril_ton, v.capacidade_ton, 0)
+                    WHEN vi.tipo = 'rocha' THEN COALESCE(v.capacidade_rocha_ton, v.capacidade_ton, 0)
+                    ELSE COALESCE(v.capacidade_ton, 0)
+                  END
                   ELSE 0
                 END
               ),
