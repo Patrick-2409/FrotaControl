@@ -240,29 +240,33 @@ export default function ApontadorHomePage() {
     const saved = localStorage.getItem(key);
     const legacySaved = saved ? null : localStorage.getItem(legacyKey);
     const resolvedSaved = saved || legacySaved;
-    if (resolvedSaved && veiculos.some((v) => String(v.id) === String(resolvedSaved))) {
+    const savedOption = resolvedSaved
+      ? veiculos.find((v) => String(v.opcaoId) === String(resolvedSaved)) ||
+        veiculos.find((v) => String(v.id) === String(resolvedSaved))
+      : null;
+    if (savedOption) {
       if (legacySaved) {
-        localStorage.setItem(key, String(legacySaved));
+        localStorage.setItem(key, String(savedOption.opcaoId));
         localStorage.removeItem(legacyKey);
       }
-      setVeiculoId(String(resolvedSaved));
+      setVeiculoId(String(savedOption.opcaoId));
       return;
     }
     setVeiculoId((prev) => {
-      if (prev && veiculos.some((v) => String(v.id) === String(prev))) return prev;
+      if (prev && veiculos.some((v) => String(v.opcaoId) === String(prev))) return prev;
       const prefer = veiculos.find((v) => v.motorista?.id) ?? veiculos[0];
-      return String(prefer.id);
+      return String(prefer.opcaoId);
     });
   }, [loadingVeiculos, veiculos, user?.empresa_id, user?.id]);
 
   useEffect(() => {
     if (!veiculoId || veiculos.length === 0) return;
-    if (!veiculos.some((v) => String(v.id) === String(veiculoId))) return;
+    if (!veiculos.some((v) => String(v.opcaoId) === String(veiculoId))) return;
     persistVeiculoId(veiculoId);
   }, [veiculoId, veiculos, persistVeiculoId]);
 
   const veiculoSelecionado = useMemo(
-    () => veiculos.find((v) => String(v.id) === String(veiculoId)),
+    () => veiculos.find((v) => String(v.opcaoId) === String(veiculoId)),
     [veiculos, veiculoId]
   );
   const capacidadeEsterilTon = Number(veiculoSelecionado?.capacidadePorMaterial?.esteril) || 0;
@@ -271,7 +275,7 @@ export default function ApontadorHomePage() {
   const temMaterialConfigurado = capacidadeEsterilTon > 0 || capacidadeRochaTon > 0;
 
   const idsVeiculosEmpresa = useMemo(
-    () => veiculos.map((v) => Number(v.id)).filter((n) => Number.isFinite(n) && n > 0),
+    () => [...new Set(veiculos.map((v) => Number(v.id)).filter((n) => Number.isFinite(n) && n > 0))],
     [veiculos]
   );
 
@@ -477,7 +481,8 @@ export default function ApontadorHomePage() {
             <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-center text-sm text-amber-100">
               Nenhum veículo disponível para apontamento. O administrador deve cadastrar veículos de{" "}
               <strong className="text-amber-50">transporte (romaneio)</strong> com{" "}
-              <strong className="text-amber-50">capacidade para estéril ou rocha</strong> na gestão da empresa.
+              <strong className="text-amber-50">capacidade para estéril ou rocha</strong> e{" "}
+              <strong className="text-amber-50">motorista vinculado</strong> na gestão da empresa.
             </p>
           )}
 

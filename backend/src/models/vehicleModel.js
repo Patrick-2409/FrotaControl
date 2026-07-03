@@ -174,8 +174,13 @@ const listVehicles = async (
   if (search) {
     extraClauses.push(
       `(v.nome ILIKE $${paramIdx} OR v.placa ILIKE $${paramIdx} OR COALESCE(v.marca, '') ILIKE $${paramIdx} OR COALESCE(v.modelo, '') ILIKE $${paramIdx} OR COALESCE(v.tipo, '') ILIKE $${paramIdx} OR EXISTS (
-         SELECT 1 FROM usuarios u
-         WHERE u.veiculo_id = v.id AND u.empresa_id = v.empresa_id AND u.nome ILIKE $${paramIdx}
+         SELECT 1
+         FROM usuarios u
+         LEFT JOIN motorista_veiculos mv ON mv.motorista_id = u.id AND mv.empresa_id = u.empresa_id
+         WHERE u.empresa_id = v.empresa_id
+           AND u.role = 'MOTORISTA'
+           AND (u.veiculo_id = v.id OR mv.veiculo_id = v.id)
+           AND u.nome ILIKE $${paramIdx}
        ))`
     );
     extraVals.push(`%${search}%`);
@@ -208,14 +213,27 @@ const listVehicles = async (
   const t0 = Date.now();
   const count = await queryTimed(countSql, countValues, { label: "veiculos-count" });
   const { rows } = await queryTimed(
-    `SELECT ${VEHICLE_LIST_COLS}, m.motorista_id, m.motorista_nome
+    `SELECT ${VEHICLE_LIST_COLS}, m.motorista_id, m.motorista_nome, COALESCE(m.motoristas_vinculados, '[]'::json) AS motoristas_vinculados
      FROM veiculos v
      LEFT JOIN LATERAL (
-       SELECT u.id AS motorista_id, u.nome AS motorista_nome
-       FROM usuarios u
-       WHERE u.veiculo_id = v.id AND u.empresa_id = v.empresa_id
-       ORDER BY u.id
-       LIMIT 1
+       SELECT
+         (array_agg(x.id ORDER BY x.is_principal DESC, x.nome))[1] AS motorista_id,
+         (array_agg(x.nome ORDER BY x.is_principal DESC, x.nome))[1] AS motorista_nome,
+         json_agg(json_build_object('id', x.id, 'nome', x.nome, 'is_principal', x.is_principal) ORDER BY x.is_principal DESC, x.nome) AS motoristas_vinculados
+       FROM (
+         SELECT DISTINCT ON (u.id)
+           u.id,
+           u.nome,
+           (u.veiculo_id = v.id OR COALESCE(mv.is_principal, false)) AS is_principal
+         FROM usuarios u
+         LEFT JOIN motorista_veiculos mv ON mv.motorista_id = u.id
+           AND mv.empresa_id = u.empresa_id
+           AND mv.veiculo_id = v.id
+         WHERE u.empresa_id = v.empresa_id
+           AND u.role = 'MOTORISTA'
+           AND (u.veiculo_id = v.id OR mv.veiculo_id = v.id)
+         ORDER BY u.id, (u.veiculo_id = v.id OR COALESCE(mv.is_principal, false)) DESC
+       ) x
      ) m ON true
      WHERE v.empresa_id = $1
      ${transportClause}

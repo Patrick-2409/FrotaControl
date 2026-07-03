@@ -20,6 +20,17 @@ function roleLabel(r) {
   return m[r] || r;
 }
 
+function vehicleLinksLabel(row = {}) {
+  const linked = Array.isArray(row.veiculos_vinculados) ? row.veiculos_vinculados : [];
+  if (linked.length) {
+    return linked
+      .slice(0, 3)
+      .map((v) => [v.placa, v.nome].filter(Boolean).join(" · ") || `#${v.id}`)
+      .join(", ");
+  }
+  return [row.veiculo_placa || row.placa, row.veiculo_nome].filter(Boolean).join(" · ");
+}
+
 function statusPessoaClass(s) {
   if (s === "ativo") return "bg-emerald-500/15 text-emerald-200 ring-1 ring-emerald-500/35";
   if (s === "afastado") return "bg-amber-500/15 text-amber-100 ring-1 ring-amber-500/35";
@@ -93,16 +104,16 @@ function RankingTable({
                 </td>
                 <td className="px-3 py-3 text-zinc-400">{roleLabel(row.role)}</td>
                 <td className="px-3 py-3 text-xs text-zinc-400">
-                  {row.role === "MOTORISTA" && (row.veiculo_placa || row.veiculo_nome) ? (
+                  {row.role === "MOTORISTA" && vehicleLinksLabel(row) ? (
                     <span>
-                      Veículo: {row.veiculo_placa || row.veiculo_nome}
+                      Veículo: {vehicleLinksLabel(row)}
                       {row.tipo_operacao ? (
                         <span className="text-zinc-500"> · {row.tipo_operacao}</span>
                       ) : null}
                     </span>
                   ) : null}
                   {row.role === "APONTADOR" ? <span>Coordenação de campo</span> : null}
-                  {row.role === "MOTORISTA" && !row.veiculo_placa && !row.veiculo_nome ? (
+                  {row.role === "MOTORISTA" && !vehicleLinksLabel(row) ? (
                     <span className="text-zinc-500">Sem veículo</span>
                   ) : null}
                 </td>
@@ -567,10 +578,8 @@ export default function EmpresaPessoasPage() {
                         </td>
                         <td className="px-3 py-3 text-zinc-400">{roleLabel(u.role)}</td>
                         <td className="px-3 py-3 text-xs text-zinc-400 hidden md:table-cell">
-                          {u.role === "MOTORISTA" && (u.veiculo_placa || u.veiculo_nome) ? (
-                            <span>
-                              {u.veiculo_placa} {u.veiculo_nome ? `· ${u.veiculo_nome}` : ""}
-                            </span>
+                          {u.role === "MOTORISTA" && vehicleLinksLabel(u) ? (
+                            <span>{vehicleLinksLabel(u)}</span>
                           ) : u.equipamento_vinculo ? (
                             <span>Equip.: {u.equipamento_vinculo}</span>
                           ) : u.operacao_escopo ? (
@@ -710,6 +719,7 @@ export default function EmpresaPessoasPage() {
                         cnh_categoria: role === "MOTORISTA" ? f.cnh_categoria : "",
                         cnh_validade: role === "MOTORISTA" ? f.cnh_validade : "",
                         veiculo_id: role === "MOTORISTA" ? f.veiculo_id : "",
+                        veiculo_ids: role === "MOTORISTA" ? f.veiculo_ids : [],
                       }));
                     }}
                   >
@@ -731,24 +741,82 @@ export default function EmpresaPessoasPage() {
                   </select>
                 </label>
                 {p.form.role === "MOTORISTA" ? (
-                  <label className="block text-xs font-medium text-zinc-400 sm:col-span-2">
-                    Veículo vinculado (opcional)
-                    <select
-                      className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
-                      value={p.form.veiculo_id}
-                      disabled={p.vehiclesPicklistLoading}
-                      onChange={(e) => p.setForm((f) => ({ ...f, veiculo_id: e.target.value }))}
-                    >
-                      <option value="">
-                        {p.vehiclesPicklistLoading ? "Carregando veículos..." : "Selecionar veículo (opcional)"}
-                      </option>
-                      {p.vehicles.map((v) => (
-                        <option key={v.id} value={v.id}>
-                          {v.placa} · {v.nome}
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-medium text-zinc-400">
+                      Veículo principal (opcional)
+                      <select
+                        className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
+                        value={p.form.veiculo_id}
+                        disabled={p.vehiclesPicklistLoading}
+                        onChange={(e) => {
+                          const next = e.target.value;
+                          p.setForm((f) => ({
+                            ...f,
+                            veiculo_id: next,
+                            veiculo_ids: next && !f.veiculo_ids.includes(next) ? [...f.veiculo_ids, next] : f.veiculo_ids,
+                          }));
+                        }}
+                      >
+                        <option value="">
+                          {p.vehiclesPicklistLoading ? "Carregando veículos..." : "Selecionar veículo principal"}
                         </option>
-                      ))}
-                    </select>
-                  </label>
+                        {p.vehicles.map((v) => (
+                          <option key={v.id} value={v.id}>
+                            {v.placa} · {v.nome}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                        Veículos autorizados para apontamento
+                      </p>
+                      <div className="mt-2 grid max-h-48 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                        {p.vehicles.length === 0 ? (
+                          <p className="text-xs text-zinc-500">
+                            {p.vehiclesPicklistLoading ? "Carregando veículos..." : "Nenhum veículo cadastrado."}
+                          </p>
+                        ) : (
+                          p.vehicles.map((v) => {
+                            const id = String(v.id);
+                            const checked = (p.form.veiculo_ids || []).includes(id);
+                            return (
+                              <label
+                                key={`person-vehicle-${v.id}`}
+                                className="flex items-start gap-2 rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-2 text-xs text-zinc-300"
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="mt-0.5 h-4 w-4 rounded border-zinc-600 bg-zinc-950"
+                                  checked={checked}
+                                  onChange={(e) =>
+                                    p.setForm((f) => {
+                                      const current = f.veiculo_ids || [];
+                                      const nextIds = e.target.checked
+                                        ? [...new Set([...current, id])]
+                                        : current.filter((item) => item !== id);
+                                      return {
+                                        ...f,
+                                        veiculo_ids: nextIds,
+                                        veiculo_id: f.veiculo_id === id && !e.target.checked ? "" : f.veiculo_id,
+                                      };
+                                    })
+                                  }
+                                />
+                                <span>
+                                  <span className="font-semibold text-zinc-100">{v.placa || "Sem placa"}</span>
+                                  <span className="block text-zinc-500">{v.nome}</span>
+                                </span>
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                      <p className="mt-2 text-xs text-zinc-500">
+                        Use o principal como padrão e marque os demais quando o mesmo motorista operar mais de um veículo.
+                      </p>
+                    </div>
+                  </div>
                 ) : null}
                 <label className="block text-xs font-medium text-zinc-400 sm:col-span-2">
                   Função / cargo operacional

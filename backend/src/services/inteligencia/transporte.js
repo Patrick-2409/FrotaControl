@@ -86,7 +86,16 @@ const analisarTransporte = async (ctx) => {
                FROM usuarios u
                WHERE u.id = $5
                  AND u.empresa_id = v.empresa_id
-                 AND u.veiculo_id = v.id
+                 AND (
+                   u.veiculo_id = v.id
+                   OR EXISTS (
+                     SELECT 1
+                     FROM motorista_veiculos mv
+                     WHERE mv.empresa_id = v.empresa_id
+                       AND mv.motorista_id = u.id
+                       AND mv.veiculo_id = v.id
+                   )
+                 )
              )
            )
            AND ${transportVehiclePredicate}`,

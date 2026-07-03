@@ -11,6 +11,7 @@ export const mapVeiculoApi = (v) => {
 
   return {
     id: v.id,
+    opcaoId: v.motorista_id != null ? `${v.id}:${v.motorista_id}` : String(v.id),
     placa: v.placa,
     nome: v.nome,
     capacidadeTon,

@@ -82,6 +82,12 @@ const userSchema = z.object({
     .transform((v) => (v === "" ? undefined : v)),
   role: z.enum(["MOTORISTA", "ADMIN_EMPRESA", "APONTADOR", "SUPER_ADMIN"]).default("MOTORISTA"),
   veiculo_id: z.coerce.number().int().positive().nullable().optional(),
+  veiculo_ids: z
+    .preprocess((value) => {
+      if (value == null || value === "") return [];
+      return Array.isArray(value) ? value : [value];
+    }, z.array(z.coerce.number().int().positive()).max(50))
+    .optional(),
   profile_image_url: z
     .string()
     .max(2000)
@@ -171,6 +177,70 @@ const vehicleBelongsToCompany = async (empresa_id, veiculo_id) => {
     [vehicleId, companyId]
   );
   return rowCount > 0;
+};
+
+const normalizeMotoristaVehicleSelection = (payload) => {
+  const hasVehicleSelection =
+    Object.prototype.hasOwnProperty.call(payload || {}, "veiculo_id") ||
+    Object.prototype.hasOwnProperty.call(payload || {}, "veiculo_ids");
+  if (payload?.role !== "MOTORISTA") {
+    return { primaryVehicleId: null, vehicleIds: [], hasVehicleSelection };
+  }
+  const ids = [];
+  const pushId = (value) => {
+    const id = Number(value);
+    if (Number.isFinite(id) && id > 0 && !ids.includes(id)) ids.push(id);
+  };
+  pushId(payload?.veiculo_id);
+  for (const id of payload?.veiculo_ids || []) pushId(id);
+  return {
+    primaryVehicleId: ids.length ? Number(payload?.veiculo_id) || ids[0] : hasVehicleSelection ? null : undefined,
+    vehicleIds: ids,
+    hasVehicleSelection,
+  };
+};
+
+const vehiclesBelongToCompany = async (empresa_id, vehicleIds = []) => {
+  const ids = [...new Set((vehicleIds || []).map(Number).filter((id) => Number.isFinite(id) && id > 0))];
+  if (!ids.length) return true;
+  if (ids.length === 1) return vehicleBelongsToCompany(empresa_id, ids[0]);
+  const { rows } = await pool.query(
+    "SELECT id FROM veiculos WHERE empresa_id = $1 AND id = ANY($2::int[])",
+    [Number(empresa_id), ids]
+  );
+  const valid = new Set((rows || []).map((row) => Number(row.id)));
+  return ids.every((id) => valid.has(id));
+};
+
+const syncMotoristaVehicleLinks = async ({ empresa_id, motorista_id, vehicleIds = [], primaryVehicleId = null }) => {
+  const companyId = Number(empresa_id);
+  const driverId = Number(motorista_id);
+  if (!Number.isFinite(companyId) || companyId <= 0 || !Number.isFinite(driverId) || driverId <= 0) return;
+  const ids = [...new Set((vehicleIds || []).map(Number).filter((id) => Number.isFinite(id) && id > 0))];
+  const primaryId = Number(primaryVehicleId) || ids[0] || null;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      "DELETE FROM motorista_veiculos WHERE empresa_id = $1 AND motorista_id = $2",
+      [companyId, driverId]
+    );
+    for (const vehicleId of ids) {
+      await client.query(
+        `INSERT INTO motorista_veiculos (empresa_id, motorista_id, veiculo_id, is_principal)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (empresa_id, motorista_id, veiculo_id)
+         DO UPDATE SET is_principal = EXCLUDED.is_principal`,
+        [companyId, driverId, vehicleId, primaryId ? vehicleId === primaryId : ids[0] === vehicleId]
+      );
+    }
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 };
 
 const userBelongsToCompany = async (empresa_id, usuario_id) => {
@@ -430,6 +500,12 @@ const deleteCompanyCtrl = async (req, res) => {
 const createUserCtrl = async (req, res) => {
   const payload = applyRoleCnhRules(normalizeUserPayload(userSchema.parse(req.body)));
   const empresa_id = payload.role === "SUPER_ADMIN" ? null : getCompanyId(req);
+  const vehicleSelection = normalizeMotoristaVehicleSelection(payload);
+  const userPayload = {
+    ...payload,
+    veiculo_id: vehicleSelection.primaryVehicleId,
+    veiculo_ids: vehicleSelection.vehicleIds,
+  };
   if (req.user.role === "ADMIN_EMPRESA" && payload.role === "SUPER_ADMIN") {
     return res.status(403).json({
       success: false,
@@ -444,14 +520,14 @@ const createUserCtrl = async (req, res) => {
       message: "empresa_id é obrigatório para este perfil.",
     });
   }
-  if (process.env.ENFORCE_MOTORISTA_VEICULO === "true" && payload.role === "MOTORISTA" && !payload.veiculo_id) {
+  if (process.env.ENFORCE_MOTORISTA_VEICULO === "true" && payload.role === "MOTORISTA" && !vehicleSelection.vehicleIds.length) {
     return res.status(400).json({
       success: false,
       error: "Motorista deve ter veículo vinculado",
       message: "Motorista deve ter veículo vinculado",
     });
   }
-  if (payload.role === "MOTORISTA" && payload.veiculo_id && !(await vehicleBelongsToCompany(empresa_id, payload.veiculo_id))) {
+  if (payload.role === "MOTORISTA" && !(await vehiclesBelongToCompany(empresa_id, vehicleSelection.vehicleIds))) {
     return sendVehicleScopeError(res);
   }
   let temporaryPassword = null;
@@ -476,14 +552,21 @@ const createUserCtrl = async (req, res) => {
     if (payload.role === "MOTORISTA" && identityError.existingUser?.id) {
       const existingId = Number(identityError.existingUser.id);
       const updated = await updateUser(existingId, empresa_id, {
-        ...payload,
-        veiculo_id: payload.veiculo_id || null,
+        ...userPayload,
       });
       if (!updated) {
         return res.status(404).json({
           success: false,
           error: "Motorista não encontrado para atualização.",
           message: "Motorista não encontrado para atualização.",
+        });
+      }
+      if (payload.role === "MOTORISTA" && vehicleSelection.hasVehicleSelection) {
+        await syncMotoristaVehicleLinks({
+          empresa_id,
+          motorista_id: existingId,
+          vehicleIds: vehicleSelection.vehicleIds,
+          primaryVehicleId: vehicleSelection.primaryVehicleId,
         });
       }
       const senha_hash = await bcrypt.hash(passwordToHash, 10);
@@ -510,11 +593,19 @@ const createUserCtrl = async (req, res) => {
   }
   const senha_hash = await bcrypt.hash(passwordToHash, 10);
   const row = await createUser({
-    ...payload,
+    ...userPayload,
     empresa_id,
-    veiculo_id: payload.role === "SUPER_ADMIN" || payload.role === "APONTADOR" ? null : payload.veiculo_id,
+    veiculo_id: payload.role === "SUPER_ADMIN" || payload.role === "APONTADOR" ? null : vehicleSelection.primaryVehicleId,
     senha_hash,
   });
+  if (payload.role === "MOTORISTA" && vehicleSelection.vehicleIds.length) {
+    await syncMotoristaVehicleLinks({
+      empresa_id,
+      motorista_id: row.id,
+      vehicleIds: vehicleSelection.vehicleIds,
+      primaryVehicleId: vehicleSelection.primaryVehicleId,
+    });
+  }
   await logAudit({
     usuario_id: req.user?.sub,
     acao: "criou",
@@ -650,6 +741,12 @@ const updateUserCtrl = async (req, res) => {
     payload.role === "SUPER_ADMIN"
       ? null
       : (rawEmpresaId == null || rawEmpresaId === "" ? null : Number(rawEmpresaId));
+  const vehicleSelection = normalizeMotoristaVehicleSelection(payload);
+  const userPayload = {
+    ...payload,
+    veiculo_id: vehicleSelection.primaryVehicleId,
+    veiculo_ids: vehicleSelection.vehicleIds,
+  };
   if (req.user.role === "ADMIN_EMPRESA" && payload.role === "SUPER_ADMIN") {
     return res.status(403).json({
       success: false,
@@ -664,7 +761,7 @@ const updateUserCtrl = async (req, res) => {
       message: "empresa_id é obrigatório",
     });
   }
-  if (process.env.ENFORCE_MOTORISTA_VEICULO === "true" && payload.role === "MOTORISTA" && !payload.veiculo_id) {
+  if (process.env.ENFORCE_MOTORISTA_VEICULO === "true" && payload.role === "MOTORISTA" && vehicleSelection.hasVehicleSelection && !vehicleSelection.vehicleIds.length) {
     return res.status(400).json({
       success: false,
       error: "Motorista deve ter veículo vinculado",
@@ -678,7 +775,7 @@ const updateUserCtrl = async (req, res) => {
       message: "Utilizador não encontrado.",
     });
   }
-  if (payload.role === "MOTORISTA" && payload.veiculo_id && !(await vehicleBelongsToCompany(empresa_id, payload.veiculo_id))) {
+  if (payload.role === "MOTORISTA" && !(await vehiclesBelongToCompany(empresa_id, vehicleSelection.vehicleIds))) {
     return sendVehicleScopeError(res);
   }
   const identityError = await checkRoleScopedUniqueness({
@@ -699,7 +796,7 @@ const updateUserCtrl = async (req, res) => {
   let row;
   if (req.user.role === "SUPER_ADMIN") {
     row = await updateUserAsSuperAdmin(Number(req.params.id), {
-      ...payload,
+      ...userPayload,
       empresa_id,
     });
     if (!row) {
@@ -710,7 +807,7 @@ const updateUserCtrl = async (req, res) => {
       });
     }
   } else {
-    row = await updateUser(Number(req.params.id), empresa_id, payload);
+    row = await updateUser(Number(req.params.id), empresa_id, userPayload);
     if (!row) {
       return res.status(404).json({
         success: false,
@@ -729,6 +826,14 @@ const updateUserCtrl = async (req, res) => {
     } else {
       await updateUserPassword(Number(req.params.id), empresa_id, senha_hash);
     }
+  }
+  if ((payload.role === "MOTORISTA" && vehicleSelection.hasVehicleSelection) || row.role !== "MOTORISTA") {
+    await syncMotoristaVehicleLinks({
+      empresa_id: row.empresa_id ?? empresa_id,
+      motorista_id: row.id,
+      vehicleIds: payload.role === "MOTORISTA" ? vehicleSelection.vehicleIds : [],
+      primaryVehicleId: payload.role === "MOTORISTA" ? vehicleSelection.primaryVehicleId : null,
+    });
   }
   await logAudit({
     usuario_id: req.user?.sub,
@@ -859,7 +964,15 @@ const listVehiclesCtrl = async (req, res) => {
     let idx = 1;
     const clauses = [];
     if (search) {
-      clauses.push(`(v.nome ILIKE $${idx} OR v.placa ILIKE $${idx} OR e.nome ILIKE $${idx} OR u.nome ILIKE $${idx})`);
+      clauses.push(`(v.nome ILIKE $${idx} OR v.placa ILIKE $${idx} OR e.nome ILIKE $${idx} OR EXISTS (
+        SELECT 1
+        FROM usuarios u
+        LEFT JOIN motorista_veiculos mv ON mv.motorista_id = u.id AND mv.empresa_id = u.empresa_id
+        WHERE u.empresa_id = v.empresa_id
+          AND u.role = 'MOTORISTA'
+          AND (u.veiculo_id = v.id OR mv.veiculo_id = v.id)
+          AND u.nome ILIKE $${idx}
+      ))`);
       values.push(`%${search}%`);
       idx += 1;
     }
@@ -874,7 +987,6 @@ const listVehiclesCtrl = async (req, res) => {
       SELECT COUNT(*)::int AS total
       FROM veiculos v
       LEFT JOIN empresas e ON e.id = v.empresa_id
-      LEFT JOIN usuarios u ON u.veiculo_id = v.id AND u.empresa_id = v.empresa_id AND u.role = 'MOTORISTA'
       ${where}
       `,
       values
@@ -884,10 +996,21 @@ const listVehiclesCtrl = async (req, res) => {
       SELECT
         v.*,
         e.nome AS empresa_nome,
-        u.id AS motorista_id, u.nome AS motorista_nome
+        m.motorista_id, m.motorista_nome
       FROM veiculos v
       LEFT JOIN empresas e ON e.id = v.empresa_id
-      LEFT JOIN usuarios u ON u.veiculo_id = v.id AND u.empresa_id = v.empresa_id AND u.role = 'MOTORISTA'
+      LEFT JOIN LATERAL (
+        SELECT u.id AS motorista_id, u.nome AS motorista_nome
+        FROM usuarios u
+        LEFT JOIN motorista_veiculos mv ON mv.motorista_id = u.id
+          AND mv.empresa_id = u.empresa_id
+          AND mv.veiculo_id = v.id
+        WHERE u.empresa_id = v.empresa_id
+          AND u.role = 'MOTORISTA'
+          AND (u.veiculo_id = v.id OR mv.veiculo_id = v.id)
+        ORDER BY (u.veiculo_id = v.id OR COALESCE(mv.is_principal, false)) DESC, u.nome
+        LIMIT 1
+      ) m ON true
       ${where}
       ORDER BY v.created_at DESC
       LIMIT $${idx} OFFSET $${idx + 1}
@@ -1097,9 +1220,20 @@ const companyDetailsCtrl = async (req, res) => {
     pool.query(
       `SELECT
         v.id, v.nome, v.placa, v.created_at,
-        u.id AS motorista_id, u.nome AS motorista_nome
+        m.motorista_id, m.motorista_nome
       FROM veiculos v
-      LEFT JOIN usuarios u ON u.veiculo_id = v.id AND u.empresa_id = v.empresa_id AND u.role = 'MOTORISTA'
+      LEFT JOIN LATERAL (
+        SELECT u.id AS motorista_id, u.nome AS motorista_nome
+        FROM usuarios u
+        LEFT JOIN motorista_veiculos mv ON mv.motorista_id = u.id
+          AND mv.empresa_id = u.empresa_id
+          AND mv.veiculo_id = v.id
+        WHERE u.empresa_id = v.empresa_id
+          AND u.role = 'MOTORISTA'
+          AND (u.veiculo_id = v.id OR mv.veiculo_id = v.id)
+        ORDER BY (u.veiculo_id = v.id OR COALESCE(mv.is_principal, false)) DESC, u.nome
+        LIMIT 1
+      ) m ON true
       WHERE v.empresa_id = $1
       ORDER BY v.nome`,
       [companyId]

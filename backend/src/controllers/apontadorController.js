@@ -1,4 +1,3 @@
-const { listVehicles } = require("../models/vehicleModel");
 const {
   insertViagem,
   countViagensHojeApontadorSaoPaulo,
@@ -44,7 +43,16 @@ const assertVeiculoMotoristaTransporte = async (empresaId, veiculo_id, motorista
      INNER JOIN usuarios u ON u.id = $3
        AND u.empresa_id = v.empresa_id
        AND u.role = 'MOTORISTA'
-       AND u.veiculo_id = v.id
+       AND (
+         u.veiculo_id = v.id
+         OR EXISTS (
+           SELECT 1
+           FROM motorista_veiculos mv
+           WHERE mv.empresa_id = v.empresa_id
+             AND mv.motorista_id = u.id
+             AND mv.veiculo_id = v.id
+         )
+       )
      WHERE v.id = $2
        AND v.empresa_id = $1
      LIMIT 1`,
@@ -99,19 +107,78 @@ const listVehiclesApontador = async (req, res) => {
   const page = Number(req.query.page || 1);
   const limit = Math.min(Math.max(Number(req.query.limit || 100), 1), 200);
   const search = String(req.query.search || "");
-  const result = await listVehicles(empresaId, {
-    page,
-    limit,
-    search,
-    filtrar_transporte: true,
-    exige_capacidade: true,
-  });
+  const offset = (Math.max(1, page) - 1) * limit;
+  const values = [empresaId];
+  let idx = 2;
+  let searchSql = "";
+  if (search.trim()) {
+    searchSql = `AND (
+      v.nome ILIKE $${idx}
+      OR v.placa ILIKE $${idx}
+      OR u.nome ILIKE $${idx}
+    )`;
+    values.push(`%${search.trim()}%`);
+    idx += 1;
+  }
+  const { rows } = await pool.query(
+    `WITH vinculos AS (
+       SELECT DISTINCT ON (v.id, u.id)
+         v.id,
+         v.empresa_id,
+         v.nome,
+         v.placa,
+         v.marca,
+         v.modelo,
+         v.tipo,
+         v.categoria,
+         v.ano,
+         v.renavam,
+         v.chassi,
+         v.combustivel_principal,
+         v.capacidade_litros,
+         v.capacidade_ton,
+         v.capacidade_esteril_ton,
+         v.capacidade_rocha_ton,
+         v.horimetro_atual,
+         v.hodometro_atual,
+         v.usa_para_transporte,
+         v.tipo_operacao,
+         v.status_operacional,
+         v.created_at,
+         u.id AS motorista_id,
+         u.nome AS motorista_nome,
+         (u.veiculo_id = v.id OR COALESCE(mv.is_principal, false)) AS motorista_principal
+       FROM veiculos v
+       INNER JOIN usuarios u ON u.empresa_id = v.empresa_id
+        AND u.role = 'MOTORISTA'
+        AND COALESCE(u.conta_status, 'ativo') = 'ativo'
+       LEFT JOIN motorista_veiculos mv ON mv.empresa_id = v.empresa_id
+        AND mv.motorista_id = u.id
+        AND mv.veiculo_id = v.id
+       WHERE v.empresa_id = $1
+         AND COALESCE(v.usa_para_transporte, false) = true
+         AND (
+           COALESCE(v.capacidade_esteril_ton, v.capacidade_ton, 0) > 0
+           OR COALESCE(v.capacidade_rocha_ton, v.capacidade_ton, 0) > 0
+         )
+         AND (u.veiculo_id = v.id OR mv.veiculo_id = v.id)
+         ${searchSql}
+       ORDER BY v.id, u.id, (u.veiculo_id = v.id OR COALESCE(mv.is_principal, false)) DESC
+     )
+     SELECT *, COUNT(*) OVER()::int AS total_count
+     FROM vinculos
+     ORDER BY placa NULLS LAST, nome, motorista_principal DESC, motorista_nome
+     LIMIT $${idx} OFFSET $${idx + 1}`,
+    [...values, limit, offset]
+  );
+  const total = Number(rows[0]?.total_count || 0);
+  const items = rows.map(({ total_count: _totalCount, ...row }) => row);
   return res.json({
     success: true,
-    items: result.items,
-    total: result.total,
+    items,
+    total,
     page,
-    totalPages: Math.max(1, Math.ceil(result.total / limit)),
+    totalPages: Math.max(1, Math.ceil(total / limit)),
   });
 };
 

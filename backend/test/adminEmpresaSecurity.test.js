@@ -393,12 +393,12 @@ test("listVehiclesCtrl junta motorista somente quando pertence a mesma empresa d
 
     const vehicleQueries = calls.filter((c) => /FROM veiculos v/.test(c.sql));
     assert.ok(vehicleQueries.length >= 2, "esperadas queries de veículos");
-    assert.ok(
-      vehicleQueries.every((c) =>
-        /LEFT JOIN usuarios u ON u\.veiculo_id = v\.id AND u\.empresa_id = v\.empresa_id AND u\.role = 'MOTORISTA'/.test(c.sql)
-      ),
-      "joins de veículos devem limitar motorista pela empresa do veículo"
-    );
+    const listQuery = vehicleQueries.find((c) => /LEFT JOIN LATERAL/.test(c.sql));
+    assert.ok(listQuery, "esperada selecao lateral do motorista vinculado");
+    assert.match(listQuery.sql, /LEFT JOIN motorista_veiculos mv ON mv\.motorista_id = u\.id/);
+    assert.match(listQuery.sql, /mv\.empresa_id = u\.empresa_id/);
+    assert.match(listQuery.sql, /u\.empresa_id = v\.empresa_id/);
+    assert.match(listQuery.sql, /u\.role = 'MOTORISTA'/);
   } finally {
     db.pool.query = orig;
     delete require.cache[pathCtrl];

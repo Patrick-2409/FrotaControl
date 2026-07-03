@@ -82,7 +82,7 @@ export const ApontadorVeiculoField = memo(function ApontadorVeiculoField({
   return (
     <div>
       <label htmlFor="apontador-veiculo" className="mb-2 block text-center text-sm font-medium text-slate-400">
-        Veículo
+        Veículo e motorista
       </label>
       {loadingVeiculos ? (
         <div
@@ -107,8 +107,9 @@ export const ApontadorVeiculoField = memo(function ApontadorVeiculoField({
               capacidadeRocha ? `Rocha ${capacidadeRocha}` : null,
             ].filter(Boolean);
             return (
-              <option key={v.id} value={String(v.id)}>
+              <option key={v.opcaoId || `${v.id}:${v.motorista?.id || "sem-motorista"}`} value={String(v.opcaoId || v.id)}>
                 {v.placa} — {v.nome}
+                {v.motorista?.nome ? ` · ${v.motorista.nome}` : ""}
                 {capacidades.length ? ` · ${capacidades.join(" · ")}` : ""}
               </option>
             );

@@ -72,12 +72,16 @@ test("getPeopleSummary calcula risco de romaneio apenas para motoristas de trans
 
     const semRomaneioQuery = calls.find((c) => /NOT EXISTS/.test(c.sql));
     assert.ok(semRomaneioQuery, "esperada query de motoristas sem romaneio");
-    assert.match(semRomaneioQuery.sql, /INNER JOIN veiculos v ON v\.id = u\.veiculo_id AND v\.empresa_id = u\.empresa_id/);
+    assert.match(semRomaneioQuery.sql, /FROM motorista_veiculos mv/);
+    assert.match(semRomaneioQuery.sql, /mv\.empresa_id = u\.empresa_id/);
+    assert.match(semRomaneioQuery.sql, /INNER JOIN veiculos vt ON vt\.id = uv2\.veiculo_id AND vt\.empresa_id = u\.empresa_id/);
     assert.match(semRomaneioQuery.sql, /= 'transporte'/);
 
     const baixaAtividadeQuery = calls.find((c) => /rom_stats/.test(c.sql));
     assert.ok(baixaAtividadeQuery, "esperada query de baixa atividade");
-    assert.match(baixaAtividadeQuery.sql, /INNER JOIN veiculos v ON v\.id = u\.veiculo_id AND v\.empresa_id = u\.empresa_id/);
+    assert.match(baixaAtividadeQuery.sql, /FROM motorista_veiculos mv/);
+    assert.match(baixaAtividadeQuery.sql, /mv\.empresa_id = u\.empresa_id/);
+    assert.match(baixaAtividadeQuery.sql, /INNER JOIN veiculos vt ON vt\.id = uv2\.veiculo_id AND vt\.empresa_id = u\.empresa_id/);
     assert.match(baixaAtividadeQuery.sql, /= 'transporte'/);
   } finally {
     db.pool.query = orig;

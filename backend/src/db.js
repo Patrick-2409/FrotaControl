@@ -294,6 +294,31 @@ const initDb = async () => {
     CREATE INDEX IF NOT EXISTS idx_veiculos_empresa_created ON veiculos (empresa_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_usuarios_veiculo_empresa ON usuarios (veiculo_id, empresa_id)
       WHERE veiculo_id IS NOT NULL;
+    CREATE TABLE IF NOT EXISTS motorista_veiculos (
+      id SERIAL PRIMARY KEY,
+      empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+      motorista_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+      veiculo_id INTEGER NOT NULL REFERENCES veiculos(id) ON DELETE CASCADE,
+      is_principal BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (empresa_id, motorista_id, veiculo_id)
+    );
+    INSERT INTO motorista_veiculos (empresa_id, motorista_id, veiculo_id, is_principal)
+    SELECT u.empresa_id, u.id, u.veiculo_id, true
+    FROM usuarios u
+    INNER JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
+    WHERE u.role = 'MOTORISTA'
+      AND u.empresa_id IS NOT NULL
+      AND u.veiculo_id IS NOT NULL
+    ON CONFLICT (empresa_id, motorista_id, veiculo_id)
+    DO UPDATE SET is_principal = motorista_veiculos.is_principal OR EXCLUDED.is_principal;
+    CREATE INDEX IF NOT EXISTS idx_motorista_veiculos_motorista
+      ON motorista_veiculos (empresa_id, motorista_id);
+    CREATE INDEX IF NOT EXISTS idx_motorista_veiculos_veiculo
+      ON motorista_veiculos (empresa_id, veiculo_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_motorista_veiculos_principal
+      ON motorista_veiculos (empresa_id, motorista_id)
+      WHERE is_principal = true;
     CREATE INDEX IF NOT EXISTS idx_romaneios_veiculo_empresa_data ON romaneios (veiculo_id, empresa_id, data DESC);
     CREATE INDEX IF NOT EXISTS idx_combustiveis_veiculo_empresa_data ON combustiveis (veiculo_id, empresa_id, data DESC);
     CREATE INDEX IF NOT EXISTS idx_parte_diaria_veiculo_empresa_data ON parte_diaria (veiculo_id, empresa_id, data DESC);

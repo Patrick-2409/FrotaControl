@@ -44,10 +44,33 @@ const userToForm = (u = {}) => ({
   senha: "",
   role: u.role || "MOTORISTA",
   veiculo_id: u.veiculo_id || "",
+  veiculo_ids: getLinkedVehicleIds(u),
   cnh_numero: u.cnh_numero || "",
   cnh_categoria: u.cnh_categoria || "",
   cnh_validade: u.cnh_validade ? String(u.cnh_validade).slice(0, 10) : "",
 });
+function getLinkedVehicleIds(u = {}) {
+  const ids = [];
+  const push = (value) => {
+    const id = Number(value);
+    if (Number.isFinite(id) && id > 0 && !ids.includes(String(id))) ids.push(String(id));
+  };
+  push(u.veiculo_id);
+  for (const vehicle of Array.isArray(u.veiculos_vinculados) ? u.veiculos_vinculados : []) {
+    push(vehicle?.id);
+  }
+  return ids;
+}
+function vehicleLinksLabel(u = {}) {
+  const linked = Array.isArray(u.veiculos_vinculados) ? u.veiculos_vinculados : [];
+  if (linked.length) {
+    return linked
+      .slice(0, 3)
+      .map((v) => [v.placa, v.nome].filter(Boolean).join(" · ") || `#${v.id}`)
+      .join(", ");
+  }
+  return u.veiculo_nome || "Sem vínculo";
+}
 export default function CompanyManagementPage() {
   const { user: authUser } = useAuth();
   const [searchParams] = useSearchParams();
@@ -70,6 +93,7 @@ export default function CompanyManagementPage() {
     senha: "",
     role: "MOTORISTA",
     veiculo_id: "",
+    veiculo_ids: [],
     cnh_numero: "",
     cnh_categoria: "",
     cnh_validade: "",
@@ -142,6 +166,19 @@ export default function CompanyManagementPage() {
     }
     const veiculoId =
       userForm.role === "MOTORISTA" && userForm.veiculo_id ? Number(userForm.veiculo_id) : null;
+    const veiculoIds =
+      userForm.role === "MOTORISTA"
+        ? [
+            ...new Set(
+              [
+                veiculoId,
+                ...(Array.isArray(userForm.veiculo_ids) ? userForm.veiculo_ids : []),
+              ]
+                .map(Number)
+                .filter((id) => Number.isFinite(id) && id > 0)
+            ),
+          ]
+        : [];
     setLoading(true);
     try {
       const payload = {
@@ -151,6 +188,7 @@ export default function CompanyManagementPage() {
         senha: userForm.senha,
         role: userForm.role,
         veiculo_id: veiculoId,
+        veiculo_ids: veiculoIds,
         cnh_numero: isMotorista ? String(userForm.cnh_numero).trim() || null : null,
         cnh_categoria: isMotorista ? String(userForm.cnh_categoria).trim() || null : null,
         cnh_validade: isMotorista ? userForm.cnh_validade || null : null,
@@ -284,6 +322,7 @@ export default function CompanyManagementPage() {
                       ...f,
                       role,
                       veiculo_id: role === "MOTORISTA" ? f.veiculo_id : "",
+                      veiculo_ids: role === "MOTORISTA" ? f.veiculo_ids : [],
                       cnh_numero: role === "MOTORISTA" ? f.cnh_numero : "",
                       cnh_categoria: role === "MOTORISTA" ? f.cnh_categoria : "",
                       cnh_validade: role === "MOTORISTA" ? f.cnh_validade : "",
@@ -300,10 +339,17 @@ export default function CompanyManagementPage() {
                       className={inputClass}
                       value={userForm.veiculo_id}
                       disabled={loadingVehiclePicklist}
-                      onChange={(e) => setUserForm((f) => ({ ...f, veiculo_id: e.target.value }))}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        setUserForm((f) => ({
+                          ...f,
+                          veiculo_id: next,
+                          veiculo_ids: next && !f.veiculo_ids.includes(next) ? [...f.veiculo_ids, next] : f.veiculo_ids,
+                        }));
+                      }}
                     >
                       <option value="">
-                        {loadingVehiclePicklist ? "Carregando veículos..." : "Vínculo de veículo (opcional)"}
+                        {loadingVehiclePicklist ? "Carregando veículos..." : "Veículo principal (opcional)"}
                       </option>
                       {vehicleOptions.map((v) => (
                         <option key={`v-opt-${v.id}`} value={v.id}>
@@ -311,8 +357,54 @@ export default function CompanyManagementPage() {
                         </option>
                       ))}
                     </select>
+                    <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/55 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Veículos autorizados para este motorista
+                      </p>
+                      <div className="mt-2 grid max-h-44 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                        {vehicleOptions.length === 0 ? (
+                          <p className="text-xs text-slate-500">
+                            {loadingVehiclePicklist ? "Carregando veículos..." : "Nenhum veículo cadastrado."}
+                          </p>
+                        ) : (
+                          vehicleOptions.map((v) => {
+                            const id = String(v.id);
+                            const checked = userForm.veiculo_ids.includes(id);
+                            return (
+                              <label
+                                key={`v-link-${v.id}`}
+                                className="flex items-start gap-2 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs text-slate-300"
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="mt-0.5 h-4 w-4 rounded border-slate-600 bg-slate-950"
+                                  checked={checked}
+                                  onChange={(e) =>
+                                    setUserForm((f) => {
+                                      const current = f.veiculo_ids || [];
+                                      const nextIds = e.target.checked
+                                        ? [...new Set([...current, id])]
+                                        : current.filter((item) => item !== id);
+                                      return {
+                                        ...f,
+                                        veiculo_ids: nextIds,
+                                        veiculo_id: f.veiculo_id === id && !e.target.checked ? "" : f.veiculo_id,
+                                      };
+                                    })
+                                  }
+                                />
+                                <span>
+                                  <span className="font-semibold text-slate-100">{v.placa || "Sem placa"}</span>
+                                  <span className="block text-slate-500">{v.nome}</span>
+                                </span>
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
                     <p className="mt-1 text-xs text-slate-500">
-                      Opcional neste momento. Cadastre ou edite veículos em{" "}
+                      O principal aparece como padrão; os demais ficam liberados para apontamento quando o veículo for de transporte. Cadastre ou edite veículos em{" "}
                       <Link to={FROTA_PANEL_PATH} className="text-blue-300 hover:text-blue-200">
                         Painel frota
                       </Link>
@@ -416,7 +508,7 @@ export default function CompanyManagementPage() {
                             </span>
                           ) : null}
                           <span className="text-slate-400">
-                            Veículo: <span className="text-slate-300">{u.veiculo_nome || "Sem vínculo"}</span>
+                            Veículo: <span className="text-slate-300">{vehicleLinksLabel(u)}</span>
                           </span>
                         </div>
                     </div>

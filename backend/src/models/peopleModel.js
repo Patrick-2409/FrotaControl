@@ -1,11 +1,55 @@
 const { queryTimed } = require("../utils/queryTimed");
 
-const USER_PROD_COLS = `u.id, u.nome, u.role, u.profile_image_url, u.funcao, u.veiculo_id`;
+const USER_PROD_COLS = `u.id, u.nome, u.role, u.profile_image_url, u.funcao, uv.veiculo_id`;
 const VEHICLE_PROD_COLS = `v.placa AS veiculo_placa, v.nome AS veiculo_nome,
   COALESCE(
     NULLIF(TRIM(v.tipo_operacao), ''),
     CASE WHEN COALESCE(v.usa_para_transporte, false) THEN 'transporte' ELSE 'apoio' END
   ) AS tipo_operacao`;
+
+const TRANSPORT_VEHICLE_EXISTS_SQL = `EXISTS (
+           SELECT 1
+           FROM (
+             SELECT u.veiculo_id AS veiculo_id
+             WHERE u.veiculo_id IS NOT NULL
+             UNION
+             SELECT mv.veiculo_id
+             FROM motorista_veiculos mv
+             WHERE mv.empresa_id = u.empresa_id
+               AND mv.motorista_id = u.id
+           ) uv2
+           INNER JOIN veiculos vt ON vt.id = uv2.veiculo_id AND vt.empresa_id = u.empresa_id
+           WHERE COALESCE(
+             NULLIF(TRIM(vt.tipo_operacao), ''),
+             CASE WHEN COALESCE(vt.usa_para_transporte, false) THEN 'transporte' ELSE 'apoio' END
+           ) = 'transporte'
+         )`;
+
+const USER_PRIMARY_OR_TRANSPORT_VEHICLE_JOIN = `
+     LEFT JOIN LATERAL (
+       SELECT picked.veiculo_id
+       FROM (
+         SELECT
+           vv.id AS veiculo_id,
+           COALESCE(uv_raw.is_principal, false) AS is_principal,
+           COALESCE(
+             NULLIF(TRIM(vv.tipo_operacao), ''),
+             CASE WHEN COALESCE(vv.usa_para_transporte, false) THEN 'transporte' ELSE 'apoio' END
+           ) AS tipo_operacao
+         FROM (
+           SELECT u.veiculo_id AS veiculo_id, true AS is_principal
+           WHERE u.veiculo_id IS NOT NULL
+           UNION
+           SELECT mv.veiculo_id, mv.is_principal
+           FROM motorista_veiculos mv
+           WHERE mv.empresa_id = u.empresa_id
+             AND mv.motorista_id = u.id
+         ) uv_raw
+         INNER JOIN veiculos vv ON vv.id = uv_raw.veiculo_id AND vv.empresa_id = u.empresa_id
+       ) picked
+       ORDER BY (picked.tipo_operacao = 'transporte') DESC, picked.is_principal DESC, picked.veiculo_id
+       LIMIT 1
+     ) uv ON true`;
 
 /**
  * Indicadores agregados do módulo pessoas (empresa). Consultas leves com agregações únicas.
@@ -71,12 +115,8 @@ async function getPeopleSummary(empresa_id) {
     ),
     queryTimed(
       `SELECT COUNT(*)::int AS c FROM usuarios u
-       INNER JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
        WHERE u.empresa_id = $1 AND u.role = 'MOTORISTA'
-         AND COALESCE(
-           NULLIF(TRIM(v.tipo_operacao), ''),
-           CASE WHEN COALESCE(v.usa_para_transporte, false) THEN 'transporte' ELSE 'apoio' END
-         ) = 'transporte'
+         AND ${TRANSPORT_VEHICLE_EXISTS_SQL}
          AND NOT EXISTS (
            SELECT 1 FROM romaneios r
            WHERE r.usuario_id = u.id AND r.empresa_id = $1
@@ -98,13 +138,9 @@ async function getPeopleSummary(empresa_id) {
        )
        SELECT COUNT(*)::int AS c
        FROM usuarios u
-       INNER JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
        INNER JOIN rom_stats rs ON rs.usuario_id = u.id
        WHERE u.empresa_id = $1 AND u.role = 'MOTORISTA'
-         AND COALESCE(
-           NULLIF(TRIM(v.tipo_operacao), ''),
-           CASE WHEN COALESCE(v.usa_para_transporte, false) THEN 'transporte' ELSE 'apoio' END
-         ) = 'transporte'
+         AND ${TRANSPORT_VEHICLE_EXISTS_SQL}
          AND rs.c7 < 0.4 * COALESCE(NULLIF(rs.cprev, 0), 0)
          AND COALESCE(rs.cprev, 0) >= 3`,
       [empresa_id],
@@ -183,7 +219,8 @@ async function getPeopleProductivity(empresa_id, { days = 30, limit = 40, with_7
   const { rows } = await queryTimed(
     `SELECT ${USER_PROD_COLS}, ${VEHICLE_PROD_COLS}, ${metricsSelect}
      FROM usuarios u
-     LEFT JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
+     ${USER_PRIMARY_OR_TRANSPORT_VEHICLE_JOIN}
+     LEFT JOIN veiculos v ON v.id = uv.veiculo_id AND v.empresa_id = u.empresa_id
      LEFT JOIN (${romAgg}) r ON r.usuario_id = u.id
      LEFT JOIN (${pdAgg}) p ON p.usuario_id = u.id
      WHERE u.empresa_id = $1 AND u.role IN ('MOTORISTA', 'APONTADOR')

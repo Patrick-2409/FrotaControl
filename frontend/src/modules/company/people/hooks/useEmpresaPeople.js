@@ -29,6 +29,7 @@ const emptyPersonForm = () => ({
   senha: "",
   role: "MOTORISTA",
   veiculo_id: "",
+  veiculo_ids: [],
   profile_image_url: "",
   funcao: "",
   cnh_categoria: "",
@@ -55,6 +56,15 @@ function rowToForm(u) {
   };
   let tr = [];
   if (Array.isArray(u.treinamentos)) tr = u.treinamentos;
+  const veiculoIds = [];
+  const pushVehicleId = (value) => {
+    const id = Number(value);
+    if (Number.isFinite(id) && id > 0 && !veiculoIds.includes(String(id))) veiculoIds.push(String(id));
+  };
+  pushVehicleId(u.veiculo_id);
+  for (const vehicle of Array.isArray(u.veiculos_vinculados) ? u.veiculos_vinculados : []) {
+    pushVehicleId(vehicle?.id);
+  }
   return {
     ...f,
     nome: u.nome || "",
@@ -62,6 +72,7 @@ function rowToForm(u) {
     cpf_id: u.cpf_id || "",
     role: u.role || "MOTORISTA",
     veiculo_id: u.veiculo_id != null ? String(u.veiculo_id) : "",
+    veiculo_ids: veiculoIds,
     profile_image_url: u.profile_image_url || "",
     funcao: u.funcao || "",
     cnh_categoria: u.cnh_categoria || "",
@@ -83,12 +94,25 @@ function formToPayload(form, { includePassword } = {}) {
   const veiculo_id =
     form.role === "MOTORISTA" && veiculoRaw ? Number(veiculoRaw) : form.role === "MOTORISTA" ? null : null;
   const isMotorista = form.role === "MOTORISTA";
+  const veiculo_ids = isMotorista
+    ? [
+        ...new Set(
+          [
+            veiculo_id,
+            ...(Array.isArray(form.veiculo_ids) ? form.veiculo_ids : []),
+          ]
+            .map(Number)
+            .filter((id) => Number.isFinite(id) && id > 0)
+        ),
+      ]
+    : [];
   const out = {
     nome: form.nome.trim(),
     email: form.email.trim() || undefined,
     cpf_id: form.cpf_id.trim(),
     role: form.role,
     veiculo_id: isMotorista ? veiculo_id : null,
+    veiculo_ids,
     profile_image_url: form.profile_image_url.trim() || undefined,
     funcao: form.funcao.trim() || undefined,
     cnh_categoria: isMotorista ? form.cnh_categoria.trim() || undefined : null,
@@ -237,7 +261,7 @@ export function useEmpresaPeople() {
     try {
       const { data } = await peopleGet("/dashboard/manage/vehicles", {
         label: "fetch-pessoas-veiculos-picklist",
-        params: { page: 1, limit: 50, search: "" },
+        params: { page: 1, limit: 500, search: "" },
       });
       setVehicles(data?.items ?? []);
       vehiclesPicklistLoadedRef.current = true;

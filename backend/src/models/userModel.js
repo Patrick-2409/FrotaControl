@@ -59,6 +59,57 @@ const sanitizeUser = (user) => {
 
 const sanitizeUsers = (users = []) => users.map((row) => sanitizeUser(row));
 
+const USER_VEHICLE_LINKS_SELECT = `
+            COALESCE(vl.veiculos_vinculados, '[]'::json) AS veiculos_vinculados,
+            COALESCE(vl.veiculos_vinculados_count, 0)::int AS veiculos_vinculados_count,
+            COALESCE(vl.tem_veiculo_transporte, false) AS tem_veiculo_transporte,
+            COALESCE(vl.tem_veiculo_apoio, false) AS tem_veiculo_apoio`;
+
+const USER_VEHICLE_LINKS_JOIN = `
+     LEFT JOIN LATERAL (
+       SELECT
+         json_agg(
+           json_build_object(
+             'id', link.id,
+             'nome', link.nome,
+             'placa', link.placa,
+             'tipo_operacao', link.tipo_operacao,
+             'usa_para_transporte', COALESCE(link.usa_para_transporte, false),
+             'is_principal', COALESCE(link.is_principal, false)
+           )
+           ORDER BY COALESCE(link.is_principal, false) DESC, link.placa NULLS LAST, link.nome
+         ) AS veiculos_vinculados,
+         COUNT(link.id)::int AS veiculos_vinculados_count,
+         BOOL_OR(link.tipo_operacao = 'transporte') AS tem_veiculo_transporte,
+         BOOL_OR(link.tipo_operacao = 'apoio') AS tem_veiculo_apoio
+       FROM (
+         SELECT
+           vv.*,
+           uv.is_principal,
+           COALESCE(
+             NULLIF(TRIM(vv.tipo_operacao), ''),
+             CASE WHEN COALESCE(vv.usa_para_transporte, false) THEN 'transporte' ELSE 'apoio' END
+           ) AS tipo_operacao
+         FROM (
+           SELECT DISTINCT ON (raw.veiculo_id)
+             raw.veiculo_id,
+             raw.is_principal
+           FROM (
+             SELECT u.veiculo_id AS veiculo_id, true AS is_principal
+             WHERE u.veiculo_id IS NOT NULL
+             UNION ALL
+             SELECT mv.veiculo_id, mv.is_principal
+             FROM motorista_veiculos mv
+             WHERE mv.empresa_id = u.empresa_id
+               AND mv.motorista_id = u.id
+           ) raw
+           WHERE raw.veiculo_id IS NOT NULL
+           ORDER BY raw.veiculo_id, raw.is_principal DESC
+         ) uv
+         INNER JOIN veiculos vv ON vv.id = uv.veiculo_id AND vv.empresa_id = u.empresa_id
+       ) link
+     ) vl ON true`;
+
 const mergeUserRow = (existing, data) => {
   const treinamentos =
     data.treinamentos !== undefined ? normalizeTreinamentos(data.treinamentos) : normalizeTreinamentos(existing.treinamentos);
@@ -226,10 +277,12 @@ const getMotoristaByLogin = async (loginInput) => {
     `SELECT u.*, e.nome AS empresa_nome, e.logo_url,
             v.nome AS veiculo_nome, v.placa, v.marca AS veiculo_marca, v.modelo AS veiculo_modelo,
             COALESCE(NULLIF(TRIM(v.tipo_operacao), ''), CASE WHEN COALESCE(v.usa_para_transporte, false) THEN 'transporte' ELSE 'apoio' END) AS veiculo_tipo_operacao,
-            COALESCE(v.usa_para_transporte, false) AS veiculo_usa_para_transporte
+            COALESCE(v.usa_para_transporte, false) AS veiculo_usa_para_transporte,
+            ${USER_VEHICLE_LINKS_SELECT}
      FROM usuarios u
      JOIN empresas e ON e.id = u.empresa_id
      LEFT JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
+     ${USER_VEHICLE_LINKS_JOIN}
      WHERE u.role = 'MOTORISTA'
        AND (${whereClauses.join(" OR ")})
        AND COALESCE(u.conta_status, 'ativo') = 'ativo'`,
@@ -316,10 +369,12 @@ const getUserById = async (id, empresa_id) => {
             e.nome AS empresa_nome, e.logo_url,
             v.nome AS veiculo_nome, v.placa, v.marca AS veiculo_marca, v.modelo AS veiculo_modelo,
             COALESCE(NULLIF(TRIM(v.tipo_operacao), ''), CASE WHEN COALESCE(v.usa_para_transporte, false) THEN 'transporte' ELSE 'apoio' END) AS veiculo_tipo_operacao,
-            COALESCE(v.usa_para_transporte, false) AS veiculo_usa_para_transporte
+            COALESCE(v.usa_para_transporte, false) AS veiculo_usa_para_transporte,
+            ${USER_VEHICLE_LINKS_SELECT}
      FROM usuarios u
      LEFT JOIN empresas e ON e.id = u.empresa_id
      LEFT JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
+     ${USER_VEHICLE_LINKS_JOIN}
      WHERE u.id = $1 ${companyFilter}`,
     values
   );
@@ -374,9 +429,11 @@ const listUsersByCompany = async (
     `SELECT u.id, u.empresa_id, u.nome, u.email, u.cpf_id, u.role, u.veiculo_id, u.profile_image_url,
             u.funcao, u.cnh_categoria, u.cnh_numero, u.cnh_validade, u.treinamentos, u.observacoes,
             u.equipamento_vinculo, u.operacao_escopo, u.status_operacional, u.conta_status, u.created_at,
-            v.nome AS veiculo_nome, v.placa, v.marca AS veiculo_marca, v.modelo AS veiculo_modelo
+            v.nome AS veiculo_nome, v.placa, v.marca AS veiculo_marca, v.modelo AS veiculo_modelo,
+            ${USER_VEHICLE_LINKS_SELECT}
      FROM usuarios u
      LEFT JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
+     ${USER_VEHICLE_LINKS_JOIN}
      WHERE ${whereSql}
      ORDER BY u.created_at DESC
      LIMIT ${limitPlaceholder} OFFSET ${offsetPlaceholder}`,
@@ -543,10 +600,12 @@ const getUserByIdForSuperAdmin = async (id) => {
             u.funcao, u.cnh_categoria, u.cnh_numero, u.cnh_validade, u.treinamentos, u.observacoes,
             u.equipamento_vinculo, u.operacao_escopo, u.status_operacional, u.conta_status, u.created_at,
         e.nome AS empresa_nome,
-        v.nome AS veiculo_nome, v.placa
+        v.nome AS veiculo_nome, v.placa,
+        ${USER_VEHICLE_LINKS_SELECT}
      FROM usuarios u
      LEFT JOIN empresas e ON e.id = u.empresa_id
      LEFT JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
+     ${USER_VEHICLE_LINKS_JOIN}
      WHERE u.id = $1 AND u.role IN ('MOTORISTA', 'ADMIN_EMPRESA', 'APONTADOR', 'SUPER_ADMIN')`,
     [id]
   );
