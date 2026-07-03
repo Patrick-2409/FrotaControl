@@ -1,4 +1,14 @@
 const { queryTimed } = require("../utils/queryTimed");
+const { logWarn } = require("../services/loggerService");
+
+const isMissingSchemaField = (err) => ["42703", "42P01"].includes(String(err?.code || "").trim().toUpperCase());
+
+const logPeopleSchemaFallback = (scope, cause) => {
+  logWarn(`people:${scope}-schema-fallback`, {
+    message: cause?.message,
+    code: cause?.code,
+  });
+};
 
 const USER_PROD_COLS = `u.id, u.nome, u.role, u.profile_image_url, u.funcao, uv.veiculo_id`;
 const VEHICLE_PROD_COLS = `v.placa AS veiculo_placa, v.nome AS veiculo_nome,
@@ -51,11 +61,108 @@ const USER_PRIMARY_OR_TRANSPORT_VEHICLE_JOIN = `
        LIMIT 1
      ) uv ON true`;
 
+async function getPeopleSummaryBasic(empresa_id, cause = null) {
+  logPeopleSchemaFallback("summary", cause);
+  const [rolesRow, rom7Row, pd7Row] = await Promise.all([
+    queryTimed(
+      `SELECT
+         COUNT(*) FILTER (WHERE role = 'MOTORISTA')::int AS motoristas,
+         COUNT(*) FILTER (WHERE role = 'APONTADOR')::int AS apontadores,
+         COUNT(*) FILTER (WHERE role = 'ADMIN_EMPRESA')::int AS admins
+       FROM usuarios WHERE empresa_id = $1`,
+      [empresa_id],
+      { label: "pessoas-summary-roles-basic" }
+    ),
+    queryTimed(
+      `SELECT COUNT(*)::int AS c FROM romaneios
+       WHERE empresa_id = $1 AND data >= NOW() - INTERVAL '7 days'`,
+      [empresa_id],
+      { label: "pessoas-summary-rom7-basic" }
+    ),
+    queryTimed(
+      `SELECT COUNT(*)::int AS c FROM parte_diaria
+       WHERE empresa_id = $1 AND data >= NOW() - INTERVAL '7 days'`,
+      [empresa_id],
+      { label: "pessoas-summary-pd7-basic" }
+    ),
+  ]);
+  const motoristas = Number(rolesRow.rows[0]?.motoristas ?? 0);
+  const apontadores = Number(rolesRow.rows[0]?.apontadores ?? 0);
+  return {
+    motoristas,
+    apontadores,
+    admins_empresa: Number(rolesRow.rows[0]?.admins ?? 0),
+    por_status: { ativo: motoristas + apontadores },
+    cnh_vencidas: 0,
+    cnh_vencendo: 0,
+    cnh_validas: 0,
+    cnh_janela_60d: 0,
+    romaneios_7d: Number(rom7Row.rows[0]?.c ?? 0),
+    parte_diaria_7d: Number(pd7Row.rows[0]?.c ?? 0),
+    motoristas_sem_romaneio_7d: 0,
+    motoristas_baixa_atividade: 0,
+  };
+}
+
+async function getPeopleProductivityBasic(empresa_id, { days = 30, limit = 40, with_7d = false } = {}, cause = null) {
+  logPeopleSchemaFallback("productivity", cause);
+  const d = Math.min(90, Math.max(7, Number(days) || 30));
+  const lim = Math.min(50, Math.max(5, Number(limit) || 40));
+  const dual = Boolean(with_7d);
+  const metricsSelect = dual
+    ? `COALESCE(r.c_d, 0)::int AS romaneios,
+       COALESCE(r.c_7, 0)::int AS romaneios_7d,
+       COALESCE(p.c_d, 0)::int AS partes_diaria,
+       COALESCE(p.c_7, 0)::int AS partes_diaria_7d`
+    : `COALESCE(r.c_d, 0)::int AS romaneios,
+       COALESCE(p.c_d, 0)::int AS partes_diaria`;
+  const romAgg = dual
+    ? `SELECT usuario_id,
+         COUNT(*) FILTER (WHERE data >= NOW() - ($2::int * INTERVAL '1 day'))::int AS c_d,
+         COUNT(*) FILTER (WHERE data >= NOW() - INTERVAL '7 days')::int AS c_7
+       FROM romaneios
+       WHERE empresa_id = $1 AND data >= NOW() - ($2::int * INTERVAL '1 day')
+       GROUP BY usuario_id`
+    : `SELECT usuario_id, COUNT(*)::int AS c_d
+       FROM romaneios
+       WHERE empresa_id = $1 AND data >= NOW() - ($2::int * INTERVAL '1 day')
+       GROUP BY usuario_id`;
+  const pdAgg = dual
+    ? `SELECT usuario_id,
+         COUNT(*) FILTER (WHERE data >= NOW() - ($2::int * INTERVAL '1 day'))::int AS c_d,
+         COUNT(*) FILTER (WHERE data >= NOW() - INTERVAL '7 days')::int AS c_7
+       FROM parte_diaria
+       WHERE empresa_id = $1 AND data >= NOW() - ($2::int * INTERVAL '1 day')
+       GROUP BY usuario_id`
+    : `SELECT usuario_id, COUNT(*)::int AS c_d
+       FROM parte_diaria
+       WHERE empresa_id = $1 AND data >= NOW() - ($2::int * INTERVAL '1 day')
+       GROUP BY usuario_id`;
+
+  const { rows } = await queryTimed(
+    `SELECT u.id, u.nome, u.role, u.profile_image_url, NULL::text AS funcao, u.veiculo_id,
+            v.placa AS veiculo_placa, v.nome AS veiculo_nome,
+            'apoio'::text AS tipo_operacao,
+            ${metricsSelect}
+     FROM usuarios u
+     LEFT JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
+     LEFT JOIN (${romAgg}) r ON r.usuario_id = u.id
+     LEFT JOIN (${pdAgg}) p ON p.usuario_id = u.id
+     WHERE u.empresa_id = $1 AND u.role IN ('MOTORISTA', 'APONTADOR')
+     ORDER BY COALESCE(r.c_d, 0) DESC, u.nome ASC
+     LIMIT $3`,
+    [empresa_id, d, lim],
+    { label: dual ? "pessoas-prod-dual-basic" : "pessoas-prod-basic" }
+  );
+  return rows;
+}
+
 /**
  * Indicadores agregados do módulo pessoas (empresa). Consultas leves com agregações únicas.
  */
 async function getPeopleSummary(empresa_id) {
   const t0 = Date.now();
+  try {
   const [
     rolesRow,
     statusRow,
@@ -172,6 +279,10 @@ async function getPeopleSummary(empresa_id) {
     motoristas_sem_romaneio_7d: Number(motSem7Row.rows[0]?.c ?? 0),
     motoristas_baixa_atividade: Number(baixaAtivRow.rows[0]?.c ?? 0),
   };
+  } catch (err) {
+    if (!isMissingSchemaField(err)) throw err;
+    return getPeopleSummaryBasic(empresa_id, err);
+  }
 }
 
 /**
@@ -216,6 +327,7 @@ async function getPeopleProductivity(empresa_id, { days = 30, limit = 40, with_7
        GROUP BY usuario_id`;
 
   const t0 = Date.now();
+  try {
   const { rows } = await queryTimed(
     `SELECT ${USER_PROD_COLS}, ${VEHICLE_PROD_COLS}, ${metricsSelect}
      FROM usuarios u
@@ -234,6 +346,10 @@ async function getPeopleProductivity(empresa_id, { days = 30, limit = 40, with_7
     console.log(`[getPeopleProductivity] empresa=${empresa_id} days=${d} ${Date.now() - t0}ms`);
   }
   return rows;
+  } catch (err) {
+    if (!isMissingSchemaField(err)) throw err;
+    return getPeopleProductivityBasic(empresa_id, { days: d, limit: lim, with_7d: dual }, err);
+  }
 }
 
 module.exports = {

@@ -89,3 +89,87 @@ test("getPeopleSummary calcula risco de romaneio apenas para motoristas de trans
     delete require.cache[pathDb];
   }
 });
+
+test("getPeopleSummary usa fallback quando schema de pessoas ainda esta em migracao", async () => {
+  const pathDb = require.resolve("../src/db");
+  const pathQt = require.resolve("../src/utils/queryTimed");
+  const pathPeople = require.resolve("../src/models/peopleModel");
+  delete require.cache[pathQt];
+  delete require.cache[pathPeople];
+  const db = require("../src/db");
+  const orig = db.pool.query;
+  db.pool.query = async (sql) => {
+    const text = String(sql);
+    if (/GROUP BY status_operacional/.test(text)) {
+      const err = new Error('column "status_operacional" does not exist');
+      err.code = "42703";
+      throw err;
+    }
+    if (/COUNT\(\*\) FILTER \(WHERE role = 'MOTORISTA'\)/.test(text)) {
+      return { rows: [{ motoristas: 2, apontadores: 1, admins: 1 }] };
+    }
+    if (/FROM romaneios/.test(text)) return { rows: [{ c: 4 }] };
+    if (/FROM parte_diaria/.test(text)) return { rows: [{ c: 3 }] };
+    if (/cnh_validade/.test(text)) return { rows: [{ vencidas: 0, vencendo: 0, validas: 0 }] };
+    return { rows: [{ c: 0 }] };
+  };
+  try {
+    const { getPeopleSummary } = require("../src/models/peopleModel");
+    const summary = await getPeopleSummary(7);
+    assert.strictEqual(summary.motoristas, 2);
+    assert.strictEqual(summary.apontadores, 1);
+    assert.strictEqual(summary.admins_empresa, 1);
+    assert.deepStrictEqual(summary.por_status, { ativo: 3 });
+    assert.strictEqual(summary.romaneios_7d, 4);
+    assert.strictEqual(summary.parte_diaria_7d, 3);
+  } finally {
+    db.pool.query = orig;
+    delete require.cache[pathPeople];
+    delete require.cache[pathQt];
+    delete require.cache[pathDb];
+  }
+});
+
+test("getPeopleProductivity usa fallback quando motorista_veiculos ainda nao existe", async () => {
+  const pathDb = require.resolve("../src/db");
+  const pathQt = require.resolve("../src/utils/queryTimed");
+  const pathPeople = require.resolve("../src/models/peopleModel");
+  delete require.cache[pathQt];
+  delete require.cache[pathPeople];
+  const db = require("../src/db");
+  const orig = db.pool.query;
+  const calls = [];
+  db.pool.query = async (sql) => {
+    const text = String(sql);
+    calls.push(text);
+    if (/LEFT JOIN LATERAL/.test(text)) {
+      const err = new Error('relation "motorista_veiculos" does not exist');
+      err.code = "42P01";
+      throw err;
+    }
+    return {
+      rows: [
+        {
+          id: 10,
+          nome: "Motorista A",
+          role: "MOTORISTA",
+          veiculo_id: 20,
+          romaneios: 2,
+          partes_diaria: 1,
+        },
+      ],
+    };
+  };
+  try {
+    const { getPeopleProductivity } = require("../src/models/peopleModel");
+    const rows = await getPeopleProductivity(7, { days: 30, limit: 10, with_7d: true });
+    assert.strictEqual(rows.length, 1);
+    assert.strictEqual(rows[0].nome, "Motorista A");
+    assert.ok(calls.length >= 2, "esperada tentativa completa seguida de fallback");
+  } finally {
+    db.pool.query = orig;
+    delete require.cache[pathPeople];
+    delete require.cache[pathQt];
+    delete require.cache[pathDb];
+  }
+});

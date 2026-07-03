@@ -419,10 +419,82 @@ const getUserById = async (id, empresa_id) => {
   }
 };
 
+const listUsersByCompanyBasic = async (
+  empresa_id,
+  { page = 1, limit = 10, search = "", role = "", escopo_operacional = "" } = {},
+  cause = null
+) => {
+  logWarn("user:list-by-company-schema-fallback", {
+    message: cause?.message,
+    code: cause?.code,
+  });
+
+  const clauses = ["u.empresa_id = $1"];
+  const params = [empresa_id];
+  let idx = 2;
+
+  if (search) {
+    clauses.push(`(u.nome ILIKE $${idx} OR u.email ILIKE $${idx} OR u.cpf_id ILIKE $${idx})`);
+    params.push(`%${search}%`);
+    idx += 1;
+  }
+  if (role && role !== "ALL" && ["MOTORISTA", "APONTADOR", "ADMIN_EMPRESA"].includes(role)) {
+    clauses.push(`u.role = $${idx}`);
+    params.push(role);
+    idx += 1;
+  }
+  if (escopo_operacional === "1" || escopo_operacional === "true") {
+    clauses.push(`u.role IN ('MOTORISTA', 'APONTADOR')`);
+  }
+
+  const pageNum = Math.max(1, Number(page) || 1);
+  const limitNum = Math.max(1, Math.min(500, Number(limit) || 20));
+  const offset = (pageNum - 1) * limitNum;
+  const whereSql = clauses.join(" AND ");
+  const countParams = [...params];
+  const limitPlaceholder = `$${idx}`;
+  const offsetPlaceholder = `$${idx + 1}`;
+  params.push(limitNum, offset);
+
+  const count = await queryTimed(
+    `SELECT COUNT(*)::int AS total FROM usuarios u WHERE ${whereSql}`,
+    countParams,
+    { label: "usuarios-count-basic" }
+  );
+  const { rows } = await queryTimed(
+    `SELECT u.id, u.empresa_id, u.nome, u.email, u.cpf_id, u.role, u.veiculo_id, u.profile_image_url,
+            NULL::text AS funcao,
+            NULL::text AS cnh_categoria,
+            NULL::text AS cnh_numero,
+            NULL::date AS cnh_validade,
+            '[]'::jsonb AS treinamentos,
+            NULL::text AS observacoes,
+            NULL::text AS equipamento_vinculo,
+            NULL::text AS operacao_escopo,
+            'ativo'::text AS status_operacional,
+            'ativo'::text AS conta_status,
+            u.created_at,
+            v.nome AS veiculo_nome, v.placa, v.marca AS veiculo_marca, v.modelo AS veiculo_modelo,
+            '[]'::json AS veiculos_vinculados,
+            0::int AS veiculos_vinculados_count,
+            false AS tem_veiculo_transporte,
+            false AS tem_veiculo_apoio
+     FROM usuarios u
+     LEFT JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
+     WHERE ${whereSql}
+     ORDER BY u.created_at DESC
+     LIMIT ${limitPlaceholder} OFFSET ${offsetPlaceholder}`,
+    params,
+    { label: "usuarios-list-basic" }
+  );
+  return { items: sanitizeUsers(rows), total: count.rows[0].total };
+};
+
 const listUsersByCompany = async (
   empresa_id,
   { page = 1, limit = 10, search = "", role = "", status_operacional = "", escopo_operacional = "" } = {}
 ) => {
+  try {
   const clauses = ["u.empresa_id = $1"];
   const params = [empresa_id];
   let idx = 2;
@@ -479,6 +551,14 @@ const listUsersByCompany = async (
     { label: "usuarios-list" }
   );
   return { items: sanitizeUsers(rows), total: count.rows[0].total };
+  } catch (err) {
+    if (!isMissingSchemaField(err)) throw err;
+    return listUsersByCompanyBasic(
+      empresa_id,
+      { page, limit, search, role, escopo_operacional },
+      err
+    );
+  }
 };
 
 const updateUser = async (id, empresa_id, data) => {

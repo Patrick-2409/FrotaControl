@@ -17,13 +17,26 @@ const viagemCreateSchema = z.object({
   timestamp: z.union([z.coerce.number(), z.string().trim().min(1)]),
 });
 
-const viagemUndoSchema = z.object({
-  veiculo_id: z.coerce.number().int().positive(),
-  motorista_id: z.coerce.number().int().positive(),
-  tipo: z.enum(["esteril", "rocha"]),
-  timestamp: z.union([z.coerce.number(), z.string().trim().min(1)]),
-  viagem_id: z.coerce.number().int().positive().optional().nullable(),
-});
+const viagemUndoSchema = z
+  .object({
+    veiculo_id: z.coerce.number().int().positive().optional(),
+    motorista_id: z.coerce.number().int().positive().optional(),
+    tipo: z.enum(["esteril", "rocha"]).optional(),
+    timestamp: z.union([z.coerce.number(), z.string().trim().min(1)]).optional(),
+    viagem_id: z.coerce.number().int().positive().optional().nullable(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.viagem_id) return;
+    for (const key of ["veiculo_id", "motorista_id", "tipo", "timestamp"]) {
+      if (v[key] == null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: "Campo obrigatorio para desfazer sem ID da viagem.",
+        });
+      }
+    }
+  });
 
 const parseMarcacao = (timestamp) => {
   if (typeof timestamp === "number") {
@@ -212,6 +225,8 @@ const getContagemHojeApontador = async (req, res) => {
     },
     ultimos_lancamentos: (recentes || []).map((item) => ({
       id: item.id,
+      veiculo_id: item.veiculo_id,
+      motorista_id: item.motorista_id,
       tipo: item.tipo,
       timestamp: item.marcacao instanceof Date ? item.marcacao.getTime() : new Date(item.marcacao).getTime(),
     })),
@@ -301,20 +316,24 @@ const deleteViagemApontadorUndo = async (req, res) => {
   }
 
   const body = viagemUndoSchema.parse(req.body);
-  const gate = await assertVeiculoMotoristaTransporte(empresaId, body.veiculo_id, body.motorista_id);
-  if (!gate.ok) {
-    return res.status(gate.status).json({
-      success: false,
-      error: gate.message,
-      message: gate.message,
-    });
+  if (!body.viagem_id) {
+    const gate = await assertVeiculoMotoristaTransporte(empresaId, body.veiculo_id, body.motorista_id);
+    if (!gate.ok) {
+      return res.status(gate.status).json({
+        success: false,
+        error: gate.message,
+        message: gate.message,
+      });
+    }
   }
 
   const tsMs =
-    typeof body.timestamp === "number"
-      ? body.timestamp
-      : new Date(body.timestamp).getTime();
-  if (!Number.isFinite(tsMs)) {
+    body.timestamp == null
+      ? null
+      : typeof body.timestamp === "number"
+        ? body.timestamp
+        : new Date(body.timestamp).getTime();
+  if (!body.viagem_id && !Number.isFinite(tsMs)) {
     return res.status(400).json({
       success: false,
       error: "Timestamp inválido.",

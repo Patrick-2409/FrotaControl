@@ -24,6 +24,7 @@ export default function ApontadorHomePage() {
   const [limparDiaModalOpen, setLimparDiaModalOpen] = useState(false);
   const [limparDiaEmCurso, setLimparDiaEmCurso] = useState(false);
   const [ultimosLancamentos, setUltimosLancamentos] = useState([]);
+  const [desfazendoLancamentoId, setDesfazendoLancamentoId] = useState(null);
   const flashTimeoutsRef = useRef([]);
 
   const clearFlashTimeouts = useCallback(() => {
@@ -55,8 +56,16 @@ export default function ApontadorHomePage() {
           const tipo = item?.tipo === "esteril" ? "esteril" : item?.tipo === "rocha" ? "rocha" : null;
           const timestamp = Number(item?.timestamp);
           if (!tipo || !Number.isFinite(timestamp)) return null;
+          const viagemId = Number(item?.viagem_id ?? item?.id);
+          const veiculoId = Number(item?.veiculo_id);
+          const motoristaId = Number(item?.motorista_id);
           return {
             id: item?.id ?? `local-${timestamp}-${tipo}-${index}`,
+            viagem_id: Number.isFinite(viagemId) && viagemId > 0 ? viagemId : null,
+            veiculo_id: Number.isFinite(veiculoId) && veiculoId > 0 ? veiculoId : null,
+            motorista_id: Number.isFinite(motoristaId) && motoristaId > 0 ? motoristaId : null,
+            local_id: item?.local_id || null,
+            tonDelta: Number(item?.tonDelta) > 0 ? Number(item.tonDelta) : 0,
             tipo,
             timestamp,
             hora: formatHoraBr(timestamp),
@@ -69,9 +78,14 @@ export default function ApontadorHomePage() {
   );
 
   const pushLancamentoLocal = useCallback(
-    ({ tipo, timestamp, localId }) => {
+    ({ tipo, timestamp, localId, veiculo_id, motorista_id, tonDelta }) => {
       const next = {
         id: localId || `local-${timestamp}-${tipo}`,
+        viagem_id: null,
+        veiculo_id: Number(veiculo_id) || null,
+        motorista_id: Number(motorista_id) || null,
+        local_id: localId || null,
+        tonDelta: Number(tonDelta) > 0 ? Number(tonDelta) : 0,
         tipo,
         timestamp,
         hora: formatHoraBr(timestamp),
@@ -305,19 +319,81 @@ export default function ApontadorHomePage() {
   }, [idsVeiculosEmpresa, refreshContagemHoje, refreshPendentesCount]);
 
   const removerViagemNoServidor = useCallback(async (ctx) => {
-    const payload = {
-      veiculo_id: ctx.viagem.veiculo_id,
-      motorista_id: ctx.viagem.motorista_id,
-      tipo: ctx.viagem.tipo,
-      timestamp: ctx.viagem.timestamp,
-      viagem_id: ctx.serverViagemId ?? undefined,
-    };
+    const payload = ctx.serverViagemId
+      ? { viagem_id: ctx.serverViagemId }
+      : {
+          veiculo_id: ctx.viagem.veiculo_id,
+          motorista_id: ctx.viagem.motorista_id,
+          tipo: ctx.viagem.tipo,
+          timestamp: ctx.viagem.timestamp,
+        };
     try {
       await api.delete("/apontador/viagens", { data: payload, skipGlobalErrorToast: true });
     } catch {
       /* offline ou já removido */
     }
   }, []);
+
+  const desfazerLancamento = useCallback(
+    async (item) => {
+      if (!item) return;
+      const uiId = String(item.id);
+      const viagemId = Number(item.viagem_id ?? item.id);
+      const temViagemServidor = Number.isFinite(viagemId) && viagemId > 0;
+      const exigeServidor =
+        temViagemServidor ||
+        (!item.local_id && Number(item.veiculo_id) > 0 && Number(item.motorista_id) > 0 && item.tipo && item.timestamp);
+
+      if (exigeServidor && !navigator.onLine) {
+        emitToast("Para desfazer um lanÃ§amento sincronizado, conecte-se Ã  internet.", "warning");
+        return;
+      }
+
+      setDesfazendoLancamentoId(uiId);
+      try {
+        if (temViagemServidor) {
+          await api.delete("/apontador/viagens", {
+            data: { viagem_id: viagemId },
+            skipGlobalErrorToast: true,
+          });
+        } else if (exigeServidor) {
+          await api.delete("/apontador/viagens", {
+            data: {
+              veiculo_id: item.veiculo_id,
+              motorista_id: item.motorista_id,
+              tipo: item.tipo,
+              timestamp: item.timestamp,
+            },
+            skipGlobalErrorToast: true,
+          });
+        }
+
+        if (item.local_id) {
+          await deleteViagemLocal(item.local_id).catch(() => {});
+        }
+
+        setUltimosLancamentos((prev) => prev.filter((row) => String(row.id) !== uiId));
+        if (!temViagemServidor && item.local_id) {
+          const chaveTipo = item.tipo === "esteril" ? "esteril" : "rocha";
+          const tonDelta = Number(item.tonDelta) || 0;
+          setHojeContagem((prev) => ({
+            ...prev,
+            [chaveTipo]: Math.max(0, Number(prev[chaveTipo] || 0) - 1),
+            tonTotal: Math.max(0, (Number(prev.tonTotal) || 0) - tonDelta),
+          }));
+        }
+        await refreshPendentesCount();
+        await refreshContagemHoje();
+        emitToast("LanÃ§amento desfeito.", "success");
+      } catch (err) {
+        emitToast(err?.response?.data?.message || "NÃ£o foi possÃ­vel desfazer este lanÃ§amento.", "error");
+        await refreshContagemHoje();
+      } finally {
+        setDesfazendoLancamentoId(null);
+      }
+    },
+    [refreshContagemHoje, refreshPendentesCount]
+  );
 
   const registrar = useCallback(
     async (tipo) => {
@@ -355,7 +431,14 @@ export default function ApontadorHomePage() {
         [chaveTipo]: prev[chaveTipo] + 1,
         tonTotal: (Number(prev.tonTotal) || 0) + capacidadeTipo,
       }));
-      pushLancamentoLocal({ tipo, timestamp: ts, localId: id_local });
+      pushLancamentoLocal({
+        tipo,
+        timestamp: ts,
+        localId: id_local,
+        veiculo_id: viagem.veiculo_id,
+        motorista_id: viagem.motorista_id,
+        tonDelta: capacidadeTipo,
+      });
       showRegistradoOk(tipo);
 
       const ctx = {
@@ -398,6 +481,11 @@ export default function ApontadorHomePage() {
           { skipGlobalErrorToast: true }
         );
         ctx.serverViagemId = data?.viagem?.id ?? null;
+        if (ctx.serverViagemId) {
+          setUltimosLancamentos((prev) =>
+            prev.map((item) => (item.local_id === id_local ? { ...item, viagem_id: ctx.serverViagemId } : item))
+          );
+        }
         if (ctx.undone) {
           await removerViagemNoServidor(ctx);
           void refreshPendentesCount();
@@ -505,6 +593,10 @@ export default function ApontadorHomePage() {
             rocha={hojeContagem.rocha}
             tonTotal={hojeContagem.tonTotal}
             ultimosLancamentos={ultimosLancamentos}
+            onDesfazerLancamento={(item) => {
+              void desfazerLancamento(item);
+            }}
+            desfazendoLancamentoId={desfazendoLancamentoId}
             onLimparDia={() => setLimparDiaModalOpen(true)}
           />
         </div>
@@ -528,8 +620,8 @@ export default function ApontadorHomePage() {
             </h2>
             <p className="mt-3 text-sm leading-relaxed text-slate-300">
               Isto apaga no <strong className="text-slate-100">dispositivo</strong> as viagens de hoje (fuso São Paulo)
-              dos veículos desta lista, e no <strong className="text-slate-100">servidor</strong> todas as viagens de
-              hoje da empresa. A ação fica registada em auditoria.
+              dos veículos desta lista, e no <strong className="text-slate-100">servidor</strong> os lançamentos de
+              hoje deste apontador. A ação fica registada em auditoria.
             </p>
             <p className="mt-2 text-xs text-amber-200/90">Não pode ser desfeita automaticamente.</p>
             <div className="mt-5 flex flex-wrap gap-2">

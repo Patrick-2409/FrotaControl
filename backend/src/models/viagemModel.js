@@ -178,7 +178,7 @@ const listRecentViagensHojeEmpresaSaoPaulo = async (empresa_id, limit = 5, db = 
 const listRecentViagensHojeApontadorSaoPaulo = async (empresa_id, apontador_id, limit = 5, db = pool) => {
   const parsedLimit = Math.min(Math.max(Number(limit) || 5, 1), 20);
   const { rows } = await db.query(
-    `SELECT id, tipo, marcacao
+    `SELECT id, veiculo_id, motorista_id, tipo, marcacao
      FROM viagens
      WHERE empresa_id = $1
        AND apontador_id = $2
@@ -249,10 +249,10 @@ const deleteViagemApontadorMatch = async (
   if (viagem_id != null && Number.isFinite(Number(viagem_id))) {
     const { rows } = await db.query(
       `DELETE FROM viagens
-       WHERE id = $1 AND empresa_id = $2 AND apontador_id = $3 AND veiculo_id = $4 AND motorista_id = $5 AND tipo = $6
+       WHERE id = $1 AND empresa_id = $2 AND apontador_id = $3
          AND ${todaySaoPauloClause}
        RETURNING id`,
-      [viagem_id, empresa_id, apontador_id, veiculo_id, motorista_id, tipo]
+      [viagem_id, empresa_id, apontador_id]
     );
     return rows[0] || null;
   }

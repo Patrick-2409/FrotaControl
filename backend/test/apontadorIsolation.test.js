@@ -103,7 +103,7 @@ test("desfazer viagem por id exige apontador_id", async () => {
   );
 
   assert.match(db.calls[0].sql, /apontador_id = \$3/);
-  assert.deepStrictEqual(db.calls[0].params, [42, 7, 9, 11, 13, "rocha"]);
+  assert.deepStrictEqual(db.calls[0].params, [42, 7, 9]);
   assert.deepStrictEqual(deleted, { id: 42 });
 });
 
@@ -180,7 +180,7 @@ test("apontador B não desfaz lançamento do apontador A", async () => {
 
   assert.strictEqual(deleted, null);
   assert.match(db.calls[0].sql, /apontador_id = \$3/);
-  assert.deepStrictEqual(db.calls[0].params, [100, 7, 202, 11, 13, "esteril"]);
+  assert.deepStrictEqual(db.calls[0].params, [100, 7, 202]);
 });
 
 test("reset do dia do apontador A não afeta apontador B", async () => {

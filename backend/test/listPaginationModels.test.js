@@ -39,6 +39,56 @@ test("listVehicles envia LIMIT e OFFSET numéricos (sem undefined)", async () =>
   }
 });
 
+test("listUsersByCompany usa fallback quando vinculos de motorista ainda estao em migracao", async () => {
+  delete require.cache[pathUm];
+  delete require.cache[pathQt];
+  delete require.cache[pathDb];
+  const db = require("../src/db");
+  const orig = db.pool.query;
+  const calls = [];
+  db.pool.query = async (sql, vals) => {
+    const text = String(sql);
+    calls.push({ sql: text, vals: vals ? [...vals] : [] });
+    if (/LEFT JOIN LATERAL/.test(text)) {
+      const err = new Error('relation "motorista_veiculos" does not exist');
+      err.code = "42P01";
+      throw err;
+    }
+    if (text.includes("COUNT(*)")) {
+      return { rows: [{ total: 1 }] };
+    }
+    return {
+      rows: [
+        {
+          id: 12,
+          empresa_id: 5,
+          nome: "Motorista Sem Vinculo Novo",
+          email: "m@empresa.com",
+          cpf_id: "123",
+          role: "MOTORISTA",
+          veiculo_id: null,
+          profile_image_url: null,
+          created_at: new Date(),
+        },
+      ],
+    };
+  };
+  try {
+    const { listUsersByCompany } = require("../src/models/userModel");
+    const result = await listUsersByCompany(5, { page: 1, limit: 20, search: "" });
+    assert.strictEqual(result.total, 1);
+    assert.strictEqual(result.items[0].nome, "Motorista Sem Vinculo Novo");
+    const fallbackList = calls.find((c) => /'ativo'::text AS status_operacional/.test(c.sql));
+    assert.ok(fallbackList, "esperada query basica de fallback");
+    assert.ok(!/motorista_veiculos/.test(fallbackList.sql));
+  } finally {
+    db.pool.query = orig;
+    delete require.cache[pathUm];
+    delete require.cache[pathQt];
+    delete require.cache[pathDb];
+  }
+});
+
 test("listManagerRecords aplica filtros exatos de veiculo_id e motorista_id", async () => {
   delete require.cache[pathRm];
   delete require.cache[pathDb];
