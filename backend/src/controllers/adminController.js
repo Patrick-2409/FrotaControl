@@ -214,8 +214,8 @@ const normalizeUserPayload = (payload) => ({
 
 const checkRoleScopedUniqueness = async ({ role, email, cpf_id, empresa_id = null, excludeUserId = null }) => {
   if (role === "MOTORISTA") {
-    const params = [cpf_id];
-    const andExclude = excludeUserId ? "AND id <> $2" : "";
+    const params = [cpf_id, empresa_id];
+    const andExclude = excludeUserId ? "AND id <> $3" : "";
     if (excludeUserId) params.push(excludeUserId);
     const motoristaExists = await pool.query(
       `SELECT id, empresa_id, nome, email, cpf_id, role, veiculo_id, profile_image_url,
@@ -224,19 +224,17 @@ const checkRoleScopedUniqueness = async ({ role, email, cpf_id, empresa_id = nul
        FROM usuarios
        WHERE role = 'MOTORISTA'
          AND cpf_id = $1
+         AND empresa_id = $2
          ${andExclude}
-       ORDER BY CASE WHEN empresa_id = $${params.length + 1} THEN 0 ELSE 1 END, created_at DESC, id DESC
+       ORDER BY created_at DESC, id DESC
        LIMIT 1`,
-      [...params, empresa_id]
+      params
     );
     if (motoristaExists.rowCount > 0) {
       const existing = sanitizeUser(motoristaExists.rows[0]);
-      const sameCompany = Number(existing.empresa_id) === Number(empresa_id);
       return {
-        message: sameCompany
-          ? `Já existe motorista com este CPF/ID nesta empresa: ${existing.nome}. Edite esse cadastro ou use outro CPF/ID.`
-          : "CPF/ID já está vinculado a outro motorista. Use outro CPF/ID para criar uma nova conta.",
-        existingUser: sameCompany ? existing : null,
+        message: `Já existe motorista com este CPF/ID nesta empresa: ${existing.nome}. O cadastro existente foi localizado.`,
+        existingUser: existing,
       };
     }
     return null;
@@ -475,6 +473,34 @@ const createUserCtrl = async (req, res) => {
     empresa_id,
   });
   if (identityError) {
+    if (payload.role === "MOTORISTA" && identityError.existingUser?.id) {
+      const existingId = Number(identityError.existingUser.id);
+      const updated = await updateUser(existingId, empresa_id, {
+        ...payload,
+        veiculo_id: payload.veiculo_id || null,
+      });
+      if (!updated) {
+        return res.status(404).json({
+          success: false,
+          error: "Motorista não encontrado para atualização.",
+          message: "Motorista não encontrado para atualização.",
+        });
+      }
+      const senha_hash = await bcrypt.hash(passwordToHash, 10);
+      await updateUserPassword(existingId, empresa_id, senha_hash);
+      await logAudit({
+        usuario_id: req.user?.sub,
+        acao: "editou",
+        tabela: "usuarios",
+        registro_id: updated.id,
+      });
+      return res.status(200).json({
+        ...updated,
+        upserted_existing: true,
+        temporary_password: temporaryPassword || undefined,
+        message: "Cadastro de motorista existente atualizado.",
+      });
+    }
     return res.status(409).json({
       success: false,
       error: identityError.message,

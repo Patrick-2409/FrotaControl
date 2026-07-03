@@ -11,10 +11,10 @@ const runAuthStartupDiagnostic = async () => {
   );
 
   const duplicateMotoristaCpf = await pool.query(
-    `SELECT cpf_id AS credential, role, COUNT(*)::int AS total, ARRAY_AGG(id ORDER BY id) AS ids
+    `SELECT empresa_id, cpf_id AS credential, role, COUNT(*)::int AS total, ARRAY_AGG(id ORDER BY id) AS ids
      FROM usuarios
      WHERE role = 'MOTORISTA'
-     GROUP BY cpf_id, role
+     GROUP BY empresa_id, cpf_id, role
      HAVING COUNT(*) > 1`
   );
 

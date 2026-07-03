@@ -286,8 +286,9 @@ const initDb = async () => {
     CREATE INDEX IF NOT EXISTS idx_usuarios_empresa_id ON usuarios (empresa_id);
     CREATE INDEX IF NOT EXISTS idx_usuarios_empresa_cpf ON usuarios (empresa_id, cpf_id);
     CREATE INDEX IF NOT EXISTS idx_usuarios_email_lower ON usuarios (LOWER(COALESCE(email, '')));
-    CREATE UNIQUE INDEX IF NOT EXISTS ux_usuarios_login_motorista_cpf
-      ON usuarios (cpf_id)
+    DROP INDEX IF EXISTS ux_usuarios_login_motorista_cpf;
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_usuarios_empresa_motorista_cpf
+      ON usuarios (empresa_id, cpf_id)
       WHERE role = 'MOTORISTA';
     CREATE INDEX IF NOT EXISTS idx_veiculos_empresa_id ON veiculos (empresa_id);
     CREATE INDEX IF NOT EXISTS idx_veiculos_empresa_created ON veiculos (empresa_id, created_at DESC);

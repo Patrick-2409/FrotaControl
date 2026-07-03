@@ -162,10 +162,18 @@ export default function CompanyManagementPage() {
         response = await api.post("/dashboard/manage/users", payload, { skipGlobalErrorToast: true });
       }
       const temporaryPassword = response?.data?.temporary_password;
+      const savedExisting = Boolean(response?.data?.upserted_existing);
       if (temporaryPassword) {
-        emitToast(`Usuário criado. Senha temporária: ${temporaryPassword}`, "success", { durationMs: 12000 });
+        emitToast(
+          `${savedExisting ? "Cadastro de motorista atualizado" : "Usuário criado"}. Senha temporária: ${temporaryPassword}`,
+          "success",
+          { durationMs: 12000 }
+        );
       } else {
-        emitToast(userForm.id ? "Usuário atualizado com sucesso." : "Usuário criado com sucesso.");
+        emitToast(
+          response?.data?.message ||
+            (userForm.id || savedExisting ? "Usuário atualizado com sucesso." : "Usuário criado com sucesso.")
+        );
       }
       setUserForm(emptyUserForm());
       await loadUsers();

@@ -194,13 +194,24 @@ test("createUserCtrl permite motorista sem veiculo e sem CNH", async () => {
   }
 });
 
-test("createUserCtrl retorna motorista existente quando CPF ja pertence a empresa", async () => {
+test("createUserCtrl atualiza motorista existente quando CPF ja pertence a empresa", async () => {
   const pathDb = require.resolve("../src/db");
+  const pathUserModel = require.resolve("../src/models/userModel");
+  const pathAudit = require.resolve("../src/services/auditService");
   const pathCtrl = require.resolve("../src/controllers/adminController");
   delete require.cache[pathCtrl];
+  delete require.cache[pathUserModel];
+  delete require.cache[pathAudit];
   const db = require("../src/db");
+  const userModel = require("../src/models/userModel");
+  const auditService = require("../src/services/auditService");
   const orig = db.pool.query;
+  const origUpdateUser = userModel.updateUser;
+  const origUpdateUserPassword = userModel.updateUserPassword;
+  const origLogAudit = auditService.logAudit;
   const calls = [];
+  let updatedPayload = null;
+  let updatedPassword = null;
   db.pool.query = async (sql, params) => {
     calls.push({ sql: String(sql), params });
     if (/FROM usuarios/.test(String(sql))) {
@@ -225,6 +236,22 @@ test("createUserCtrl retorna motorista existente quando CPF ja pertence a empres
     }
     throw new Error(`consulta inesperada: ${sql}`);
   };
+  userModel.updateUser = async (id, empresa_id, payload) => {
+    updatedPayload = { id, empresa_id, payload };
+    return {
+      id,
+      empresa_id,
+      nome: payload.nome,
+      email: payload.email,
+      cpf_id: payload.cpf_id,
+      role: payload.role,
+      veiculo_id: payload.veiculo_id ?? null,
+    };
+  };
+  userModel.updateUserPassword = async (id, empresa_id, senha_hash) => {
+    updatedPassword = { id, empresa_id, senha_hash };
+  };
+  auditService.logAudit = async () => {};
   try {
     const { createUserCtrl } = require("../src/controllers/adminController");
     const res = createRes();
@@ -242,14 +269,23 @@ test("createUserCtrl retorna motorista existente quando CPF ja pertence a empres
       res
     );
 
-    assert.strictEqual(res.statusCode, 409);
-    assert.match(res.body?.message || "", /j[aá] existe motorista/i);
-    assert.strictEqual(res.body?.existing_user?.id, 77);
-    assert.strictEqual(res.body?.existing_user?.empresa_id, 7);
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(res.body?.upserted_existing, true);
+    assert.strictEqual(res.body?.id, 77);
+    assert.match(res.body?.temporary_password || "", /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/);
+    assert.strictEqual(updatedPayload?.id, 77);
+    assert.strictEqual(updatedPayload?.empresa_id, 7);
+    assert.strictEqual(updatedPayload?.payload?.nome, "Joao");
+    assert.strictEqual(updatedPassword?.id, 77);
     assert.ok(!calls.some((c) => /INSERT INTO usuarios/.test(c.sql)));
   } finally {
     db.pool.query = orig;
+    userModel.updateUser = origUpdateUser;
+    userModel.updateUserPassword = origUpdateUserPassword;
+    auditService.logAudit = origLogAudit;
     delete require.cache[pathCtrl];
+    delete require.cache[pathUserModel];
+    delete require.cache[pathAudit];
     delete require.cache[pathDb];
   }
 });
