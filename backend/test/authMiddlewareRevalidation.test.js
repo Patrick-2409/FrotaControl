@@ -96,3 +96,27 @@ test("authMiddleware bloqueia usuário inativo mesmo com JWT válido", async () 
     pool.query = originalQuery;
   }
 });
+
+test("authMiddleware responde 503 quando banco está indisponível", async () => {
+  const originalVerify = jwt.verify;
+  const originalQuery = pool.query;
+
+  jwt.verify = () => ({ sub: 88, role: "ADMIN_EMPRESA", empresa_id: 3, nome: "Sessão Ativa" });
+  pool.query = async () => {
+    const err = new Error("connect ECONNREFUSED");
+    err.code = "ECONNREFUSED";
+    throw err;
+  };
+
+  try {
+    const req = { headers: { authorization: "Bearer token-valido" } };
+    const res = createRes();
+    const nextCalled = await runMiddleware(authMiddleware, req, res);
+    assert.strictEqual(nextCalled, false);
+    assert.strictEqual(res.statusCode, 503);
+    assert.match(String(res.body?.message || ""), /temporariamente indisponível/i);
+  } finally {
+    jwt.verify = originalVerify;
+    pool.query = originalQuery;
+  }
+});

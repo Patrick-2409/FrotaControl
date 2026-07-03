@@ -1,5 +1,31 @@
 const jwt = require("jsonwebtoken");
 const { pool } = require("../db");
+const { logError } = require("../services/loggerService");
+
+const TRANSIENT_DB_ERROR_CODES = new Set([
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ETIMEDOUT",
+  "EHOSTUNREACH",
+  "08000",
+  "08001",
+  "08003",
+  "08004",
+  "08006",
+  "08007",
+  "08P01",
+  "53300",
+  "57P01",
+  "57P02",
+  "57P03",
+]);
+
+const isTransientDbError = (err) => {
+  const code = String(err?.code || "").trim().toUpperCase();
+  return code ? TRANSIENT_DB_ERROR_CODES.has(code) : false;
+};
 
 const authMiddleware = async (req, res, next) => {
   const authHeader = req.headers.authorization || "";
@@ -63,6 +89,18 @@ const authMiddleware = async (req, res, next) => {
     };
     return next();
   } catch (err) {
+    logError("auth:session-validation-failed", {
+      message: err?.message,
+      code: err?.code,
+      detail: err?.detail,
+    });
+    if (isTransientDbError(err)) {
+      return res.status(503).json({
+        success: false,
+        error: "Serviço de autenticação temporariamente indisponível",
+        message: "Serviço de autenticação temporariamente indisponível",
+      });
+    }
     return res.status(500).json({
       success: false,
       error: "Falha ao validar sessão",
