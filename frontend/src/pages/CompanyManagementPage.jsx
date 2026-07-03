@@ -35,6 +35,7 @@ const dedupeById = (items = []) => {
   }
   return Array.from(map.values());
 };
+const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
 export default function CompanyManagementPage() {
   const { user: authUser } = useAuth();
   const [searchParams] = useSearchParams();
@@ -118,6 +119,15 @@ export default function CompanyManagementPage() {
       emitToast("Administrador e apontador precisam de e-mail (o apontador entra com e-mail e senha).", "warning");
       return;
     }
+    const senha = String(userForm.senha || "");
+    if (!userForm.id && !isMotorista && !senha.trim()) {
+      emitToast("Informe uma senha inicial para administrador ou apontador.", "warning");
+      return;
+    }
+    if (senha && !PASSWORD_REGEX.test(senha)) {
+      emitToast("Senha deve ter ao menos 8 caracteres, maiúscula, minúscula e número.", "warning");
+      return;
+    }
     const veiculoId =
       userForm.role === "MOTORISTA" && userForm.veiculo_id ? Number(userForm.veiculo_id) : null;
     setLoading(true);
@@ -133,12 +143,18 @@ export default function CompanyManagementPage() {
         cnh_categoria: isMotorista ? String(userForm.cnh_categoria).trim() || null : null,
         cnh_validade: isMotorista ? userForm.cnh_validade || null : null,
       };
+      let response;
       if (userForm.id) {
-        await api.put(`/dashboard/manage/users/${userForm.id}`, payload);
+        response = await api.put(`/dashboard/manage/users/${userForm.id}`, payload);
       } else {
-        await api.post("/dashboard/manage/users", payload);
+        response = await api.post("/dashboard/manage/users", payload);
       }
-      emitToast(userForm.id ? "Usuário atualizado com sucesso." : "Usuário criado com sucesso.");
+      const temporaryPassword = response?.data?.temporary_password;
+      if (temporaryPassword) {
+        emitToast(`Usuário criado. Senha temporária: ${temporaryPassword}`, "success", { durationMs: 12000 });
+      } else {
+        emitToast(userForm.id ? "Usuário atualizado com sucesso." : "Usuário criado com sucesso.");
+      }
       setUserForm(emptyUserForm());
       await loadUsers();
     } catch (err) {
@@ -219,15 +235,14 @@ export default function CompanyManagementPage() {
               {userForm.id ? "Editar conta" : "Criar conta"}
             </h3>
             <p className="mb-4 text-sm text-slate-400">
-              E-mail e senha para entrar no sistema. O apontador usa esse e-mail no acesso de{" "}
-              <span className="text-slate-300">Apontador</span> na página inicial (romaneio).
+              Administradores e apontadores usam e-mail e senha. Motoristas podem ser criados com CPF/ID; se a senha ficar vazia, o sistema gera uma senha temporária.
             </p>
             <form onSubmit={onSaveUser}>
               <div className="grid gap-2 md:grid-cols-2">
                 <input className={inputClass} placeholder="Nome" value={userForm.nome} onChange={(e) => setUserForm((f) => ({ ...f, nome: e.target.value }))} />
                 <input className={inputClass} placeholder="E-mail" value={userForm.email} onChange={(e) => setUserForm((f) => ({ ...f, email: e.target.value }))} />
                 <input className={inputClass} placeholder="CPF/ID" value={userForm.cpf_id} onChange={(e) => setUserForm((f) => ({ ...f, cpf_id: e.target.value }))} />
-                <input className={inputClass} type="password" placeholder={userForm.id ? "Nova senha (opcional)" : "Senha"} value={userForm.senha} onChange={(e) => setUserForm((f) => ({ ...f, senha: e.target.value }))} />
+                <input className={inputClass} type="password" placeholder={userForm.id || userForm.role === "MOTORISTA" ? "Senha (opcional)" : "Senha"} value={userForm.senha} onChange={(e) => setUserForm((f) => ({ ...f, senha: e.target.value }))} />
                 <select
                   className={inputClass}
                   value={userForm.role}

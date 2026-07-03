@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const { z } = require("zod");
 const {
@@ -135,6 +136,8 @@ const userSchema = z.object({
     }
   }
 });
+
+const generateTemporaryPassword = () => `Frota${crypto.randomBytes(6).toString("base64url")}7a`;
 
 const applyRoleCnhRules = (payload) => {
   if (payload.role !== "MOTORISTA") {
@@ -443,12 +446,17 @@ const createUserCtrl = async (req, res) => {
   if (payload.role === "MOTORISTA" && payload.veiculo_id && !(await vehicleBelongsToCompany(empresa_id, payload.veiculo_id))) {
     return sendVehicleScopeError(res);
   }
-  if (!payload.senha) {
+  let temporaryPassword = null;
+  const passwordToHash = payload.senha || (payload.role === "MOTORISTA" ? generateTemporaryPassword() : null);
+  if (!passwordToHash) {
     return res.status(400).json({
       success: false,
       error: "Senha é obrigatória para criar usuário.",
       message: "Senha é obrigatória para criar usuário.",
     });
+  }
+  if (!payload.senha && payload.role === "MOTORISTA") {
+    temporaryPassword = passwordToHash;
   }
   const identityError = await checkRoleScopedUniqueness({
     role: payload.role,
@@ -462,7 +470,7 @@ const createUserCtrl = async (req, res) => {
       message: identityError,
     });
   }
-  const senha_hash = await bcrypt.hash(payload.senha, 10);
+  const senha_hash = await bcrypt.hash(passwordToHash, 10);
   const row = await createUser({
     ...payload,
     empresa_id,
@@ -475,7 +483,7 @@ const createUserCtrl = async (req, res) => {
     tabela: "usuarios",
     registro_id: row.id,
   });
-  return res.status(201).json(row);
+  return res.status(201).json(temporaryPassword ? { ...row, temporary_password: temporaryPassword } : row);
 };
 
 const listUsersCtrl = async (req, res) => {

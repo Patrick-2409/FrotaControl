@@ -167,7 +167,6 @@ test("createUserCtrl permite motorista sem veiculo e sem CNH", async () => {
         body: {
           nome: "Joao",
           cpf_id: "12345678901",
-          senha: "Senha123",
           role: "MOTORISTA",
           email: "",
         },
@@ -180,6 +179,9 @@ test("createUserCtrl permite motorista sem veiculo e sem CNH", async () => {
     assert.strictEqual(res.body?.veiculo_id, null);
     assert.strictEqual(createdPayload?.email, null);
     assert.ok(createdPayload?.cnh_numero == null);
+    assert.match(res.body?.temporary_password || "", /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/);
+    assert.notStrictEqual(res.body?.temporary_password, "NovaSenha123");
+    assert.strictEqual(await require("bcryptjs").compare(res.body.temporary_password, createdPayload.senha_hash), true);
     assert.ok(!calls.some((c) => /FROM veiculos WHERE id = \$1 AND empresa_id = \$2/.test(c.sql)));
   } finally {
     db.pool.query = orig;
