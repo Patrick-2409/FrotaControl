@@ -194,6 +194,66 @@ test("createUserCtrl permite motorista sem veiculo e sem CNH", async () => {
   }
 });
 
+test("createUserCtrl retorna motorista existente quando CPF ja pertence a empresa", async () => {
+  const pathDb = require.resolve("../src/db");
+  const pathCtrl = require.resolve("../src/controllers/adminController");
+  delete require.cache[pathCtrl];
+  const db = require("../src/db");
+  const orig = db.pool.query;
+  const calls = [];
+  db.pool.query = async (sql, params) => {
+    calls.push({ sql: String(sql), params });
+    if (/FROM usuarios/.test(String(sql))) {
+      return {
+        rows: [
+          {
+            id: 77,
+            empresa_id: 7,
+            nome: "Joao Cadastrado",
+            email: null,
+            cpf_id: "12345678901",
+            role: "MOTORISTA",
+            veiculo_id: null,
+            cnh_numero: null,
+            cnh_categoria: null,
+            cnh_validade: null,
+            conta_status: "ativo",
+          },
+        ],
+        rowCount: 1,
+      };
+    }
+    throw new Error(`consulta inesperada: ${sql}`);
+  };
+  try {
+    const { createUserCtrl } = require("../src/controllers/adminController");
+    const res = createRes();
+    await createUserCtrl(
+      {
+        user: { role: "ADMIN_EMPRESA", empresa_id: 7, sub: 11 },
+        query: {},
+        body: {
+          nome: "Joao",
+          cpf_id: "12345678901",
+          role: "MOTORISTA",
+          email: "",
+        },
+      },
+      res
+    );
+
+    assert.strictEqual(res.statusCode, 409);
+    assert.match(res.body?.message || "", /j[aá] existe motorista/i);
+    assert.strictEqual(res.body?.existing_user?.id, 77);
+    assert.strictEqual(res.body?.existing_user?.empresa_id, 7);
+    assert.ok(!calls.some((c) => /INSERT INTO usuarios/.test(c.sql)));
+  } finally {
+    db.pool.query = orig;
+    delete require.cache[pathCtrl];
+    delete require.cache[pathDb];
+  }
+});
+
 test("updateUserCtrl nao consulta veiculo quando usuario nao pertence a empresa", async () => {
   const pathDb = require.resolve("../src/db");
   const pathCtrl = require.resolve("../src/controllers/adminController");

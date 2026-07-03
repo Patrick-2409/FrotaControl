@@ -212,28 +212,38 @@ const normalizeUserPayload = (payload) => ({
   cpf_id: normalizeCpfId(payload?.cpf_id),
 });
 
-const checkRoleScopedUniqueness = async ({ role, email, cpf_id, excludeUserId = null }) => {
+const checkRoleScopedUniqueness = async ({ role, email, cpf_id, empresa_id = null, excludeUserId = null }) => {
   if (role === "MOTORISTA") {
     const params = [cpf_id];
     const andExclude = excludeUserId ? "AND id <> $2" : "";
     if (excludeUserId) params.push(excludeUserId);
     const motoristaExists = await pool.query(
-      `SELECT id
+      `SELECT id, empresa_id, nome, email, cpf_id, role, veiculo_id, profile_image_url,
+              funcao, cnh_categoria, cnh_numero, cnh_validade, treinamentos, observacoes,
+              equipamento_vinculo, operacao_escopo, status_operacional, conta_status
        FROM usuarios
        WHERE role = 'MOTORISTA'
          AND cpf_id = $1
          ${andExclude}
+       ORDER BY CASE WHEN empresa_id = $${params.length + 1} THEN 0 ELSE 1 END, created_at DESC, id DESC
        LIMIT 1`,
-      params
+      [...params, empresa_id]
     );
     if (motoristaExists.rowCount > 0) {
-      return "Já existe outro motorista com este CPF.";
+      const existing = sanitizeUser(motoristaExists.rows[0]);
+      const sameCompany = Number(existing.empresa_id) === Number(empresa_id);
+      return {
+        message: sameCompany
+          ? `Já existe motorista com este CPF/ID nesta empresa: ${existing.nome}. Edite esse cadastro ou use outro CPF/ID.`
+          : "CPF/ID já está vinculado a outro motorista. Use outro CPF/ID para criar uma nova conta.",
+        existingUser: sameCompany ? existing : null,
+      };
     }
     return null;
   }
 
   if (!email) {
-    return "Este perfil deve informar e-mail válido.";
+    return { message: "Este perfil deve informar e-mail válido." };
   }
 
   const adminEmailParams = [email];
@@ -249,7 +259,7 @@ const checkRoleScopedUniqueness = async ({ role, email, cpf_id, excludeUserId = 
     adminEmailParams
   );
   if (adminEmailExists.rowCount > 0) {
-    return "Já existe outro utilizador com este e-mail.";
+    return { message: "Já existe outro utilizador com este e-mail." };
   }
 
   const adminCpfParams = [cpf_id];
@@ -265,7 +275,7 @@ const checkRoleScopedUniqueness = async ({ role, email, cpf_id, excludeUserId = 
     adminCpfParams
   );
   if (adminCpfExists.rowCount > 0) {
-    return "Já existe outro utilizador com este CPF.";
+    return { message: "Já existe outro utilizador com este CPF." };
   }
 
   return null;
@@ -462,12 +472,14 @@ const createUserCtrl = async (req, res) => {
     role: payload.role,
     email: payload.email,
     cpf_id: payload.cpf_id,
+    empresa_id,
   });
   if (identityError) {
     return res.status(409).json({
       success: false,
-      error: identityError,
-      message: identityError,
+      error: identityError.message,
+      message: identityError.message,
+      existing_user: identityError.existingUser || null,
     });
   }
   const senha_hash = await bcrypt.hash(passwordToHash, 10);
@@ -647,13 +659,15 @@ const updateUserCtrl = async (req, res) => {
     role: payload.role,
     email: payload.email,
     cpf_id: payload.cpf_id,
+    empresa_id,
     excludeUserId: Number(req.params.id),
   });
   if (identityError) {
     return res.status(409).json({
       success: false,
-      error: identityError,
-      message: identityError,
+      error: identityError.message,
+      message: identityError.message,
+      existing_user: identityError.existingUser || null,
     });
   }
   let row;

@@ -36,6 +36,18 @@ const dedupeById = (items = []) => {
   return Array.from(map.values());
 };
 const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+const userToForm = (u = {}) => ({
+  id: u.id ?? null,
+  nome: u.nome || "",
+  email: u.email || "",
+  cpf_id: u.cpf_id || "",
+  senha: "",
+  role: u.role || "MOTORISTA",
+  veiculo_id: u.veiculo_id || "",
+  cnh_numero: u.cnh_numero || "",
+  cnh_categoria: u.cnh_categoria || "",
+  cnh_validade: u.cnh_validade ? String(u.cnh_validade).slice(0, 10) : "",
+});
 export default function CompanyManagementPage() {
   const { user: authUser } = useAuth();
   const [searchParams] = useSearchParams();
@@ -145,9 +157,9 @@ export default function CompanyManagementPage() {
       };
       let response;
       if (userForm.id) {
-        response = await api.put(`/dashboard/manage/users/${userForm.id}`, payload);
+        response = await api.put(`/dashboard/manage/users/${userForm.id}`, payload, { skipGlobalErrorToast: true });
       } else {
-        response = await api.post("/dashboard/manage/users", payload);
+        response = await api.post("/dashboard/manage/users", payload, { skipGlobalErrorToast: true });
       }
       const temporaryPassword = response?.data?.temporary_password;
       if (temporaryPassword) {
@@ -158,7 +170,19 @@ export default function CompanyManagementPage() {
       setUserForm(emptyUserForm());
       await loadUsers();
     } catch (err) {
-      emitToast(err.response?.data?.message || "Erro ao salvar usuário.", "error");
+      const existingUser = err.response?.status === 409 ? err.response?.data?.existing_user : null;
+      if (existingUser?.id) {
+        setUserForm(userToForm(existingUser));
+        setSearch((s) => ({ ...s, users: existingUser.cpf_id || existingUser.nome || s.users }));
+        setUsersPage(1);
+        emitToast(
+          err.response?.data?.message || "Esse motorista já existe. Abrimos o cadastro existente para edição.",
+          "warning",
+          { durationMs: 9000 }
+        );
+      } else {
+        emitToast(extractApiErrorMessage(err) || "Erro ao salvar usuário.", "error", { durationMs: 8000 });
+      }
     } finally {
       setLoading(false);
     }
@@ -392,20 +416,7 @@ export default function CompanyManagementPage() {
                     <div className="fc-empresa-action-row flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() =>
-                          setUserForm({
-                            id: u.id,
-                            nome: u.nome,
-                            email: u.email || "",
-                            cpf_id: u.cpf_id,
-                            senha: "",
-                            role: u.role,
-                            veiculo_id: u.veiculo_id || "",
-                            cnh_numero: u.cnh_numero || "",
-                            cnh_categoria: u.cnh_categoria || "",
-                            cnh_validade: ymdFromUser(u.cnh_validade),
-                          })
-                        }
+                        onClick={() => setUserForm({ ...userToForm(u), cnh_validade: ymdFromUser(u.cnh_validade) })}
                         className="fc-btn rounded-lg border border-blue-400/35 bg-blue-500/15 px-3 py-1.5 text-xs text-blue-100"
                       >
                         Editar
