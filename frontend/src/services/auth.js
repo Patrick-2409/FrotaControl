@@ -47,6 +47,14 @@ const normalizeUser = (user) => {
   };
 };
 
+const isRecoverableSessionRefreshError = (err) => {
+  const status = err?.response?.status;
+  if (status === 401 || status === 403) return false;
+  if (status === 408 || status === 429) return true;
+  if (typeof status === "number" && status >= 500) return true;
+  return err?.code === "ECONNABORTED" || err?.code === "ERR_NETWORK" || !err?.response;
+};
+
 const buildMotoristaLoginPayload = (payload = {}) => {
   const rawLogin = sanitizePlainText(String(payload.login ?? payload.cpf_id ?? "").trim(), MAX_LOGIN_LEN);
   const senha = String(payload.senha ?? payload.password ?? "").slice(0, MAX_PASSWORD_LEN);
@@ -70,9 +78,14 @@ export const AuthProvider = ({ children }) => {
   const [storedUser, setStoredUser] = useState(() => normalizeUser(readStoredUser()));
   const [isSessionValidated, setIsSessionValidated] = useState(false);
   const [loading, setLoading] = useState(true);
+  const storedUserRef = useRef(storedUser);
   const trustedUserScopeRef = useRef(null);
 
   const user = isSessionValidated ? storedUser : null;
+
+  useEffect(() => {
+    storedUserRef.current = storedUser;
+  }, [storedUser]);
 
   const sanitizeOfflineCaches = useCallback(() => {
     Promise.resolve(purgeUnscopedOfflineData()).catch(() => {});
@@ -90,16 +103,57 @@ export const AuthProvider = ({ children }) => {
     clearOfflineCachesOnLogout();
   }, [clearOfflineCachesOnLogout]);
 
-  const refreshUser = useCallback(async () => {
-    const { data } = await api.get("/auth/me");
+  const acceptAuthenticatedUser = useCallback(
+    (rawUser) => {
+      const normalized = normalizeUser(rawUser);
+      if (!normalized?.id || !normalized?.role) return null;
+      storedUserRef.current = normalized;
+      setStoredUser(normalized);
+      setIsSessionValidated(true);
+      localStorage.setItem("fc_user", JSON.stringify(normalized));
+      setValidatedSessionRole(normalized.role);
+      sanitizeOfflineCaches();
+      return normalized;
+    },
+    [sanitizeOfflineCaches]
+  );
+
+  const refreshUser = useCallback(async (options = {}) => {
+    const { data } = await api.get("/auth/me", {
+      skipGlobalErrorToast: Boolean(options.skipGlobalErrorToast),
+      skipErrorLog: Boolean(options.skipErrorLog),
+    });
     const normalized = normalizeUser(data);
-    setStoredUser(normalized);
-    setIsSessionValidated(true);
-    localStorage.setItem("fc_user", JSON.stringify(normalized));
-    setValidatedSessionRole(normalized?.role);
-    sanitizeOfflineCaches();
-    return normalized;
-  }, [sanitizeOfflineCaches]);
+    return acceptAuthenticatedUser(normalized);
+  }, [acceptAuthenticatedUser]);
+
+  const completeLogin = useCallback(
+    async (data) => {
+      if (!data?.token || !data?.user) {
+        throw new Error("Resposta de autenticação inválida.");
+      }
+
+      localStorage.setItem("fc_token", data.token);
+      const loginUser = acceptAuthenticatedUser(data.user);
+      if (!loginUser) {
+        throw new Error("Resposta de autenticação inválida.");
+      }
+
+      try {
+        const fresh = await refreshUser({ skipGlobalErrorToast: true, skipErrorLog: true });
+        return fresh || loginUser;
+      } catch (err) {
+        if (isRecoverableSessionRefreshError(err)) {
+          return loginUser;
+        }
+        clearSensitiveSessionCache();
+        setStoredUser(null);
+        setIsSessionValidated(false);
+        throw err;
+      }
+    },
+    [acceptAuthenticatedUser, clearSensitiveSessionCache, refreshUser]
+  );
 
   useEffect(() => {
     sanitizeOfflineCaches();
@@ -127,12 +181,15 @@ export const AuthProvider = ({ children }) => {
         if (status === 401 || status === 403) {
           clearSensitiveSessionCache();
           setStoredUser(null);
+        } else if (storedUserRef.current && isRecoverableSessionRefreshError(err)) {
+          acceptAuthenticatedUser(storedUserRef.current);
+          return;
         }
         clearValidatedSessionRole();
         setIsSessionValidated(false);
       })
       .finally(() => setLoading(false));
-  }, [refreshUser, clearSensitiveSessionCache]);
+  }, [refreshUser, clearSensitiveSessionCache, acceptAuthenticatedUser]);
 
   useEffect(() => {
     const onAuthExpired = () => {
@@ -156,51 +213,23 @@ export const AuthProvider = ({ children }) => {
 
   const login = useCallback(async (payload) => {
     const { data } = await api.post("/auth/motorista-login", buildMotoristaLoginPayload(payload));
-    const normalized = normalizeUser(data.user);
-    localStorage.setItem("fc_token", data.token);
-    localStorage.setItem("fc_user", JSON.stringify(normalized));
-    setStoredUser(normalized);
-    setIsSessionValidated(false);
-    clearValidatedSessionRole();
-    const fresh = await refreshUser();
-    return fresh;
-  }, [refreshUser]);
+    return completeLogin(data);
+  }, [completeLogin]);
 
   const adminEmpresaLogin = useCallback(async (payload) => {
     const { data } = await api.post("/auth/admin-empresa-login", buildUniversalLoginPayload(payload));
-    const normalized = normalizeUser(data.user);
-    localStorage.setItem("fc_token", data.token);
-    localStorage.setItem("fc_user", JSON.stringify(normalized));
-    setStoredUser(normalized);
-    setIsSessionValidated(false);
-    clearValidatedSessionRole();
-    const fresh = await refreshUser();
-    return fresh;
-  }, [refreshUser]);
+    return completeLogin(data);
+  }, [completeLogin]);
 
   const apontadorLogin = useCallback(async (payload) => {
     const { data } = await api.post("/auth/apontador-login", buildUniversalLoginPayload(payload));
-    const normalized = normalizeUser(data.user);
-    localStorage.setItem("fc_token", data.token);
-    localStorage.setItem("fc_user", JSON.stringify(normalized));
-    setStoredUser(normalized);
-    setIsSessionValidated(false);
-    clearValidatedSessionRole();
-    const fresh = await refreshUser();
-    return fresh;
-  }, [refreshUser]);
+    return completeLogin(data);
+  }, [completeLogin]);
 
   const superAdminLogin = useCallback(async (payload) => {
     const { data } = await api.post("/auth/super-admin-login", buildUniversalLoginPayload(payload));
-    const normalized = normalizeUser(data.user);
-    localStorage.setItem("fc_token", data.token);
-    localStorage.setItem("fc_user", JSON.stringify(normalized));
-    setStoredUser(normalized);
-    setIsSessionValidated(false);
-    clearValidatedSessionRole();
-    const fresh = await refreshUser();
-    return fresh;
-  }, [refreshUser]);
+    return completeLogin(data);
+  }, [completeLogin]);
 
   const logout = useCallback(() => {
     clearSensitiveSessionCache();
