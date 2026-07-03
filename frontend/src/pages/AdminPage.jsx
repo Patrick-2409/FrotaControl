@@ -564,10 +564,6 @@ export default function AdminPage() {
     if (!editingUser) return;
     if (submitLockRef.current) return;
     const emailTrim = String(editingUser.email || "").trim();
-    if (editingUser.role === "MOTORISTA" && !String(editingUser.veiculo_id || "").trim()) {
-      emitToast("Motorista deve ter veículo vinculado.", "error");
-      return;
-    }
     if (editingUser.role !== "MOTORISTA" && !emailTrim) {
       emitToast("E-mail é obrigatório para este tipo de usuário.", "error");
       return;
@@ -1272,7 +1268,7 @@ export default function AdminPage() {
                     </FormField>
                   </div>
                   <div className="md:col-span-2">
-                    <FormField label="Veículo vinculado (motorista)">
+                    <FormField label="Veículo vinculado (opcional)">
                       {editingUser.role === "MOTORISTA" ? (
                         <select
                           className={inputClass}
@@ -1310,7 +1306,7 @@ export default function AdminPage() {
                       placeholder="Caminho ou URL (opcional)"
                     />
                   </FormField>
-                  <FormField label="CNH categoria">
+                  <FormField label="CNH categoria (opcional)">
                     <input
                       className={inputClass}
                       value={editingUser.cnh_categoria || ""}
@@ -1318,14 +1314,14 @@ export default function AdminPage() {
                       placeholder="Ex.: D"
                     />
                   </FormField>
-                  <FormField label="CNH número">
+                  <FormField label="CNH número (opcional)">
                     <input
                       className={inputClass}
                       value={editingUser.cnh_numero || ""}
                       onChange={(e) => setEditingUser((u) => ({ ...u, cnh_numero: e.target.value }))}
                     />
                   </FormField>
-                  <FormField label="CNH validade">
+                  <FormField label="CNH validade (opcional)">
                     <input
                       type="date"
                       className={inputClass}

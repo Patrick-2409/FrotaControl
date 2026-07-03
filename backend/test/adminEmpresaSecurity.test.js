@@ -115,6 +115,83 @@ test("createUserCtrl rejeita motorista com veiculo de outra empresa", async () =
   }
 });
 
+test("createUserCtrl permite motorista sem veiculo e sem CNH", async () => {
+  const pathDb = require.resolve("../src/db");
+  const pathUserModel = require.resolve("../src/models/userModel");
+  const pathAudit = require.resolve("../src/services/auditService");
+  const pathCtrl = require.resolve("../src/controllers/adminController");
+  delete require.cache[pathCtrl];
+  delete require.cache[pathUserModel];
+  delete require.cache[pathAudit];
+  const db = require("../src/db");
+  const userModel = require("../src/models/userModel");
+  const auditService = require("../src/services/auditService");
+  const orig = db.pool.query;
+  const origCreateUser = userModel.createUser;
+  const origLogAudit = auditService.logAudit;
+  const calls = [];
+  let createdPayload = null;
+  db.pool.query = async (sql, params) => {
+    calls.push({ sql: String(sql), params });
+    if (/FROM usuarios/.test(String(sql))) {
+      return { rows: [], rowCount: 0 };
+    }
+    if (/INSERT INTO audit_logs/.test(String(sql))) {
+      return { rows: [], rowCount: 1 };
+    }
+    throw new Error(`consulta inesperada: ${sql}`);
+  };
+  auditService.logAudit = async () => {};
+  userModel.createUser = async (payload) => {
+    createdPayload = payload;
+    return {
+      id: 55,
+      empresa_id: payload.empresa_id,
+      nome: payload.nome,
+      email: payload.email,
+      cpf_id: payload.cpf_id,
+      role: payload.role,
+      veiculo_id: payload.veiculo_id ?? null,
+      cnh_numero: payload.cnh_numero ?? null,
+      cnh_categoria: payload.cnh_categoria ?? null,
+      cnh_validade: payload.cnh_validade ?? null,
+    };
+  };
+  try {
+    const { createUserCtrl } = require("../src/controllers/adminController");
+    const res = createRes();
+    await createUserCtrl(
+      {
+        user: { role: "ADMIN_EMPRESA", empresa_id: 7, sub: 11 },
+        query: {},
+        body: {
+          nome: "Joao",
+          cpf_id: "12345678901",
+          senha: "Senha123",
+          role: "MOTORISTA",
+          email: "",
+        },
+      },
+      res
+    );
+
+    assert.strictEqual(res.statusCode, 201);
+    assert.strictEqual(res.body?.role, "MOTORISTA");
+    assert.strictEqual(res.body?.veiculo_id, null);
+    assert.strictEqual(createdPayload?.email, null);
+    assert.ok(createdPayload?.cnh_numero == null);
+    assert.ok(!calls.some((c) => /FROM veiculos WHERE id = \$1 AND empresa_id = \$2/.test(c.sql)));
+  } finally {
+    db.pool.query = orig;
+    userModel.createUser = origCreateUser;
+    auditService.logAudit = origLogAudit;
+    delete require.cache[pathCtrl];
+    delete require.cache[pathUserModel];
+    delete require.cache[pathAudit];
+    delete require.cache[pathDb];
+  }
+});
+
 test("updateUserCtrl nao consulta veiculo quando usuario nao pertence a empresa", async () => {
   const pathDb = require.resolve("../src/db");
   const pathCtrl = require.resolve("../src/controllers/adminController");

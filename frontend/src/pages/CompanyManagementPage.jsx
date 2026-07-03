@@ -35,12 +35,6 @@ const dedupeById = (items = []) => {
   }
   return Array.from(map.values());
 };
-const hasFullName = (value) => {
-  const normalized = String(value || "").trim().replace(/\s+/g, " ");
-  if (!normalized) return false;
-  return normalized.split(" ").filter(Boolean).length >= 2;
-};
-
 export default function CompanyManagementPage() {
   const { user: authUser } = useAuth();
   const [searchParams] = useSearchParams();
@@ -115,12 +109,9 @@ export default function CompanyManagementPage() {
 
   const onSaveUser = async (e) => {
     e.preventDefault();
-    if (!userForm.nome.trim() || !userForm.email.trim() || !userForm.cpf_id.trim()) {
-      emitToast("Preencha nome, e-mail e CPF/ID.", "warning");
-      return;
-    }
-    if (!hasFullName(userForm.nome)) {
-      emitToast("Informe o nome completo do usuário (nome e sobrenome).", "warning");
+    const isMotorista = userForm.role === "MOTORISTA";
+    if (!userForm.nome.trim() || !userForm.cpf_id.trim() || (!isMotorista && !userForm.email.trim())) {
+      emitToast(isMotorista ? "Preencha nome e CPF/ID." : "Preencha nome, e-mail e CPF/ID.", "warning");
       return;
     }
     if (userForm.role !== "MOTORISTA" && !userForm.email.trim()) {
@@ -129,37 +120,18 @@ export default function CompanyManagementPage() {
     }
     const veiculoId =
       userForm.role === "MOTORISTA" && userForm.veiculo_id ? Number(userForm.veiculo_id) : null;
-    if (userForm.role === "MOTORISTA" && !veiculoId) {
-      emitToast("Motorista precisa ter veículo vinculado.", "warning");
-      return;
-    }
-    if (userForm.role === "MOTORISTA") {
-      if (!String(userForm.cnh_numero || "").trim()) {
-        emitToast("Informe o número da CNH do motorista.", "warning");
-        return;
-      }
-      if (!String(userForm.cnh_categoria || "").trim()) {
-        emitToast("Selecione a categoria da CNH.", "warning");
-        return;
-      }
-      if (!String(userForm.cnh_validade || "").trim()) {
-        emitToast("Informe a validade da CNH.", "warning");
-        return;
-      }
-    }
     setLoading(true);
     try {
-      const isMotorista = userForm.role === "MOTORISTA";
       const payload = {
         nome: userForm.nome.trim(),
-        email: userForm.email.trim(),
+        email: userForm.email.trim() || undefined,
         cpf_id: userForm.cpf_id.trim(),
         senha: userForm.senha,
         role: userForm.role,
         veiculo_id: veiculoId,
-        cnh_numero: isMotorista ? String(userForm.cnh_numero).trim() : null,
-        cnh_categoria: isMotorista ? String(userForm.cnh_categoria).trim() : null,
-        cnh_validade: isMotorista ? userForm.cnh_validade : null,
+        cnh_numero: isMotorista ? String(userForm.cnh_numero).trim() || null : null,
+        cnh_categoria: isMotorista ? String(userForm.cnh_categoria).trim() || null : null,
+        cnh_validade: isMotorista ? userForm.cnh_validade || null : null,
       };
       if (userForm.id) {
         await api.put(`/dashboard/manage/users/${userForm.id}`, payload);
@@ -237,7 +209,7 @@ export default function CompanyManagementPage() {
           .
         </p>
         <p className="mt-3 text-xs text-slate-500">
-          Fluxo recomendado: criar conta, definir papel, vincular veículo quando for motorista e completar o cadastro operacional no módulo correto.
+          Fluxo recomendado: criar conta, definir papel, vincular veículo quando houver definição operacional e completar o cadastro no módulo correto.
         </p>
       </section>
 
@@ -284,7 +256,7 @@ export default function CompanyManagementPage() {
                       onChange={(e) => setUserForm((f) => ({ ...f, veiculo_id: e.target.value }))}
                     >
                       <option value="">
-                        {loadingVehiclePicklist ? "Carregando veículos…" : "Vínculo de veículo"}
+                        {loadingVehiclePicklist ? "Carregando veículos..." : "Vínculo de veículo (opcional)"}
                       </option>
                       {vehicleOptions.map((v) => (
                         <option key={`v-opt-${v.id}`} value={v.id}>
@@ -293,7 +265,7 @@ export default function CompanyManagementPage() {
                       ))}
                     </select>
                     <p className="mt-1 text-xs text-slate-500">
-                      Cadastre ou edite veículos em{" "}
+                      Opcional neste momento. Cadastre ou edite veículos em{" "}
                       <Link to={FROTA_PANEL_PATH} className="text-blue-300 hover:text-blue-200">
                         Painel frota
                       </Link>
@@ -309,7 +281,7 @@ export default function CompanyManagementPage() {
                   <>
                     <input
                       className={inputClass}
-                      placeholder="Número CNH"
+                      placeholder="Número CNH (opcional)"
                       value={userForm.cnh_numero}
                       onChange={(e) => setUserForm((f) => ({ ...f, cnh_numero: e.target.value }))}
                     />
@@ -318,7 +290,7 @@ export default function CompanyManagementPage() {
                       value={userForm.cnh_categoria}
                       onChange={(e) => setUserForm((f) => ({ ...f, cnh_categoria: e.target.value }))}
                     >
-                      <option value="">Categoria CNH</option>
+                      <option value="">Categoria CNH (opcional)</option>
                       {CNH_CATEGORIAS.map((cat) => (
                         <option key={cat} value={cat}>
                           {cat}
@@ -326,7 +298,7 @@ export default function CompanyManagementPage() {
                       ))}
                     </select>
                     <div>
-                      <span className="mb-1 block text-sm text-slate-300">Validade da CNH (vencimento)</span>
+                      <span className="mb-1 block text-sm text-slate-300">Validade da CNH (opcional)</span>
                       <input
                         className={inputClass}
                         type="date"

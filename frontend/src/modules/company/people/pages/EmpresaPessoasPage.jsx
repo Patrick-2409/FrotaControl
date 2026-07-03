@@ -732,7 +732,7 @@ export default function EmpresaPessoasPage() {
                 </label>
                 {p.form.role === "MOTORISTA" ? (
                   <label className="block text-xs font-medium text-zinc-400 sm:col-span-2">
-                    Veículo vinculado
+                    Veículo vinculado (opcional)
                     <select
                       className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
                       value={p.form.veiculo_id}
@@ -740,7 +740,7 @@ export default function EmpresaPessoasPage() {
                       onChange={(e) => p.setForm((f) => ({ ...f, veiculo_id: e.target.value }))}
                     >
                       <option value="">
-                        {p.vehiclesPicklistLoading ? "Carregando veículos…" : "— Selecionar —"}
+                        {p.vehiclesPicklistLoading ? "Carregando veículos..." : "Selecionar veículo (opcional)"}
                       </option>
                       {p.vehicles.map((v) => (
                         <option key={v.id} value={v.id}>
@@ -762,23 +762,21 @@ export default function EmpresaPessoasPage() {
                 {p.form.role === "MOTORISTA" ? (
                   <>
                     <label className="block text-xs font-medium text-zinc-400 sm:col-span-2">
-                      Número CNH
+                      Número CNH (opcional)
                       <input
-                        required
                         className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
                         value={p.form.cnh_numero}
                         onChange={(e) => p.setForm((f) => ({ ...f, cnh_numero: e.target.value }))}
                       />
                     </label>
                     <label className="block text-xs font-medium text-zinc-400">
-                      Categoria CNH
+                      Categoria CNH (opcional)
                       <select
-                        required
                         className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
                         value={p.form.cnh_categoria}
                         onChange={(e) => p.setForm((f) => ({ ...f, cnh_categoria: e.target.value }))}
                       >
-                        <option value="">— Selecionar —</option>
+                        <option value="">Selecionar categoria (opcional)</option>
                         {CNH_CATEGORIAS.map((cat) => (
                           <option key={cat} value={cat}>
                             {cat}
@@ -787,10 +785,9 @@ export default function EmpresaPessoasPage() {
                       </select>
                     </label>
                     <label className="block text-xs font-medium text-zinc-400">
-                      Validade da CNH (vencimento)
+                      Validade da CNH (opcional)
                       <input
                         type="date"
-                        required
                         placeholder="Ex: 12/08/2026"
                         title="Ex: 12/08/2026"
                         className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"

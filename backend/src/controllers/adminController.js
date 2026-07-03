@@ -59,7 +59,13 @@ const companyCreateSchema = companySchema.extend({
 
 const userSchema = z.object({
   nome: z.string().trim().min(3),
-  email: z.string().email().optional(),
+  email: z.preprocess(
+    (value) => {
+      const trimmed = String(value ?? "").trim();
+      return trimmed ? trimmed : undefined;
+    },
+    z.string().email().optional()
+  ),
   cpf_id: z.string().trim().min(3),
   senha: z
     .union([
@@ -98,13 +104,6 @@ const userSchema = z.object({
   status_operacional: z.enum(["ativo", "afastado", "suspenso"]).optional(),
   conta_status: z.enum(["ativo", "inativo"]).optional(),
 }).superRefine((val, ctx) => {
-  if (!hasFullName(val.nome)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["nome"],
-      message: "Informe o nome completo (nome e sobrenome).",
-    });
-  }
   if (val.role !== "MOTORISTA" && !String(val.email || "").trim()) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -112,7 +111,7 @@ const userSchema = z.object({
       message: "E-mail é obrigatório para administrador, apontador e super administrador.",
     });
   }
-  if (val.role === "MOTORISTA") {
+  if (process.env.ENFORCE_MOTORISTA_CNH === "true" && val.role === "MOTORISTA") {
     if (!String(val.cnh_numero || "").trim()) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -434,14 +433,14 @@ const createUserCtrl = async (req, res) => {
       message: "empresa_id é obrigatório para este perfil.",
     });
   }
-  if (payload.role === "MOTORISTA" && !payload.veiculo_id) {
+  if (process.env.ENFORCE_MOTORISTA_VEICULO === "true" && payload.role === "MOTORISTA" && !payload.veiculo_id) {
     return res.status(400).json({
       success: false,
       error: "Motorista deve ter veículo vinculado",
       message: "Motorista deve ter veículo vinculado",
     });
   }
-  if (payload.role === "MOTORISTA" && !(await vehicleBelongsToCompany(empresa_id, payload.veiculo_id))) {
+  if (payload.role === "MOTORISTA" && payload.veiculo_id && !(await vehicleBelongsToCompany(empresa_id, payload.veiculo_id))) {
     return sendVehicleScopeError(res);
   }
   if (!payload.senha) {
@@ -619,7 +618,7 @@ const updateUserCtrl = async (req, res) => {
       message: "empresa_id é obrigatório",
     });
   }
-  if (payload.role === "MOTORISTA" && !payload.veiculo_id) {
+  if (process.env.ENFORCE_MOTORISTA_VEICULO === "true" && payload.role === "MOTORISTA" && !payload.veiculo_id) {
     return res.status(400).json({
       success: false,
       error: "Motorista deve ter veículo vinculado",
@@ -633,7 +632,7 @@ const updateUserCtrl = async (req, res) => {
       message: "Utilizador não encontrado.",
     });
   }
-  if (payload.role === "MOTORISTA" && !(await vehicleBelongsToCompany(empresa_id, payload.veiculo_id))) {
+  if (payload.role === "MOTORISTA" && payload.veiculo_id && !(await vehicleBelongsToCompany(empresa_id, payload.veiculo_id))) {
     return sendVehicleScopeError(res);
   }
   const identityError = await checkRoleScopedUniqueness({
