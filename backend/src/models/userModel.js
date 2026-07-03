@@ -1,5 +1,6 @@
 const { pool } = require("../db");
 const { queryTimed } = require("../utils/queryTimed");
+const { logWarn } = require("../services/loggerService");
 
 const STATUS_PESSOA = new Set(["ativo", "afastado", "suspenso"]);
 
@@ -58,6 +59,8 @@ const sanitizeUser = (user) => {
 };
 
 const sanitizeUsers = (users = []) => users.map((row) => sanitizeUser(row));
+
+const isMissingSchemaField = (err) => ["42703", "42P01"].includes(String(err?.code || "").trim().toUpperCase());
 
 const USER_VEHICLE_LINKS_SELECT = `
             COALESCE(vl.veiculos_vinculados, '[]'::json) AS veiculos_vinculados,
@@ -354,6 +357,32 @@ const getSuperAdminByEmail = async (email) => {
   return rows[0];
 };
 
+const getUserByIdBasic = async (id, empresa_id) => {
+  const values = [id];
+  const companyFilter =
+    empresa_id == null ? "AND u.empresa_id IS NULL" : "AND u.empresa_id = $2";
+  if (empresa_id != null) {
+    values.push(empresa_id);
+  }
+  const { rows } = await pool.query(
+    `SELECT u.id, u.empresa_id, u.nome, u.email, u.cpf_id, u.role, u.veiculo_id,
+            NULL::text AS profile_image_url,
+            'ativo'::text AS conta_status,
+            e.nome AS empresa_nome, e.logo_url,
+            v.nome AS veiculo_nome, v.placa, NULL::text AS veiculo_marca, NULL::text AS veiculo_modelo,
+            '[]'::json AS veiculos_vinculados,
+            0::int AS veiculos_vinculados_count,
+            false AS tem_veiculo_transporte,
+            false AS tem_veiculo_apoio
+     FROM usuarios u
+     LEFT JOIN empresas e ON e.id = u.empresa_id
+     LEFT JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
+     WHERE u.id = $1 ${companyFilter}`,
+    values
+  );
+  return sanitizeUser(rows[0]);
+};
+
 const getUserById = async (id, empresa_id) => {
   const values = [id];
   const companyFilter =
@@ -362,23 +391,32 @@ const getUserById = async (id, empresa_id) => {
     values.push(empresa_id);
   }
 
-  const { rows } = await pool.query(
-    `SELECT u.id, u.empresa_id, u.nome, u.email, u.cpf_id, u.role, u.veiculo_id, u.profile_image_url,
-            u.funcao, u.cnh_categoria, u.cnh_numero, u.cnh_validade, u.treinamentos, u.observacoes,
-            u.equipamento_vinculo, u.operacao_escopo, u.status_operacional, u.conta_status, u.created_at,
-            e.nome AS empresa_nome, e.logo_url,
-            v.nome AS veiculo_nome, v.placa, v.marca AS veiculo_marca, v.modelo AS veiculo_modelo,
-            COALESCE(NULLIF(TRIM(v.tipo_operacao), ''), CASE WHEN COALESCE(v.usa_para_transporte, false) THEN 'transporte' ELSE 'apoio' END) AS veiculo_tipo_operacao,
-            COALESCE(v.usa_para_transporte, false) AS veiculo_usa_para_transporte,
-            ${USER_VEHICLE_LINKS_SELECT}
-     FROM usuarios u
-     LEFT JOIN empresas e ON e.id = u.empresa_id
-     LEFT JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
-     ${USER_VEHICLE_LINKS_JOIN}
-     WHERE u.id = $1 ${companyFilter}`,
-    values
-  );
-  return sanitizeUser(rows[0]);
+  try {
+    const { rows } = await pool.query(
+      `SELECT u.id, u.empresa_id, u.nome, u.email, u.cpf_id, u.role, u.veiculo_id, u.profile_image_url,
+              u.funcao, u.cnh_categoria, u.cnh_numero, u.cnh_validade, u.treinamentos, u.observacoes,
+              u.equipamento_vinculo, u.operacao_escopo, u.status_operacional, u.conta_status, u.created_at,
+              e.nome AS empresa_nome, e.logo_url,
+              v.nome AS veiculo_nome, v.placa, v.marca AS veiculo_marca, v.modelo AS veiculo_modelo,
+              COALESCE(NULLIF(TRIM(v.tipo_operacao), ''), CASE WHEN COALESCE(v.usa_para_transporte, false) THEN 'transporte' ELSE 'apoio' END) AS veiculo_tipo_operacao,
+              COALESCE(v.usa_para_transporte, false) AS veiculo_usa_para_transporte,
+              ${USER_VEHICLE_LINKS_SELECT}
+       FROM usuarios u
+       LEFT JOIN empresas e ON e.id = u.empresa_id
+       LEFT JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
+       ${USER_VEHICLE_LINKS_JOIN}
+       WHERE u.id = $1 ${companyFilter}`,
+      values
+    );
+    return sanitizeUser(rows[0]);
+  } catch (err) {
+    if (!isMissingSchemaField(err)) throw err;
+    logWarn("user:get-by-id-schema-fallback", {
+      message: err?.message,
+      code: err?.code,
+    });
+    return getUserByIdBasic(id, empresa_id);
+  }
 };
 
 const listUsersByCompany = async (

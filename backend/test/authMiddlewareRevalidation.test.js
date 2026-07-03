@@ -120,3 +120,36 @@ test("authMiddleware responde 503 quando banco está indisponível", async () =>
     pool.query = originalQuery;
   }
 });
+
+test("authMiddleware usa fallback quando conta_status ainda nao existe no schema", async () => {
+  const originalVerify = jwt.verify;
+  const originalQuery = pool.query;
+  let calls = 0;
+
+  jwt.verify = () => ({ sub: 89, role: "ADMIN_EMPRESA", empresa_id: 3, nome: "Sessao Ativa" });
+  pool.query = async () => {
+    calls += 1;
+    if (calls === 1) {
+      const err = new Error('column "conta_status" does not exist');
+      err.code = "42703";
+      throw err;
+    }
+    return {
+      rowCount: 1,
+      rows: [{ id: 89, empresa_id: 3, role: "ADMIN_EMPRESA", nome: "Sessao Ativa", conta_status: "ativo" }],
+    };
+  };
+
+  try {
+    const req = { headers: { authorization: "Bearer token-valido" } };
+    const res = createRes();
+    const nextCalled = await runMiddleware(authMiddleware, req, res);
+    assert.strictEqual(nextCalled, true);
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(req.user.role, "ADMIN_EMPRESA");
+    assert.strictEqual(calls, 2);
+  } finally {
+    jwt.verify = originalVerify;
+    pool.query = originalQuery;
+  }
+});

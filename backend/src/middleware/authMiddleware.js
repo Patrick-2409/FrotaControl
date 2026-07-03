@@ -1,6 +1,6 @@
 const jwt = require("jsonwebtoken");
 const { pool } = require("../db");
-const { logError } = require("../services/loggerService");
+const { logError, logWarn } = require("../services/loggerService");
 
 const TRANSIENT_DB_ERROR_CODES = new Set([
   "ECONNREFUSED",
@@ -25,6 +25,33 @@ const TRANSIENT_DB_ERROR_CODES = new Set([
 const isTransientDbError = (err) => {
   const code = String(err?.code || "").trim().toUpperCase();
   return code ? TRANSIENT_DB_ERROR_CODES.has(code) : false;
+};
+
+const isMissingSchemaField = (err) => ["42703", "42P01"].includes(String(err?.code || "").trim().toUpperCase());
+
+const loadSessionUser = async (userId) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, empresa_id, role, nome, COALESCE(conta_status, 'ativo') AS conta_status
+       FROM usuarios
+       WHERE id = $1`,
+      [userId]
+    );
+    return rows;
+  } catch (err) {
+    if (!isMissingSchemaField(err)) throw err;
+    logWarn("auth:session-validation-schema-fallback", {
+      message: err?.message,
+      code: err?.code,
+    });
+    const { rows } = await pool.query(
+      `SELECT id, empresa_id, role, nome, 'ativo'::text AS conta_status
+       FROM usuarios
+       WHERE id = $1`,
+      [userId]
+    );
+    return rows;
+  }
 };
 
 const authMiddleware = async (req, res, next) => {
@@ -54,12 +81,7 @@ const authMiddleware = async (req, res, next) => {
   }
 
   try {
-    const { rows } = await pool.query(
-      `SELECT id, empresa_id, role, nome, COALESCE(conta_status, 'ativo') AS conta_status
-       FROM usuarios
-       WHERE id = $1`,
-      [userId]
-    );
+    const rows = await loadSessionUser(userId);
 
     if (!rows.length) {
       return res.status(401).json({

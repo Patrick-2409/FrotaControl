@@ -72,6 +72,58 @@ test("GET /api/auth/me não retorna senha_hash", async () => {
   }
 });
 
+test("GET /api/auth/me usa perfil basico quando vinculos ainda estao em migracao", async () => {
+  const pathDb = require.resolve("../src/db");
+  const pathModel = require.resolve("../src/models/userModel");
+  const pathCtrl = require.resolve("../src/controllers/authController");
+  delete require.cache[pathModel];
+  delete require.cache[pathCtrl];
+  const db = require("../src/db");
+  const originalQuery = db.pool.query;
+  let calls = 0;
+
+  db.pool.query = async () => {
+    calls += 1;
+    if (calls === 1) {
+      const err = new Error('relation "motorista_veiculos" does not exist');
+      err.code = "42P01";
+      throw err;
+    }
+    return {
+      rowCount: 1,
+      rows: [
+        {
+          id: 11,
+          empresa_id: 7,
+          nome: "Maria Admin",
+          email: "maria@empresa.com",
+          cpf_id: "12345678901",
+          role: "ADMIN_EMPRESA",
+          conta_status: "ativo",
+          profile_image_url: null,
+        },
+      ],
+    };
+  };
+
+  try {
+    const { me } = require("../src/controllers/authController");
+    const req = { user: { sub: 11, empresa_id: 7 } };
+    const res = createRes();
+
+    await me(req, res);
+
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(res.body.nome, "Maria Admin");
+    assert.strictEqual(calls, 2);
+  } finally {
+    db.pool.query = originalQuery;
+    delete require.cache[pathModel];
+    delete require.cache[pathCtrl];
+    delete require.cache[pathDb];
+  }
+});
+
 test("GET /api/users/me não retorna senha_hash", async () => {
   const pathDb = require.resolve("../src/db");
   const pathModel = require.resolve("../src/models/userModel");
