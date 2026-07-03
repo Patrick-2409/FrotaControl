@@ -57,7 +57,7 @@ test("GET /api/auth/me não retorna senha_hash", async () => {
 
   try {
     const { me } = require("../src/controllers/authController");
-    const req = { user: { sub: 11, empresa_id: 7 } };
+    const req = { user: { sub: 11, empresa_id: 7, role: "ADMIN_EMPRESA", nome: "Maria Admin" } };
     const res = createRes();
 
     await me(req, res);
@@ -108,14 +108,14 @@ test("GET /api/auth/me usa perfil basico quando vinculos ainda estao em migracao
 
   try {
     const { me } = require("../src/controllers/authController");
-    const req = { user: { sub: 11, empresa_id: 7 } };
+    const req = { user: { sub: 11, empresa_id: 7, role: "ADMIN_EMPRESA", nome: "Maria Admin" } };
     const res = createRes();
 
     await me(req, res);
 
     assert.strictEqual(res.statusCode, 200);
     assert.strictEqual(res.body.nome, "Maria Admin");
-    assert.strictEqual(calls, 2);
+    assert.strictEqual(calls, 1);
   } finally {
     db.pool.query = originalQuery;
     delete require.cache[pathModel];

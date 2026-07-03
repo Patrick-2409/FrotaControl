@@ -153,3 +153,32 @@ test("authMiddleware usa fallback quando conta_status ainda nao existe no schema
     pool.query = originalQuery;
   }
 });
+
+test("authMiddleware nao derruba /auth/me em erro nao transitorio de validacao", async () => {
+  const originalVerify = jwt.verify;
+  const originalQuery = pool.query;
+
+  jwt.verify = () => ({ sub: 90, role: "ADMIN_EMPRESA", empresa_id: 3, nome: "Sessao Token" });
+  pool.query = async () => {
+    const err = new Error("schema em transicao");
+    err.code = "XX000";
+    throw err;
+  };
+
+  try {
+    const req = {
+      method: "GET",
+      originalUrl: "/api/auth/me",
+      headers: { authorization: "Bearer token-valido" },
+    };
+    const res = createRes();
+    const nextCalled = await runMiddleware(authMiddleware, req, res);
+    assert.strictEqual(nextCalled, true);
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(req.user.id, 90);
+    assert.strictEqual(req.user.role, "ADMIN_EMPRESA");
+  } finally {
+    jwt.verify = originalVerify;
+    pool.query = originalQuery;
+  }
+});

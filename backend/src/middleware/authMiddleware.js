@@ -54,6 +54,11 @@ const loadSessionUser = async (userId) => {
   }
 };
 
+const isAuthMeRequest = (req) => {
+  const path = String(req.originalUrl || req.url || "");
+  return req.method === "GET" && /\/api\/auth\/me(?:\?|$)/.test(path);
+};
+
 const authMiddleware = async (req, res, next) => {
   const authHeader = req.headers.authorization || "";
   const token = authHeader.startsWith("Bearer ")
@@ -122,6 +127,22 @@ const authMiddleware = async (req, res, next) => {
         error: "Serviço de autenticação temporariamente indisponível",
         message: "Serviço de autenticação temporariamente indisponível",
       });
+    }
+    if (isAuthMeRequest(req)) {
+      logWarn("auth:session-validation-token-fallback", {
+        message: err?.message,
+        code: err?.code,
+      });
+      req.user = {
+        ...payload,
+        sub: userId,
+        id: userId,
+        empresa_id: payload.empresa_id,
+        role: payload.role,
+        nome: payload.nome,
+        conta_status: payload.conta_status || "ativo",
+      };
+      return next();
     }
     return res.status(500).json({
       success: false,

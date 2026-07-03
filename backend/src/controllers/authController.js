@@ -1,7 +1,6 @@
 const bcrypt = require("bcryptjs");
 const { z } = require("zod");
 const {
-  getUserById,
   getMotoristaByLogin,
   getAdminsEmpresaByLogin,
   getApontadorByLogin,
@@ -10,7 +9,7 @@ const {
 } = require("../models/userModel");
 const { buildToken } = require("../services/authService");
 const { pool } = require("../db");
-const { logInfo } = require("../services/loggerService");
+const { logInfo, logWarn } = require("../services/loggerService");
 
 const logAuthDebug = (tipo, payload) => {
   if (process.env.NODE_ENV !== "production") {
@@ -122,6 +121,52 @@ const buildUserResponse = (user) => ({
   veiculo_marca: user.veiculo_marca,
   veiculo_modelo: user.veiculo_modelo,
 });
+
+const buildSessionFallbackUser = (sessionUser = {}) => ({
+  id: sessionUser.id ?? sessionUser.sub,
+  nome: sessionUser.nome,
+  email: sessionUser.email,
+  cpf_id: sessionUser.cpf_id,
+  role: sessionUser.role,
+  empresa_id: sessionUser.empresa_id,
+  empresa_nome: sessionUser.empresa_nome,
+  logo_url: sessionUser.logo_url,
+  profile_image_url: sessionUser.profile_image_url,
+  veiculo_id: sessionUser.veiculo_id,
+  veiculo_nome: sessionUser.veiculo_nome,
+  placa: sessionUser.placa,
+  conta_status: sessionUser.conta_status || "ativo",
+});
+
+const getAuthMeProfile = async (sessionUser = {}) => {
+  const userId = Number(sessionUser.sub ?? sessionUser.id);
+  if (!Number.isInteger(userId) || userId < 1) return null;
+  const empresaId = sessionUser.empresa_id == null ? null : Number(sessionUser.empresa_id);
+  const values = [userId];
+  const companyFilter = empresaId == null ? "AND u.empresa_id IS NULL" : "AND u.empresa_id = $2";
+  if (empresaId != null) values.push(empresaId);
+
+  const { rows } = await pool.query(
+    `SELECT
+       u.id,
+       u.empresa_id,
+       u.nome,
+       u.email,
+       u.cpf_id,
+       u.role,
+       u.veiculo_id,
+       e.nome AS empresa_nome,
+       e.logo_url,
+       v.nome AS veiculo_nome,
+       v.placa
+     FROM usuarios u
+     LEFT JOIN empresas e ON e.id = u.empresa_id
+     LEFT JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
+     WHERE u.id = $1 ${companyFilter}`,
+    values
+  );
+  return rows[0] || null;
+};
 
 const motoristaLogin = async (req, res) => {
   const data = motoristaLoginSchema.parse(req.body);
@@ -332,7 +377,17 @@ const superAdminLogin = async (req, res) => {
 };
 
 const me = async (req, res) => {
-  const user = await getUserById(req.user.sub, req.user.empresa_id);
+  let user;
+  try {
+    user = await getAuthMeProfile(req.user);
+  } catch (err) {
+    logWarn("auth:me-profile-fallback", {
+      message: err?.message,
+      code: err?.code,
+      detail: err?.detail,
+    });
+    user = buildSessionFallbackUser(req.user);
+  }
   if (!user) {
     return res.status(404).json({ success: false, error: "Usuário não encontrado", message: "Usuário não encontrado" });
   }
@@ -344,8 +399,8 @@ const me = async (req, res) => {
     });
   }
   return res.json({
-    ...user,
-    user_login_id: formatUserLoginId(user.id),
+    ...buildUserResponse(user),
+    conta_status: user.conta_status || "ativo",
   });
 };
 
