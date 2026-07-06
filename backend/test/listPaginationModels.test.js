@@ -224,7 +224,8 @@ test("listUsersByCompany usa fallback sem depender de marca/modelo e retorna lis
     assert.strictEqual(result.items[0].nome, "Pessoa A");
     const fallbackList = calls.find((c) => /'\[\]'::json AS veiculos_vinculados/.test(c.sql) || /NULL::text AS veiculo_marca/.test(c.sql));
     assert.ok(fallbackList, "esperada query essencial de fallback");
-    assert.ok(!/LEFT JOIN veiculos/.test(fallbackList.sql));
+    assert.ok(/LEFT JOIN veiculos/.test(fallbackList.sql));
+    assert.ok(!/LEFT JOIN LATERAL/.test(fallbackList.sql));
     assert.ok(!/v\.marca/.test(fallbackList.sql));
     assert.ok(!/v\.modelo/.test(fallbackList.sql));
     assert.ok(!/u\.profile_image_url/.test(fallbackList.sql));
@@ -615,7 +616,7 @@ test("listUsersByCompany cai para lista essencial quando query moderna falha", a
       err.code = "42601";
       throw err;
     }
-    if (text.includes("NULL::text AS veiculo_nome")) {
+    if (text.includes("AS veiculo_nome") && text.includes("NULL::text AS veiculo_marca")) {
       return {
         rows: [
           {
@@ -626,6 +627,9 @@ test("listUsersByCompany cai para lista essencial quando query moderna falha", a
             cpf_id: "555",
             role: "MOTORISTA",
             veiculo_id: 8,
+            veiculo_nome: "Scania P360",
+            placa: "SGC2J38",
+            veiculos_vinculados: [{ id: 8, nome: "Scania P360", placa: "SGC2J38", is_principal: true }],
             status_operacional: "ativo",
             conta_status: "ativo",
             created_at: new Date(),
@@ -641,7 +645,9 @@ test("listUsersByCompany cai para lista essencial quando query moderna falha", a
     assert.strictEqual(modernListFailed, true);
     assert.strictEqual(result.total, 1);
     assert.strictEqual(result.items[0].nome, "Pessoa Fallback");
-    const fallbackList = calls.find((c) => c.sql.includes("NULL::text AS veiculo_nome"));
+    assert.strictEqual(result.items[0].veiculo_nome, "Scania P360");
+    assert.deepStrictEqual(result.items[0].veiculos_vinculados?.[0]?.placa, "SGC2J38");
+    const fallbackList = calls.find((c) => c.sql.includes("AS veiculo_nome") && c.sql.includes("NULL::text AS veiculo_marca"));
     assert.ok(fallbackList, "esperada query essencial depois da falha moderna");
     assert.match(fallbackList.sql, /u\.empresa_id = \$1/);
     assert.strictEqual(fallbackList.vals[0], 5);

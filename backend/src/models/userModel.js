@@ -176,6 +176,7 @@ const buildListUsersSchemaSnapshot = async () => {
   return {
     modernReady,
     userColumns,
+    vehicleColumns,
     userVehicleColumn,
     userCompanyColumn,
   };
@@ -567,6 +568,10 @@ const listUsersByCompanyBasic = async (
       : await getTableColumns("usuarios").catch(() =>
           new Set(["id", "empresa_id", "company_id", "nome", "email", "cpf_id", "role", "created_at"])
         );
+  let vehicleColumns =
+    schemaSnapshot?.vehicleColumns instanceof Set
+      ? cloneSet(schemaSnapshot.vehicleColumns)
+      : await getTableColumns("veiculos").catch(() => new Set());
   if (!userColumns.size) {
     userColumns = new Set(["id", "empresa_id", "company_id", "nome", "email", "cpf_id", "role", "created_at"]);
   }
@@ -581,6 +586,13 @@ const listUsersByCompanyBasic = async (
   const createdAtColumn = resolveExistingColumn(userColumns, ["created_at"]);
   const statusColumn = resolveExistingColumn(userColumns, ["status_operacional"]);
   const contaStatusColumn = resolveExistingColumn(userColumns, ["conta_status"]);
+  const vehicleIdColumn = resolveExistingColumn(vehicleColumns, ["id"]);
+  const vehicleCompanyColumn = resolveExistingColumn(vehicleColumns, ["empresa_id", "company_id"]);
+  const vehicleNameColumn = resolveExistingColumn(vehicleColumns, ["nome", "name"]);
+  const vehiclePlateColumn = resolveExistingColumn(vehicleColumns, ["placa", "plate"]);
+  const vehicleTransportColumn = resolveExistingColumn(vehicleColumns, ["usa_para_transporte"]);
+  const vehicleTypeColumn = resolveExistingColumn(vehicleColumns, ["tipo_operacao"]);
+  const canJoinVehicle = Boolean(vehicleColumn && vehicleIdColumn && vehicleCompanyColumn);
 
   const clauses = [`u.${companyColumn} = $1`];
   const params = [empresa_id];
@@ -637,6 +649,35 @@ const listUsersByCompanyBasic = async (
   const fallbackOrderBy = createdAtColumn
     ? `u.${createdAtColumn} DESC, u.${idColumn} DESC`
     : `u.${idColumn} DESC`;
+  const vehicleJoinSql = canJoinVehicle
+    ? `LEFT JOIN veiculos v ON v.${vehicleIdColumn} = u.${vehicleColumn} AND v.${vehicleCompanyColumn} = u.${companyColumn}`
+    : "";
+  const vehicleNameSelect = canJoinVehicle && vehicleNameColumn ? `v.${vehicleNameColumn}` : "NULL::text";
+  const vehiclePlateSelect = canJoinVehicle && vehiclePlateColumn ? `v.${vehiclePlateColumn}` : "NULL::text";
+  const vehicleTransportSelect =
+    canJoinVehicle && vehicleTransportColumn ? `COALESCE(v.${vehicleTransportColumn}, false)` : "false";
+  const vehicleTypeSelect =
+    canJoinVehicle && vehicleTypeColumn
+      ? `COALESCE(NULLIF(TRIM(v.${vehicleTypeColumn}), ''), CASE WHEN ${vehicleTransportSelect} THEN 'transporte' ELSE 'apoio' END)`
+      : `CASE WHEN ${vehicleTransportSelect} THEN 'transporte' ELSE 'apoio' END`;
+  const vehicleLinksSelect = canJoinVehicle
+    ? `CASE
+              WHEN v.${vehicleIdColumn} IS NULL THEN '[]'::json
+              ELSE json_build_array(json_build_object(
+                'id', v.${vehicleIdColumn},
+                'nome', ${vehicleNameSelect},
+                'placa', ${vehiclePlateSelect},
+                'tipo_operacao', ${vehicleTypeSelect},
+                'usa_para_transporte', ${vehicleTransportSelect},
+                'is_principal', true
+              ))
+            END`
+    : "'[]'::json";
+  const vehicleLinksCountSelect = canJoinVehicle ? `CASE WHEN v.${vehicleIdColumn} IS NULL THEN 0 ELSE 1 END` : "0";
+  const hasTransportVehicleSelect =
+    canJoinVehicle ? `CASE WHEN v.${vehicleIdColumn} IS NULL THEN false ELSE (${vehicleTypeSelect}) = 'transporte' END` : "false";
+  const hasSupportVehicleSelect =
+    canJoinVehicle ? `CASE WHEN v.${vehicleIdColumn} IS NULL THEN false ELSE (${vehicleTypeSelect}) = 'apoio' END` : "false";
   const { rows } = await queryTimed(
     `SELECT u.${idColumn} AS id,
             u.${companyColumn} AS empresa_id,
@@ -657,15 +698,16 @@ const listUsersByCompanyBasic = async (
             ${statusColumn ? `COALESCE(u.${statusColumn}, 'ativo')` : "'ativo'::text"} AS status_operacional,
             ${contaStatusColumn ? `COALESCE(u.${contaStatusColumn}, 'ativo')` : "'ativo'::text"} AS conta_status,
             ${createdAtColumn ? `u.${createdAtColumn}` : "NULL::timestamptz"} AS created_at,
-            NULL::text AS veiculo_nome,
-            NULL::text AS placa,
+            ${vehicleNameSelect} AS veiculo_nome,
+            ${vehiclePlateSelect} AS placa,
             NULL::text AS veiculo_marca,
             NULL::text AS veiculo_modelo,
-            '[]'::json AS veiculos_vinculados,
-            0::int AS veiculos_vinculados_count,
-            false AS tem_veiculo_transporte,
-            false AS tem_veiculo_apoio
+            ${vehicleLinksSelect} AS veiculos_vinculados,
+            ${vehicleLinksCountSelect}::int AS veiculos_vinculados_count,
+            ${hasTransportVehicleSelect} AS tem_veiculo_transporte,
+            ${hasSupportVehicleSelect} AS tem_veiculo_apoio
      FROM usuarios u
+     ${vehicleJoinSql}
      WHERE ${whereSql}
      ORDER BY ${fallbackOrderBy}
      LIMIT ${limitPlaceholder} OFFSET ${offsetPlaceholder}`,

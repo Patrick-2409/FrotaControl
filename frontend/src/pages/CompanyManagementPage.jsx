@@ -69,7 +69,9 @@ function vehicleLinksLabel(u = {}) {
       .map((v) => [v.placa, v.nome].filter(Boolean).join(" · ") || `#${v.id}`)
       .join(", ");
   }
-  return u.veiculo_nome || "Sem vínculo";
+  const primaryLabel = [u.placa || u.veiculo_placa, u.veiculo_nome].filter(Boolean).join(" · ");
+  if (primaryLabel) return primaryLabel;
+  return Number(u.veiculo_id) > 0 ? `Veículo #${u.veiculo_id}` : "Sem vínculo";
 }
 export default function CompanyManagementPage() {
   const { user: authUser } = useAuth();
