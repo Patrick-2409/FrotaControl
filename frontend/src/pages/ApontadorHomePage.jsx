@@ -12,6 +12,8 @@ import {
   ApontadorVeiculoField,
 } from "./apontador/ApontadorHomeSections";
 
+const normalizarCodigoVeiculo = (value) => String(value || "").replace(/\D/g, "").slice(0, 4);
+
 export default function ApontadorHomePage() {
   const { user } = useAuth();
   const [veiculos, setVeiculos] = useState([]);
@@ -268,9 +270,31 @@ export default function ApontadorHomePage() {
     [persistVeiculoId, veiculos]
   );
 
+  const buscarVeiculosPorCodigo = useCallback(
+    (raw) => {
+      const digits = normalizarCodigoVeiculo(raw);
+      if (!digits) return [];
+      const score = (v) => {
+        const plain = v.codigoApontador ? String(v.codigoApontador) : "";
+        const padded = v.codigoLabel || (plain ? plain.padStart(2, "0") : "");
+        if (padded === digits) return 0;
+        if (plain === digits) return 1;
+        if (padded.startsWith(digits)) return 2;
+        if (plain.startsWith(digits)) return 3;
+        return 99;
+      };
+      return veiculos
+        .map((v) => ({ v, score: score(v) }))
+        .filter((item) => item.score < 99)
+        .sort((a, b) => a.score - b.score || Number(a.v.codigoApontador || 9999) - Number(b.v.codigoApontador || 9999))
+        .map((item) => item.v);
+    },
+    [veiculos]
+  );
+
   const selecionarVeiculoPorCodigo = useCallback(
     (raw) => {
-      const digits = String(raw || "").replace(/\D/g, "").slice(0, 4);
+      const digits = normalizarCodigoVeiculo(raw);
       setCodigoVeiculo(digits);
 
       if (!digits) {
@@ -279,11 +303,18 @@ export default function ApontadorHomePage() {
         return;
       }
 
-      const code = Number(digits);
-      const option = Number.isFinite(code) && code > 0
-        ? veiculos.find((v) => Number(v.codigoApontador) === code && v.motorista?.id) ||
-          veiculos.find((v) => Number(v.codigoApontador) === code)
-        : null;
+      const candidates = buscarVeiculosPorCodigo(digits);
+      const exactMatches = candidates.filter((v) => {
+        const plain = v.codigoApontador ? String(v.codigoApontador) : "";
+        const padded = v.codigoLabel || (plain ? plain.padStart(2, "0") : "");
+        return plain === digits || padded === digits;
+      });
+      const option =
+        exactMatches.length === 1 && candidates.length === 1
+          ? exactMatches[0]
+          : exactMatches.length === 1 && digits.length >= String(exactMatches[0].codigoLabel || "").length
+            ? exactMatches[0]
+            : null;
 
       if (!option) {
         setVeiculoId("");
@@ -293,7 +324,7 @@ export default function ApontadorHomePage() {
 
       selecionarVeiculo(option.opcaoId);
     },
-    [persistVeiculoId, selecionarVeiculo, veiculos]
+    [buscarVeiculosPorCodigo, persistVeiculoId, selecionarVeiculo]
   );
 
   useEffect(() => {
@@ -315,11 +346,7 @@ export default function ApontadorHomePage() {
       setVeiculoId(String(savedOption.opcaoId));
       return;
     }
-    setVeiculoId((prev) => {
-      if (prev && veiculos.some((v) => String(v.opcaoId) === String(prev))) return prev;
-      const prefer = veiculos.find((v) => v.motorista?.id) ?? veiculos[0];
-      return String(prefer.opcaoId);
-    });
+    setVeiculoId((prev) => (prev && veiculos.some((v) => String(v.opcaoId) === String(prev)) ? prev : ""));
   }, [loadingVeiculos, veiculos, user?.empresa_id, user?.id]);
 
   useEffect(() => {
@@ -332,20 +359,23 @@ export default function ApontadorHomePage() {
     () => veiculos.find((v) => String(v.opcaoId) === String(veiculoId)),
     [veiculos, veiculoId]
   );
+  const codigoSugestoes = useMemo(() => {
+    const digits = normalizarCodigoVeiculo(codigoVeiculo);
+    if (!digits || veiculoSelecionado) return [];
+    return buscarVeiculosPorCodigo(digits).slice(0, 5);
+  }, [buscarVeiculosPorCodigo, codigoVeiculo, veiculoSelecionado]);
 
   useEffect(() => {
     if (veiculoSelecionado?.codigoLabel) {
       setCodigoVeiculo(veiculoSelecionado.codigoLabel);
-    } else if (!veiculoId) {
-      setCodigoVeiculo("");
     }
-  }, [veiculoSelecionado?.codigoLabel, veiculoId]);
+  }, [veiculoSelecionado?.codigoLabel]);
 
   const capacidadeEsterilTon = Number(veiculoSelecionado?.capacidadePorMaterial?.esteril) || 0;
   const capacidadeRochaTon = Number(veiculoSelecionado?.capacidadePorMaterial?.rocha) || 0;
   const temMotoristaVinculado = Boolean(veiculoSelecionado?.motorista?.id);
   const temMaterialConfigurado = capacidadeEsterilTon > 0 || capacidadeRochaTon > 0;
-  const codigoVeiculoInvalido = Boolean(codigoVeiculo) && !veiculoSelecionado;
+  const codigoVeiculoInvalido = Boolean(codigoVeiculo) && !veiculoSelecionado && codigoSugestoes.length === 0;
 
   const idsVeiculosEmpresa = useMemo(
     () => [...new Set(veiculos.map((v) => Number(v.id)).filter((n) => Number.isFinite(n) && n > 0))],
@@ -621,6 +651,7 @@ export default function ApontadorHomePage() {
             codigoVeiculo={codigoVeiculo}
             veiculoSelecionado={veiculoSelecionado}
             codigoVeiculoInvalido={codigoVeiculoInvalido}
+            codigoSugestoes={codigoSugestoes}
             onChangeVeiculo={selecionarVeiculo}
             onChangeCodigoVeiculo={selecionarVeiculoPorCodigo}
           />

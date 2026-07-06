@@ -80,6 +80,7 @@ export const ApontadorVeiculoField = memo(function ApontadorVeiculoField({
   codigoVeiculo,
   veiculoSelecionado,
   codigoVeiculoInvalido,
+  codigoSugestoes = [],
   onChangeVeiculo,
   onChangeCodigoVeiculo,
 }) {
@@ -110,6 +111,7 @@ export const ApontadorVeiculoField = memo(function ApontadorVeiculoField({
           placeholder="01"
           value={codigoVeiculo}
           onChange={(e) => onChangeCodigoVeiculo(e.target.value)}
+          onFocus={(e) => e.currentTarget.select()}
           disabled={loadingVeiculos || veiculos.length === 0}
           aria-describedby={veiculoSelecionadoLabel ? "apontador-veiculo-selecionado" : undefined}
         />
@@ -130,43 +132,74 @@ export const ApontadorVeiculoField = memo(function ApontadorVeiculoField({
           </p>
         )}
       </div>
-      <label htmlFor="apontador-veiculo" className="block text-center text-xs font-medium uppercase tracking-wide text-slate-500">
-        Seleção manual
-      </label>
-      {loadingVeiculos ? (
-        <div
-          className={`${inputClass} fc-apontador-select mx-auto flex min-h-[3.75rem] w-full max-w-sm items-center justify-center px-5 text-base text-slate-400`}
-        >
-          Carregando…
+
+      {codigoSugestoes.length > 0 ? (
+        <div className="mx-auto w-full max-w-sm rounded-2xl border border-slate-700/70 bg-slate-900/65 p-2">
+          <p className="px-2 pb-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Toque para selecionar
+          </p>
+          <div className="space-y-2">
+            {codigoSugestoes.map((v) => (
+              <button
+                type="button"
+                key={v.opcaoId || `${v.id}:${v.motorista?.id || "sem-motorista"}`}
+                onClick={() => onChangeVeiculo(v.opcaoId || v.id)}
+                className="w-full rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-left transition hover:border-emerald-400/55 hover:bg-emerald-500/10"
+              >
+                <span className="flex items-center justify-between gap-3">
+                  <span className="text-lg font-black tabular-nums text-amber-100">#{v.codigoLabel}</span>
+                  <span className="min-w-0 flex-1 text-sm font-semibold text-slate-100">
+                    {v.placa} — {v.nome}
+                  </span>
+                </span>
+                <span className="mt-1 block text-xs text-slate-400">{v.motorista?.nome || "Sem motorista vinculado"}</span>
+              </button>
+            ))}
+          </div>
         </div>
-      ) : (
-        <select
-          id="apontador-veiculo"
-          className={`${inputClass} fc-apontador-select mx-auto block w-full max-w-sm text-base`}
-          value={veiculoId}
-          onChange={(e) => onChangeVeiculo(e.target.value)}
-          disabled={veiculos.length === 0}
-        >
-          <option value="">Selecionar</option>
-          {veiculos.map((v) => {
-            const capacidadeEsteril = formatCapacidadeTon(v.capacidadeEsterilTon);
-            const capacidadeRocha = formatCapacidadeTon(v.capacidadeRochaTon);
-            const capacidades = [
-              capacidadeEsteril ? `Estéril ${capacidadeEsteril}` : null,
-              capacidadeRocha ? `Rocha ${capacidadeRocha}` : null,
-            ].filter(Boolean);
-            const codigo = v.codigoLabel ? `#${v.codigoLabel} · ` : "";
-            return (
-              <option key={v.opcaoId || `${v.id}:${v.motorista?.id || "sem-motorista"}`} value={String(v.opcaoId || v.id)}>
-                {codigo}
-                {v.placa} — {v.nome}
-                {v.motorista?.nome ? ` · ${v.motorista.nome}` : ""}
-                {capacidades.length ? ` · ${capacidades.join(" · ")}` : ""}
-              </option>
-            );
-          })}
-        </select>
-      )}
+      ) : null}
+
+      <details className="mx-auto w-full max-w-sm rounded-xl border border-slate-800/80 bg-slate-950/40 px-3 py-2">
+        <summary className="cursor-pointer text-center text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Seleção manual
+        </summary>
+        <div className="pt-3">
+          {loadingVeiculos ? (
+            <div
+              className={`${inputClass} fc-apontador-select mx-auto flex min-h-[3.75rem] w-full items-center justify-center px-5 text-base text-slate-400`}
+            >
+              Carregando…
+            </div>
+          ) : (
+            <select
+              id="apontador-veiculo"
+              className={`${inputClass} fc-apontador-select mx-auto block w-full text-base`}
+              value={veiculoId}
+              onChange={(e) => onChangeVeiculo(e.target.value)}
+              disabled={veiculos.length === 0}
+            >
+              <option value="">Selecionar</option>
+              {veiculos.map((v) => {
+                const capacidadeEsteril = formatCapacidadeTon(v.capacidadeEsterilTon);
+                const capacidadeRocha = formatCapacidadeTon(v.capacidadeRochaTon);
+                const capacidades = [
+                  capacidadeEsteril ? `Estéril ${capacidadeEsteril}` : null,
+                  capacidadeRocha ? `Rocha ${capacidadeRocha}` : null,
+                ].filter(Boolean);
+                const codigo = v.codigoLabel ? `#${v.codigoLabel} · ` : "";
+                return (
+                  <option key={v.opcaoId || `${v.id}:${v.motorista?.id || "sem-motorista"}`} value={String(v.opcaoId || v.id)}>
+                    {codigo}
+                    {v.placa} — {v.nome}
+                    {v.motorista?.nome ? ` · ${v.motorista.nome}` : ""}
+                    {capacidades.length ? ` · ${capacidades.join(" · ")}` : ""}
+                  </option>
+                );
+              })}
+            </select>
+          )}
+        </div>
+      </details>
     </div>
   );
 });
