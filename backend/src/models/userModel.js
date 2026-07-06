@@ -753,7 +753,11 @@ const listUsersByCompany = async (
   );
   return { items: sanitizeUsers(rows), total: count.rows[0].total };
   } catch (err) {
-    if (!isMissingSchemaField(err)) throw err;
+    logWarn("user:list-by-company-modern-query-fallback", {
+      message: err?.message,
+      code: err?.code,
+      status: err?.status || err?.statusCode,
+    });
     return listUsersByCompanyBasic(
       empresa_id,
       { page, limit, search, role, status_operacional, escopo_operacional },

@@ -541,3 +541,114 @@ test("listUsersByCompany envia LIMIT e OFFSET numéricos (sem undefined)", async
     delete require.cache[pathDb];
   }
 });
+
+test("listUsersByCompany cai para lista essencial quando query moderna falha", async () => {
+  delete require.cache[pathUm];
+  delete require.cache[pathQt];
+  delete require.cache[pathDb];
+  const db = require("../src/db");
+  const orig = db.pool.query;
+  const calls = [];
+  let modernListFailed = false;
+  db.pool.query = async (sql, vals) => {
+    const text = String(sql);
+    calls.push({ sql: text, vals: vals ? [...vals] : [] });
+    if (text.includes("information_schema.columns")) {
+      const tableName = String(vals?.[0] || "");
+      if (tableName === "usuarios") {
+        return {
+          rows: [
+            { column_name: "id" },
+            { column_name: "empresa_id" },
+            { column_name: "nome" },
+            { column_name: "email" },
+            { column_name: "cpf_id" },
+            { column_name: "role" },
+            { column_name: "veiculo_id" },
+            { column_name: "profile_image_url" },
+            { column_name: "funcao" },
+            { column_name: "cnh_categoria" },
+            { column_name: "cnh_numero" },
+            { column_name: "cnh_validade" },
+            { column_name: "treinamentos" },
+            { column_name: "observacoes" },
+            { column_name: "equipamento_vinculo" },
+            { column_name: "operacao_escopo" },
+            { column_name: "status_operacional" },
+            { column_name: "conta_status" },
+            { column_name: "created_at" },
+          ],
+        };
+      }
+      if (tableName === "veiculos") {
+        return {
+          rows: [
+            { column_name: "id" },
+            { column_name: "empresa_id" },
+            { column_name: "nome" },
+            { column_name: "placa" },
+            { column_name: "marca" },
+            { column_name: "modelo" },
+            { column_name: "tipo_operacao" },
+            { column_name: "usa_para_transporte" },
+          ],
+        };
+      }
+      if (tableName === "motorista_veiculos") {
+        return {
+          rows: [
+            { column_name: "empresa_id" },
+            { column_name: "motorista_id" },
+            { column_name: "veiculo_id" },
+            { column_name: "is_principal" },
+          ],
+        };
+      }
+      return { rows: [] };
+    }
+    if (/SELECT COUNT\(\*\)::int AS total FROM usuarios u WHERE/.test(text)) {
+      return { rows: [{ total: 1 }] };
+    }
+    if (text.includes("WITH page_users AS")) {
+      modernListFailed = true;
+      const err = new Error("falha simulada na query moderna");
+      err.code = "42601";
+      throw err;
+    }
+    if (text.includes("NULL::text AS veiculo_nome")) {
+      return {
+        rows: [
+          {
+            id: 41,
+            empresa_id: 5,
+            nome: "Pessoa Fallback",
+            email: "fallback@empresa.com",
+            cpf_id: "555",
+            role: "MOTORISTA",
+            veiculo_id: 8,
+            status_operacional: "ativo",
+            conta_status: "ativo",
+            created_at: new Date(),
+          },
+        ],
+      };
+    }
+    return { rows: [] };
+  };
+  try {
+    const { listUsersByCompany } = require("../src/models/userModel");
+    const result = await listUsersByCompany(5, { page: 1, limit: 20, search: "" });
+    assert.strictEqual(modernListFailed, true);
+    assert.strictEqual(result.total, 1);
+    assert.strictEqual(result.items[0].nome, "Pessoa Fallback");
+    const fallbackList = calls.find((c) => c.sql.includes("NULL::text AS veiculo_nome"));
+    assert.ok(fallbackList, "esperada query essencial depois da falha moderna");
+    assert.match(fallbackList.sql, /u\.empresa_id = \$1/);
+    assert.strictEqual(fallbackList.vals[0], 5);
+  } finally {
+    db.pool.query = orig;
+    delete require.cache[pathUm];
+    delete require.cache[pathQt];
+    delete require.cache[pathDb];
+  }
+});
