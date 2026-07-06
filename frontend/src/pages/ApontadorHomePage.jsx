@@ -16,6 +16,7 @@ export default function ApontadorHomePage() {
   const { user } = useAuth();
   const [veiculos, setVeiculos] = useState([]);
   const [veiculoId, setVeiculoId] = useState("");
+  const [codigoVeiculo, setCodigoVeiculo] = useState("");
   const [hojeContagem, setHojeContagem] = useState({ esteril: 0, rocha: 0, tonTotal: 0 });
   const [loadingVeiculos, setLoadingVeiculos] = useState(true);
   const [registradoFlash, setRegistradoFlash] = useState({ open: false, in: false, label: "" });
@@ -247,6 +248,54 @@ export default function ApontadorHomePage() {
     [user?.empresa_id, user?.id]
   );
 
+  const selecionarVeiculo = useCallback(
+    (id) => {
+      const nextId = id ? String(id) : "";
+      const option = nextId
+        ? veiculos.find((v) => String(v.opcaoId) === nextId) || veiculos.find((v) => String(v.id) === nextId)
+        : null;
+      const resolvedId = option ? String(option.opcaoId) : nextId;
+
+      setVeiculoId(resolvedId);
+      persistVeiculoId(resolvedId);
+
+      if (!resolvedId) {
+        setCodigoVeiculo("");
+      } else if (option?.codigoLabel) {
+        setCodigoVeiculo(option.codigoLabel);
+      }
+    },
+    [persistVeiculoId, veiculos]
+  );
+
+  const selecionarVeiculoPorCodigo = useCallback(
+    (raw) => {
+      const digits = String(raw || "").replace(/\D/g, "").slice(0, 4);
+      setCodigoVeiculo(digits);
+
+      if (!digits) {
+        setVeiculoId("");
+        persistVeiculoId("");
+        return;
+      }
+
+      const code = Number(digits);
+      const option = Number.isFinite(code) && code > 0
+        ? veiculos.find((v) => Number(v.codigoApontador) === code && v.motorista?.id) ||
+          veiculos.find((v) => Number(v.codigoApontador) === code)
+        : null;
+
+      if (!option) {
+        setVeiculoId("");
+        persistVeiculoId("");
+        return;
+      }
+
+      selecionarVeiculo(option.opcaoId);
+    },
+    [persistVeiculoId, selecionarVeiculo, veiculos]
+  );
+
   useEffect(() => {
     if (loadingVeiculos || veiculos.length === 0) return;
     const key = storageKeyVeiculo(user?.empresa_id, user?.id);
@@ -283,6 +332,15 @@ export default function ApontadorHomePage() {
     () => veiculos.find((v) => String(v.opcaoId) === String(veiculoId)),
     [veiculos, veiculoId]
   );
+
+  useEffect(() => {
+    if (veiculoSelecionado?.codigoLabel) {
+      setCodigoVeiculo(veiculoSelecionado.codigoLabel);
+    } else if (!veiculoId) {
+      setCodigoVeiculo("");
+    }
+  }, [veiculoSelecionado?.codigoLabel, veiculoId]);
+
   const capacidadeEsterilTon = Number(veiculoSelecionado?.capacidadePorMaterial?.esteril) || 0;
   const capacidadeRochaTon = Number(veiculoSelecionado?.capacidadePorMaterial?.rocha) || 0;
   const temMotoristaVinculado = Boolean(veiculoSelecionado?.motorista?.id);
@@ -345,7 +403,7 @@ export default function ApontadorHomePage() {
         (!item.local_id && Number(item.veiculo_id) > 0 && Number(item.motorista_id) > 0 && item.tipo && item.timestamp);
 
       if (exigeServidor && !navigator.onLine) {
-        emitToast("Para desfazer um lanÃ§amento sincronizado, conecte-se Ã  internet.", "warning");
+        emitToast("Para desfazer um lançamento sincronizado, conecte-se à internet.", "warning");
         return;
       }
 
@@ -384,9 +442,9 @@ export default function ApontadorHomePage() {
         }
         await refreshPendentesCount();
         await refreshContagemHoje();
-        emitToast("LanÃ§amento desfeito.", "success");
+        emitToast("Lançamento desfeito.", "success");
       } catch (err) {
-        emitToast(err?.response?.data?.message || "NÃ£o foi possÃ­vel desfazer este lanÃ§amento.", "error");
+        emitToast(err?.response?.data?.message || "Não foi possível desfazer este lançamento.", "error");
         await refreshContagemHoje();
       } finally {
         setDesfazendoLancamentoId(null);
@@ -559,10 +617,10 @@ export default function ApontadorHomePage() {
             loadingVeiculos={loadingVeiculos}
             veiculos={veiculos}
             veiculoId={veiculoId}
-            onChangeVeiculo={(v) => {
-              setVeiculoId(v);
-              persistVeiculoId(v);
-            }}
+            codigoVeiculo={codigoVeiculo}
+            veiculoSelecionado={veiculoSelecionado}
+            onChangeVeiculo={selecionarVeiculo}
+            onChangeCodigoVeiculo={selecionarVeiculoPorCodigo}
           />
 
           {!loadingVeiculos && veiculos.length === 0 && (

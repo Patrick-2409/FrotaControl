@@ -33,6 +33,23 @@ test("cadastro de veiculo de transporte preserva capacidades por material", () =
   assert.strictEqual(out.capacidade_rocha_ton, 28);
 });
 
+test("cadastro de veiculo de transporte nao preenche material nao transportado", () => {
+  const parsed = vehicleBodySchema.parse({
+    nome: "Caminhao esteril",
+    placa: "MAT1A24",
+    tipo_operacao: "transporte",
+    usa_para_transporte: true,
+    capacidade_esteril_ton: 32,
+    capacidade_rocha_ton: null,
+  });
+
+  const out = toVehicleWritePayload(parsed);
+
+  assert.strictEqual(out.capacidade_ton, 32);
+  assert.strictEqual(out.capacidade_esteril_ton, 32);
+  assert.strictEqual(out.capacidade_rocha_ton, null);
+});
+
 test("resumo de viagens usa capacidade vinculada ao material transportado", async () => {
   const db = createDb([
     {

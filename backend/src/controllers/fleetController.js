@@ -113,6 +113,7 @@ const exportVehiclesCsv = async (req, res) => {
     tipo,
   });
   const headers = [
+    "codigo_operacional",
     "id",
     "nome",
     "placa",

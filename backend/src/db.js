@@ -76,6 +76,7 @@ const initDb = async () => {
     CREATE TABLE IF NOT EXISTS veiculos (
       id SERIAL PRIMARY KEY,
       empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+      codigo_operacional INTEGER,
       nome VARCHAR(120) NOT NULL,
       placa VARCHAR(20) NOT NULL,
       marca VARCHAR(120),
@@ -185,6 +186,7 @@ const initDb = async () => {
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS capacidade_ton NUMERIC(10, 2);
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS capacidade_esteril_ton NUMERIC(10, 2);
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS capacidade_rocha_ton NUMERIC(10, 2);
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS codigo_operacional INTEGER;
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS usa_para_transporte BOOLEAN NOT NULL DEFAULT false;
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS tipo_operacao VARCHAR(20) NOT NULL DEFAULT 'apoio';
     ALTER TABLE romaneios ADD COLUMN IF NOT EXISTS version_of VARCHAR(80);
@@ -223,20 +225,25 @@ const initDb = async () => {
 
     UPDATE veiculos
     SET tipo_operacao = CASE WHEN COALESCE(usa_para_transporte, false) THEN 'transporte' ELSE 'apoio' END;
+  `);
 
-    UPDATE veiculos
-    SET capacidade_esteril_ton = capacidade_ton
-    WHERE COALESCE(usa_para_transporte, false) = true
-      AND capacidade_esteril_ton IS NULL
-      AND capacidade_ton IS NOT NULL
-      AND capacidade_ton > 0;
-
-    UPDATE veiculos
-    SET capacidade_rocha_ton = capacidade_ton
-    WHERE COALESCE(usa_para_transporte, false) = true
-      AND capacidade_rocha_ton IS NULL
-      AND capacidade_ton IS NOT NULL
-      AND capacidade_ton > 0;
+  await pool.query(`
+    WITH ranked AS (
+      SELECT
+        v.id,
+        COALESCE((
+          SELECT MAX(v2.codigo_operacional)
+          FROM veiculos v2
+          WHERE v2.empresa_id = v.empresa_id
+        ), 0)
+        + ROW_NUMBER() OVER (PARTITION BY v.empresa_id ORDER BY v.created_at ASC, v.id ASC)::int AS codigo
+      FROM veiculos v
+      WHERE v.codigo_operacional IS NULL
+    )
+    UPDATE veiculos v
+    SET codigo_operacional = ranked.codigo
+    FROM ranked
+    WHERE ranked.id = v.id;
   `);
 
   await pool.query(`
@@ -292,6 +299,9 @@ const initDb = async () => {
       WHERE role = 'MOTORISTA';
     CREATE INDEX IF NOT EXISTS idx_veiculos_empresa_id ON veiculos (empresa_id);
     CREATE INDEX IF NOT EXISTS idx_veiculos_empresa_created ON veiculos (empresa_id, created_at DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_veiculos_empresa_codigo_operacional
+      ON veiculos (empresa_id, codigo_operacional)
+      WHERE codigo_operacional IS NOT NULL;
     CREATE INDEX IF NOT EXISTS idx_usuarios_veiculo_empresa ON usuarios (veiculo_id, empresa_id)
       WHERE veiculo_id IS NOT NULL;
     CREATE TABLE IF NOT EXISTS motorista_veiculos (

@@ -43,6 +43,7 @@ const emptyVehicleForm = () => ({
 function rowToForm(v) {
   const f = emptyVehicleForm();
   if (!v) return f;
+  const hasSpecificCapacity = v.capacidade_esteril_ton != null || v.capacidade_rocha_ton != null;
   const ymd = (d) => {
     if (!d) return "";
     const s = String(d).slice(0, 10);
@@ -65,13 +66,13 @@ function rowToForm(v) {
     capacidade_esteril_ton:
       v.capacidade_esteril_ton != null
         ? String(v.capacidade_esteril_ton)
-        : v.capacidade_ton != null
+        : !hasSpecificCapacity && v.capacidade_ton != null
           ? String(v.capacidade_ton)
           : "",
     capacidade_rocha_ton:
       v.capacidade_rocha_ton != null
         ? String(v.capacidade_rocha_ton)
-        : v.capacidade_ton != null
+        : !hasSpecificCapacity && v.capacidade_ton != null
           ? String(v.capacidade_ton)
           : "",
     horimetro_atual: v.horimetro_atual != null ? String(v.horimetro_atual) : "",

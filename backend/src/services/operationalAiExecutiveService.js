@@ -245,9 +245,17 @@ const aggregateTransport = async (empresaId, bounds) => {
               COALESCE(
                 SUM(CASE
                       WHEN COALESCE(v.usa_para_transporte, false) = true AND vi.tipo = 'esteril'
-                      THEN COALESCE(v.capacidade_esteril_ton, v.capacidade_ton, 0)
+                      THEN CASE
+                        WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
+                          THEN COALESCE(v.capacidade_esteril_ton, 0)
+                        ELSE COALESCE(v.capacidade_ton, 0)
+                      END
                       WHEN COALESCE(v.usa_para_transporte, false) = true AND vi.tipo = 'rocha'
-                      THEN COALESCE(v.capacidade_rocha_ton, v.capacidade_ton, 0)
+                      THEN CASE
+                        WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
+                          THEN COALESCE(v.capacidade_rocha_ton, 0)
+                        ELSE COALESCE(v.capacidade_ton, 0)
+                      END
                       WHEN COALESCE(v.usa_para_transporte, false) = true
                       THEN COALESCE(v.capacidade_ton, 0)
                       ELSE 0

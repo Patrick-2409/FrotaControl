@@ -6,12 +6,21 @@ const parseCapacidadeTon = (value) => {
 
 export const mapVeiculoApi = (v) => {
   const capacidadeTon = parseCapacidadeTon(v.capacidade_ton);
-  const capacidadeEsterilTon = parseCapacidadeTon(v.capacidade_esteril_ton) ?? capacidadeTon;
-  const capacidadeRochaTon = parseCapacidadeTon(v.capacidade_rocha_ton) ?? capacidadeTon;
+  const rawCapacidadeEsterilTon = parseCapacidadeTon(v.capacidade_esteril_ton);
+  const rawCapacidadeRochaTon = parseCapacidadeTon(v.capacidade_rocha_ton);
+  const hasSpecificCapacity = rawCapacidadeEsterilTon != null || rawCapacidadeRochaTon != null;
+  const capacidadeEsterilTon = hasSpecificCapacity ? rawCapacidadeEsterilTon : capacidadeTon;
+  const capacidadeRochaTon = hasSpecificCapacity ? rawCapacidadeRochaTon : capacidadeTon;
+  const codigoApontador = Number(v.codigo_apontador ?? v.codigo_operacional);
+  const codigoLabel = Number.isFinite(codigoApontador) && codigoApontador > 0
+    ? String(codigoApontador).padStart(2, "0")
+    : "";
 
   return {
     id: v.id,
     opcaoId: v.motorista_id != null ? `${v.id}:${v.motorista_id}` : String(v.id),
+    codigoApontador: Number.isFinite(codigoApontador) && codigoApontador > 0 ? codigoApontador : null,
+    codigoLabel,
     placa: v.placa,
     nome: v.nome,
     capacidadeTon,

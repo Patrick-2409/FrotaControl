@@ -10,6 +10,19 @@ const { z } = require("zod");
 const { logAudit } = require("../services/auditService");
 const { logInfo } = require("../services/loggerService");
 
+const MATERIAL_CAPACITY_SQL = {
+  esteril: `CASE
+    WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
+      THEN COALESCE(v.capacidade_esteril_ton, 0)
+    ELSE COALESCE(v.capacidade_ton, 0)
+  END`,
+  rocha: `CASE
+    WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
+      THEN COALESCE(v.capacidade_rocha_ton, 0)
+    ELSE COALESCE(v.capacidade_ton, 0)
+  END`,
+};
+
 const viagemCreateSchema = z.object({
   veiculo_id: z.coerce.number().int().positive(),
   motorista_id: z.coerce.number().int().positive(),
@@ -50,8 +63,8 @@ const parseMarcacao = (timestamp) => {
 const assertVeiculoMotoristaTransporte = async (empresaId, veiculo_id, motorista_id, tipo = null) => {
   const { rows: validRows } = await pool.query(
     `SELECT COALESCE(v.usa_para_transporte, false) AS usa_para_transporte,
-            COALESCE(v.capacidade_esteril_ton, v.capacidade_ton, 0)::double precision AS capacidade_esteril_ton,
-            COALESCE(v.capacidade_rocha_ton, v.capacidade_ton, 0)::double precision AS capacidade_rocha_ton
+            (${MATERIAL_CAPACITY_SQL.esteril})::double precision AS capacidade_esteril_ton,
+            (${MATERIAL_CAPACITY_SQL.rocha})::double precision AS capacidade_rocha_ton
      FROM veiculos v
      INNER JOIN usuarios u ON u.id = $3
        AND u.empresa_id = v.empresa_id
@@ -129,15 +142,28 @@ const listVehiclesApontador = async (req, res) => {
       v.nome ILIKE $${idx}
       OR v.placa ILIKE $${idx}
       OR u.nome ILIKE $${idx}
+      OR LPAD(COALESCE(v.codigo_operacional, 0)::text, 2, '0') ILIKE $${idx}
     )`;
     values.push(`%${search.trim()}%`);
     idx += 1;
   }
   const { rows } = await pool.query(
-    `WITH vinculos AS (
+    `WITH codigos AS (
+       SELECT
+         id,
+         COALESCE(
+           codigo_operacional,
+           ROW_NUMBER() OVER (ORDER BY created_at ASC, id ASC)::int
+         ) AS codigo_apontador
+       FROM veiculos
+       WHERE empresa_id = $1
+     ),
+     vinculos AS (
        SELECT DISTINCT ON (v.id, u.id)
+         c.codigo_apontador,
          v.id,
          v.empresa_id,
+         v.codigo_operacional,
          v.nome,
          v.placa,
          v.marca,
@@ -150,8 +176,8 @@ const listVehiclesApontador = async (req, res) => {
          v.combustivel_principal,
          v.capacidade_litros,
          v.capacidade_ton,
-         v.capacidade_esteril_ton,
-         v.capacidade_rocha_ton,
+         (${MATERIAL_CAPACITY_SQL.esteril})::double precision AS capacidade_esteril_ton,
+         (${MATERIAL_CAPACITY_SQL.rocha})::double precision AS capacidade_rocha_ton,
          v.horimetro_atual,
          v.hodometro_atual,
          v.usa_para_transporte,
@@ -162,6 +188,7 @@ const listVehiclesApontador = async (req, res) => {
          u.nome AS motorista_nome,
          (u.veiculo_id = v.id OR COALESCE(mv.is_principal, false)) AS motorista_principal
        FROM veiculos v
+       INNER JOIN codigos c ON c.id = v.id
        INNER JOIN usuarios u ON u.empresa_id = v.empresa_id
         AND u.role = 'MOTORISTA'
         AND COALESCE(u.conta_status, 'ativo') = 'ativo'
@@ -171,8 +198,8 @@ const listVehiclesApontador = async (req, res) => {
        WHERE v.empresa_id = $1
          AND COALESCE(v.usa_para_transporte, false) = true
          AND (
-           COALESCE(v.capacidade_esteril_ton, v.capacidade_ton, 0) > 0
-           OR COALESCE(v.capacidade_rocha_ton, v.capacidade_ton, 0) > 0
+           ${MATERIAL_CAPACITY_SQL.esteril} > 0
+           OR ${MATERIAL_CAPACITY_SQL.rocha} > 0
          )
          AND (u.veiculo_id = v.id OR mv.veiculo_id = v.id)
          ${searchSql}
@@ -180,7 +207,7 @@ const listVehiclesApontador = async (req, res) => {
      )
      SELECT *, COUNT(*) OVER()::int AS total_count
      FROM vinculos
-     ORDER BY placa NULLS LAST, nome, motorista_principal DESC, motorista_nome
+     ORDER BY codigo_apontador ASC, motorista_principal DESC, motorista_nome
      LIMIT $${idx} OFFSET $${idx + 1}`,
     [...values, limit, offset]
   );

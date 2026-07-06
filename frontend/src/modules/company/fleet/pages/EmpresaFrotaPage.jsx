@@ -285,7 +285,14 @@ export default function EmpresaFrotaPage() {
                   fl.vehicles.map((v) => (
                     <tr key={v.id} className="border-b border-zinc-800/80 hover:bg-zinc-900/50">
                       <td className="px-3 py-3">
-                        <p className="font-medium text-zinc-100">{v.nome}</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {v.codigo_operacional ? (
+                            <span className="inline-flex rounded-md border border-amber-500/35 bg-amber-500/10 px-2 py-0.5 text-[11px] font-black text-amber-100">
+                              #{String(v.codigo_operacional).padStart(2, "0")}
+                            </span>
+                          ) : null}
+                          <p className="font-medium text-zinc-100">{v.nome}</p>
+                        </div>
                         <p className="text-xs text-zinc-500">
                           {v.placa}
                           {v.marca || v.modelo ? ` · ${[v.marca, v.modelo].filter(Boolean).join(" ")}` : ""}
@@ -344,9 +351,16 @@ export default function EmpresaFrotaPage() {
         >
           <div className="flex h-full w-full max-w-lg flex-col overflow-y-auto border-l border-zinc-800 bg-zinc-950 shadow-2xl sm:max-h-[96vh] sm:rounded-xl sm:border">
             <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
-              <h3 className="text-base font-semibold text-zinc-100">
-                {fl.selected ? "Editar veículo" : "Novo veículo"}
-              </h3>
+              <div className="min-w-0">
+                <h3 className="text-base font-semibold text-zinc-100">
+                  {fl.selected ? "Editar veículo" : "Novo veículo"}
+                </h3>
+                {fl.selected?.codigo_operacional ? (
+                  <p className="mt-1 text-xs font-semibold text-amber-100">
+                    Código operacional #{String(fl.selected.codigo_operacional).padStart(2, "0")}
+                  </p>
+                ) : null}
+              </div>
               <button
                 type="button"
                 onClick={fl.closePanel}

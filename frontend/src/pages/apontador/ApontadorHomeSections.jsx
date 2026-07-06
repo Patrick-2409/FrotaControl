@@ -77,12 +77,55 @@ export const ApontadorVeiculoField = memo(function ApontadorVeiculoField({
   loadingVeiculos,
   veiculos,
   veiculoId,
+  codigoVeiculo,
+  veiculoSelecionado,
   onChangeVeiculo,
+  onChangeCodigoVeiculo,
 }) {
+  const veiculoSelecionadoLabel = veiculoSelecionado
+    ? [
+        veiculoSelecionado.codigoLabel ? `#${veiculoSelecionado.codigoLabel}` : null,
+        [veiculoSelecionado.placa, veiculoSelecionado.nome].filter(Boolean).join(" — "),
+        veiculoSelecionado.motorista?.nome,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
+
   return (
-    <div>
-      <label htmlFor="apontador-veiculo" className="mb-2 block text-center text-sm font-medium text-slate-400">
-        Veículo e motorista
+    <div className="space-y-3">
+      <div className="mx-auto w-full max-w-sm">
+        <label htmlFor="apontador-codigo-veiculo" className="mb-2 block text-center text-sm font-medium text-slate-300">
+          Código do veículo
+        </label>
+        <input
+          id="apontador-codigo-veiculo"
+          className={`${inputClass} fc-apontador-select block w-full text-center text-3xl font-black tracking-[0.14em] tabular-nums sm:text-4xl`}
+          inputMode="numeric"
+          pattern="[0-9]*"
+          autoComplete="off"
+          maxLength={4}
+          placeholder="01"
+          value={codigoVeiculo}
+          onChange={(e) => onChangeCodigoVeiculo(e.target.value)}
+          disabled={loadingVeiculos || veiculos.length === 0}
+          aria-describedby={veiculoSelecionadoLabel ? "apontador-veiculo-selecionado" : undefined}
+        />
+        {veiculoSelecionadoLabel ? (
+          <p
+            id="apontador-veiculo-selecionado"
+            className="mt-2 rounded-xl border border-slate-600/60 bg-slate-900/72 px-3 py-2 text-center text-sm font-semibold text-slate-100"
+          >
+            {veiculoSelecionadoLabel}
+          </p>
+        ) : (
+          <p className="mt-2 text-center text-xs text-slate-500">
+            Digite o número da relação ou selecione pela lista.
+          </p>
+        )}
+      </div>
+      <label htmlFor="apontador-veiculo" className="block text-center text-xs font-medium uppercase tracking-wide text-slate-500">
+        Seleção manual
       </label>
       {loadingVeiculos ? (
         <div
@@ -106,8 +149,10 @@ export const ApontadorVeiculoField = memo(function ApontadorVeiculoField({
               capacidadeEsteril ? `Estéril ${capacidadeEsteril}` : null,
               capacidadeRocha ? `Rocha ${capacidadeRocha}` : null,
             ].filter(Boolean);
+            const codigo = v.codigoLabel ? `#${v.codigoLabel} · ` : "";
             return (
               <option key={v.opcaoId || `${v.id}:${v.motorista?.id || "sem-motorista"}`} value={String(v.opcaoId || v.id)}>
+                {codigo}
                 {v.placa} — {v.nome}
                 {v.motorista?.nome ? ` · ${v.motorista.nome}` : ""}
                 {capacidades.length ? ` · ${capacidades.join(" · ")}` : ""}
@@ -133,8 +178,8 @@ export const ApontadorTipoButtons = memo(function ApontadorTipoButtons({
   const rochaDisponivel = podeRegistrar && Number(capacidadeRochaTon) > 0;
   const capacidadeEsterilLabel = formatCapacidadeTon(capacidadeEsterilTon);
   const capacidadeRochaLabel = formatCapacidadeTon(capacidadeRochaTon);
-  const esterilLabel = capacidadeEsterilLabel ? `${capacidadeEsterilLabel} por viagem` : "Sem capacidade";
-  const rochaLabel = capacidadeRochaLabel ? `${capacidadeRochaLabel} por viagem` : "Sem capacidade";
+  const esterilLabel = capacidadeEsterilLabel ? `${capacidadeEsterilLabel} por viagem` : "Não transporta estéril";
+  const rochaLabel = capacidadeRochaLabel ? `${capacidadeRochaLabel} por viagem` : "Não transporta rocha";
   const pressEsteril = useCallback(
     (e) => {
       if (!esterilDisponivel) return;

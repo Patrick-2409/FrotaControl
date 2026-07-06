@@ -1,7 +1,15 @@
 const { pool } = require("../db");
 
-const CAPACIDADE_ESTERIL_SQL = "COALESCE(v.capacidade_esteril_ton, v.capacidade_ton, 0)";
-const CAPACIDADE_ROCHA_SQL = "COALESCE(v.capacidade_rocha_ton, v.capacidade_ton, 0)";
+const CAPACIDADE_ESTERIL_SQL = `CASE
+  WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
+    THEN COALESCE(v.capacidade_esteril_ton, 0)
+  ELSE COALESCE(v.capacidade_ton, 0)
+END`;
+const CAPACIDADE_ROCHA_SQL = `CASE
+  WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
+    THEN COALESCE(v.capacidade_rocha_ton, 0)
+  ELSE COALESCE(v.capacidade_ton, 0)
+END`;
 
 const insertViagem = async (
   { empresa_id, veiculo_id, motorista_id, apontador_id = null, tipo, marcacao },

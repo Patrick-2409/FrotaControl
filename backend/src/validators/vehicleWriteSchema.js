@@ -52,6 +52,8 @@ const toVehicleWritePayload = (parsed) => {
         ? "transporte"
         : "apoio";
   const usa = tipo === "transporte";
+  const hasSpecificCapacity =
+    parsed.capacidade_esteril_ton != null || parsed.capacidade_rocha_ton != null;
   const out = {
     nome: parsed.nome,
     placa: parsed.placa,
@@ -60,8 +62,16 @@ const toVehicleWritePayload = (parsed) => {
     capacidade_ton: usa
       ? parsed.capacidade_ton ?? parsed.capacidade_esteril_ton ?? parsed.capacidade_rocha_ton ?? null
       : null,
-    capacidade_esteril_ton: usa ? parsed.capacidade_esteril_ton ?? parsed.capacidade_ton ?? null : null,
-    capacidade_rocha_ton: usa ? parsed.capacidade_rocha_ton ?? parsed.capacidade_ton ?? null : null,
+    capacidade_esteril_ton: usa
+      ? hasSpecificCapacity
+        ? parsed.capacidade_esteril_ton ?? null
+        : parsed.capacidade_ton ?? null
+      : null,
+    capacidade_rocha_ton: usa
+      ? hasSpecificCapacity
+        ? parsed.capacidade_rocha_ton ?? null
+        : parsed.capacidade_ton ?? null
+      : null,
   };
   if (parsed.marca !== undefined) out.marca = trimOrNull(parsed.marca);
   if (parsed.modelo !== undefined) out.modelo = trimOrNull(parsed.modelo);
