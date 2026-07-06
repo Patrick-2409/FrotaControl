@@ -39,7 +39,7 @@ test("listVehicles envia LIMIT e OFFSET numéricos (sem undefined)", async () =>
   }
 });
 
-test("listUsersByCompany usa fallback quando vinculos de motorista ainda estao em migracao", async () => {
+test("listUsersByCompany usa fallback sem depender de profile_image_url e preserva isolamento por empresa", async () => {
   delete require.cache[pathUm];
   delete require.cache[pathQt];
   delete require.cache[pathDb];
@@ -49,10 +49,47 @@ test("listUsersByCompany usa fallback quando vinculos de motorista ainda estao e
   db.pool.query = async (sql, vals) => {
     const text = String(sql);
     calls.push({ sql: text, vals: vals ? [...vals] : [] });
-    if (/LEFT JOIN LATERAL/.test(text)) {
-      const err = new Error('relation "motorista_veiculos" does not exist');
-      err.code = "42P01";
-      throw err;
+    if (text.includes("information_schema.columns")) {
+      const tableName = String(vals?.[0] || "");
+      if (tableName === "usuarios") {
+        return {
+          rows: [
+            { column_name: "id" },
+            { column_name: "empresa_id" },
+            { column_name: "nome" },
+            { column_name: "email" },
+            { column_name: "cpf_id" },
+            { column_name: "role" },
+            { column_name: "veiculo_id" },
+            { column_name: "created_at" },
+          ],
+        };
+      }
+      if (tableName === "veiculos") {
+        return {
+          rows: [
+            { column_name: "id" },
+            { column_name: "empresa_id" },
+            { column_name: "nome" },
+            { column_name: "placa" },
+            { column_name: "marca" },
+            { column_name: "modelo" },
+            { column_name: "tipo_operacao" },
+            { column_name: "usa_para_transporte" },
+          ],
+        };
+      }
+      if (tableName === "motorista_veiculos") {
+        return {
+          rows: [
+            { column_name: "empresa_id" },
+            { column_name: "motorista_id" },
+            { column_name: "veiculo_id" },
+            { column_name: "is_principal" },
+          ],
+        };
+      }
+      return { rows: [] };
     }
     if (text.includes("COUNT(*)")) {
       return { rows: [{ total: 1 }] };
@@ -78,12 +115,174 @@ test("listUsersByCompany usa fallback quando vinculos de motorista ainda estao e
     const result = await listUsersByCompany(5, { page: 1, limit: 20, search: "" });
     assert.strictEqual(result.total, 1);
     assert.strictEqual(result.items[0].nome, "Motorista Sem Vinculo Novo");
-    const fallbackList = calls.find((c) => /'ativo'::text AS status_operacional/.test(c.sql));
+    const fallbackList = calls.find((c) => /usuarios-list-basic/.test(c.sql) || /'ativo'::text AS status_operacional/.test(c.sql));
     assert.ok(fallbackList, "esperada query basica de fallback");
-    assert.ok(!/motorista_veiculos/.test(fallbackList.sql));
+    assert.ok(!/LEFT JOIN LATERAL/.test(fallbackList.sql));
     assert.ok(!/u\.profile_image_url/.test(fallbackList.sql));
     assert.ok(!/v\.marca/.test(fallbackList.sql));
     assert.ok(!/v\.modelo/.test(fallbackList.sql));
+    const countCall = calls.find((c) => /SELECT COUNT\(\*\)::int AS total FROM usuarios u WHERE/.test(c.sql));
+    assert.ok(countCall, "esperada query de contagem");
+    assert.match(countCall.sql, /u\.empresa_id = \$1/);
+    assert.strictEqual(countCall.vals[0], 5);
+  } finally {
+    db.pool.query = orig;
+    delete require.cache[pathUm];
+    delete require.cache[pathQt];
+    delete require.cache[pathDb];
+  }
+});
+
+test("listUsersByCompany usa fallback sem depender de marca/modelo e retorna lista essencial paginada", async () => {
+  delete require.cache[pathUm];
+  delete require.cache[pathQt];
+  delete require.cache[pathDb];
+  const db = require("../src/db");
+  const orig = db.pool.query;
+  const calls = [];
+  db.pool.query = async (sql, vals) => {
+    const text = String(sql);
+    calls.push({ sql: text, vals: vals ? [...vals] : [] });
+    if (text.includes("information_schema.columns")) {
+      const tableName = String(vals?.[0] || "");
+      if (tableName === "usuarios") {
+        return {
+          rows: [
+            { column_name: "id" },
+            { column_name: "empresa_id" },
+            { column_name: "nome" },
+            { column_name: "email" },
+            { column_name: "cpf_id" },
+            { column_name: "role" },
+            { column_name: "veiculo_id" },
+            { column_name: "profile_image_url" },
+            { column_name: "funcao" },
+            { column_name: "cnh_categoria" },
+            { column_name: "cnh_numero" },
+            { column_name: "cnh_validade" },
+            { column_name: "treinamentos" },
+            { column_name: "observacoes" },
+            { column_name: "equipamento_vinculo" },
+            { column_name: "operacao_escopo" },
+            { column_name: "status_operacional" },
+            { column_name: "conta_status" },
+            { column_name: "created_at" },
+          ],
+        };
+      }
+      if (tableName === "veiculos") {
+        return {
+          rows: [
+            { column_name: "id" },
+            { column_name: "empresa_id" },
+            { column_name: "nome" },
+            { column_name: "placa" },
+          ],
+        };
+      }
+      if (tableName === "motorista_veiculos") {
+        return {
+          rows: [
+            { column_name: "empresa_id" },
+            { column_name: "motorista_id" },
+            { column_name: "veiculo_id" },
+            { column_name: "is_principal" },
+          ],
+        };
+      }
+      return { rows: [] };
+    }
+    if (text.includes("COUNT(*)")) {
+      return { rows: [{ total: 2 }] };
+    }
+    return {
+      rows: [
+        {
+          id: 21,
+          empresa_id: 5,
+          nome: "Pessoa A",
+          email: "a@empresa.com",
+          cpf_id: "111",
+          role: "APONTADOR",
+          veiculo_id: null,
+          created_at: new Date(),
+        },
+      ],
+    };
+  };
+  try {
+    const { listUsersByCompany } = require("../src/models/userModel");
+    const result = await listUsersByCompany(5, {
+      page: 2,
+      limit: 20,
+      search: "Pessoa",
+      role: "APONTADOR",
+      status_operacional: "ativo",
+    });
+    assert.strictEqual(result.total, 2);
+    assert.strictEqual(result.items.length, 1);
+    assert.strictEqual(result.items[0].nome, "Pessoa A");
+    const fallbackList = calls.find((c) => /'\[\]'::json AS veiculos_vinculados/.test(c.sql) || /NULL::text AS veiculo_marca/.test(c.sql));
+    assert.ok(fallbackList, "esperada query essencial de fallback");
+    assert.ok(!/LEFT JOIN veiculos/.test(fallbackList.sql));
+    assert.ok(!/v\.marca/.test(fallbackList.sql));
+    assert.ok(!/v\.modelo/.test(fallbackList.sql));
+    assert.ok(!/u\.profile_image_url/.test(fallbackList.sql));
+    assert.ok(!fallbackList.vals.some((x) => x === undefined), `valores: ${JSON.stringify(fallbackList.vals)}`);
+    assert.strictEqual(fallbackList.vals[fallbackList.vals.length - 2], 20);
+    assert.strictEqual(fallbackList.vals[fallbackList.vals.length - 1], 20);
+  } finally {
+    db.pool.query = orig;
+    delete require.cache[pathUm];
+    delete require.cache[pathQt];
+    delete require.cache[pathDb];
+  }
+});
+
+test("listUsersByCompany fallback mantém filtro de status mesmo sem coluna status_operacional", async () => {
+  delete require.cache[pathUm];
+  delete require.cache[pathQt];
+  delete require.cache[pathDb];
+  const db = require("../src/db");
+  const orig = db.pool.query;
+  const calls = [];
+  db.pool.query = async (sql, vals) => {
+    const text = String(sql);
+    calls.push({ sql: text, vals: vals ? [...vals] : [] });
+    if (text.includes("information_schema.columns")) {
+      const tableName = String(vals?.[0] || "");
+      if (tableName === "usuarios") {
+        return {
+          rows: [
+            { column_name: "id" },
+            { column_name: "empresa_id" },
+            { column_name: "nome" },
+            { column_name: "email" },
+            { column_name: "cpf_id" },
+            { column_name: "role" },
+            { column_name: "created_at" },
+          ],
+        };
+      }
+      return { rows: [] };
+    }
+    if (text.includes("COUNT(*)")) {
+      return { rows: [{ total: 0 }] };
+    }
+    return { rows: [] };
+  };
+  try {
+    const { listUsersByCompany } = require("../src/models/userModel");
+    const result = await listUsersByCompany(5, {
+      page: 1,
+      limit: 20,
+      status_operacional: "afastado",
+    });
+    assert.strictEqual(result.total, 0);
+    assert.deepStrictEqual(result.items, []);
+    const countCall = calls.find((c) => /SELECT COUNT\(\*\)::int AS total FROM usuarios u WHERE/.test(c.sql));
+    assert.ok(countCall, "esperada query de contagem no fallback");
+    assert.match(countCall.sql, /1=0/);
   } finally {
     db.pool.query = orig;
     delete require.cache[pathUm];
@@ -181,8 +380,62 @@ test("listUsersByCompany envia LIMIT e OFFSET numéricos (sem undefined)", async
   const orig = db.pool.query;
   const calls = [];
   db.pool.query = async (sql, vals) => {
-    calls.push({ sql: String(sql), vals: vals ? [...vals] : [] });
-    if (String(sql).includes("COUNT(*)")) {
+    const text = String(sql);
+    calls.push({ sql: text, vals: vals ? [...vals] : [] });
+    if (text.includes("information_schema.columns")) {
+      const tableName = String(vals?.[0] || "");
+      if (tableName === "usuarios") {
+        return {
+          rows: [
+            { column_name: "id" },
+            { column_name: "empresa_id" },
+            { column_name: "nome" },
+            { column_name: "email" },
+            { column_name: "cpf_id" },
+            { column_name: "role" },
+            { column_name: "veiculo_id" },
+            { column_name: "profile_image_url" },
+            { column_name: "funcao" },
+            { column_name: "cnh_categoria" },
+            { column_name: "cnh_numero" },
+            { column_name: "cnh_validade" },
+            { column_name: "treinamentos" },
+            { column_name: "observacoes" },
+            { column_name: "equipamento_vinculo" },
+            { column_name: "operacao_escopo" },
+            { column_name: "status_operacional" },
+            { column_name: "conta_status" },
+            { column_name: "created_at" },
+          ],
+        };
+      }
+      if (tableName === "veiculos") {
+        return {
+          rows: [
+            { column_name: "id" },
+            { column_name: "empresa_id" },
+            { column_name: "nome" },
+            { column_name: "placa" },
+            { column_name: "marca" },
+            { column_name: "modelo" },
+            { column_name: "tipo_operacao" },
+            { column_name: "usa_para_transporte" },
+          ],
+        };
+      }
+      if (tableName === "motorista_veiculos") {
+        return {
+          rows: [
+            { column_name: "empresa_id" },
+            { column_name: "motorista_id" },
+            { column_name: "veiculo_id" },
+            { column_name: "is_principal" },
+          ],
+        };
+      }
+      return { rows: [] };
+    }
+    if (text.includes("COUNT(*)")) {
       return { rows: [{ total: 0 }] };
     }
     return { rows: [] };

@@ -269,6 +269,28 @@ const getPagination = (req) => ({
   search: String(req.query.search || ""),
 });
 
+const buildAuthUserLogContext = (user) => ({
+  id: Number(user?.id || user?.sub) || null,
+  sub: Number(user?.sub) || null,
+  role: user?.role || null,
+  empresa_id: user?.empresa_id ?? null,
+  nome: user?.nome || null,
+});
+
+const logListUsersRouteFailure = ({ req, empresaIdFiltro, error }) => {
+  const maybeQuery = error?.sql || error?.query || error?.meta?.query || null;
+  console.error("[backend][ERROR] GET /dashboard/manage/users", {
+    route: "GET /dashboard/manage/users",
+    authenticated_user: buildAuthUserLogContext(req?.user),
+    filtro_empresa_id: empresaIdFiltro ?? null,
+    error_message: error?.message || null,
+    error_code: error?.code || null,
+    error_stack: error?.stack || null,
+    error_sql: error?.sql || null,
+    error_query: maybeQuery,
+  });
+};
+
 const normalizeCpfId = (value) => {
   const raw = String(value || "").trim();
   const digits = raw.replace(/\D/g, "");
@@ -616,95 +638,107 @@ const createUserCtrl = async (req, res) => {
 };
 
 const listUsersCtrl = async (req, res) => {
-  if (req.user.role === "SUPER_ADMIN") {
+  let empresaIdFiltro = null;
+  try {
+    if (req.user.role === "SUPER_ADMIN") {
+      const { page, limit, search } = getPagination(req);
+      const offset = (page - 1) * limit;
+      const role = String(req.query.role || "ALL");
+      const companyId = Number(req.query.empresa_id || 0);
+      const status = String(req.query.status || "ALL");
+      empresaIdFiltro = companyId > 0 ? companyId : null;
+
+      const values = [];
+      let idx = 1;
+      const clauses = ["u.role IN ('MOTORISTA', 'ADMIN_EMPRESA', 'APONTADOR', 'SUPER_ADMIN')"];
+      if (search) {
+        clauses.push(`(u.nome ILIKE $${idx} OR u.email ILIKE $${idx} OR u.cpf_id ILIKE $${idx} OR e.nome ILIKE $${idx} OR v.nome ILIKE $${idx})`);
+        values.push(`%${search}%`);
+        idx += 1;
+      }
+      if (role !== "ALL") {
+        clauses.push(`u.role = $${idx}`);
+        values.push(role);
+        idx += 1;
+      }
+      if (companyId) {
+        clauses.push(`u.empresa_id = $${idx}`);
+        values.push(companyId);
+        idx += 1;
+      }
+      if (status === "COM_VEICULO") {
+        clauses.push("u.veiculo_id IS NOT NULL");
+      } else if (status === "SEM_VEICULO") {
+        clauses.push("u.veiculo_id IS NULL");
+      }
+      const where = `WHERE ${clauses.join(" AND ")}`;
+
+      const count = await pool.query(
+        `
+        SELECT COUNT(*)::int AS total
+        FROM usuarios u
+        LEFT JOIN empresas e ON e.id = u.empresa_id
+        LEFT JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
+        ${where}
+        `,
+        values
+      );
+      const rows = await pool.query(
+        `
+        SELECT u.id, u.empresa_id, u.nome, u.email, u.cpf_id, u.role, u.veiculo_id, u.profile_image_url,
+          u.funcao, u.cnh_categoria, u.cnh_numero, u.cnh_validade, u.treinamentos, u.observacoes,
+          u.equipamento_vinculo, u.operacao_escopo, u.status_operacional, u.conta_status, u.created_at,
+          e.nome AS empresa_nome,
+          v.nome AS veiculo_nome, v.placa
+        FROM usuarios u
+        LEFT JOIN empresas e ON e.id = u.empresa_id
+        LEFT JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
+        ${where}
+        ORDER BY u.created_at DESC
+        LIMIT $${idx} OFFSET $${idx + 1}
+        `,
+        [...values, limit, offset]
+      );
+      const items = rows.rows.map((row) => sanitizeUser(row));
+      return res.json({
+        items,
+        total: count.rows[0].total,
+        page,
+        totalPages: Math.max(1, Math.ceil(count.rows[0].total / limit)),
+      });
+    }
+
+    const empresa_id = getCompanyId(req);
+    empresaIdFiltro = empresa_id || null;
+    if (!empresa_id) {
+      return res.status(400).json({
+        success: false,
+        error: "empresa_id é obrigatório",
+        message: "empresa_id é obrigatório",
+      });
+    }
     const { page, limit, search } = getPagination(req);
-    const offset = (page - 1) * limit;
-    const role = String(req.query.role || "ALL");
-    const companyId = Number(req.query.empresa_id || 0);
-    const status = String(req.query.status || "ALL");
-
-    const values = [];
-    let idx = 1;
-    const clauses = ["u.role IN ('MOTORISTA', 'ADMIN_EMPRESA', 'APONTADOR', 'SUPER_ADMIN')"];
-    if (search) {
-      clauses.push(`(u.nome ILIKE $${idx} OR u.email ILIKE $${idx} OR u.cpf_id ILIKE $${idx} OR e.nome ILIKE $${idx} OR v.nome ILIKE $${idx})`);
-      values.push(`%${search}%`);
-      idx += 1;
-    }
-    if (role !== "ALL") {
-      clauses.push(`u.role = $${idx}`);
-      values.push(role);
-      idx += 1;
-    }
-    if (companyId) {
-      clauses.push(`u.empresa_id = $${idx}`);
-      values.push(companyId);
-      idx += 1;
-    }
-    if (status === "COM_VEICULO") {
-      clauses.push("u.veiculo_id IS NOT NULL");
-    } else if (status === "SEM_VEICULO") {
-      clauses.push("u.veiculo_id IS NULL");
-    }
-    const where = `WHERE ${clauses.join(" AND ")}`;
-
-    const count = await pool.query(
-      `
-      SELECT COUNT(*)::int AS total
-      FROM usuarios u
-      LEFT JOIN empresas e ON e.id = u.empresa_id
-      LEFT JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
-      ${where}
-      `,
-      values
-    );
-    const rows = await pool.query(
-      `
-      SELECT u.id, u.empresa_id, u.nome, u.email, u.cpf_id, u.role, u.veiculo_id, u.profile_image_url,
-        u.funcao, u.cnh_categoria, u.cnh_numero, u.cnh_validade, u.treinamentos, u.observacoes,
-        u.equipamento_vinculo, u.operacao_escopo, u.status_operacional, u.conta_status, u.created_at,
-        e.nome AS empresa_nome,
-        v.nome AS veiculo_nome, v.placa
-      FROM usuarios u
-      LEFT JOIN empresas e ON e.id = u.empresa_id
-      LEFT JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
-      ${where}
-      ORDER BY u.created_at DESC
-      LIMIT $${idx} OFFSET $${idx + 1}
-      `,
-      [...values, limit, offset]
-    );
-    const items = rows.rows.map((row) => sanitizeUser(row));
-    return res.json({
-      items,
-      total: count.rows[0].total,
+    const result = await listUsersByCompany(empresa_id, {
       page,
-      totalPages: Math.max(1, Math.ceil(count.rows[0].total / limit)),
+      limit,
+      search,
+      role: String(req.query.role || ""),
+      status_operacional: String(req.query.status_operacional || ""),
+      escopo_operacional: String(req.query.escopo_operacional || ""),
     });
-  }
-
-  const empresa_id = getCompanyId(req);
-  if (!empresa_id) {
-    return res.status(400).json({
+    return res.json({
+      ...result,
+      page,
+      totalPages: Math.max(1, Math.ceil(result.total / limit)),
+    });
+  } catch (error) {
+    logListUsersRouteFailure({ req, empresaIdFiltro, error });
+    return res.status(500).json({
       success: false,
-      error: "empresa_id é obrigatório",
-      message: "empresa_id é obrigatório",
+      error: "Erro interno no servidor",
+      message: "Erro interno no servidor",
     });
   }
-  const { page, limit, search } = getPagination(req);
-  const result = await listUsersByCompany(empresa_id, {
-    page,
-    limit,
-    search,
-    role: String(req.query.role || ""),
-    status_operacional: String(req.query.status_operacional || ""),
-    escopo_operacional: String(req.query.escopo_operacional || ""),
-  });
-  return res.json({
-    ...result,
-    page,
-    totalPages: Math.max(1, Math.ceil(result.total / limit)),
-  });
 };
 
 /** Detalhe de um utilizador (SUPER_ADMIN). Mesma forma de linha que a listagem; sem senha_hash. */

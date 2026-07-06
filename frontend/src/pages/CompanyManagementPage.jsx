@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { FROTA_PANEL_PATH } from "../components/empresaSidebarConstants";
 import api, { extractApiErrorMessage, resolveBackendAssetUrl } from "../services/api";
@@ -78,12 +78,14 @@ export default function CompanyManagementPage() {
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [loadingVehiclePicklist, setLoadingVehiclePicklist] = useState(false);
   const [users, setUsers] = useState([]);
+  const [usersLoadError, setUsersLoadError] = useState("");
   const [vehicles, setVehicles] = useState([]);
   const [search, setSearch] = useState({ users: "" });
   const [usersPage, setUsersPage] = useState(1);
   const [usersTotalPages, setUsersTotalPages] = useState(1);
   const [pendingContaStatusAction, setPendingContaStatusAction] = useState(null);
   const debouncedUsers = useDebouncedValue(search.users);
+  const usersReqRef = useRef(0);
 
   const emptyUserForm = () => ({
     id: null,
@@ -110,15 +112,30 @@ export default function CompanyManagementPage() {
     }
   };
   const loadUsers = useCallback(async () => {
+    const reqId = ++usersReqRef.current;
     setLoadingUsers(true);
+    setUsersLoadError("");
     try {
       const { data } = await api.get("/dashboard/manage/users", {
+        skipGlobalErrorToast: true,
         params: { page: usersPage, limit: 6, search: debouncedUsers },
       });
+      if (reqId !== usersReqRef.current) return;
       setUsers(dedupeById(data.items || []));
       setUsersTotalPages(data.totalPages || 1);
+    } catch (err) {
+      if (reqId !== usersReqRef.current) return;
+      setUsers([]);
+      setUsersTotalPages(1);
+      if (err?.response?.status === 500) {
+        setUsersLoadError("Não foi possível carregar a lista de pessoas no momento.");
+      } else {
+        setUsersLoadError(extractApiErrorMessage(err) || "Não foi possível carregar a lista de pessoas no momento.");
+      }
     } finally {
-      setLoadingUsers(false);
+      if (reqId === usersReqRef.current) {
+        setLoadingUsers(false);
+      }
     }
   }, [usersPage, debouncedUsers]);
 
@@ -477,7 +494,19 @@ export default function CompanyManagementPage() {
             />
             <div className="mt-4 space-y-3">
               {loadingUsers && <SkeletonRows rows={4} />}
-              {!loadingUsers && users.length === 0 && (
+              {!loadingUsers && usersLoadError && (
+                <div className="rounded-xl border border-amber-500/35 bg-amber-950/35 p-4">
+                  <p className="text-sm font-medium text-amber-100">{usersLoadError}</p>
+                  <button
+                    type="button"
+                    onClick={() => void loadUsers()}
+                    className="fc-btn mt-3 rounded-lg border border-amber-500/55 bg-amber-800/25 px-3 py-1.5 text-xs font-semibold text-amber-100 hover:bg-amber-800/40"
+                  >
+                    Tentar novamente
+                  </button>
+                </div>
+              )}
+              {!loadingUsers && !usersLoadError && users.length === 0 && (
                 <EmptyState
                   compact
                   title="Sem pessoas cadastradas"

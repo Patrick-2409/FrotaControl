@@ -346,8 +346,62 @@ test("listUsersByCompany junta veiculo somente quando pertence a mesma empresa",
   const orig = db.pool.query;
   const calls = [];
   db.pool.query = async (sql, vals) => {
-    calls.push({ sql: String(sql), vals: vals ? [...vals] : [] });
-    if (String(sql).includes("COUNT(*)")) {
+    const text = String(sql);
+    calls.push({ sql: text, vals: vals ? [...vals] : [] });
+    if (text.includes("information_schema.columns")) {
+      const tableName = String(vals?.[0] || "");
+      if (tableName === "usuarios") {
+        return {
+          rows: [
+            { column_name: "id" },
+            { column_name: "empresa_id" },
+            { column_name: "nome" },
+            { column_name: "email" },
+            { column_name: "cpf_id" },
+            { column_name: "role" },
+            { column_name: "veiculo_id" },
+            { column_name: "profile_image_url" },
+            { column_name: "funcao" },
+            { column_name: "cnh_categoria" },
+            { column_name: "cnh_numero" },
+            { column_name: "cnh_validade" },
+            { column_name: "treinamentos" },
+            { column_name: "observacoes" },
+            { column_name: "equipamento_vinculo" },
+            { column_name: "operacao_escopo" },
+            { column_name: "status_operacional" },
+            { column_name: "conta_status" },
+            { column_name: "created_at" },
+          ],
+        };
+      }
+      if (tableName === "veiculos") {
+        return {
+          rows: [
+            { column_name: "id" },
+            { column_name: "empresa_id" },
+            { column_name: "nome" },
+            { column_name: "placa" },
+            { column_name: "marca" },
+            { column_name: "modelo" },
+            { column_name: "tipo_operacao" },
+            { column_name: "usa_para_transporte" },
+          ],
+        };
+      }
+      if (tableName === "motorista_veiculos") {
+        return {
+          rows: [
+            { column_name: "empresa_id" },
+            { column_name: "motorista_id" },
+            { column_name: "veiculo_id" },
+            { column_name: "is_principal" },
+          ],
+        };
+      }
+      return { rows: [] };
+    }
+    if (text.includes("COUNT(*)")) {
       return { rows: [{ total: 0 }] };
     }
     return { rows: [] };
@@ -362,6 +416,70 @@ test("listUsersByCompany junta veiculo somente quando pertence a mesma empresa",
     db.pool.query = orig;
     delete require.cache[pathUm];
     delete require.cache[pathQt];
+    delete require.cache[pathDb];
+  }
+});
+
+test("listUsersCtrl registra erro detalhado no servidor e responde erro genérico no frontend", async () => {
+  const pathDb = require.resolve("../src/db");
+  const pathCtrl = require.resolve("../src/controllers/adminController");
+  const pathUm = require.resolve("../src/models/userModel");
+  delete require.cache[pathCtrl];
+  delete require.cache[pathUm];
+  delete require.cache[pathDb];
+
+  const db = require("../src/db");
+  const userModel = require("../src/models/userModel");
+  const origPoolQuery = db.pool.query;
+  const origListUsersByCompany = userModel.listUsersByCompany;
+  const origConsoleError = console.error;
+  const logs = [];
+
+  db.pool.query = async () => ({ rows: [], rowCount: 0 });
+  userModel.listUsersByCompany = async () => {
+    const err = new Error("column profile_image_url does not exist");
+    err.code = "42703";
+    err.sql = "SELECT u.profile_image_url FROM usuarios u";
+    throw err;
+  };
+  console.error = (...args) => {
+    logs.push(args);
+  };
+
+  try {
+    const { listUsersCtrl } = require("../src/controllers/adminController");
+    const res = createRes();
+    await listUsersCtrl(
+      {
+        user: { role: "ADMIN_EMPRESA", empresa_id: 7, sub: 11, nome: "Admin Operacao" },
+        query: { page: 1, limit: 20, search: "maria" },
+      },
+      res
+    );
+
+    assert.strictEqual(res.statusCode, 500);
+    assert.strictEqual(res.body?.error, "Erro interno no servidor");
+    assert.strictEqual(res.body?.message, "Erro interno no servidor");
+    assert.strictEqual(/SELECT/.test(JSON.stringify(res.body || {})), false);
+    assert.strictEqual(/stack/i.test(JSON.stringify(res.body || {})), false);
+
+    const errorLog = logs.find((entry) => String(entry?.[0] || "").includes("GET /dashboard/manage/users"));
+    assert.ok(errorLog, "esperado log de erro da rota no console.error");
+    const payload = errorLog[1] || {};
+    assert.strictEqual(payload.route, "GET /dashboard/manage/users");
+    assert.strictEqual(payload.filtro_empresa_id, 7);
+    assert.strictEqual(payload.error_code, "42703");
+    assert.match(String(payload.error_message || ""), /profile_image_url/i);
+    assert.match(String(payload.error_sql || payload.error_query || ""), /SELECT u\.profile_image_url/i);
+    assert.match(String(payload.error_stack || ""), /Error/);
+    assert.strictEqual(payload.authenticated_user?.sub, 11);
+    assert.strictEqual(payload.authenticated_user?.role, "ADMIN_EMPRESA");
+  } finally {
+    db.pool.query = origPoolQuery;
+    userModel.listUsersByCompany = origListUsersByCompany;
+    console.error = origConsoleError;
+    delete require.cache[pathCtrl];
+    delete require.cache[pathUm];
     delete require.cache[pathDb];
   }
 });

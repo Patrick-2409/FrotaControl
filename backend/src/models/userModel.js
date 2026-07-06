@@ -61,6 +61,114 @@ const sanitizeUser = (user) => {
 const sanitizeUsers = (users = []) => users.map((row) => sanitizeUser(row));
 
 const isMissingSchemaField = (err) => ["42703", "42P01"].includes(String(err?.code || "").trim().toUpperCase());
+const SCHEMA_CACHE_TTL_MS = 30_000;
+const tableColumnsCache = new Map();
+
+const cloneSet = (value) => new Set(value instanceof Set ? [...value] : []);
+
+const hasAllColumns = (available, required = []) => required.every((name) => available.has(name));
+
+const resolveExistingColumn = (available, candidates = []) =>
+  candidates.find((name) => available.has(String(name || "").toLowerCase())) || null;
+
+const getTableColumns = async (tableName) => {
+  const normalized = String(tableName || "").trim().toLowerCase();
+  if (!normalized) return new Set();
+  const now = Date.now();
+  const cached = tableColumnsCache.get(normalized);
+  if (cached && cached.expiresAt > now) {
+    return cloneSet(cached.columns);
+  }
+  const { rows } = await pool.query(
+    `SELECT column_name
+     FROM information_schema.columns
+     WHERE table_schema = current_schema()
+       AND table_name = $1`,
+    [normalized]
+  );
+  const columns = new Set((rows || []).map((row) => String(row?.column_name || "").trim().toLowerCase()).filter(Boolean));
+  tableColumnsCache.set(normalized, {
+    columns: cloneSet(columns),
+    expiresAt: now + SCHEMA_CACHE_TTL_MS,
+  });
+  return columns;
+};
+
+const MODERN_LIST_USERS_REQUIRED_USER_COLUMNS = [
+  "id",
+  "empresa_id",
+  "nome",
+  "email",
+  "cpf_id",
+  "role",
+  "veiculo_id",
+  "profile_image_url",
+  "funcao",
+  "cnh_categoria",
+  "cnh_numero",
+  "cnh_validade",
+  "treinamentos",
+  "observacoes",
+  "equipamento_vinculo",
+  "operacao_escopo",
+  "status_operacional",
+  "conta_status",
+  "created_at",
+];
+
+const MODERN_LIST_USERS_REQUIRED_VEHICLE_COLUMNS = [
+  "id",
+  "empresa_id",
+  "nome",
+  "placa",
+  "marca",
+  "modelo",
+  "tipo_operacao",
+  "usa_para_transporte",
+];
+
+const MODERN_LIST_USERS_REQUIRED_LINK_COLUMNS = [
+  "empresa_id",
+  "motorista_id",
+  "veiculo_id",
+  "is_principal",
+];
+
+const buildListUsersSchemaSnapshot = async () => {
+  const [userColumns, vehicleColumns, motoristaLinkColumns] = await Promise.all([
+    getTableColumns("usuarios"),
+    getTableColumns("veiculos"),
+    getTableColumns("motorista_veiculos"),
+  ]);
+
+  const userVehicleColumn = resolveExistingColumn(userColumns, ["veiculo_id", "vehicle_id"]);
+  const userCompanyColumn = resolveExistingColumn(userColumns, ["empresa_id"]);
+  const modernReady =
+    Boolean(userVehicleColumn) &&
+    Boolean(userCompanyColumn) &&
+    hasAllColumns(userColumns, MODERN_LIST_USERS_REQUIRED_USER_COLUMNS) &&
+    hasAllColumns(vehicleColumns, MODERN_LIST_USERS_REQUIRED_VEHICLE_COLUMNS) &&
+    hasAllColumns(motoristaLinkColumns, MODERN_LIST_USERS_REQUIRED_LINK_COLUMNS);
+
+  return {
+    modernReady,
+    userColumns,
+    userVehicleColumn,
+    userCompanyColumn,
+  };
+};
+
+const loadListUsersSchemaSnapshot = async () => {
+  try {
+    return await buildListUsersSchemaSnapshot();
+  } catch (err) {
+    logWarn("user:list-by-company-schema-probe-failed", {
+      message: err?.message,
+      code: err?.code,
+    });
+    return null;
+  }
+};
 
 const USER_VEHICLE_LINKS_SELECT = `
             COALESCE(vl.veiculos_vinculados, '[]'::json) AS veiculos_vinculados,
@@ -421,30 +529,72 @@ const getUserById = async (id, empresa_id) => {
 
 const listUsersByCompanyBasic = async (
   empresa_id,
-  { page = 1, limit = 10, search = "", role = "", escopo_operacional = "" } = {},
-  cause = null
+  { page = 1, limit = 10, search = "", role = "", status_operacional = "", escopo_operacional = "" } = {},
+  cause = null,
+  schemaSnapshot = null
 ) => {
   logWarn("user:list-by-company-schema-fallback", {
     message: cause?.message,
     code: cause?.code,
   });
 
-  const clauses = ["u.empresa_id = $1"];
+  let userColumns =
+    schemaSnapshot?.userColumns instanceof Set
+      ? cloneSet(schemaSnapshot.userColumns)
+      : await getTableColumns("usuarios").catch(() =>
+          new Set(["id", "empresa_id", "nome", "email", "cpf_id", "role", "created_at"])
+        );
+  if (!userColumns.size) {
+    userColumns = new Set(["id", "empresa_id", "nome", "email", "cpf_id", "role", "created_at"]);
+  }
+
+  const idColumn = resolveExistingColumn(userColumns, ["id"]) || "id";
+  const companyColumn = resolveExistingColumn(userColumns, ["empresa_id"]) || "empresa_id";
+  const nameColumn = resolveExistingColumn(userColumns, ["nome"]) || "nome";
+  const emailColumn = resolveExistingColumn(userColumns, ["email"]);
+  const cpfColumn = resolveExistingColumn(userColumns, ["cpf_id"]);
+  const roleColumn = resolveExistingColumn(userColumns, ["role"]);
+  const vehicleColumn = resolveExistingColumn(userColumns, ["veiculo_id", "vehicle_id"]);
+  const createdAtColumn = resolveExistingColumn(userColumns, ["created_at"]);
+  const statusColumn = resolveExistingColumn(userColumns, ["status_operacional"]);
+  const contaStatusColumn = resolveExistingColumn(userColumns, ["conta_status"]);
+
+  const clauses = [`u.${companyColumn} = $1`];
   const params = [empresa_id];
   let idx = 2;
 
   if (search) {
-    clauses.push(`(u.nome ILIKE $${idx} OR u.email ILIKE $${idx} OR u.cpf_id ILIKE $${idx})`);
+    const searchExpressions = [`u.${nameColumn}`];
+    if (emailColumn) searchExpressions.push(`COALESCE(u.${emailColumn}, '')`);
+    if (cpfColumn) searchExpressions.push(`COALESCE(u.${cpfColumn}, '')`);
+    clauses.push(`(${searchExpressions.map((expr) => `${expr} ILIKE $${idx}`).join(" OR ")})`);
     params.push(`%${search}%`);
     idx += 1;
   }
   if (role && role !== "ALL" && ["MOTORISTA", "APONTADOR", "ADMIN_EMPRESA"].includes(role)) {
-    clauses.push(`u.role = $${idx}`);
-    params.push(role);
-    idx += 1;
+    if (roleColumn) {
+      clauses.push(`u.${roleColumn} = $${idx}`);
+      params.push(role);
+      idx += 1;
+    } else {
+      clauses.push("1=0");
+    }
   }
   if (escopo_operacional === "1" || escopo_operacional === "true") {
-    clauses.push(`u.role IN ('MOTORISTA', 'APONTADOR')`);
+    if (roleColumn) {
+      clauses.push(`u.${roleColumn} IN ('MOTORISTA', 'APONTADOR')`);
+    } else {
+      clauses.push("1=0");
+    }
+  }
+  if (status_operacional && STATUS_PESSOA.has(status_operacional)) {
+    if (statusColumn) {
+      clauses.push(`COALESCE(u.${statusColumn}, 'ativo') = $${idx}`);
+      params.push(status_operacional);
+      idx += 1;
+    } else if (status_operacional !== "ativo") {
+      clauses.push("1=0");
+    }
   }
 
   const pageNum = Math.max(1, Number(page) || 1);
@@ -461,8 +611,17 @@ const listUsersByCompanyBasic = async (
     countParams,
     { label: "usuarios-count-basic" }
   );
+  const fallbackOrderBy = createdAtColumn
+    ? `u.${createdAtColumn} DESC, u.${idColumn} DESC`
+    : `u.${idColumn} DESC`;
   const { rows } = await queryTimed(
-    `SELECT u.id, u.empresa_id, u.nome, u.email, u.cpf_id, u.role, u.veiculo_id,
+    `SELECT u.${idColumn} AS id,
+            u.${companyColumn} AS empresa_id,
+            u.${nameColumn} AS nome,
+            ${emailColumn ? `u.${emailColumn}` : "NULL::text"} AS email,
+            ${cpfColumn ? `u.${cpfColumn}` : "NULL::text"} AS cpf_id,
+            ${roleColumn ? `u.${roleColumn}` : "NULL::text"} AS role,
+            ${vehicleColumn ? `u.${vehicleColumn}` : "NULL::int"} AS veiculo_id,
             NULL::text AS profile_image_url,
             NULL::text AS funcao,
             NULL::text AS cnh_categoria,
@@ -472,11 +631,11 @@ const listUsersByCompanyBasic = async (
             NULL::text AS observacoes,
             NULL::text AS equipamento_vinculo,
             NULL::text AS operacao_escopo,
-            'ativo'::text AS status_operacional,
-            'ativo'::text AS conta_status,
-            u.created_at,
-            v.nome AS veiculo_nome,
-            v.placa,
+            ${statusColumn ? `COALESCE(u.${statusColumn}, 'ativo')` : "'ativo'::text"} AS status_operacional,
+            ${contaStatusColumn ? `COALESCE(u.${contaStatusColumn}, 'ativo')` : "'ativo'::text"} AS conta_status,
+            ${createdAtColumn ? `u.${createdAtColumn}` : "NULL::timestamptz"} AS created_at,
+            NULL::text AS veiculo_nome,
+            NULL::text AS placa,
             NULL::text AS veiculo_marca,
             NULL::text AS veiculo_modelo,
             '[]'::json AS veiculos_vinculados,
@@ -484,9 +643,8 @@ const listUsersByCompanyBasic = async (
             false AS tem_veiculo_transporte,
             false AS tem_veiculo_apoio
      FROM usuarios u
-     LEFT JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
      WHERE ${whereSql}
-     ORDER BY u.created_at DESC
+     ORDER BY ${fallbackOrderBy}
      LIMIT ${limitPlaceholder} OFFSET ${offsetPlaceholder}`,
     params,
     { label: "usuarios-list-basic" }
@@ -498,6 +656,15 @@ const listUsersByCompany = async (
   empresa_id,
   { page = 1, limit = 10, search = "", role = "", status_operacional = "", escopo_operacional = "" } = {}
 ) => {
+  const schemaSnapshot = await loadListUsersSchemaSnapshot();
+  if (schemaSnapshot && !schemaSnapshot.modernReady) {
+    return listUsersByCompanyBasic(
+      empresa_id,
+      { page, limit, search, role, status_operacional, escopo_operacional },
+      null,
+      schemaSnapshot
+    );
+  }
   try {
   const clauses = ["u.empresa_id = $1"];
   const params = [empresa_id];
@@ -559,8 +726,9 @@ const listUsersByCompany = async (
     if (!isMissingSchemaField(err)) throw err;
     return listUsersByCompanyBasic(
       empresa_id,
-      { page, limit, search, role, escopo_operacional },
-      err
+      { page, limit, search, role, status_operacional, escopo_operacional },
+      err,
+      schemaSnapshot
     );
   }
 };
