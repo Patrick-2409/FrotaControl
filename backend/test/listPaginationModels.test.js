@@ -81,6 +81,9 @@ test("listUsersByCompany usa fallback quando vinculos de motorista ainda estao e
     const fallbackList = calls.find((c) => /'ativo'::text AS status_operacional/.test(c.sql));
     assert.ok(fallbackList, "esperada query basica de fallback");
     assert.ok(!/motorista_veiculos/.test(fallbackList.sql));
+    assert.ok(!/u\.profile_image_url/.test(fallbackList.sql));
+    assert.ok(!/v\.marca/.test(fallbackList.sql));
+    assert.ok(!/v\.modelo/.test(fallbackList.sql));
   } finally {
     db.pool.query = orig;
     delete require.cache[pathUm];

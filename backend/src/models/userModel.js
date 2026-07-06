@@ -462,7 +462,8 @@ const listUsersByCompanyBasic = async (
     { label: "usuarios-count-basic" }
   );
   const { rows } = await queryTimed(
-    `SELECT u.id, u.empresa_id, u.nome, u.email, u.cpf_id, u.role, u.veiculo_id, u.profile_image_url,
+    `SELECT u.id, u.empresa_id, u.nome, u.email, u.cpf_id, u.role, u.veiculo_id,
+            NULL::text AS profile_image_url,
             NULL::text AS funcao,
             NULL::text AS cnh_categoria,
             NULL::text AS cnh_numero,
@@ -474,7 +475,10 @@ const listUsersByCompanyBasic = async (
             'ativo'::text AS status_operacional,
             'ativo'::text AS conta_status,
             u.created_at,
-            v.nome AS veiculo_nome, v.placa, v.marca AS veiculo_marca, v.modelo AS veiculo_modelo,
+            v.nome AS veiculo_nome,
+            v.placa,
+            NULL::text AS veiculo_marca,
+            NULL::text AS veiculo_modelo,
             '[]'::json AS veiculos_vinculados,
             0::int AS veiculos_vinculados_count,
             false AS tem_veiculo_transporte,
