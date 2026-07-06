@@ -63,6 +63,7 @@ const sanitizeUsers = (users = []) => users.map((row) => sanitizeUser(row));
 const isMissingSchemaField = (err) => ["42703", "42P01"].includes(String(err?.code || "").trim().toUpperCase());
 const SCHEMA_CACHE_TTL_MS = 30_000;
 const tableColumnsCache = new Map();
+const SAFE_TABLE_IDENTIFIER_REGEX = /^[a-z_][a-z0-9_]*$/;
 
 const cloneSet = (value) => new Set(value instanceof Set ? [...value] : []);
 
@@ -70,6 +71,16 @@ const hasAllColumns = (available, required = []) => required.every((name) => ava
 
 const resolveExistingColumn = (available, candidates = []) =>
   candidates.find((name) => available.has(String(name || "").toLowerCase())) || null;
+
+const probeTableColumns = async (tableName) => {
+  if (!SAFE_TABLE_IDENTIFIER_REGEX.test(tableName)) return new Set();
+  const result = await pool.query(`SELECT * FROM ${tableName} LIMIT 0`);
+  return new Set(
+    (result?.fields || [])
+      .map((field) => String(field?.name || "").trim().toLowerCase())
+      .filter(Boolean)
+  );
+};
 
 const getTableColumns = async (tableName) => {
   const normalized = String(tableName || "").trim().toLowerCase();
@@ -79,14 +90,26 @@ const getTableColumns = async (tableName) => {
   if (cached && cached.expiresAt > now) {
     return cloneSet(cached.columns);
   }
-  const { rows } = await pool.query(
-    `SELECT column_name
-     FROM information_schema.columns
-     WHERE table_schema = current_schema()
-       AND table_name = $1`,
-    [normalized]
-  );
-  const columns = new Set((rows || []).map((row) => String(row?.column_name || "").trim().toLowerCase()).filter(Boolean));
+  let columns = new Set();
+  try {
+    const { rows } = await pool.query(
+      `SELECT column_name
+       FROM information_schema.columns
+       WHERE table_schema = current_schema()
+         AND table_name = $1`,
+      [normalized]
+    );
+    columns = new Set((rows || []).map((row) => String(row?.column_name || "").trim().toLowerCase()).filter(Boolean));
+  } catch {
+    columns = new Set();
+  }
+  if (!columns.size) {
+    try {
+      columns = await probeTableColumns(normalized);
+    } catch {
+      columns = new Set();
+    }
+  }
   tableColumnsCache.set(normalized, {
     columns: cloneSet(columns),
     expiresAt: now + SCHEMA_CACHE_TTL_MS,
@@ -142,7 +165,7 @@ const buildListUsersSchemaSnapshot = async () => {
   ]);
 
   const userVehicleColumn = resolveExistingColumn(userColumns, ["veiculo_id", "vehicle_id"]);
-  const userCompanyColumn = resolveExistingColumn(userColumns, ["empresa_id"]);
+  const userCompanyColumn = resolveExistingColumn(userColumns, ["empresa_id", "company_id"]);
   const modernReady =
     Boolean(userVehicleColumn) &&
     Boolean(userCompanyColumn) &&
@@ -542,14 +565,14 @@ const listUsersByCompanyBasic = async (
     schemaSnapshot?.userColumns instanceof Set
       ? cloneSet(schemaSnapshot.userColumns)
       : await getTableColumns("usuarios").catch(() =>
-          new Set(["id", "empresa_id", "nome", "email", "cpf_id", "role", "created_at"])
+          new Set(["id", "empresa_id", "company_id", "nome", "email", "cpf_id", "role", "created_at"])
         );
   if (!userColumns.size) {
-    userColumns = new Set(["id", "empresa_id", "nome", "email", "cpf_id", "role", "created_at"]);
+    userColumns = new Set(["id", "empresa_id", "company_id", "nome", "email", "cpf_id", "role", "created_at"]);
   }
 
   const idColumn = resolveExistingColumn(userColumns, ["id"]) || "id";
-  const companyColumn = resolveExistingColumn(userColumns, ["empresa_id"]) || "empresa_id";
+  const companyColumn = resolveExistingColumn(userColumns, ["empresa_id", "company_id"]) || "empresa_id";
   const nameColumn = resolveExistingColumn(userColumns, ["nome"]) || "nome";
   const emailColumn = resolveExistingColumn(userColumns, ["email"]);
   const cpfColumn = resolveExistingColumn(userColumns, ["cpf_id"]);

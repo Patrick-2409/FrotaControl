@@ -291,6 +291,90 @@ test("listUsersByCompany fallback mantém filtro de status mesmo sem coluna stat
   }
 });
 
+test("listUsersByCompany fallback suporta schema legado com company_id e vehicle_id", async () => {
+  delete require.cache[pathUm];
+  delete require.cache[pathQt];
+  delete require.cache[pathDb];
+  const db = require("../src/db");
+  const orig = db.pool.query;
+  const calls = [];
+  db.pool.query = async (sql, vals) => {
+    const text = String(sql);
+    calls.push({ sql: text, vals: vals ? [...vals] : [] });
+    if (text.includes("information_schema.columns")) {
+      const tableName = String(vals?.[0] || "");
+      if (tableName === "usuarios") {
+        return {
+          rows: [
+            { column_name: "id" },
+            { column_name: "company_id" },
+            { column_name: "nome" },
+            { column_name: "email" },
+            { column_name: "cpf_id" },
+            { column_name: "role" },
+            { column_name: "vehicle_id" },
+            { column_name: "created_at" },
+          ],
+        };
+      }
+      if (tableName === "veiculos") {
+        return {
+          rows: [
+            { column_name: "id" },
+            { column_name: "empresa_id" },
+            { column_name: "nome" },
+            { column_name: "placa" },
+          ],
+        };
+      }
+      if (tableName === "motorista_veiculos") {
+        return {
+          rows: [
+            { column_name: "empresa_id" },
+            { column_name: "motorista_id" },
+            { column_name: "veiculo_id" },
+            { column_name: "is_principal" },
+          ],
+        };
+      }
+      return { rows: [] };
+    }
+    if (text.includes("COUNT(*)")) {
+      return { rows: [{ total: 1 }] };
+    }
+    return {
+      rows: [
+        {
+          id: 77,
+          empresa_id: 9,
+          nome: "Pessoa Legada",
+          email: "legada@empresa.com",
+          cpf_id: "999",
+          role: "MOTORISTA",
+          veiculo_id: 321,
+          created_at: new Date(),
+        },
+      ],
+    };
+  };
+  try {
+    const { listUsersByCompany } = require("../src/models/userModel");
+    const result = await listUsersByCompany(9, { page: 1, limit: 20, search: "" });
+    assert.strictEqual(result.total, 1);
+    assert.strictEqual(result.items.length, 1);
+    assert.strictEqual(result.items[0].nome, "Pessoa Legada");
+    assert.strictEqual(result.items[0].empresa_id, 9);
+    const countCall = calls.find((c) => /SELECT COUNT\(\*\)::int AS total FROM usuarios u WHERE/.test(c.sql));
+    assert.ok(countCall, "esperada query de contagem");
+    assert.match(countCall.sql, /u\.company_id = \$1/);
+  } finally {
+    db.pool.query = orig;
+    delete require.cache[pathUm];
+    delete require.cache[pathQt];
+    delete require.cache[pathDb];
+  }
+});
+
 test("listManagerRecords aplica filtros exatos de veiculo_id e motorista_id", async () => {
   delete require.cache[pathRm];
   delete require.cache[pathDb];
