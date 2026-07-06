@@ -83,6 +83,15 @@ export default function EmpresaFrotaPage() {
       >
         Exportar CSV
       </button>
+      <button
+        type="button"
+        onClick={() => {
+          void fl.printFleetAssignments();
+        }}
+        className="rounded-lg border border-amber-500/45 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-100 hover:bg-amber-500/15"
+      >
+        Imprimir IDs
+      </button>
     </>
   );
 
@@ -501,7 +510,16 @@ export default function EmpresaFrotaPage() {
                   <input
                     type="checkbox"
                     checked={fl.form.usa_para_transporte}
-                    onChange={(e) => fl.setForm((f) => ({ ...f, usa_para_transporte: e.target.checked }))}
+                    onChange={(e) =>
+                      fl.setForm((f) => ({
+                        ...f,
+                        usa_para_transporte: e.target.checked,
+                        transporta_esteril: e.target.checked ? f.transporta_esteril : false,
+                        transporta_rocha: e.target.checked ? f.transporta_rocha : false,
+                        capacidade_esteril_ton: e.target.checked ? f.capacidade_esteril_ton : "",
+                        capacidade_rocha_ton: e.target.checked ? f.capacidade_rocha_ton : "",
+                      }))
+                    }
                   />
                   Usa para transporte (toneladas)
                 </label>
@@ -521,29 +539,57 @@ export default function EmpresaFrotaPage() {
                       </span>
                     </div>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                      <label className="block text-xs font-medium text-zinc-400">
-                        Estéril (t)
+                      <div className="rounded-lg border border-zinc-800 bg-zinc-950/55 p-3">
+                        <label className="flex items-center gap-2 text-xs font-semibold text-zinc-200">
+                          <input
+                            type="checkbox"
+                            checked={fl.form.transporta_esteril}
+                            onChange={(e) =>
+                              fl.setForm((f) => ({
+                                ...f,
+                                transporta_esteril: e.target.checked,
+                                capacidade_esteril_ton: e.target.checked ? f.capacidade_esteril_ton : "",
+                              }))
+                            }
+                          />
+                          Transporta estéril
+                        </label>
                         <input
                           inputMode="decimal"
-                          className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
+                          disabled={!fl.form.transporta_esteril}
+                          className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
                           value={fl.form.capacidade_esteril_ton}
                           onChange={(e) => fl.setForm((f) => ({ ...f, capacidade_esteril_ton: e.target.value }))}
-                          placeholder="Ex.: 32"
+                          placeholder="Toneladas por viagem"
                         />
-                      </label>
-                      <label className="block text-xs font-medium text-zinc-400">
-                        Rocha (t)
+                      </div>
+                      <div className="rounded-lg border border-zinc-800 bg-zinc-950/55 p-3">
+                        <label className="flex items-center gap-2 text-xs font-semibold text-zinc-200">
+                          <input
+                            type="checkbox"
+                            checked={fl.form.transporta_rocha}
+                            onChange={(e) =>
+                              fl.setForm((f) => ({
+                                ...f,
+                                transporta_rocha: e.target.checked,
+                                capacidade_rocha_ton: e.target.checked ? f.capacidade_rocha_ton : "",
+                              }))
+                            }
+                          />
+                          Transporta rocha
+                        </label>
                         <input
                           inputMode="decimal"
-                          className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
+                          disabled={!fl.form.transporta_rocha}
+                          className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
                           value={fl.form.capacidade_rocha_ton}
                           onChange={(e) => fl.setForm((f) => ({ ...f, capacidade_rocha_ton: e.target.value }))}
-                          placeholder="Ex.: 28"
+                          placeholder="Toneladas por viagem"
                         />
-                      </label>
+                      </div>
                     </div>
                     <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">
-                      Deixe vazio o material que este veículo não deve registrar. O PWA bloqueará esse lançamento.
+                      O material desmarcado fica bloqueado no PWA do apontador e não entra na produção.
                     </p>
                   </div>
                 ) : null}

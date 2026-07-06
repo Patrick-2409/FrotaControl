@@ -10,16 +10,43 @@ const { z } = require("zod");
 const { logAudit } = require("../services/auditService");
 const { logInfo } = require("../services/loggerService");
 
+const MATERIAL_ALLOWED_SQL = {
+  esteril: `COALESCE(
+    v.transporta_esteril,
+    CASE
+      WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
+        THEN v.capacidade_esteril_ton IS NOT NULL
+      ELSE COALESCE(v.capacidade_ton, 0) > 0
+    END
+  )`,
+  rocha: `COALESCE(
+    v.transporta_rocha,
+    CASE
+      WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
+        THEN v.capacidade_rocha_ton IS NOT NULL
+      ELSE COALESCE(v.capacidade_ton, 0) > 0
+    END
+  )`,
+};
+
 const MATERIAL_CAPACITY_SQL = {
   esteril: `CASE
-    WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-      THEN COALESCE(v.capacidade_esteril_ton, 0)
-    ELSE COALESCE(v.capacidade_ton, 0)
+    WHEN ${MATERIAL_ALLOWED_SQL.esteril} THEN
+      CASE
+        WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
+          THEN COALESCE(v.capacidade_esteril_ton, 0)
+        ELSE COALESCE(v.capacidade_ton, 0)
+      END
+    ELSE 0
   END`,
   rocha: `CASE
-    WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-      THEN COALESCE(v.capacidade_rocha_ton, 0)
-    ELSE COALESCE(v.capacidade_ton, 0)
+    WHEN ${MATERIAL_ALLOWED_SQL.rocha} THEN
+      CASE
+        WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
+          THEN COALESCE(v.capacidade_rocha_ton, 0)
+        ELSE COALESCE(v.capacidade_ton, 0)
+      END
+    ELSE 0
   END`,
 };
 
@@ -63,6 +90,8 @@ const parseMarcacao = (timestamp) => {
 const assertVeiculoMotoristaTransporte = async (empresaId, veiculo_id, motorista_id, tipo = null) => {
   const { rows: validRows } = await pool.query(
     `SELECT COALESCE(v.usa_para_transporte, false) AS usa_para_transporte,
+            (${MATERIAL_ALLOWED_SQL.esteril}) AS transporta_esteril,
+            (${MATERIAL_ALLOWED_SQL.rocha}) AS transporta_rocha,
             (${MATERIAL_CAPACITY_SQL.esteril})::double precision AS capacidade_esteril_ton,
             (${MATERIAL_CAPACITY_SQL.rocha})::double precision AS capacidade_rocha_ton
      FROM veiculos v
@@ -101,7 +130,7 @@ const assertVeiculoMotoristaTransporte = async (empresaId, veiculo_id, motorista
     };
   }
 
-  if (tipo === "esteril" && Number(validRows[0].capacidade_esteril_ton) <= 0) {
+  if (tipo === "esteril" && (!validRows[0].transporta_esteril || Number(validRows[0].capacidade_esteril_ton) <= 0)) {
     return {
       ok: false,
       status: 400,
@@ -109,7 +138,7 @@ const assertVeiculoMotoristaTransporte = async (empresaId, veiculo_id, motorista
     };
   }
 
-  if (tipo === "rocha" && Number(validRows[0].capacidade_rocha_ton) <= 0) {
+  if (tipo === "rocha" && (!validRows[0].transporta_rocha || Number(validRows[0].capacidade_rocha_ton) <= 0)) {
     return {
       ok: false,
       status: 400,
@@ -176,6 +205,8 @@ const listVehiclesApontador = async (req, res) => {
          v.combustivel_principal,
          v.capacidade_litros,
          v.capacidade_ton,
+         (${MATERIAL_ALLOWED_SQL.esteril}) AS transporta_esteril,
+         (${MATERIAL_ALLOWED_SQL.rocha}) AS transporta_rocha,
          (${MATERIAL_CAPACITY_SQL.esteril})::double precision AS capacidade_esteril_ton,
          (${MATERIAL_CAPACITY_SQL.rocha})::double precision AS capacidade_rocha_ton,
          v.horimetro_atual,

@@ -533,14 +533,30 @@ const dashboardStats = async ({ empresa_id = null, periodo = null } = {}) => {
                   WHEN COALESCE(v.usa_para_transporte, false) = true
                   THEN CASE
                     WHEN vi.tipo = 'esteril' THEN CASE
-                      WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-                        THEN COALESCE(v.capacidade_esteril_ton, 0)
-                      ELSE COALESCE(v.capacidade_ton, 0)
+                      WHEN COALESCE(v.transporta_esteril, CASE
+                        WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
+                          THEN v.capacidade_esteril_ton IS NOT NULL
+                        ELSE COALESCE(v.capacidade_ton, 0) > 0
+                      END)
+                      THEN CASE
+                        WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
+                          THEN COALESCE(v.capacidade_esteril_ton, 0)
+                        ELSE COALESCE(v.capacidade_ton, 0)
+                      END
+                      ELSE 0
                     END
                     WHEN vi.tipo = 'rocha' THEN CASE
-                      WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-                        THEN COALESCE(v.capacidade_rocha_ton, 0)
-                      ELSE COALESCE(v.capacidade_ton, 0)
+                      WHEN COALESCE(v.transporta_rocha, CASE
+                        WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
+                          THEN v.capacidade_rocha_ton IS NOT NULL
+                        ELSE COALESCE(v.capacidade_ton, 0) > 0
+                      END)
+                      THEN CASE
+                        WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
+                          THEN COALESCE(v.capacidade_rocha_ton, 0)
+                        ELSE COALESCE(v.capacidade_ton, 0)
+                      END
+                      ELSE 0
                     END
                     ELSE COALESCE(v.capacidade_ton, 0)
                   END

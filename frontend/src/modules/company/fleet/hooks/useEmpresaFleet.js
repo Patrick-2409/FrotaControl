@@ -28,6 +28,8 @@ const emptyVehicleForm = () => ({
   capacidade_ton: "",
   capacidade_esteril_ton: "",
   capacidade_rocha_ton: "",
+  transporta_esteril: false,
+  transporta_rocha: false,
   horimetro_atual: "",
   hodometro_atual: "",
   usa_para_transporte: false,
@@ -44,6 +46,18 @@ function rowToForm(v) {
   const f = emptyVehicleForm();
   if (!v) return f;
   const hasSpecificCapacity = v.capacidade_esteril_ton != null || v.capacidade_rocha_ton != null;
+  const transportaEsteril =
+    v.transporta_esteril != null
+      ? Boolean(v.transporta_esteril)
+      : hasSpecificCapacity
+        ? v.capacidade_esteril_ton != null
+        : v.capacidade_ton != null;
+  const transportaRocha =
+    v.transporta_rocha != null
+      ? Boolean(v.transporta_rocha)
+      : hasSpecificCapacity
+        ? v.capacidade_rocha_ton != null
+        : v.capacidade_ton != null;
   const ymd = (d) => {
     if (!d) return "";
     const s = String(d).slice(0, 10);
@@ -75,6 +89,8 @@ function rowToForm(v) {
         : !hasSpecificCapacity && v.capacidade_ton != null
           ? String(v.capacidade_ton)
           : "",
+    transporta_esteril: transportaEsteril,
+    transporta_rocha: transportaRocha,
     horimetro_atual: v.horimetro_atual != null ? String(v.horimetro_atual) : "",
     hodometro_atual: v.hodometro_atual != null ? String(v.hodometro_atual) : "",
     usa_para_transporte: Boolean(v.usa_para_transporte),
@@ -103,6 +119,8 @@ function formToPayload(form) {
     return Number.isFinite(n) ? n : null;
   };
   const usa = Boolean(form.usa_para_transporte);
+  const transportaEsteril = usa && Boolean(form.transporta_esteril);
+  const transportaRocha = usa && Boolean(form.transporta_rocha);
   const capacidadeEsterilTon = num(form.capacidade_esteril_ton);
   const capacidadeRochaTon = num(form.capacidade_rocha_ton);
   return {
@@ -117,9 +135,11 @@ function formToPayload(form) {
     chassi: form.chassi.trim() || null,
     combustivel_principal: form.combustivel_principal.trim() || null,
     capacidade_litros: num(form.capacidade_litros),
-    capacidade_ton: usa ? capacidadeEsterilTon ?? capacidadeRochaTon ?? num(form.capacidade_ton) : null,
-    capacidade_esteril_ton: usa ? capacidadeEsterilTon : null,
-    capacidade_rocha_ton: usa ? capacidadeRochaTon : null,
+    capacidade_ton: usa ? (transportaEsteril ? capacidadeEsterilTon : null) ?? (transportaRocha ? capacidadeRochaTon : null) ?? num(form.capacidade_ton) : null,
+    transporta_esteril: transportaEsteril,
+    transporta_rocha: transportaRocha,
+    capacidade_esteril_ton: transportaEsteril ? capacidadeEsterilTon : null,
+    capacidade_rocha_ton: transportaRocha ? capacidadeRochaTon : null,
     horimetro_atual: num(form.horimetro_atual),
     hodometro_atual: num(form.hodometro_atual),
     usa_para_transporte: usa,
@@ -132,6 +152,120 @@ function formToPayload(form) {
     fleet_telemetry_meta: form.fleet_telemetry_meta || {},
   };
 }
+
+const escapeHtml = (value) =>
+  String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+
+const codigoLabel = (value) => {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? String(n).padStart(2, "0") : "-";
+};
+
+const materialLabel = (vehicle) => {
+  const parts = [];
+  const hasSpecificCapacity = vehicle.capacidade_esteril_ton != null || vehicle.capacidade_rocha_ton != null;
+  const transportaEsteril =
+    vehicle.transporta_esteril != null
+      ? Boolean(vehicle.transporta_esteril)
+      : hasSpecificCapacity
+        ? vehicle.capacidade_esteril_ton != null
+        : vehicle.capacidade_ton != null;
+  const transportaRocha =
+    vehicle.transporta_rocha != null
+      ? Boolean(vehicle.transporta_rocha)
+      : hasSpecificCapacity
+        ? vehicle.capacidade_rocha_ton != null
+        : vehicle.capacidade_ton != null;
+  const capacidadeEsteril = hasSpecificCapacity ? vehicle.capacidade_esteril_ton : vehicle.capacidade_ton;
+  const capacidadeRocha = hasSpecificCapacity ? vehicle.capacidade_rocha_ton : vehicle.capacidade_ton;
+  if (transportaEsteril && capacidadeEsteril != null) {
+    parts.push(`Estéril ${Number(capacidadeEsteril).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} t`);
+  }
+  if (transportaRocha && capacidadeRocha != null) {
+    parts.push(`Rocha ${Number(capacidadeRocha).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} t`);
+  }
+  return parts.length ? parts.join(" / ") : "Não configurado";
+};
+
+const motoristasLabel = (vehicle) => {
+  const linked = Array.isArray(vehicle.motoristas_vinculados) ? vehicle.motoristas_vinculados : [];
+  if (linked.length) {
+    return linked.map((m) => `${m.nome || "Motorista"}${m.is_principal ? " (principal)" : ""}`).join(", ");
+  }
+  return vehicle.motorista_nome || "-";
+};
+
+const buildPrintableFleetHtml = (vehicles, filtros = {}) => {
+  const data = new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+  const filtroTexto = [
+    filtros.search ? `Busca: ${filtros.search}` : null,
+    filtros.status ? `Status: ${filtros.status}` : null,
+    filtros.tipo ? `Tipo: ${filtros.tipo}` : null,
+  ].filter(Boolean).join(" · ") || "Todos os veículos";
+  const rows = vehicles
+    .map((v) => `
+      <tr>
+        <td class="code">#${escapeHtml(codigoLabel(v.codigo_operacional))}</td>
+        <td><strong>${escapeHtml(v.placa || "-")}</strong><br><span>${escapeHtml(v.nome || "-")}</span></td>
+        <td>${escapeHtml(motoristasLabel(v))}</td>
+        <td>${escapeHtml(materialLabel(v))}</td>
+        <td>${escapeHtml([v.tipo, v.categoria].filter(Boolean).join(" · ") || "-")}</td>
+      </tr>
+    `)
+    .join("");
+
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Relação de veículos - FrotaMax</title>
+  <style>
+    @page { size: A4; margin: 12mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #111827; font-family: Arial, sans-serif; }
+    header { display: flex; justify-content: space-between; gap: 16px; border-bottom: 2px solid #111827; padding-bottom: 12px; margin-bottom: 16px; }
+    h1 { margin: 0; font-size: 22px; }
+    p { margin: 4px 0 0; color: #4b5563; font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    th { background: #111827; color: #fff; text-align: left; padding: 8px; }
+    td { border-bottom: 1px solid #d1d5db; padding: 8px; vertical-align: top; }
+    .code { width: 56px; font-size: 18px; font-weight: 800; color: #92400e; white-space: nowrap; }
+    span { color: #6b7280; }
+    footer { margin-top: 14px; color: #6b7280; font-size: 10px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Relação de veículos e motoristas</h1>
+      <p>${escapeHtml(filtroTexto)}</p>
+    </div>
+    <div>
+      <p>FrotaMax</p>
+      <p>Emitido em ${escapeHtml(data)}</p>
+    </div>
+  </header>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Veículo</th>
+        <th>Motorista(s)</th>
+        <th>Materiais autorizados</th>
+        <th>Tipo / categoria</th>
+      </tr>
+    </thead>
+    <tbody>${rows || '<tr><td colspan="5">Nenhum veículo encontrado.</td></tr>'}</tbody>
+  </table>
+  <footer>Use o ID operacional no PWA do apontador para selecionar rapidamente o veículo correto.</footer>
+</body>
+</html>`;
+};
 
 export function useEmpresaFleet() {
   const [summary, setSummary] = useState(null);
@@ -394,6 +528,34 @@ export function useEmpresaFleet() {
     URL.revokeObjectURL(url);
   }, [debouncedSearch, statusFilter, tipoFilter]);
 
+  const printFleetAssignments = useCallback(async () => {
+    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=1100,height=800");
+    if (!printWindow) {
+      throw new Error("Não foi possível abrir a janela de impressão.");
+    }
+    printWindow.document.write("<p>Preparando relação de veículos...</p>");
+    const { data } = await fleetGet("/dashboard/manage/vehicles", {
+      label: "print-veiculos",
+      params: {
+        page: 1,
+        limit: 1000,
+        search: debouncedSearch || undefined,
+        status_operacional: statusFilter || undefined,
+        tipo: tipoFilter || undefined,
+      },
+    });
+    const html = buildPrintableFleetHtml(data?.items ?? [], {
+      search: debouncedSearch,
+      status: statusFilter,
+      tipo: tipoFilter,
+    });
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => printWindow.print(), 250);
+  }, [debouncedSearch, statusFilter, tipoFilter]);
+
   return {
     fmtInt,
     STATUS_OPTS,
@@ -434,5 +596,6 @@ export function useEmpresaFleet() {
     addMaintenance,
     removeMaintenance,
     downloadFleetCsv,
+    printFleetAssignments,
   };
 }

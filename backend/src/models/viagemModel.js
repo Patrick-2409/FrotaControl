@@ -1,14 +1,38 @@
 const { pool } = require("../db");
 
+const TRANSPORTA_ESTERIL_SQL = `COALESCE(
+  v.transporta_esteril,
+  CASE
+    WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
+      THEN v.capacidade_esteril_ton IS NOT NULL
+    ELSE COALESCE(v.capacidade_ton, 0) > 0
+  END
+)`;
+const TRANSPORTA_ROCHA_SQL = `COALESCE(
+  v.transporta_rocha,
+  CASE
+    WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
+      THEN v.capacidade_rocha_ton IS NOT NULL
+    ELSE COALESCE(v.capacidade_ton, 0) > 0
+  END
+)`;
 const CAPACIDADE_ESTERIL_SQL = `CASE
-  WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-    THEN COALESCE(v.capacidade_esteril_ton, 0)
-  ELSE COALESCE(v.capacidade_ton, 0)
+  WHEN ${TRANSPORTA_ESTERIL_SQL} THEN
+    CASE
+      WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
+        THEN COALESCE(v.capacidade_esteril_ton, 0)
+      ELSE COALESCE(v.capacidade_ton, 0)
+    END
+  ELSE 0
 END`;
 const CAPACIDADE_ROCHA_SQL = `CASE
-  WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-    THEN COALESCE(v.capacidade_rocha_ton, 0)
-  ELSE COALESCE(v.capacidade_ton, 0)
+  WHEN ${TRANSPORTA_ROCHA_SQL} THEN
+    CASE
+      WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
+        THEN COALESCE(v.capacidade_rocha_ton, 0)
+      ELSE COALESCE(v.capacidade_ton, 0)
+    END
+  ELSE 0
 END`;
 
 const insertViagem = async (
@@ -236,6 +260,7 @@ const listViagensByVehicleDay = async (empresa_id, startIso, endIso, db = pool) 
        AND vi.marcacao >= $2::timestamptz
        AND vi.marcacao < $3::timestamptz
      GROUP BY v.id, v.nome, v.placa, v.capacidade_ton, v.capacidade_esteril_ton, v.capacidade_rocha_ton,
+       v.transporta_esteril, v.transporta_rocha,
        (vi.marcacao AT TIME ZONE 'America/Sao_Paulo')::date
      ORDER BY v.nome, dia_local`,
     [empresa_id, startIso, endIso]

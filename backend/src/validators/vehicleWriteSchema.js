@@ -1,6 +1,13 @@
 const { z } = require("zod");
 
 const statusEnum = z.enum(["ativo", "manutencao", "indisponivel", "parado", "operacao"]);
+const optionalBoolean = z.preprocess((value) => {
+  if (value === null || value === undefined || value === "") return undefined;
+  if (value === true || value === false) return value;
+  if (String(value).toLowerCase() === "true") return true;
+  if (String(value).toLowerCase() === "false") return false;
+  return value;
+}, z.boolean().optional());
 
 const vehicleBodySchema = z.object({
   nome: z.string().trim().min(2),
@@ -10,6 +17,8 @@ const vehicleBodySchema = z.object({
   capacidade_ton: z.coerce.number().positive().optional().nullable(),
   capacidade_esteril_ton: z.coerce.number().positive().optional().nullable(),
   capacidade_rocha_ton: z.coerce.number().positive().optional().nullable(),
+  transporta_esteril: optionalBoolean,
+  transporta_rocha: optionalBoolean,
   usa_para_transporte: z.coerce.boolean().optional().default(false),
   tipo_operacao: z.enum(["transporte", "apoio"]).optional(),
   tipo: z.string().trim().max(80).optional().nullable(),
@@ -54,6 +63,22 @@ const toVehicleWritePayload = (parsed) => {
   const usa = tipo === "transporte";
   const hasSpecificCapacity =
     parsed.capacidade_esteril_ton != null || parsed.capacidade_rocha_ton != null;
+  const hasExplicitMaterial =
+    parsed.transporta_esteril !== undefined || parsed.transporta_rocha !== undefined;
+  const transportaEsteril = usa
+    ? hasExplicitMaterial
+      ? Boolean(parsed.transporta_esteril)
+      : hasSpecificCapacity
+        ? parsed.capacidade_esteril_ton != null
+        : parsed.capacidade_ton != null
+    : false;
+  const transportaRocha = usa
+    ? hasExplicitMaterial
+      ? Boolean(parsed.transporta_rocha)
+      : hasSpecificCapacity
+        ? parsed.capacidade_rocha_ton != null
+        : parsed.capacidade_ton != null
+    : false;
   const out = {
     nome: parsed.nome,
     placa: parsed.placa,
@@ -62,13 +87,19 @@ const toVehicleWritePayload = (parsed) => {
     capacidade_ton: usa
       ? parsed.capacidade_ton ?? parsed.capacidade_esteril_ton ?? parsed.capacidade_rocha_ton ?? null
       : null,
+    transporta_esteril: transportaEsteril,
+    transporta_rocha: transportaRocha,
     capacidade_esteril_ton: usa
-      ? hasSpecificCapacity
+      ? !transportaEsteril
+        ? null
+        : hasSpecificCapacity
         ? parsed.capacidade_esteril_ton ?? null
         : parsed.capacidade_ton ?? null
       : null,
     capacidade_rocha_ton: usa
-      ? hasSpecificCapacity
+      ? !transportaRocha
+        ? null
+        : hasSpecificCapacity
         ? parsed.capacidade_rocha_ton ?? null
         : parsed.capacidade_ton ?? null
       : null,

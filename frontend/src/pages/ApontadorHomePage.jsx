@@ -345,6 +345,7 @@ export default function ApontadorHomePage() {
   const capacidadeRochaTon = Number(veiculoSelecionado?.capacidadePorMaterial?.rocha) || 0;
   const temMotoristaVinculado = Boolean(veiculoSelecionado?.motorista?.id);
   const temMaterialConfigurado = capacidadeEsterilTon > 0 || capacidadeRochaTon > 0;
+  const codigoVeiculoInvalido = Boolean(codigoVeiculo) && !veiculoSelecionado;
 
   const idsVeiculosEmpresa = useMemo(
     () => [...new Set(veiculos.map((v) => Number(v.id)).filter((n) => Number.isFinite(n) && n > 0))],
@@ -619,6 +620,7 @@ export default function ApontadorHomePage() {
             veiculoId={veiculoId}
             codigoVeiculo={codigoVeiculo}
             veiculoSelecionado={veiculoSelecionado}
+            codigoVeiculoInvalido={codigoVeiculoInvalido}
             onChangeVeiculo={selecionarVeiculo}
             onChangeCodigoVeiculo={selecionarVeiculoPorCodigo}
           />

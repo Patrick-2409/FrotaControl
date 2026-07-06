@@ -445,7 +445,8 @@ const listAppVehicles = async (req, res) => {
   }
 
   const { rows } = await pool.query(
-    `SELECT id, nome, placa, marca, modelo, capacidade_ton, capacidade_esteril_ton, capacidade_rocha_ton, usa_para_transporte
+    `SELECT id, nome, placa, marca, modelo, capacidade_ton, capacidade_esteril_ton, capacidade_rocha_ton,
+            transporta_esteril, transporta_rocha, usa_para_transporte
      FROM veiculos
      ${whereSql}
      ORDER BY nome ASC, placa ASC`,

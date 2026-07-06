@@ -672,8 +672,19 @@ const dashboardAlertas = async (req, res) => {
      FROM veiculos
      WHERE empresa_id = $1
        AND COALESCE(usa_para_transporte, false) = true
-       AND COALESCE(capacidade_esteril_ton, capacidade_ton, 0) <= 0
-       AND COALESCE(capacidade_rocha_ton, capacidade_ton, 0) <= 0`,
+       AND (
+         CASE
+           WHEN COALESCE(transporta_esteril, false) = true
+             THEN COALESCE(capacidade_esteril_ton, capacidade_ton, 0) > 0
+           ELSE false
+         END
+         OR
+         CASE
+           WHEN COALESCE(transporta_rocha, false) = true
+             THEN COALESCE(capacidade_rocha_ton, capacidade_ton, 0) > 0
+           ELSE false
+         END
+       ) = false`,
     [empresa_id]
   );
   const veiculos_sem_capacidade = Number(capRows[0]?.c ?? 0);

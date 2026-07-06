@@ -81,6 +81,8 @@ const initDb = async () => {
       placa VARCHAR(20) NOT NULL,
       marca VARCHAR(120),
       modelo VARCHAR(120),
+      transporta_esteril BOOLEAN,
+      transporta_rocha BOOLEAN,
       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
       UNIQUE (empresa_id, placa)
     );
@@ -187,6 +189,8 @@ const initDb = async () => {
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS capacidade_esteril_ton NUMERIC(10, 2);
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS capacidade_rocha_ton NUMERIC(10, 2);
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS codigo_operacional INTEGER;
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS transporta_esteril BOOLEAN;
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS transporta_rocha BOOLEAN;
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS usa_para_transporte BOOLEAN NOT NULL DEFAULT false;
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS tipo_operacao VARCHAR(20) NOT NULL DEFAULT 'apoio';
     ALTER TABLE romaneios ADD COLUMN IF NOT EXISTS version_of VARCHAR(80);
@@ -225,6 +229,32 @@ const initDb = async () => {
 
     UPDATE veiculos
     SET tipo_operacao = CASE WHEN COALESCE(usa_para_transporte, false) THEN 'transporte' ELSE 'apoio' END;
+  `);
+
+  await pool.query(`
+    UPDATE veiculos
+    SET transporta_esteril = CASE
+      WHEN COALESCE(usa_para_transporte, false) = false THEN false
+      WHEN capacidade_esteril_ton IS NOT NULL OR capacidade_rocha_ton IS NOT NULL THEN capacidade_esteril_ton IS NOT NULL
+      ELSE COALESCE(capacidade_ton, 0) > 0
+    END
+    WHERE transporta_esteril IS NULL;
+
+    UPDATE veiculos
+    SET transporta_rocha = CASE
+      WHEN COALESCE(usa_para_transporte, false) = false THEN false
+      WHEN capacidade_esteril_ton IS NOT NULL OR capacidade_rocha_ton IS NOT NULL THEN capacidade_rocha_ton IS NOT NULL
+      ELSE COALESCE(capacidade_ton, 0) > 0
+    END
+    WHERE transporta_rocha IS NULL;
+
+    UPDATE veiculos
+    SET capacidade_esteril_ton = NULL
+    WHERE transporta_esteril IS FALSE;
+
+    UPDATE veiculos
+    SET capacidade_rocha_ton = NULL
+    WHERE transporta_rocha IS FALSE;
   `);
 
   await pool.query(`

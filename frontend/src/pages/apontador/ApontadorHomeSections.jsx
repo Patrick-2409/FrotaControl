@@ -79,6 +79,7 @@ export const ApontadorVeiculoField = memo(function ApontadorVeiculoField({
   veiculoId,
   codigoVeiculo,
   veiculoSelecionado,
+  codigoVeiculoInvalido,
   onChangeVeiculo,
   onChangeCodigoVeiculo,
 }) {
@@ -103,6 +104,7 @@ export const ApontadorVeiculoField = memo(function ApontadorVeiculoField({
           className={`${inputClass} fc-apontador-select block w-full text-center text-3xl font-black tracking-[0.14em] tabular-nums sm:text-4xl`}
           inputMode="numeric"
           pattern="[0-9]*"
+          enterKeyHint="done"
           autoComplete="off"
           maxLength={4}
           placeholder="01"
@@ -114,9 +116,13 @@ export const ApontadorVeiculoField = memo(function ApontadorVeiculoField({
         {veiculoSelecionadoLabel ? (
           <p
             id="apontador-veiculo-selecionado"
-            className="mt-2 rounded-xl border border-slate-600/60 bg-slate-900/72 px-3 py-2 text-center text-sm font-semibold text-slate-100"
+            className="mt-2 rounded-xl border border-emerald-400/35 bg-emerald-500/10 px-3 py-2 text-center text-sm font-semibold text-emerald-50"
           >
             {veiculoSelecionadoLabel}
+          </p>
+        ) : codigoVeiculoInvalido ? (
+          <p className="mt-2 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-center text-xs font-semibold text-amber-100">
+            ID não encontrado na relação de veículos.
           </p>
         ) : (
           <p className="mt-2 text-center text-xs text-slate-500">

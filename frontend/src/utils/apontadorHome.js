@@ -9,8 +9,20 @@ export const mapVeiculoApi = (v) => {
   const rawCapacidadeEsterilTon = parseCapacidadeTon(v.capacidade_esteril_ton);
   const rawCapacidadeRochaTon = parseCapacidadeTon(v.capacidade_rocha_ton);
   const hasSpecificCapacity = rawCapacidadeEsterilTon != null || rawCapacidadeRochaTon != null;
-  const capacidadeEsterilTon = hasSpecificCapacity ? rawCapacidadeEsterilTon : capacidadeTon;
-  const capacidadeRochaTon = hasSpecificCapacity ? rawCapacidadeRochaTon : capacidadeTon;
+  const transportaEsteril =
+    v.transporta_esteril != null
+      ? Boolean(v.transporta_esteril)
+      : hasSpecificCapacity
+        ? rawCapacidadeEsterilTon != null
+        : capacidadeTon != null;
+  const transportaRocha =
+    v.transporta_rocha != null
+      ? Boolean(v.transporta_rocha)
+      : hasSpecificCapacity
+        ? rawCapacidadeRochaTon != null
+        : capacidadeTon != null;
+  const capacidadeEsterilTon = transportaEsteril ? (hasSpecificCapacity ? rawCapacidadeEsterilTon : capacidadeTon) : null;
+  const capacidadeRochaTon = transportaRocha ? (hasSpecificCapacity ? rawCapacidadeRochaTon : capacidadeTon) : null;
   const codigoApontador = Number(v.codigo_apontador ?? v.codigo_operacional);
   const codigoLabel = Number.isFinite(codigoApontador) && codigoApontador > 0
     ? String(codigoApontador).padStart(2, "0")
@@ -26,6 +38,8 @@ export const mapVeiculoApi = (v) => {
     capacidadeTon,
     capacidadeEsterilTon,
     capacidadeRochaTon,
+    transportaEsteril,
+    transportaRocha,
     capacidadePorMaterial: {
       esteril: capacidadeEsterilTon,
       rocha: capacidadeRochaTon,

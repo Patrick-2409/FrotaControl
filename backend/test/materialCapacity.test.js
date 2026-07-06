@@ -29,6 +29,8 @@ test("cadastro de veiculo de transporte preserva capacidades por material", () =
   const out = toVehicleWritePayload(parsed);
 
   assert.strictEqual(out.capacidade_ton, 32);
+  assert.strictEqual(out.transporta_esteril, true);
+  assert.strictEqual(out.transporta_rocha, true);
   assert.strictEqual(out.capacidade_esteril_ton, 32);
   assert.strictEqual(out.capacidade_rocha_ton, 28);
 });
@@ -46,6 +48,28 @@ test("cadastro de veiculo de transporte nao preenche material nao transportado",
   const out = toVehicleWritePayload(parsed);
 
   assert.strictEqual(out.capacidade_ton, 32);
+  assert.strictEqual(out.transporta_esteril, true);
+  assert.strictEqual(out.transporta_rocha, false);
+  assert.strictEqual(out.capacidade_esteril_ton, 32);
+  assert.strictEqual(out.capacidade_rocha_ton, null);
+});
+
+test("cadastro respeita material desmarcado mesmo com tonelagem residual", () => {
+  const parsed = vehicleBodySchema.parse({
+    nome: "Caminhao bloqueio",
+    placa: "MAT1A25",
+    tipo_operacao: "transporte",
+    usa_para_transporte: true,
+    transporta_esteril: true,
+    transporta_rocha: false,
+    capacidade_esteril_ton: 32,
+    capacidade_rocha_ton: 28,
+  });
+
+  const out = toVehicleWritePayload(parsed);
+
+  assert.strictEqual(out.transporta_esteril, true);
+  assert.strictEqual(out.transporta_rocha, false);
   assert.strictEqual(out.capacidade_esteril_ton, 32);
   assert.strictEqual(out.capacidade_rocha_ton, null);
 });

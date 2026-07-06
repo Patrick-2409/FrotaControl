@@ -3,22 +3,49 @@ const { queryTimed } = require("../utils/queryTimed");
 
 const STATUS_VALUES = new Set(["ativo", "manutencao", "indisponivel", "parado", "operacao"]);
 
+const MATERIAL_ALLOWED_SQL = {
+  esteril: `COALESCE(
+    v.transporta_esteril,
+    CASE
+      WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
+        THEN v.capacidade_esteril_ton IS NOT NULL
+      ELSE COALESCE(v.capacidade_ton, 0) > 0
+    END
+  )`,
+  rocha: `COALESCE(
+    v.transporta_rocha,
+    CASE
+      WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
+        THEN v.capacidade_rocha_ton IS NOT NULL
+      ELSE COALESCE(v.capacidade_ton, 0) > 0
+    END
+  )`,
+};
+
 const MATERIAL_CAPACITY_SQL = {
   esteril: `CASE
-    WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-      THEN COALESCE(v.capacidade_esteril_ton, 0)
-    ELSE COALESCE(v.capacidade_ton, 0)
+    WHEN ${MATERIAL_ALLOWED_SQL.esteril} THEN
+      CASE
+        WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
+          THEN COALESCE(v.capacidade_esteril_ton, 0)
+        ELSE COALESCE(v.capacidade_ton, 0)
+      END
+    ELSE 0
   END`,
   rocha: `CASE
-    WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-      THEN COALESCE(v.capacidade_rocha_ton, 0)
-    ELSE COALESCE(v.capacidade_ton, 0)
+    WHEN ${MATERIAL_ALLOWED_SQL.rocha} THEN
+      CASE
+        WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
+          THEN COALESCE(v.capacidade_rocha_ton, 0)
+        ELSE COALESCE(v.capacidade_ton, 0)
+      END
+    ELSE 0
   END`,
 };
 
 const VEHICLE_LIST_COLS = `v.id, v.empresa_id, v.codigo_operacional, v.nome, v.placa, v.marca, v.modelo, v.tipo, v.categoria, v.ano,
   v.renavam, v.chassi, v.combustivel_principal, v.capacidade_litros, v.capacidade_ton,
-  v.capacidade_esteril_ton, v.capacidade_rocha_ton,
+  v.capacidade_esteril_ton, v.capacidade_rocha_ton, v.transporta_esteril, v.transporta_rocha,
   v.horimetro_atual, v.hodometro_atual, v.usa_para_transporte, v.tipo_operacao, v.status_operacional,
   v.doc_revisao_validade, v.doc_licenciamento_validade, v.doc_seguro_validade, v.doc_inspecao_validade,
   v.manutencao_agendar_ate, v.fleet_telemetry_meta, v.created_at`;
@@ -83,6 +110,8 @@ const createVehicle = async ({
   capacidade_ton = null,
   capacidade_esteril_ton = null,
   capacidade_rocha_ton = null,
+  transporta_esteril = undefined,
+  transporta_rocha = undefined,
   usa_para_transporte = false,
   tipo_operacao = "apoio",
   tipo = null,
@@ -110,14 +139,33 @@ const createVehicle = async ({
         : "apoio";
   const usa = tipoOperacao === "transporte";
   const hasSpecificCapacity = capacidade_esteril_ton != null || capacidade_rocha_ton != null;
-  const capEsteril = normalizeCapacidade(usa, hasSpecificCapacity ? capacidade_esteril_ton : capacidade_ton);
-  const capRocha = normalizeCapacidade(usa, hasSpecificCapacity ? capacidade_rocha_ton : capacidade_ton);
+  const transportaEsteril = usa
+    ? transporta_esteril === undefined
+      ? hasSpecificCapacity
+        ? capacidade_esteril_ton != null
+        : capacidade_ton != null
+      : Boolean(transporta_esteril)
+    : false;
+  const transportaRocha = usa
+    ? transporta_rocha === undefined
+      ? hasSpecificCapacity
+        ? capacidade_rocha_ton != null
+        : capacidade_ton != null
+      : Boolean(transporta_rocha)
+    : false;
+  const capEsteril = transportaEsteril
+    ? normalizeCapacidade(usa, hasSpecificCapacity ? capacidade_esteril_ton : capacidade_ton)
+    : null;
+  const capRocha = transportaRocha
+    ? normalizeCapacidade(usa, hasSpecificCapacity ? capacidade_rocha_ton : capacidade_ton)
+    : null;
   const cap = normalizeCapacidade(usa, capacidade_ton ?? capEsteril ?? capRocha);
   const meta = normalizeTelemetryMeta(fleet_telemetry_meta);
   const st = normalizeStatus(status_operacional);
   const { rows } = await pool.query(
     `INSERT INTO veiculos (
        empresa_id, codigo_operacional, nome, placa, marca, modelo, capacidade_ton, capacidade_esteril_ton, capacidade_rocha_ton,
+       transporta_esteril, transporta_rocha,
        usa_para_transporte, tipo_operacao,
        tipo, categoria, ano, renavam, chassi, combustivel_principal, capacidade_litros,
        horimetro_atual, hodometro_atual, status_operacional,
@@ -127,7 +175,7 @@ const createVehicle = async ({
      VALUES (
        $1,
        COALESCE((SELECT MAX(v.codigo_operacional) + 1 FROM veiculos v WHERE v.empresa_id = $1), 1),
-       $2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26::jsonb
+       $2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28::jsonb
      )
      RETURNING *`,
     [
@@ -139,6 +187,8 @@ const createVehicle = async ({
       cap,
       capEsteril,
       capRocha,
+      transportaEsteril,
+      transportaRocha,
       usa,
       tipoOperacao,
       trimOrNull(tipo),
@@ -295,10 +345,14 @@ const updateVehicle = async (id, empresa_id, data) => {
   let capacidade_ton = existing.capacidade_ton;
   let capacidade_esteril_ton = existing.capacidade_esteril_ton;
   let capacidade_rocha_ton = existing.capacidade_rocha_ton;
+  let transporta_esteril = existing.transporta_esteril;
+  let transporta_rocha = existing.transporta_rocha;
   if (!usa) {
     capacidade_ton = null;
     capacidade_esteril_ton = null;
     capacidade_rocha_ton = null;
+    transporta_esteril = false;
+    transporta_rocha = false;
   } else if (Object.prototype.hasOwnProperty.call(data, "capacidade_ton")) {
     capacidade_ton = normalizeCapacidade(true, data.capacidade_ton);
   }
@@ -306,12 +360,17 @@ const updateVehicle = async (id, empresa_id, data) => {
     const hasCapacidadeTon = Object.prototype.hasOwnProperty.call(data, "capacidade_ton");
     const hasCapacidadeEsteril = Object.prototype.hasOwnProperty.call(data, "capacidade_esteril_ton");
     const hasCapacidadeRocha = Object.prototype.hasOwnProperty.call(data, "capacidade_rocha_ton");
+    const hasTransportaEsteril = Object.prototype.hasOwnProperty.call(data, "transporta_esteril");
+    const hasTransportaRocha = Object.prototype.hasOwnProperty.call(data, "transporta_rocha");
     const hasSpecificCapacityInput =
       (hasCapacidadeEsteril && data.capacidade_esteril_ton != null && data.capacidade_esteril_ton !== "") ||
       (hasCapacidadeRocha && data.capacidade_rocha_ton != null && data.capacidade_rocha_ton !== "");
     const existingHasSpecificCapacity =
       existing.capacidade_esteril_ton != null || existing.capacidade_rocha_ton != null;
     const shouldFallbackFromCapacityTon = !hasSpecificCapacityInput && !existingHasSpecificCapacity;
+
+    if (hasTransportaEsteril) transporta_esteril = Boolean(data.transporta_esteril);
+    if (hasTransportaRocha) transporta_rocha = Boolean(data.transporta_rocha);
 
     if (hasCapacidadeEsteril) {
       capacidade_esteril_ton = normalizeCapacidade(true, data.capacidade_esteril_ton);
@@ -328,6 +387,15 @@ const updateVehicle = async (id, empresa_id, data) => {
     if (!hasCapacidadeTon) {
       capacidade_ton = normalizeCapacidade(true, capacidade_ton ?? capacidade_esteril_ton ?? capacidade_rocha_ton);
     }
+
+    if (transporta_esteril == null) {
+      transporta_esteril = capacidade_esteril_ton != null;
+    }
+    if (transporta_rocha == null) {
+      transporta_rocha = capacidade_rocha_ton != null;
+    }
+    if (!transporta_esteril) capacidade_esteril_ton = null;
+    if (!transporta_rocha) capacidade_rocha_ton = null;
   }
 
   const nome = data.nome ?? existing.nome;
@@ -389,24 +457,26 @@ const updateVehicle = async (id, empresa_id, data) => {
          capacidade_ton = $7,
          capacidade_esteril_ton = $8,
          capacidade_rocha_ton = $9,
-         usa_para_transporte = $10,
-         tipo_operacao = $11,
-         tipo = $12,
-         categoria = $13,
-         ano = $14,
-         renavam = $15,
-         chassi = $16,
-         combustivel_principal = $17,
-         capacidade_litros = $18,
-         horimetro_atual = $19,
-         hodometro_atual = $20,
-         status_operacional = $21,
-         doc_revisao_validade = $22,
-         doc_licenciamento_validade = $23,
-         doc_seguro_validade = $24,
-         doc_inspecao_validade = $25,
-         manutencao_agendar_ate = $26,
-         fleet_telemetry_meta = $27::jsonb
+         transporta_esteril = $10,
+         transporta_rocha = $11,
+         usa_para_transporte = $12,
+         tipo_operacao = $13,
+         tipo = $14,
+         categoria = $15,
+         ano = $16,
+         renavam = $17,
+         chassi = $18,
+         combustivel_principal = $19,
+         capacidade_litros = $20,
+         horimetro_atual = $21,
+         hodometro_atual = $22,
+         status_operacional = $23,
+         doc_revisao_validade = $24,
+         doc_licenciamento_validade = $25,
+         doc_seguro_validade = $26,
+         doc_inspecao_validade = $27,
+         manutencao_agendar_ate = $28,
+         fleet_telemetry_meta = $29::jsonb
      WHERE id = $1 AND empresa_id = $2
      RETURNING *`,
     [
@@ -419,6 +489,8 @@ const updateVehicle = async (id, empresa_id, data) => {
       capacidade_ton,
       capacidade_esteril_ton,
       capacidade_rocha_ton,
+      transporta_esteril,
+      transporta_rocha,
       usa,
       tipoOperacao,
       tipoVeiculo,
