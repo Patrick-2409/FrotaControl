@@ -730,17 +730,24 @@ const listUsersByCompany = async (
     { label: "usuarios-count" }
   );
   const { rows } = await queryTimed(
-    `SELECT u.id, u.empresa_id, u.nome, u.email, u.cpf_id, u.role, u.veiculo_id, u.profile_image_url,
+    `WITH page_users AS (
+       SELECT u.id, u.empresa_id, u.nome, u.email, u.cpf_id, u.role, u.veiculo_id, u.profile_image_url,
+              u.funcao, u.cnh_categoria, u.cnh_numero, u.cnh_validade, u.treinamentos, u.observacoes,
+              u.equipamento_vinculo, u.operacao_escopo, u.status_operacional, u.conta_status, u.created_at
+       FROM usuarios u
+       WHERE ${whereSql}
+       ORDER BY u.created_at DESC, u.id DESC
+       LIMIT ${limitPlaceholder} OFFSET ${offsetPlaceholder}
+     )
+     SELECT u.id, u.empresa_id, u.nome, u.email, u.cpf_id, u.role, u.veiculo_id, u.profile_image_url,
             u.funcao, u.cnh_categoria, u.cnh_numero, u.cnh_validade, u.treinamentos, u.observacoes,
             u.equipamento_vinculo, u.operacao_escopo, u.status_operacional, u.conta_status, u.created_at,
             v.nome AS veiculo_nome, v.placa, v.marca AS veiculo_marca, v.modelo AS veiculo_modelo,
             ${USER_VEHICLE_LINKS_SELECT}
-     FROM usuarios u
+     FROM page_users u
      LEFT JOIN veiculos v ON v.id = u.veiculo_id AND v.empresa_id = u.empresa_id
      ${USER_VEHICLE_LINKS_JOIN}
-     WHERE ${whereSql}
-     ORDER BY u.created_at DESC
-     LIMIT ${limitPlaceholder} OFFSET ${offsetPlaceholder}`,
+     ORDER BY u.created_at DESC, u.id DESC`,
     params,
     { label: "usuarios-list" }
   );

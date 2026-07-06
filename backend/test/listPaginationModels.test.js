@@ -529,6 +529,8 @@ test("listUsersByCompany envia LIMIT e OFFSET numéricos (sem undefined)", async
     await listUsersByCompany(5, { page: 2, limit: 20, search: "" });
     const selectCall = calls.find((c) => String(c.sql).includes("ORDER BY u.created_at"));
     assert.ok(selectCall, "esperado SELECT de utilizadores");
+    assert.match(selectCall.sql, /WITH page_users AS/);
+    assert.match(selectCall.sql, /FROM page_users u/);
     assert.ok(!selectCall.vals.some((x) => x === undefined), `valores: ${JSON.stringify(selectCall.vals)}`);
     assert.strictEqual(selectCall.vals[selectCall.vals.length - 2], 20);
     assert.strictEqual(selectCall.vals[selectCall.vals.length - 1], 20);
