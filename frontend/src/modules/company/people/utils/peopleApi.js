@@ -6,12 +6,22 @@ export const PEOPLE_LOAD_ERROR = "Erro ao carregar dados de pessoas";
 /**
  * GET com timeout dedicado à tela Pessoas e medição de tempo em desenvolvimento.
  */
-export async function peopleGet(url, { params, label = "people-request" } = {}) {
+export async function peopleGet(
+  url,
+  {
+    params,
+    label = "people-request",
+    skipErrorLog = false,
+    skipGlobalErrorToast = false,
+  } = {}
+) {
   if (import.meta.env.DEV) console.time(label);
   try {
     return await api.get(url, {
       params,
       timeout: PEOPLE_FETCH_TIMEOUT_MS,
+      skipErrorLog,
+      skipGlobalErrorToast,
     });
   } finally {
     if (import.meta.env.DEV) console.timeEnd(label);

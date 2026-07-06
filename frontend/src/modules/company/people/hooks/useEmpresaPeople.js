@@ -14,6 +14,8 @@ export const PEOPLE_ROLE_FILTER_OPTS = [
 ];
 
 const ROLE_OPTS = PEOPLE_ROLE_FILTER_OPTS;
+const USERS_500_MESSAGE = "Não foi possível carregar a lista de pessoas no momento.";
+const USERS_500_AUTO_RETRY_COOLDOWN_MS = 12_000;
 
 const STATUS_OPTS = [
   { value: "", label: "Todos os status" },
@@ -172,6 +174,7 @@ export function useEmpresaPeople() {
   const [riscoFilterLoading, setRiscoFilterLoading] = useState(false);
 
   const usersReqRef = useRef(0);
+  const usersFailureRef = useRef({ key: "", status: null, blockUntil: 0 });
   const dashboardReqRef = useRef(0);
   const dashboardLoadedRef = useRef(false);
   const riscoUrlInitRef = useRef(false);
@@ -182,13 +185,27 @@ export function useEmpresaPeople() {
     return () => clearTimeout(t);
   }, [search]);
 
-  const loadUsers = useCallback(async () => {
+  const loadUsers = useCallback(async ({ force = false } = {}) => {
+    const requestKey = [page, debouncedSearch, roleFilter, statusFilter].join("::");
+    const failure = usersFailureRef.current;
+    if (
+      !force &&
+      failure?.status === 500 &&
+      failure?.key === requestKey &&
+      Number(failure?.blockUntil || 0) > Date.now()
+    ) {
+      setListLoading(false);
+      setListError(USERS_500_MESSAGE);
+      return;
+    }
     const reqId = ++usersReqRef.current;
     setListLoading(true);
     setListError(null);
     try {
       const { data } = await peopleGet("/dashboard/manage/users", {
         label: "fetch-pessoas-usuarios",
+        skipErrorLog: true,
+        skipGlobalErrorToast: true,
         params: {
           page,
           limit: 20,
@@ -201,9 +218,21 @@ export function useEmpresaPeople() {
       setUsers(data?.items ?? []);
       setTotal(Number(data?.total ?? 0));
       setTotalPages(Number(data?.totalPages ?? 1));
+      usersFailureRef.current = { key: "", status: null, blockUntil: 0 };
     } catch (e) {
       if (reqId !== usersReqRef.current) return;
-      setListError(peopleErrorMessage(e, PEOPLE_LOAD_ERROR));
+      const status = Number(e?.response?.status || 0);
+      if (status === 500) {
+        usersFailureRef.current = {
+          key: requestKey,
+          status: 500,
+          blockUntil: Date.now() + USERS_500_AUTO_RETRY_COOLDOWN_MS,
+        };
+        setListError(USERS_500_MESSAGE);
+      } else {
+        usersFailureRef.current = { key: "", status: null, blockUntil: 0 };
+        setListError(peopleErrorMessage(e, PEOPLE_LOAD_ERROR));
+      }
       setUsers([]);
       setTotal(0);
       setTotalPages(1);
@@ -435,7 +464,7 @@ export function useEmpresaPeople() {
     setStatusFilter,
     listLoading,
     listError,
-    refetchUsers: loadUsers,
+    refetchUsers: () => loadUsers({ force: true }),
     vehicles,
     vehiclesPicklistLoading,
     panelOpen,
