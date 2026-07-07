@@ -26,7 +26,7 @@ test("listVehicles envia LIMIT e OFFSET numéricos (sem undefined)", async () =>
   try {
     const { listVehicles } = require("../src/models/vehicleModel");
     await listVehicles(7, { page: 3, limit: 12, search: "" });
-    const selectCall = calls.find((c) => String(c.sql).includes("ORDER BY v.created_at"));
+    const selectCall = calls.find((c) => String(c.sql).includes("v.codigo_operacional ASC NULLS LAST"));
     assert.ok(selectCall, "esperado SELECT de veículos");
     assert.ok(!selectCall.vals.some((x) => x === undefined), `valores: ${JSON.stringify(selectCall.vals)}`);
     assert.strictEqual(selectCall.vals[selectCall.vals.length - 2], 12);

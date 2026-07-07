@@ -90,6 +90,51 @@ const normalizeDate = (v) => {
   return s;
 };
 
+const normalizeOperationalCode = (v) => {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.trunc(n);
+};
+
+const normalizeTipoOperacao = (tipo_operacao, usa_para_transporte) =>
+  tipo_operacao === "transporte" || tipo_operacao === "apoio"
+    ? tipo_operacao
+    : Boolean(usa_para_transporte)
+      ? "transporte"
+      : "apoio";
+
+const normalizeVehicleCodeSeries = async (client, empresa_id, tipo_operacao, targetId = null, desiredPosition = null) => {
+  const tipo = normalizeTipoOperacao(tipo_operacao, tipo_operacao === "transporte");
+  const { rows } = await client.query(
+    `SELECT id
+     FROM veiculos
+     WHERE empresa_id = $1 AND tipo_operacao = $2
+     ORDER BY codigo_operacional ASC NULLS LAST, created_at ASC, id ASC
+     FOR UPDATE`,
+    [empresa_id, tipo]
+  );
+  const target = Number(targetId);
+  const hasTarget = Number.isFinite(target) && rows.some((row) => Number(row.id) === target);
+  const ids = rows.map((row) => Number(row.id)).filter((id) => Number.isFinite(id) && (!hasTarget || id !== target));
+  if (hasTarget) {
+    const desired = normalizeOperationalCode(desiredPosition);
+    const index = desired ? Math.max(0, Math.min(ids.length, desired - 1)) : ids.length;
+    ids.splice(index, 0, target);
+  }
+  if (!ids.length) return;
+  await client.query("UPDATE veiculos SET codigo_operacional = NULL WHERE empresa_id = $1 AND id = ANY($2::int[])", [
+    empresa_id,
+    ids,
+  ]);
+  for (let i = 0; i < ids.length; i += 1) {
+    await client.query(
+      "UPDATE veiculos SET codigo_operacional = $3 WHERE empresa_id = $1 AND id = $2",
+      [empresa_id, ids[i], i + 1]
+    );
+  }
+};
+
 const normalizeTelemetryMeta = (v) => {
   if (v == null || typeof v !== "object" || Array.isArray(v)) return {};
   try {
@@ -105,6 +150,7 @@ const createVehicle = async ({
   empresa_id,
   nome,
   placa,
+  codigo_operacional = null,
   marca = null,
   modelo = null,
   capacidade_ton = null,
@@ -162,54 +208,65 @@ const createVehicle = async ({
   const cap = normalizeCapacidade(usa, capacidade_ton ?? capEsteril ?? capRocha);
   const meta = normalizeTelemetryMeta(fleet_telemetry_meta);
   const st = normalizeStatus(status_operacional);
-  const { rows } = await pool.query(
-    `INSERT INTO veiculos (
-       empresa_id, codigo_operacional, nome, placa, marca, modelo, capacidade_ton, capacidade_esteril_ton, capacidade_rocha_ton,
-       transporta_esteril, transporta_rocha,
-       usa_para_transporte, tipo_operacao,
-       tipo, categoria, ano, renavam, chassi, combustivel_principal, capacidade_litros,
-       horimetro_atual, hodometro_atual, status_operacional,
-       doc_revisao_validade, doc_licenciamento_validade, doc_seguro_validade, doc_inspecao_validade,
-       manutencao_agendar_ate, fleet_telemetry_meta
-     )
-     VALUES (
-       $1,
-       COALESCE((SELECT MAX(v.codigo_operacional) + 1 FROM veiculos v WHERE v.empresa_id = $1), 1),
-       $2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28::jsonb
-     )
-     RETURNING *`,
-    [
-      empresa_id,
-      nome,
-      placa,
-      trimOrNull(marca),
-      trimOrNull(modelo),
-      cap,
-      capEsteril,
-      capRocha,
-      transportaEsteril,
-      transportaRocha,
-      usa,
-      tipoOperacao,
-      trimOrNull(tipo),
-      trimOrNull(categoria),
-      normalizeIntAno(ano),
-      trimOrNull(renavam),
-      trimOrNull(chassi),
-      trimOrNull(combustivel_principal),
-      normalizeNum(capacidade_litros),
-      normalizeNum(horimetro_atual),
-      normalizeNum(hodometro_atual),
-      st,
-      normalizeDate(doc_revisao_validade),
-      normalizeDate(doc_licenciamento_validade),
-      normalizeDate(doc_seguro_validade),
-      normalizeDate(doc_inspecao_validade),
-      normalizeDate(manutencao_agendar_ate),
-      JSON.stringify(meta),
-    ]
-  );
-  return rows[0];
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows } = await client.query(
+      `INSERT INTO veiculos (
+         empresa_id, codigo_operacional, nome, placa, marca, modelo, capacidade_ton, capacidade_esteril_ton, capacidade_rocha_ton,
+         transporta_esteril, transporta_rocha,
+         usa_para_transporte, tipo_operacao,
+         tipo, categoria, ano, renavam, chassi, combustivel_principal, capacidade_litros,
+         horimetro_atual, hodometro_atual, status_operacional,
+         doc_revisao_validade, doc_licenciamento_validade, doc_seguro_validade, doc_inspecao_validade,
+         manutencao_agendar_ate, fleet_telemetry_meta
+       )
+       VALUES (
+         $1,NULL,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28::jsonb
+       )
+       RETURNING id`,
+      [
+        empresa_id,
+        nome,
+        placa,
+        trimOrNull(marca),
+        trimOrNull(modelo),
+        cap,
+        capEsteril,
+        capRocha,
+        transportaEsteril,
+        transportaRocha,
+        usa,
+        tipoOperacao,
+        trimOrNull(tipo),
+        trimOrNull(categoria),
+        normalizeIntAno(ano),
+        trimOrNull(renavam),
+        trimOrNull(chassi),
+        trimOrNull(combustivel_principal),
+        normalizeNum(capacidade_litros),
+        normalizeNum(horimetro_atual),
+        normalizeNum(hodometro_atual),
+        st,
+        normalizeDate(doc_revisao_validade),
+        normalizeDate(doc_licenciamento_validade),
+        normalizeDate(doc_seguro_validade),
+        normalizeDate(doc_inspecao_validade),
+        normalizeDate(manutencao_agendar_ate),
+        JSON.stringify(meta),
+      ]
+    );
+    const id = rows[0].id;
+    await normalizeVehicleCodeSeries(client, empresa_id, tipoOperacao, id, codigo_operacional);
+    const finalRows = await client.query("SELECT * FROM veiculos WHERE id = $1 AND empresa_id = $2", [id, empresa_id]);
+    await client.query("COMMIT");
+    return finalRows.rows[0];
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 };
 
 const listVehicles = async (
@@ -241,7 +298,14 @@ const listVehicles = async (
 
   if (search) {
     extraClauses.push(
-      `(v.nome ILIKE $${paramIdx} OR v.placa ILIKE $${paramIdx} OR COALESCE(v.marca, '') ILIKE $${paramIdx} OR COALESCE(v.modelo, '') ILIKE $${paramIdx} OR COALESCE(v.tipo, '') ILIKE $${paramIdx} OR EXISTS (
+      `(v.nome ILIKE $${paramIdx}
+        OR v.placa ILIKE $${paramIdx}
+        OR COALESCE(v.marca, '') ILIKE $${paramIdx}
+        OR COALESCE(v.modelo, '') ILIKE $${paramIdx}
+        OR COALESCE(v.tipo, '') ILIKE $${paramIdx}
+        OR LPAD(COALESCE(v.codigo_operacional, 0)::text, 2, '0') ILIKE $${paramIdx}
+        OR CONCAT(CASE WHEN COALESCE(v.usa_para_transporte, false) THEN '#' ELSE 'A' END, LPAD(COALESCE(v.codigo_operacional, 0)::text, 2, '0')) ILIKE $${paramIdx}
+        OR EXISTS (
          SELECT 1
          FROM usuarios u
          LEFT JOIN motorista_veiculos mv ON mv.motorista_id = u.id AND mv.empresa_id = u.empresa_id
@@ -307,7 +371,10 @@ const listVehicles = async (
      ${transportClause}
      ${capacidadeClause}
      ${whereSearch}
-     ORDER BY v.created_at DESC
+     ORDER BY CASE WHEN COALESCE(v.usa_para_transporte, false) THEN 0 ELSE 1 END,
+              v.codigo_operacional ASC NULLS LAST,
+              v.created_at ASC,
+              v.id ASC
      LIMIT ${qLimit} OFFSET ${qOffset}`,
     rowsValues,
     { label: "veiculos-list" }
@@ -341,6 +408,11 @@ const updateVehicle = async (id, empresa_id, data) => {
     tipoOperacao = usaLegacy ? "transporte" : "apoio";
   }
   const usa = tipoOperacao === "transporte";
+  const oldTipoOperacao = normalizeTipoOperacao(existing.tipo_operacao, existing.usa_para_transporte);
+  const hasCodigoInput = Object.prototype.hasOwnProperty.call(data, "codigo_operacional");
+  const desiredCodigo = hasCodigoInput
+    ? normalizeOperationalCode(data.codigo_operacional)
+    : normalizeOperationalCode(existing.codigo_operacional);
 
   let capacidade_ton = existing.capacidade_ton;
   let capacidade_esteril_ton = existing.capacidade_esteril_ton;
@@ -448,70 +520,90 @@ const updateVehicle = async (id, empresa_id, data) => {
     fleet_telemetry_meta = {};
   }
 
-  const { rows } = await pool.query(
-    `UPDATE veiculos
-     SET nome = $3,
-         placa = $4,
-         marca = $5,
-         modelo = $6,
-         capacidade_ton = $7,
-         capacidade_esteril_ton = $8,
-         capacidade_rocha_ton = $9,
-         transporta_esteril = $10,
-         transporta_rocha = $11,
-         usa_para_transporte = $12,
-         tipo_operacao = $13,
-         tipo = $14,
-         categoria = $15,
-         ano = $16,
-         renavam = $17,
-         chassi = $18,
-         combustivel_principal = $19,
-         capacidade_litros = $20,
-         horimetro_atual = $21,
-         hodometro_atual = $22,
-         status_operacional = $23,
-         doc_revisao_validade = $24,
-         doc_licenciamento_validade = $25,
-         doc_seguro_validade = $26,
-         doc_inspecao_validade = $27,
-         manutencao_agendar_ate = $28,
-         fleet_telemetry_meta = $29::jsonb
-     WHERE id = $1 AND empresa_id = $2
-     RETURNING *`,
-    [
-      id,
-      empresa_id,
-      nome,
-      placa,
-      marca,
-      modelo,
-      capacidade_ton,
-      capacidade_esteril_ton,
-      capacidade_rocha_ton,
-      transporta_esteril,
-      transporta_rocha,
-      usa,
-      tipoOperacao,
-      tipoVeiculo,
-      categoria,
-      ano,
-      renavam,
-      chassi,
-      combustivel_principal,
-      capacidade_litros,
-      horimetro_atual,
-      hodometro_atual,
-      status_operacional,
-      doc_revisao_validade,
-      doc_licenciamento_validade,
-      doc_seguro_validade,
-      doc_inspecao_validade,
-      manutencao_agendar_ate,
-      JSON.stringify(fleet_telemetry_meta || {}),
-    ]
-  );
-  return rows[0];
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows } = await client.query(
+      `UPDATE veiculos
+       SET codigo_operacional = NULL,
+           nome = $3,
+           placa = $4,
+           marca = $5,
+           modelo = $6,
+           capacidade_ton = $7,
+           capacidade_esteril_ton = $8,
+           capacidade_rocha_ton = $9,
+           transporta_esteril = $10,
+           transporta_rocha = $11,
+           usa_para_transporte = $12,
+           tipo_operacao = $13,
+           tipo = $14,
+           categoria = $15,
+           ano = $16,
+           renavam = $17,
+           chassi = $18,
+           combustivel_principal = $19,
+           capacidade_litros = $20,
+           horimetro_atual = $21,
+           hodometro_atual = $22,
+           status_operacional = $23,
+           doc_revisao_validade = $24,
+           doc_licenciamento_validade = $25,
+           doc_seguro_validade = $26,
+           doc_inspecao_validade = $27,
+           manutencao_agendar_ate = $28,
+           fleet_telemetry_meta = $29::jsonb
+       WHERE id = $1 AND empresa_id = $2
+       RETURNING id`,
+      [
+        id,
+        empresa_id,
+        nome,
+        placa,
+        marca,
+        modelo,
+        capacidade_ton,
+        capacidade_esteril_ton,
+        capacidade_rocha_ton,
+        transporta_esteril,
+        transporta_rocha,
+        usa,
+        tipoOperacao,
+        tipoVeiculo,
+        categoria,
+        ano,
+        renavam,
+        chassi,
+        combustivel_principal,
+        capacidade_litros,
+        horimetro_atual,
+        hodometro_atual,
+        status_operacional,
+        doc_revisao_validade,
+        doc_licenciamento_validade,
+        doc_seguro_validade,
+        doc_inspecao_validade,
+        manutencao_agendar_ate,
+        JSON.stringify(fleet_telemetry_meta || {}),
+      ]
+    );
+    if (!rows[0]) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+    if (oldTipoOperacao !== tipoOperacao) {
+      await normalizeVehicleCodeSeries(client, empresa_id, oldTipoOperacao);
+    }
+    await normalizeVehicleCodeSeries(client, empresa_id, tipoOperacao, Number(id), desiredCodigo);
+    const finalRows = await client.query("SELECT * FROM veiculos WHERE id = $1 AND empresa_id = $2", [id, empresa_id]);
+    await client.query("COMMIT");
+    return finalRows.rows[0];
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 };
 
 const deleteVehicle = async (id, empresa_id) => {

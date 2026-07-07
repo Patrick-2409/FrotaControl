@@ -171,6 +171,7 @@ const listVehiclesApontador = async (req, res) => {
       v.nome ILIKE $${idx}
       OR v.placa ILIKE $${idx}
       OR u.nome ILIKE $${idx}
+      OR CONCAT('#', LPAD(COALESCE(v.codigo_operacional, 0)::text, 2, '0')) ILIKE $${idx}
       OR LPAD(COALESCE(v.codigo_operacional, 0)::text, 2, '0') ILIKE $${idx}
     )`;
     values.push(`%${search.trim()}%`);
@@ -186,6 +187,7 @@ const listVehiclesApontador = async (req, res) => {
          ) AS codigo_apontador
        FROM veiculos
        WHERE empresa_id = $1
+         AND COALESCE(usa_para_transporte, false) = true
      ),
      vinculos AS (
        SELECT DISTINCT ON (v.id, u.id)

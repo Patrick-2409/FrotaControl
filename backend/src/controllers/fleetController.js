@@ -138,6 +138,12 @@ const codigoLabel = (value) => {
   return Number.isFinite(n) && n > 0 ? String(n).padStart(2, "0") : "";
 };
 
+const codigoOperacionalLabel = (vehicle) => {
+  const code = codigoLabel(vehicle?.codigo_operacional);
+  if (!code) return "";
+  return `${vehicle?.usa_para_transporte ? "#" : "A"}${code}`;
+};
+
 const numberOrBlank = (value) => {
   if (value === null || value === undefined || value === "") return "";
   const n = Number(value);
@@ -318,7 +324,7 @@ const addFleetVehiclesSheet = (workbook, { vehicles }) => {
   });
   vehicles.forEach((vehicle) => {
     ws.addRow([
-      codigoLabel(vehicle.codigo_operacional),
+      codigoOperacionalLabel(vehicle),
       vehicle.placa || "",
       vehicle.nome || "",
       motoristasLabel(vehicle),
@@ -495,6 +501,7 @@ const exportVehiclesCsv = async (req, res) => {
     "manutencao_agendar_ate",
   ];
   const pick = (row, k) => {
+    if (k === "codigo_operacional") return codigoOperacionalLabel(row) || "";
     const v = row[k];
     if (v == null) return "";
     if (typeof v === "boolean") return v ? "1" : "0";

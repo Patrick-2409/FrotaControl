@@ -258,22 +258,22 @@ const initDb = async () => {
   `);
 
   await pool.query(`
+    DROP INDEX IF EXISTS ux_veiculos_empresa_codigo_operacional;
+
     WITH ranked AS (
       SELECT
         v.id,
-        COALESCE((
-          SELECT MAX(v2.codigo_operacional)
-          FROM veiculos v2
-          WHERE v2.empresa_id = v.empresa_id
-        ), 0)
-        + ROW_NUMBER() OVER (PARTITION BY v.empresa_id ORDER BY v.created_at ASC, v.id ASC)::int AS codigo
+        ROW_NUMBER() OVER (
+          PARTITION BY v.empresa_id, COALESCE(NULLIF(TRIM(v.tipo_operacao), ''), CASE WHEN COALESCE(v.usa_para_transporte, false) THEN 'transporte' ELSE 'apoio' END)
+          ORDER BY v.codigo_operacional ASC NULLS LAST, v.created_at ASC, v.id ASC
+        )::int AS codigo
       FROM veiculos v
-      WHERE v.codigo_operacional IS NULL
     )
     UPDATE veiculos v
     SET codigo_operacional = ranked.codigo
     FROM ranked
-    WHERE ranked.id = v.id;
+    WHERE ranked.id = v.id
+      AND v.codigo_operacional IS DISTINCT FROM ranked.codigo;
   `);
 
   await pool.query(`
@@ -329,8 +329,9 @@ const initDb = async () => {
       WHERE role = 'MOTORISTA';
     CREATE INDEX IF NOT EXISTS idx_veiculos_empresa_id ON veiculos (empresa_id);
     CREATE INDEX IF NOT EXISTS idx_veiculos_empresa_created ON veiculos (empresa_id, created_at DESC);
-    CREATE UNIQUE INDEX IF NOT EXISTS ux_veiculos_empresa_codigo_operacional
-      ON veiculos (empresa_id, codigo_operacional)
+    DROP INDEX IF EXISTS ux_veiculos_empresa_codigo_operacional;
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_veiculos_empresa_tipo_codigo_operacional
+      ON veiculos (empresa_id, tipo_operacao, codigo_operacional)
       WHERE codigo_operacional IS NOT NULL;
     CREATE INDEX IF NOT EXISTS idx_usuarios_veiculo_empresa ON usuarios (veiculo_id, empresa_id)
       WHERE veiculo_id IS NOT NULL;

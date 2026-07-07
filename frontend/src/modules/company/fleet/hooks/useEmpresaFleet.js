@@ -17,6 +17,7 @@ const STATUS_OPTS = [
 const emptyVehicleForm = () => ({
   nome: "",
   placa: "",
+  codigo_operacional: "",
   marca: "",
   modelo: "",
   tipo: "",
@@ -68,6 +69,7 @@ function rowToForm(v) {
     ...f,
     nome: v.nome || "",
     placa: v.placa || "",
+    codigo_operacional: v.codigo_operacional != null ? String(v.codigo_operacional) : "",
     marca: v.marca || "",
     modelo: v.modelo || "",
     tipo: v.tipo || "",
@@ -127,6 +129,7 @@ function formToPayload(form) {
   return {
     nome: form.nome.trim(),
     placa: form.placa.trim(),
+    codigo_operacional: intOrNull(form.codigo_operacional),
     marca: form.marca.trim() || null,
     modelo: form.modelo.trim() || null,
     tipo: form.tipo.trim() || null,
@@ -165,6 +168,12 @@ const escapeHtml = (value) =>
 const codigoLabel = (value) => {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? String(n).padStart(2, "0") : "-";
+};
+
+const codigoOperacionalLabel = (vehicle) => {
+  const code = codigoLabel(vehicle.codigo_operacional);
+  if (code === "-") return "-";
+  return `${vehicle.usa_para_transporte ? "#" : "A"}${code}`;
 };
 
 const materialLabel = (vehicle) => {
@@ -216,7 +225,7 @@ const buildPrintableFleetHtml = (vehicles, filtros = {}, company = {}) => {
   const rows = vehicles
     .map((v) => `
       <tr>
-        <td class="code">#${escapeHtml(codigoLabel(v.codigo_operacional))}</td>
+        <td class="code">${escapeHtml(codigoOperacionalLabel(v))}</td>
         <td><strong>${escapeHtml(v.placa || "-")}</strong><br><span>${escapeHtml(v.nome || "-")}</span></td>
         <td>${escapeHtml(motoristasLabel(v))}</td>
         <td>${escapeHtml(materialLabel(v))}</td>
@@ -286,7 +295,7 @@ const buildPrintableFleetHtml = (vehicles, filtros = {}, company = {}) => {
     </thead>
     <tbody>${rows || '<tr><td colspan="5">Nenhum veículo encontrado.</td></tr>'}</tbody>
   </table>
-  <footer>Use o ID operacional no PWA do apontador para selecionar rapidamente o veículo correto.</footer>
+  <footer>Use os IDs # no PWA do apontador; os IDs A identificam veículos de apoio na gestão da frota.</footer>
   <script>
     window.addEventListener("load", function () {
       window.setTimeout(function () { window.print(); }, 250);

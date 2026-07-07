@@ -998,7 +998,12 @@ const listVehiclesCtrl = async (req, res) => {
     let idx = 1;
     const clauses = [];
     if (search) {
-      clauses.push(`(v.nome ILIKE $${idx} OR v.placa ILIKE $${idx} OR e.nome ILIKE $${idx} OR EXISTS (
+      clauses.push(`(v.nome ILIKE $${idx}
+        OR v.placa ILIKE $${idx}
+        OR e.nome ILIKE $${idx}
+        OR LPAD(COALESCE(v.codigo_operacional, 0)::text, 2, '0') ILIKE $${idx}
+        OR CONCAT(CASE WHEN COALESCE(v.usa_para_transporte, false) THEN '#' ELSE 'A' END, LPAD(COALESCE(v.codigo_operacional, 0)::text, 2, '0')) ILIKE $${idx}
+        OR EXISTS (
         SELECT 1
         FROM usuarios u
         LEFT JOIN motorista_veiculos mv ON mv.motorista_id = u.id AND mv.empresa_id = u.empresa_id
@@ -1046,7 +1051,11 @@ const listVehiclesCtrl = async (req, res) => {
         LIMIT 1
       ) m ON true
       ${where}
-      ORDER BY v.created_at DESC
+      ORDER BY e.nome ASC,
+        CASE WHEN COALESCE(v.usa_para_transporte, false) THEN 0 ELSE 1 END,
+        v.codigo_operacional ASC NULLS LAST,
+        v.created_at ASC,
+        v.id ASC
       LIMIT $${idx} OFFSET $${idx + 1}
       `,
       [...values, limit, offset]

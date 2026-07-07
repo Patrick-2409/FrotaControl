@@ -768,7 +768,7 @@ export default function ParteDiariaPage({ onSaved }) {
                 <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-3 py-3 text-xs text-blue-100">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="rounded-md border border-blue-300/40 bg-blue-300/10 px-2 py-1 font-semibold">
-                      {formatVehicleOperationalCode(selectedVehicle.codigo_operacional)}
+                      {formatVehicleOperationalCode(selectedVehicle.codigo_operacional, selectedVehicle)}
                     </span>
                     {selectedVehicle.linked ? (
                       <span className="rounded-md border border-emerald-300/30 bg-emerald-400/10 px-2 py-1 text-emerald-100">

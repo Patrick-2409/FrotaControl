@@ -12,6 +12,7 @@ const optionalBoolean = z.preprocess((value) => {
 const vehicleBodySchema = z.object({
   nome: z.string().trim().min(2),
   placa: z.string().trim().min(4),
+  codigo_operacional: z.coerce.number().int().positive().optional().nullable(),
   marca: z.string().trim().optional().nullable(),
   modelo: z.string().trim().optional().nullable(),
   capacidade_ton: z.coerce.number().positive().optional().nullable(),
@@ -104,6 +105,7 @@ const toVehicleWritePayload = (parsed) => {
         : parsed.capacidade_ton ?? null
       : null,
   };
+  if (parsed.codigo_operacional !== undefined) out.codigo_operacional = parsed.codigo_operacional ?? null;
   if (parsed.marca !== undefined) out.marca = trimOrNull(parsed.marca);
   if (parsed.modelo !== undefined) out.modelo = trimOrNull(parsed.modelo);
   if (parsed.tipo !== undefined) out.tipo = trimOrNull(parsed.tipo);

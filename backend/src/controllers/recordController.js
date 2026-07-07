@@ -485,6 +485,7 @@ const listAppVehicles = async (req, res) => {
         OR v.placa ILIKE $${idx}
         OR COALESCE(v.marca, '') ILIKE $${idx}
         OR COALESCE(v.modelo, '') ILIKE $${idx}
+        OR CONCAT(CASE WHEN COALESCE(v.usa_para_transporte, false) THEN '#' ELSE 'A' END, LPAD(COALESCE(v.codigo_operacional, 0)::text, 2, '0')) ILIKE $${idx}
         OR LPAD(COALESCE(v.codigo_operacional, 0)::text, 2, '0') ILIKE $${idx})`
     );
   }
@@ -501,6 +502,7 @@ const listAppVehicles = async (req, res) => {
                 AND mv.veiculo_id = v.id
                WHERE ${where.join(" AND ")}
                ORDER BY (u.veiculo_id = v.id OR COALESCE(mv.is_principal, false)) DESC,
+                        CASE WHEN COALESCE(v.usa_para_transporte, false) THEN 0 ELSE 1 END,
                         v.codigo_operacional ASC NULLS LAST,
                         v.nome ASC,
                         v.placa ASC`;
@@ -520,7 +522,8 @@ const listAppVehicles = async (req, res) => {
                          FROM veiculos v
                          INNER JOIN usuarios u ON u.id = $2 AND u.empresa_id = v.empresa_id AND u.role = 'MOTORISTA'
                          WHERE ${fallbackWhere.join(" AND ")}
-                         ORDER BY v.codigo_operacional ASC NULLS LAST, v.nome ASC, v.placa ASC`;
+                         ORDER BY CASE WHEN COALESCE(v.usa_para_transporte, false) THEN 0 ELSE 1 END,
+                                  v.codigo_operacional ASC NULLS LAST, v.nome ASC, v.placa ASC`;
     ({ rows } = await pool.query(fallbackSql, values));
   }
 
