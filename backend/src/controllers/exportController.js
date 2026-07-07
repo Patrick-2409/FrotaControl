@@ -110,6 +110,11 @@ const parseExportFilters = (query = {}) => {
         if (s === "porto" || s === "padrao") return s;
         return undefined;
       }, z.enum(["porto", "padrao"]).optional()),
+      include_viagens: z.preprocess((v) => {
+        const raw = String(v ?? "").trim().toLowerCase();
+        if (!raw) return undefined;
+        return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+      }, z.boolean().optional()),
     })
     .parse({
       data: normalizedDate,
@@ -123,6 +128,7 @@ const parseExportFilters = (query = {}) => {
       source_ids: query.source_ids,
       layout: query.layout,
       modelo: query.modelo,
+      include_viagens: query.include_viagens,
     });
   if (Array.isArray(filter.source_ids) && filter.source_ids.length > 0) {
     const uniqueSourceIds = Array.from(new Set(filter.source_ids.map((id) => String(id || "").trim()).filter(Boolean)));

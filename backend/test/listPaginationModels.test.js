@@ -586,6 +586,101 @@ test("listManagerRecords usa fallback essencial quando schema de registros está
   }
 });
 
+test("listManagerRecords inclui viagens no relatório quando ativado e sem romaneios", async () => {
+  delete require.cache[pathRm];
+  delete require.cache[pathDb];
+  const db = require("../src/db");
+  const orig = db.pool.query;
+  const calls = [];
+  db.pool.query = async (sql, vals) => {
+    const text = String(sql);
+    calls.push({ sql: text, vals: vals ? [...vals] : [] });
+    if (text.includes("FROM romaneios r") || text.includes("FROM combustiveis c") || text.includes("FROM parte_diaria p")) {
+      if (text.includes("COUNT(*)::int AS total")) return { rows: [{ total: 0 }] };
+      if (text.includes("ORDER BY data DESC")) return { rows: [] };
+    }
+    if (text.includes("FROM viagens vi")) {
+      if (text.includes("COUNT(*)::int AS total")) return { rows: [{ total: 1 }] };
+      if (text.includes("ORDER BY data DESC")) {
+        return {
+          rows: [
+            {
+              id: null,
+              source_id: "viagem:77",
+              data: "2026-07-07T08:00:00",
+              recorded_at_client: null,
+              updated_at: "2026-07-07T08:01:00",
+              motorista: "Motorista apontador",
+              tipo: "romaneio",
+              tipo_label: "Romaneio",
+              veiculo: "Caminhão 07",
+              placa: "ABC1D23",
+              destino: "Transporte registrado via apontador",
+              tipo_transporte: "Estéril",
+              observacao: "Origem: viagens",
+              litros: null,
+              tipo_combustivel: null,
+              horimetro: null,
+              hodometro: null,
+              total_horas: null,
+              checklist_resumo: null,
+              checklist: null,
+              contratado: null,
+              operador: null,
+              equipamento: null,
+              marca_modelo: null,
+              local: null,
+              expediente: null,
+              periodo: null,
+              clima: null,
+              horimetro_inicio: null,
+              horimetro_fim: null,
+              hodometro_inicio: null,
+              hodometro_fim: null,
+              total_km: null,
+              outros_descricao: null,
+              tempo_parado: null,
+              observacoes: null,
+              producao: null,
+              valor_total: null,
+              preco_por_litro: null,
+            },
+          ],
+        };
+      }
+    }
+    return { rows: [] };
+  };
+  try {
+    const { listManagerRecords } = require("../src/models/recordModel");
+    const result = await listManagerRecords({
+      empresa_id: 8,
+      tipo: "romaneio",
+      include_viagens: true,
+      data_inicio: "2026-07-01",
+      data_fim: "2026-07-07",
+      page: 1,
+      limit: 20,
+    });
+    assert.strictEqual(result.total, 1);
+    assert.strictEqual(result.items.length, 1);
+    assert.strictEqual(result.items[0].source_id, "viagem:77");
+    assert.strictEqual(result.items[0].tipo, "romaneio");
+    const viagensCountCall = calls.find(
+      (c) => c.sql.includes("FROM viagens vi") && c.sql.includes("COUNT(*)::int AS total")
+    );
+    assert.ok(viagensCountCall, "esperada consulta de viagens para relatório");
+    assert.match(viagensCountCall.sql, /vi\.empresa_id = \$1/);
+    assert.match(viagensCountCall.sql, /DATE\(vi\.marcacao AT TIME ZONE 'America\/Sao_Paulo'\) >= \$2/);
+    assert.match(viagensCountCall.sql, /DATE\(vi\.marcacao AT TIME ZONE 'America\/Sao_Paulo'\) <= \$3/);
+    assert.deepStrictEqual(viagensCountCall.vals.slice(0, 3), [8, "2026-07-01", "2026-07-07"]);
+  } finally {
+    db.pool.query = orig;
+    delete require.cache[pathRm];
+    delete require.cache[pathDb];
+  }
+});
+
 test("dashboardStats limita ranking por motorista a empresa do registro", async () => {
   delete require.cache[pathRm];
   delete require.cache[pathDb];

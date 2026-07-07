@@ -62,6 +62,17 @@ const shiftSqlPlaceholders = (sql, shift) =>
 const ensureDistinctSourceIds = (source_ids) =>
   Array.from(new Set((source_ids || []).map((id) => String(id || "").trim()).filter(Boolean)));
 
+const parseFlagBoolean = (value) => {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1;
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return false;
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+};
+
+const shouldIncludeViagensAsRomaneio = ({ include_viagens, tipo } = {}) =>
+  parseFlagBoolean(include_viagens) && (!tipo || tipo === "romaneio");
+
 const buildLegacyManagerRecordsTableQuery = ({
   tableName,
   alias,
@@ -465,6 +476,159 @@ const listManagerRecordsBasic = async ({
   const offset = (pageNum - 1) * limitNum;
   const pagedQuery = `${baseQuery} ORDER BY data DESC LIMIT $${wrapperParams.length + 1} OFFSET $${wrapperParams.length + 2}`;
   const { rows } = await pool.query(pagedQuery, [...wrapperParams, limitNum, offset]);
+  return { items: rows, total: countResult.rows[0].total };
+};
+
+const listManagerRecordsFromViagens = async ({
+  empresa_id,
+  usuario_id,
+  data,
+  data_inicio,
+  data_fim,
+  mes,
+  motorista,
+  veiculo,
+  motorista_id,
+  veiculo_id,
+  source_id,
+  source_ids,
+  allow_global = false,
+  page = 1,
+  limit = 20,
+}) => {
+  if (empresa_id == null && allow_global !== true) {
+    return { items: [], total: 0 };
+  }
+
+  const values = [];
+  const where = [];
+  const pushParam = (value) => {
+    values.push(value);
+    return `$${values.length}`;
+  };
+
+  if (empresa_id != null) {
+    where.push(`vi.empresa_id = ${pushParam(empresa_id)}`);
+  } else {
+    where.push("1=1");
+  }
+
+  const dateExpr = "DATE(vi.marcacao AT TIME ZONE 'America/Sao_Paulo')";
+  if (data) {
+    where.push(`${dateExpr} = ${pushParam(data)}`);
+  } else if (mes) {
+    const [year, month] = String(mes).split("-").map(Number);
+    const start = new Date(Date.UTC(year, month - 1, 1));
+    const end = new Date(Date.UTC(year, month, 0));
+    const startText = `${start.getUTCFullYear()}-${String(start.getUTCMonth() + 1).padStart(2, "0")}-01`;
+    const endText = `${end.getUTCFullYear()}-${String(end.getUTCMonth() + 1).padStart(2, "0")}-${String(end.getUTCDate()).padStart(2, "0")}`;
+    where.push(`${dateExpr} >= ${pushParam(startText)}`);
+    where.push(`${dateExpr} <= ${pushParam(endText)}`);
+  } else {
+    if (data_inicio) where.push(`${dateExpr} >= ${pushParam(data_inicio)}`);
+    if (data_fim) where.push(`${dateExpr} <= ${pushParam(data_fim)}`);
+  }
+
+  const accentSource = "ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇçÑñ";
+  const accentTarget = "AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCcNn";
+  if (motorista) {
+    const searchPlaceholder = pushParam(`%${String(motorista).toLowerCase()}%`);
+    where.push(
+      `(
+        LOWER(translate(COALESCE(u.nome, ''), '${accentSource}', '${accentTarget}')) LIKE
+        LOWER(translate(${searchPlaceholder}, '${accentSource}', '${accentTarget}'))
+        OR COALESCE(u.cpf_id, '') LIKE REPLACE(${searchPlaceholder}, '%', '')
+      )`
+    );
+  }
+  if (veiculo) {
+    const searchPlaceholder = pushParam(`%${String(veiculo).toLowerCase()}%`);
+    where.push(
+      `(
+        LOWER(translate(COALESCE(v.nome, ''), '${accentSource}', '${accentTarget}')) LIKE
+        LOWER(translate(${searchPlaceholder}, '${accentSource}', '${accentTarget}'))
+        OR LOWER(COALESCE(v.placa, '')) LIKE LOWER(translate(${searchPlaceholder}, '${accentSource}', '${accentTarget}'))
+      )`
+    );
+  }
+  if (veiculo_id != null) {
+    where.push(`vi.veiculo_id = ${pushParam(Number(veiculo_id))}`);
+  }
+  if (motorista_id != null) {
+    where.push(`vi.motorista_id = ${pushParam(Number(motorista_id))}`);
+  }
+  if (usuario_id != null) {
+    where.push(`vi.motorista_id = ${pushParam(Number(usuario_id))}`);
+  }
+  if (source_id) {
+    where.push(`CONCAT('viagem:', vi.id::text) = ${pushParam(String(source_id).trim())}`);
+  }
+  const sourceIds = ensureDistinctSourceIds(source_ids);
+  if (sourceIds.length > 0) {
+    where.push(`CONCAT('viagem:', vi.id::text) = ANY(${pushParam(sourceIds)}::text[])`);
+  }
+
+  const whereSql = where.length ? where.join(" AND ") : "1=1";
+  const baseQuery = `SELECT
+      NULL::int AS id,
+      CONCAT('viagem:', vi.id::text) AS source_id,
+      to_char(vi.marcacao AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD"T"HH24:MI:SS') AS data,
+      NULL::text AS recorded_at_client,
+      CASE
+        WHEN vi.created_at IS NULL THEN NULL
+        ELSE to_char(vi.created_at AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD"T"HH24:MI:SS')
+      END AS updated_at,
+      u.nome AS motorista,
+      'romaneio' AS tipo,
+      'Romaneio' AS tipo_label,
+      v.nome AS veiculo,
+      v.placa,
+      'Transporte registrado via apontador'::text AS destino,
+      CASE
+        WHEN COALESCE(vi.tipo, '') = 'esteril' THEN 'Estéril'
+        WHEN COALESCE(vi.tipo, '') = 'rocha' THEN 'Rocha (amarração)'
+        ELSE NULL::text
+      END AS tipo_transporte,
+      'Origem: viagens'::text AS observacao,
+      NULL::numeric AS litros,
+      NULL::text AS tipo_combustivel,
+      NULL::numeric AS horimetro,
+      NULL::numeric AS hodometro,
+      NULL::numeric AS total_horas,
+      NULL::text AS checklist_resumo,
+      NULL::jsonb AS checklist,
+      NULL::text AS contratado,
+      NULL::text AS operador,
+      NULL::text AS equipamento,
+      NULL::text AS marca_modelo,
+      NULL::text AS local,
+      NULL::text AS expediente,
+      NULL::text AS periodo,
+      NULL::text AS clima,
+      NULL::numeric AS horimetro_inicio,
+      NULL::numeric AS horimetro_fim,
+      NULL::numeric AS hodometro_inicio,
+      NULL::numeric AS hodometro_fim,
+      NULL::numeric AS total_km,
+      NULL::text AS outros_descricao,
+      NULL::text AS tempo_parado,
+      NULL::text AS observacoes,
+      NULL::text AS producao,
+      NULL::numeric AS valor_total,
+      NULL::numeric AS preco_por_litro
+    FROM viagens vi
+    LEFT JOIN usuarios u ON u.id = vi.motorista_id AND u.empresa_id = vi.empresa_id
+    LEFT JOIN veiculos v ON v.id = vi.veiculo_id AND v.empresa_id = vi.empresa_id
+    WHERE ${whereSql}`;
+
+  const countQuery = `SELECT COUNT(*)::int AS total FROM (${baseQuery}) c`;
+  const countResult = await pool.query(countQuery, values);
+
+  const pageNum = Math.max(1, Number(page) || 1);
+  const limitNum = Math.max(1, Math.min(1_000_000, Number(limit) || 20));
+  const offset = (pageNum - 1) * limitNum;
+  const pagedQuery = `${baseQuery} ORDER BY data DESC LIMIT $${values.length + 1} OFFSET $${values.length + 2}`;
+  const { rows } = await pool.query(pagedQuery, [...values, limitNum, offset]);
   return { items: rows, total: countResult.rows[0].total };
 };
 
@@ -879,12 +1043,27 @@ const listManagerRecordsModern = async ({
 };
 
 const listManagerRecords = async (options = {}) => {
+  let baseResult;
   try {
-    return await listManagerRecordsModern(options);
+    baseResult = await listManagerRecordsModern(options);
   } catch (err) {
     if (!isMissingSchemaField(err)) throw err;
-    return listManagerRecordsBasic(options, err);
+    baseResult = await listManagerRecordsBasic(options, err);
   }
+  if (!shouldIncludeViagensAsRomaneio(options)) return baseResult;
+  if (Number(baseResult?.total || 0) > 0) return baseResult;
+  try {
+    const viagensResult = await listManagerRecordsFromViagens(options);
+    if (Number(viagensResult?.total || 0) > 0) {
+      return viagensResult;
+    }
+  } catch (err) {
+    logError("record:list-manager-viagens-fallback-error", {
+      message: err?.message || null,
+      code: err?.code || null,
+    });
+  }
+  return baseResult;
 };
 
 const EXECUTIVO_PERIODOS = new Set(["dia", "semana", "mes", "ano"]);

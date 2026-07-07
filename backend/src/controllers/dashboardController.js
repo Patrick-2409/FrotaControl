@@ -187,6 +187,7 @@ const list = async (req, res) => {
     motorista_id: req.query.motorista_id,
     veiculo_id: req.query.veiculo_id,
     tipo: req.query.tipo ? String(req.query.tipo).trim() : undefined,
+    include_viagens: req.query.include_viagens,
   };
   if (!normalizedQuery.data) delete normalizedQuery.data;
   if (!normalizedQuery.data_inicio) delete normalizedQuery.data_inicio;
@@ -207,6 +208,11 @@ const list = async (req, res) => {
       motorista_id: z.coerce.number().int().positive().optional(),
       veiculo_id: z.coerce.number().int().positive().optional(),
       tipo: z.enum(["romaneio", "combustivel", "parte_diaria"]).optional(),
+      include_viagens: z.preprocess((v) => {
+        const raw = String(v ?? "").trim().toLowerCase();
+        if (!raw) return undefined;
+        return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+      }, z.boolean().optional()),
       page: z.coerce.number().int().positive().optional(),
       limit: z.coerce.number().int().positive().max(1_000_000).optional(),
     })

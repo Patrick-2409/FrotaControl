@@ -17,7 +17,7 @@ import AccordionSection from "../../shared/components/AccordionSection";
 
 const PREVIEW_RECORD_LIMIT = 100;
 const DEBOUNCE_MS = 380;
-const TABLE_EXPORT_LAYOUT_PARAMS = Object.freeze({ layout: "profissional" });
+const TABLE_EXPORT_LAYOUT_PARAMS = Object.freeze({ layout: "profissional", include_viagens: "1" });
 
 const REPORT_TYPES = [
   { key: "romaneio", label: "Transporte" },
@@ -144,7 +144,7 @@ export default function EmpresaRelatoriosPage() {
       setPreviewLoading(true);
       setPreviewError("");
       try {
-        const params = { page: 1, limit: PREVIEW_RECORD_LIMIT };
+        const params = { page: 1, limit: PREVIEW_RECORD_LIMIT, include_viagens: "1" };
         if (queryFiltro.periodo === "dia" && queryFiltro.data?.trim()) params.data = queryFiltro.data.trim();
         if (queryFiltro.periodo === "mes" && queryFiltro.mes?.trim()) params.mes = queryFiltro.mes.trim();
         if (queryFiltro.periodo === "intervalo") {
