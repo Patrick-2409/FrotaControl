@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import api from "../../../../services/api";
+import { useAuth } from "../../../../services/auth";
 import { fleetErrorMessage, fleetGet, FLEET_LOAD_ERROR } from "../utils/fleetApi";
 
 const fmtInt = (n) => Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
@@ -200,13 +201,18 @@ const motoristasLabel = (vehicle) => {
   return vehicle.motorista_nome || "-";
 };
 
-const buildPrintableFleetHtml = (vehicles, filtros = {}) => {
+const buildPrintableFleetHtml = (vehicles, filtros = {}, company = {}) => {
   const data = new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
   const filtroTexto = [
     filtros.search ? `Busca: ${filtros.search}` : null,
     filtros.status ? `Status: ${filtros.status}` : null,
     filtros.tipo ? `Tipo: ${filtros.tipo}` : null,
   ].filter(Boolean).join(" · ") || "Todos os veículos";
+  const companyName = company.name || "Empresa";
+  const initial = String(companyName || "E").trim().charAt(0).toUpperCase() || "E";
+  const logoHtml = company.logoUrl
+    ? `<img src="${escapeHtml(company.logoUrl)}" alt="Logo da empresa" />`
+    : `<div class="logo-placeholder">${escapeHtml(initial)}</div>`;
   const rows = vehicles
     .map((v) => `
       <tr>
@@ -223,37 +229,55 @@ const buildPrintableFleetHtml = (vehicles, filtros = {}) => {
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8" />
-  <title>Relação de veículos - FrotaMax</title>
+  <title>Relação de veículos e motoristas - FrotaMax</title>
   <style>
     @page { size: A4; margin: 12mm; }
     * { box-sizing: border-box; }
-    body { margin: 0; color: #111827; font-family: Arial, sans-serif; }
-    header { display: flex; justify-content: space-between; gap: 16px; border-bottom: 2px solid #111827; padding-bottom: 12px; margin-bottom: 16px; }
-    h1 { margin: 0; font-size: 22px; }
-    p { margin: 4px 0 0; color: #4b5563; font-size: 12px; }
+    body { margin: 0; color: #111827; font-family: Arial, sans-serif; background: #fff; }
+    header { display: grid; grid-template-columns: 92px 1fr 170px; align-items: center; gap: 16px; border-bottom: 2px solid #111827; padding-bottom: 12px; margin-bottom: 14px; }
+    .logo-box { width: 82px; height: 82px; border: 1px solid #cbd5e1; border-radius: 10px; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #fff; padding: 6px; }
+    .logo-box img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    .logo-placeholder { width: 100%; height: 100%; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: #1e3a8a; color: #fff; font-size: 30px; font-weight: 800; }
+    h1 { margin: 0; font-size: 21px; line-height: 1.15; }
+    p { margin: 4px 0 0; color: #4b5563; font-size: 12px; line-height: 1.35; }
+    .meta { text-align: right; }
+    .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 0 0 14px; }
+    .summary div { border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; }
+    .summary strong { display: block; font-size: 17px; color: #111827; }
+    .summary span { color: #64748b; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
     table { width: 100%; border-collapse: collapse; font-size: 11px; }
-    th { background: #111827; color: #fff; text-align: left; padding: 8px; }
+    th { background: #111827; color: #fff; text-align: left; padding: 8px; white-space: nowrap; }
     td { border-bottom: 1px solid #d1d5db; padding: 8px; vertical-align: top; }
+    tr:nth-child(even) td { background: #f8fafc; }
     .code { width: 56px; font-size: 18px; font-weight: 800; color: #92400e; white-space: nowrap; }
     span { color: #6b7280; }
     footer { margin-top: 14px; color: #6b7280; font-size: 10px; }
+    @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
   </style>
 </head>
 <body>
   <header>
+    <div class="logo-box">${logoHtml}</div>
     <div>
       <h1>Relação de veículos e motoristas</h1>
+      <p><strong>${escapeHtml(companyName)}</strong></p>
       <p>${escapeHtml(filtroTexto)}</p>
     </div>
-    <div>
+    <div class="meta">
       <p>FrotaMax</p>
       <p>Emitido em ${escapeHtml(data)}</p>
     </div>
   </header>
+  <section class="summary">
+    <div><span>Total</span><strong>${vehicles.length}</strong></div>
+    <div><span>Transporte</span><strong>${vehicles.filter((v) => v.usa_para_transporte).length}</strong></div>
+    <div><span>Apoio</span><strong>${vehicles.filter((v) => !v.usa_para_transporte).length}</strong></div>
+    <div><span>Sem motorista</span><strong>${vehicles.filter((v) => !motoristasLabel(v) || motoristasLabel(v) === "-").length}</strong></div>
+  </section>
   <table>
     <thead>
       <tr>
-        <th>ID</th>
+        <th>ID apontador</th>
         <th>Veículo</th>
         <th>Motorista(s)</th>
         <th>Materiais autorizados</th>
@@ -263,11 +287,17 @@ const buildPrintableFleetHtml = (vehicles, filtros = {}) => {
     <tbody>${rows || '<tr><td colspan="5">Nenhum veículo encontrado.</td></tr>'}</tbody>
   </table>
   <footer>Use o ID operacional no PWA do apontador para selecionar rapidamente o veículo correto.</footer>
+  <script>
+    window.addEventListener("load", function () {
+      window.setTimeout(function () { window.print(); }, 250);
+    });
+  </script>
 </body>
 </html>`;
 };
 
 export function useEmpresaFleet() {
+  const { user } = useAuth();
   const [summary, setSummary] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryError, setSummaryError] = useState(null);
@@ -510,8 +540,8 @@ export function useEmpresaFleet() {
     [selected, loadMaintenance, loadSummary]
   );
 
-  const downloadFleetCsv = useCallback(async () => {
-    const { data } = await api.get("/dashboard/fleet/export/vehicles.csv", {
+  const downloadFleetExcel = useCallback(async () => {
+    const { data } = await api.get("/dashboard/fleet/export/vehicles.xlsx", {
       params: {
         search: debouncedSearch || undefined,
         status_operacional: statusFilter || undefined,
@@ -522,14 +552,14 @@ export function useEmpresaFleet() {
     const url = URL.createObjectURL(data);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "frota_veiculos.csv";
+    a.download = `frota_veiculos_${new Date().toISOString().slice(0, 10)}.xlsx`;
     a.rel = "noopener";
     a.click();
     URL.revokeObjectURL(url);
   }, [debouncedSearch, statusFilter, tipoFilter]);
 
   const printFleetAssignments = useCallback(async () => {
-    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=1100,height=800");
+    const printWindow = window.open("", "_blank", "width=1100,height=800");
     if (!printWindow) {
       throw new Error("Não foi possível abrir a janela de impressão.");
     }
@@ -548,13 +578,15 @@ export function useEmpresaFleet() {
       search: debouncedSearch,
       status: statusFilter,
       tipo: tipoFilter,
+    }, {
+      name: user?.empresa_nome || user?.empresa || "Empresa",
+      logoUrl: user?.logo_url || "",
     });
     printWindow.document.open();
     printWindow.document.write(html);
     printWindow.document.close();
     printWindow.focus();
-    setTimeout(() => printWindow.print(), 250);
-  }, [debouncedSearch, statusFilter, tipoFilter]);
+  }, [debouncedSearch, statusFilter, tipoFilter, user?.empresa, user?.empresa_nome, user?.logo_url]);
 
   return {
     fmtInt,
@@ -595,7 +627,7 @@ export function useEmpresaFleet() {
     maintSaving,
     addMaintenance,
     removeMaintenance,
-    downloadFleetCsv,
+    downloadFleetExcel,
     printFleetAssignments,
   };
 }

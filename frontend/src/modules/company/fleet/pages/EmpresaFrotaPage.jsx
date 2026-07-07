@@ -78,10 +78,10 @@ export default function EmpresaFrotaPage() {
       </button>
       <button
         type="button"
-        onClick={() => fl.downloadFleetCsv()}
+        onClick={() => fl.downloadFleetExcel()}
         className="rounded-lg border border-zinc-600 bg-zinc-900/80 px-4 py-2 text-sm font-medium text-zinc-100 hover:border-zinc-500"
       >
-        Exportar CSV
+        Exportar Excel
       </button>
       <button
         type="button"
