@@ -1,6 +1,473 @@
 const { pool } = require("../db");
 const { logError } = require("../services/loggerService");
 
+const isMissingSchemaField = (err) => ["42703", "42P01"].includes(String(err?.code || "").trim().toUpperCase());
+const SCHEMA_CACHE_TTL_MS = 30_000;
+const tableColumnsCache = new Map();
+const SAFE_TABLE_IDENTIFIER_REGEX = /^[a-z_][a-z0-9_]*$/;
+
+const cloneSet = (value) => new Set(value instanceof Set ? [...value] : []);
+
+const resolveExistingColumn = (available, candidates = []) =>
+  candidates.find((name) => available.has(String(name || "").toLowerCase())) || null;
+
+const probeTableColumns = async (tableName) => {
+  if (!SAFE_TABLE_IDENTIFIER_REGEX.test(tableName)) return new Set();
+  const result = await pool.query(`SELECT * FROM ${tableName} LIMIT 0`);
+  return new Set(
+    (result?.fields || [])
+      .map((field) => String(field?.name || "").trim().toLowerCase())
+      .filter(Boolean)
+  );
+};
+
+const getTableColumns = async (tableName) => {
+  const normalized = String(tableName || "").trim().toLowerCase();
+  if (!normalized) return new Set();
+  const now = Date.now();
+  const cached = tableColumnsCache.get(normalized);
+  if (cached && cached.expiresAt > now) {
+    return cloneSet(cached.columns);
+  }
+  let columns = new Set();
+  try {
+    const { rows } = await pool.query(
+      `SELECT column_name
+       FROM information_schema.columns
+       WHERE table_schema = current_schema()
+         AND table_name = $1`,
+      [normalized]
+    );
+    columns = new Set((rows || []).map((row) => String(row?.column_name || "").trim().toLowerCase()).filter(Boolean));
+  } catch {
+    columns = new Set();
+  }
+  if (!columns.size) {
+    try {
+      columns = await probeTableColumns(normalized);
+    } catch {
+      columns = new Set();
+    }
+  }
+  tableColumnsCache.set(normalized, {
+    columns: cloneSet(columns),
+    expiresAt: now + SCHEMA_CACHE_TTL_MS,
+  });
+  return columns;
+};
+
+const shiftSqlPlaceholders = (sql, shift) =>
+  String(sql).replace(/\$(\d+)/g, (_, rawIndex) => `$${Number(rawIndex) + shift}`);
+
+const ensureDistinctSourceIds = (source_ids) =>
+  Array.from(new Set((source_ids || []).map((id) => String(id || "").trim()).filter(Boolean)));
+
+const buildLegacyManagerRecordsTableQuery = ({
+  tableName,
+  alias,
+  tipo,
+  tipoLabel,
+  tableColumns,
+  userColumns,
+  vehicleColumns,
+  filters,
+  accentSource,
+  accentTarget,
+}) => {
+  if (!(tableColumns instanceof Set) || !tableColumns.size) return null;
+
+  const idColumn = resolveExistingColumn(tableColumns, ["id"]);
+  const companyColumn = resolveExistingColumn(tableColumns, ["empresa_id", "company_id"]);
+  const userColumn = resolveExistingColumn(tableColumns, ["usuario_id", "user_id"]);
+  const vehicleColumn = resolveExistingColumn(tableColumns, ["veiculo_id", "vehicle_id"]);
+  const sourceColumn = resolveExistingColumn(tableColumns, ["source_id"]);
+  const dataColumn = resolveExistingColumn(tableColumns, ["data", "date"]);
+  const recordedColumn = resolveExistingColumn(tableColumns, ["recorded_at_client"]);
+  const updatedColumn = resolveExistingColumn(tableColumns, ["updated_at", "created_at"]);
+
+  if (!idColumn || !dataColumn) return null;
+
+  const userIdColumn = resolveExistingColumn(userColumns, ["id"]);
+  const userCompanyColumn = resolveExistingColumn(userColumns, ["empresa_id", "company_id"]);
+  const userNameColumn = resolveExistingColumn(userColumns, ["nome", "name"]);
+  const userCpfColumn = resolveExistingColumn(userColumns, ["cpf_id", "cpf"]);
+  const canJoinUser = Boolean(userColumn && companyColumn && userIdColumn && userCompanyColumn);
+
+  const vehicleIdColumn = resolveExistingColumn(vehicleColumns, ["id"]);
+  const vehicleCompanyColumn = resolveExistingColumn(vehicleColumns, ["empresa_id", "company_id"]);
+  const vehicleNameColumn = resolveExistingColumn(vehicleColumns, ["nome", "name"]);
+  const vehiclePlateColumn = resolveExistingColumn(vehicleColumns, ["placa", "plate"]);
+  const canJoinVehicle = Boolean(vehicleColumn && companyColumn && vehicleIdColumn && vehicleCompanyColumn);
+
+  const params = [];
+  const where = [];
+  const pushParam = (value) => {
+    params.push(value);
+    return `$${params.length}`;
+  };
+
+  const dateExpr = `DATE(COALESCE(${recordedColumn ? `${alias}.${recordedColumn}, ` : ""}${alias}.${dataColumn}))`;
+
+  if (filters.empresa_id != null) {
+    if (companyColumn) {
+      where.push(`${alias}.${companyColumn} = ${pushParam(filters.empresa_id)}`);
+    } else {
+      where.push("1=0");
+    }
+  }
+
+  if (filters.data) {
+    where.push(`${dateExpr} = ${pushParam(filters.data)}`);
+  } else if (filters.mes) {
+    const [year, month] = String(filters.mes).split("-").map(Number);
+    const start = new Date(Date.UTC(year, month - 1, 1));
+    const end = new Date(Date.UTC(year, month, 0));
+    const startText = `${start.getUTCFullYear()}-${String(start.getUTCMonth() + 1).padStart(2, "0")}-01`;
+    const endText = `${end.getUTCFullYear()}-${String(end.getUTCMonth() + 1).padStart(2, "0")}-${String(end.getUTCDate()).padStart(2, "0")}`;
+    where.push(`${dateExpr} >= ${pushParam(startText)}`);
+    where.push(`${dateExpr} <= ${pushParam(endText)}`);
+  } else {
+    if (filters.data_inicio) {
+      where.push(`${dateExpr} >= ${pushParam(filters.data_inicio)}`);
+    }
+    if (filters.data_fim) {
+      where.push(`${dateExpr} <= ${pushParam(filters.data_fim)}`);
+    }
+  }
+
+  if (filters.motorista) {
+    if (canJoinUser && userNameColumn) {
+      const searchPlaceholder = pushParam(`%${String(filters.motorista).toLowerCase()}%`);
+      const cpfClause = userCpfColumn ? ` OR COALESCE(u.${userCpfColumn}, '') LIKE REPLACE(${searchPlaceholder}, '%', '')` : "";
+      where.push(
+        `(
+          LOWER(translate(COALESCE(u.${userNameColumn}, ''), '${accentSource}', '${accentTarget}')) LIKE
+          LOWER(translate(${searchPlaceholder}, '${accentSource}', '${accentTarget}'))
+          ${cpfClause}
+        )`
+      );
+    } else {
+      where.push("1=0");
+    }
+  }
+
+  if (filters.veiculo) {
+    if (canJoinVehicle && (vehicleNameColumn || vehiclePlateColumn)) {
+      const searchPlaceholder = pushParam(`%${String(filters.veiculo).toLowerCase()}%`);
+      const vehicleNameExpr = vehicleNameColumn ? `COALESCE(v.${vehicleNameColumn}, '')` : "''";
+      const vehiclePlateExpr = vehiclePlateColumn ? `COALESCE(v.${vehiclePlateColumn}, '')` : "''";
+      where.push(
+        `(
+          LOWER(translate(${vehicleNameExpr}, '${accentSource}', '${accentTarget}')) LIKE
+          LOWER(translate(${searchPlaceholder}, '${accentSource}', '${accentTarget}'))
+          OR LOWER(${vehiclePlateExpr}) LIKE LOWER(translate(${searchPlaceholder}, '${accentSource}', '${accentTarget}'))
+        )`
+      );
+    } else {
+      where.push("1=0");
+    }
+  }
+
+  if (filters.veiculo_id != null) {
+    if (vehicleColumn) {
+      where.push(`${alias}.${vehicleColumn} = ${pushParam(Number(filters.veiculo_id))}`);
+    } else {
+      where.push("1=0");
+    }
+  }
+
+  if (filters.motorista_id != null) {
+    if (userColumn) {
+      where.push(`${alias}.${userColumn} = ${pushParam(Number(filters.motorista_id))}`);
+    } else {
+      where.push("1=0");
+    }
+  }
+
+  if (filters.usuario_id != null) {
+    if (userColumn) {
+      where.push(`${alias}.${userColumn} = ${pushParam(Number(filters.usuario_id))}`);
+    } else {
+      where.push("1=0");
+    }
+  }
+
+  const whereSql = where.length ? where.join(" AND ") : "1=1";
+  const userJoinSql = canJoinUser
+    ? `LEFT JOIN usuarios u ON u.${userIdColumn} = ${alias}.${userColumn} AND u.${userCompanyColumn} = ${alias}.${companyColumn}`
+    : "";
+  const vehicleJoinSql = canJoinVehicle
+    ? `LEFT JOIN veiculos v ON v.${vehicleIdColumn} = ${alias}.${vehicleColumn} AND v.${vehicleCompanyColumn} = ${alias}.${companyColumn}`
+    : "";
+
+  const dataExpr = `${alias}.${dataColumn}`;
+  const recordedExpr = recordedColumn ? `${alias}.${recordedColumn}` : "NULL";
+  const updatedExpr = updatedColumn ? `${alias}.${updatedColumn}` : `${recordedColumn ? `${alias}.${recordedColumn}` : `${alias}.${dataColumn}`}`;
+  const sourceExpr = sourceColumn ? `${alias}.${sourceColumn}::text` : `${alias}.${idColumn}::text`;
+  const motoristaExpr = canJoinUser && userNameColumn ? `u.${userNameColumn}` : "NULL::text";
+  const veiculoExpr = canJoinVehicle && vehicleNameColumn ? `v.${vehicleNameColumn}` : "NULL::text";
+  const placaExpr = canJoinVehicle && vehiclePlateColumn ? `v.${vehiclePlateColumn}` : "NULL::text";
+
+  const textCol = (name, aliases = []) => {
+    const column = resolveExistingColumn(tableColumns, [name, ...aliases]);
+    return column ? `${alias}.${column}` : "NULL::text";
+  };
+  const numCol = (name, aliases = []) => {
+    const column = resolveExistingColumn(tableColumns, [name, ...aliases]);
+    return column ? `${alias}.${column}` : "NULL::numeric";
+  };
+
+  let destinoExpr = "NULL::text";
+  let tipoTransporteExpr = "NULL::text";
+  let observacaoExpr = "NULL::text";
+  let litrosExpr = "NULL::numeric";
+  let tipoCombustivelExpr = "NULL::text";
+  let horimetroExpr = "NULL::numeric";
+  let hodometroExpr = "NULL::numeric";
+  let totalHorasExpr = "NULL::numeric";
+  let checklistResumoExpr = "NULL::text";
+  let checklistExpr = "NULL::jsonb";
+  let contratadoExpr = "NULL::text";
+  let operadorExpr = "NULL::text";
+  let equipamentoExpr = "NULL::text";
+  let marcaModeloExpr = "NULL::text";
+  let localExpr = "NULL::text";
+  let expedienteExpr = "NULL::text";
+  let periodoExpr = "NULL::text";
+  let climaExpr = "NULL::text";
+  let horimetroInicioExpr = "NULL::numeric";
+  let horimetroFimExpr = "NULL::numeric";
+  let hodometroInicioExpr = "NULL::numeric";
+  let hodometroFimExpr = "NULL::numeric";
+  let totalKmExpr = "NULL::numeric";
+  let outrosDescricaoExpr = "NULL::text";
+  let observacoesExpr = "NULL::text";
+  let tempoParadoExpr = "NULL::text";
+  let producaoExpr = "NULL::text";
+  let valorTotalExpr = "NULL::numeric";
+  let precoPorLitroExpr = "NULL::numeric";
+
+  if (tipo === "romaneio") {
+    destinoExpr = textCol("destino");
+    tipoTransporteExpr = textCol("tipo_transporte");
+    observacaoExpr = textCol("observacao");
+  } else if (tipo === "combustivel") {
+    litrosExpr = numCol("litros");
+    tipoCombustivelExpr = textCol("tipo_combustivel");
+    horimetroExpr = numCol("horimetro");
+    hodometroExpr = numCol("hodometro");
+    valorTotalExpr = numCol("valor_total");
+    precoPorLitroExpr = numCol("preco_por_litro", ["preco_litro"]);
+  } else if (tipo === "parte_diaria") {
+    totalHorasExpr = numCol("total_horas");
+    contratadoExpr = textCol("contratado");
+    operadorExpr = textCol("operador");
+    equipamentoExpr = textCol("equipamento");
+    marcaModeloExpr = textCol("marca_modelo");
+    localExpr = textCol("local");
+    expedienteExpr = textCol("expediente");
+    periodoExpr = textCol("periodo");
+    climaExpr = textCol("clima");
+    horimetroInicioExpr = numCol("horimetro_inicio");
+    horimetroFimExpr = numCol("horimetro_fim");
+    hodometroInicioExpr = numCol("hodometro_inicio");
+    hodometroFimExpr = numCol("hodometro_fim");
+    totalKmExpr = numCol("total_km");
+    outrosDescricaoExpr = textCol("outros_descricao");
+    observacoesExpr = textCol("observacoes");
+    tempoParadoExpr = textCol("tempo_parado");
+    producaoExpr = textCol("producao");
+    checklistResumoExpr = "NULL::text";
+    checklistExpr = "NULL::jsonb";
+  }
+
+  const sql = `SELECT
+      ${alias}.${idColumn} AS id,
+      COALESCE(${sourceExpr}, ${alias}.${idColumn}::text) AS source_id,
+      to_char(${dataExpr}, 'YYYY-MM-DD"T"HH24:MI:SS') AS data,
+      CASE WHEN ${recordedExpr} IS NULL THEN NULL ELSE to_char(${recordedExpr}, 'YYYY-MM-DD"T"HH24:MI:SS') END AS recorded_at_client,
+      CASE WHEN ${updatedExpr} IS NULL THEN NULL ELSE to_char(${updatedExpr}, 'YYYY-MM-DD"T"HH24:MI:SS') END AS updated_at,
+      ${motoristaExpr} AS motorista,
+      '${tipo}' AS tipo,
+      '${tipoLabel}' AS tipo_label,
+      ${veiculoExpr} AS veiculo,
+      ${placaExpr} AS placa,
+      ${destinoExpr} AS destino,
+      ${tipoTransporteExpr} AS tipo_transporte,
+      ${observacaoExpr} AS observacao,
+      ${litrosExpr} AS litros,
+      ${tipoCombustivelExpr} AS tipo_combustivel,
+      ${horimetroExpr} AS horimetro,
+      ${hodometroExpr} AS hodometro,
+      ${totalHorasExpr} AS total_horas,
+      ${checklistResumoExpr} AS checklist_resumo,
+      ${checklistExpr} AS checklist,
+      ${contratadoExpr} AS contratado,
+      ${operadorExpr} AS operador,
+      ${equipamentoExpr} AS equipamento,
+      ${marcaModeloExpr} AS marca_modelo,
+      ${localExpr} AS local,
+      ${expedienteExpr} AS expediente,
+      ${periodoExpr} AS periodo,
+      ${climaExpr} AS clima,
+      ${horimetroInicioExpr} AS horimetro_inicio,
+      ${horimetroFimExpr} AS horimetro_fim,
+      ${hodometroInicioExpr} AS hodometro_inicio,
+      ${hodometroFimExpr} AS hodometro_fim,
+      ${totalKmExpr} AS total_km,
+      ${outrosDescricaoExpr} AS outros_descricao,
+      ${tempoParadoExpr} AS tempo_parado,
+      ${observacoesExpr} AS observacoes,
+      ${producaoExpr} AS producao,
+      ${valorTotalExpr} AS valor_total,
+      ${precoPorLitroExpr} AS preco_por_litro
+    FROM ${tableName} ${alias}
+    ${userJoinSql}
+    ${vehicleJoinSql}
+    WHERE ${whereSql}`;
+
+  return { sql, params };
+};
+
+const listManagerRecordsBasic = async ({
+  empresa_id,
+  usuario_id,
+  data,
+  data_inicio,
+  data_fim,
+  mes,
+  motorista,
+  veiculo,
+  motorista_id,
+  veiculo_id,
+  tipo,
+  source_id,
+  source_ids,
+  allow_global = false,
+  page = 1,
+  limit = 20,
+}, cause = null) => {
+  logError("record:list-manager-schema-fallback", {
+    message: cause?.message || null,
+    code: cause?.code || null,
+  });
+
+  const [romaneioColumns, combustivelColumns, parteDiariaColumns, userColumns, vehicleColumns] = await Promise.all([
+    getTableColumns("romaneios").catch(() => new Set()),
+    getTableColumns("combustiveis").catch(() => new Set()),
+    getTableColumns("parte_diaria").catch(() => new Set()),
+    getTableColumns("usuarios").catch(() => new Set()),
+    getTableColumns("veiculos").catch(() => new Set()),
+  ]);
+
+  const accentSource = "ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇçÑñ";
+  const accentTarget = "AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCcNn";
+
+  const commonFilters = {
+    empresa_id,
+    usuario_id,
+    data,
+    data_inicio,
+    data_fim,
+    mes,
+    motorista,
+    veiculo,
+    motorista_id,
+    veiculo_id,
+  };
+
+  const queries = [];
+  const includeTipo = (entryTipo) => !tipo || entryTipo === tipo;
+
+  if (includeTipo("romaneio")) {
+    const query = buildLegacyManagerRecordsTableQuery({
+      tableName: "romaneios",
+      alias: "r",
+      tipo: "romaneio",
+      tipoLabel: "Romaneio",
+      tableColumns: romaneioColumns,
+      userColumns,
+      vehicleColumns,
+      filters: commonFilters,
+      accentSource,
+      accentTarget,
+    });
+    if (query) queries.push(query);
+  }
+
+  if (includeTipo("combustivel")) {
+    const query = buildLegacyManagerRecordsTableQuery({
+      tableName: "combustiveis",
+      alias: "c",
+      tipo: "combustivel",
+      tipoLabel: "Combustível",
+      tableColumns: combustivelColumns,
+      userColumns,
+      vehicleColumns,
+      filters: commonFilters,
+      accentSource,
+      accentTarget,
+    });
+    if (query) queries.push(query);
+  }
+
+  if (includeTipo("parte_diaria")) {
+    const query = buildLegacyManagerRecordsTableQuery({
+      tableName: "parte_diaria",
+      alias: "p",
+      tipo: "parte_diaria",
+      tipoLabel: "Parte Diária",
+      tableColumns: parteDiariaColumns,
+      userColumns,
+      vehicleColumns,
+      filters: commonFilters,
+      accentSource,
+      accentTarget,
+    });
+    if (query) queries.push(query);
+  }
+
+  if (!queries.length) {
+    return { items: [], total: 0 };
+  }
+
+  const unionParts = [];
+  const unionParams = [];
+  for (const query of queries) {
+    unionParts.push(shiftSqlPlaceholders(query.sql, unionParams.length));
+    unionParams.push(...query.params);
+  }
+
+  let baseQuery = `SELECT * FROM (${unionParts.join(" UNION ALL ")}) t`;
+  const wrapperFilters = [];
+  const wrapperParams = [...unionParams];
+
+  if (source_id) {
+    wrapperParams.push(String(source_id).trim());
+    wrapperFilters.push(`t.source_id = $${wrapperParams.length}`);
+  }
+
+  const sourceIds = ensureDistinctSourceIds(source_ids);
+  if (sourceIds.length > 0) {
+    wrapperParams.push(sourceIds);
+    wrapperFilters.push(`t.source_id = ANY($${wrapperParams.length}::text[])`);
+  }
+
+  if (wrapperFilters.length) {
+    baseQuery += ` WHERE ${wrapperFilters.join(" AND ")}`;
+  }
+
+  const countQuery = `SELECT COUNT(*)::int AS total FROM (${baseQuery}) c`;
+  const countResult = await pool.query(countQuery, wrapperParams);
+
+  const pageNum = Math.max(1, Number(page) || 1);
+  const limitNum = Math.max(1, Math.min(1_000_000, Number(limit) || 20));
+  const offset = (pageNum - 1) * limitNum;
+  const pagedQuery = `${baseQuery} ORDER BY data DESC LIMIT $${wrapperParams.length + 1} OFFSET $${wrapperParams.length + 2}`;
+  const { rows } = await pool.query(pagedQuery, [...wrapperParams, limitNum, offset]);
+  return { items: rows, total: countResult.rows[0].total };
+};
+
 const upsertRomaneio = async (empresa_id, usuario_id, payload, db = pool) => {
   const { rows } = await db.query(
     `INSERT INTO romaneios
@@ -136,7 +603,7 @@ const upsertParteDiaria = async (empresa_id, usuario_id, payload, db = pool) => 
   return rows[0];
 };
 
-const listManagerRecords = async ({
+const listManagerRecordsModern = async ({
   empresa_id,
   usuario_id,
   data,
@@ -409,6 +876,15 @@ const listManagerRecords = async ({
   } OFFSET $${wrapperValues.length + 2}`;
   const { rows } = await pool.query(pagedQuery, [...wrapperValues, limit, offset]);
   return { items: rows, total: countResult.rows[0].total };
+};
+
+const listManagerRecords = async (options = {}) => {
+  try {
+    return await listManagerRecordsModern(options);
+  } catch (err) {
+    if (!isMissingSchemaField(err)) throw err;
+    return listManagerRecordsBasic(options, err);
+  }
 };
 
 const EXECUTIVO_PERIODOS = new Set(["dia", "semana", "mes", "ano"]);

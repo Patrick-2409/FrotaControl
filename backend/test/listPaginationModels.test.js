@@ -421,6 +421,171 @@ test("listManagerRecords aplica filtros exatos de veiculo_id e motorista_id", as
   }
 });
 
+test("listManagerRecords usa fallback essencial quando schema de registros está parcial", async () => {
+  delete require.cache[pathRm];
+  delete require.cache[pathDb];
+  const db = require("../src/db");
+  const orig = db.pool.query;
+  const calls = [];
+  let modernFailed = false;
+  db.pool.query = async (sql, vals) => {
+    const text = String(sql);
+    calls.push({ sql: text, vals: vals ? [...vals] : [] });
+    if (text.includes("information_schema.columns")) {
+      const tableName = String(vals?.[0] || "");
+      if (tableName === "romaneios") {
+        return {
+          rows: [
+            { column_name: "id" },
+            { column_name: "empresa_id" },
+            { column_name: "usuario_id" },
+            { column_name: "veiculo_id" },
+            { column_name: "data" },
+            { column_name: "destino" },
+            { column_name: "tipo_transporte" },
+            { column_name: "observacao" },
+          ],
+        };
+      }
+      if (tableName === "combustiveis") {
+        return {
+          rows: [
+            { column_name: "id" },
+            { column_name: "empresa_id" },
+            { column_name: "usuario_id" },
+            { column_name: "veiculo_id" },
+            { column_name: "data" },
+            { column_name: "litros" },
+            { column_name: "tipo_combustivel" },
+            { column_name: "horimetro" },
+            { column_name: "hodometro" },
+          ],
+        };
+      }
+      if (tableName === "parte_diaria") {
+        return {
+          rows: [
+            { column_name: "id" },
+            { column_name: "empresa_id" },
+            { column_name: "usuario_id" },
+            { column_name: "veiculo_id" },
+            { column_name: "data" },
+            { column_name: "total_horas" },
+          ],
+        };
+      }
+      if (tableName === "usuarios") {
+        return {
+          rows: [
+            { column_name: "id" },
+            { column_name: "empresa_id" },
+            { column_name: "nome" },
+            { column_name: "cpf_id" },
+          ],
+        };
+      }
+      if (tableName === "veiculos") {
+        return {
+          rows: [
+            { column_name: "id" },
+            { column_name: "empresa_id" },
+            { column_name: "nome" },
+            { column_name: "placa" },
+          ],
+        };
+      }
+      return { rows: [] };
+    }
+    if (!modernFailed && text.includes("COUNT(*)::int AS total FROM (") && text.includes("jsonb_each_text")) {
+      modernFailed = true;
+      const err = new Error("column p.checklist does not exist");
+      err.code = "42703";
+      throw err;
+    }
+    if (text.includes("COUNT(*)::int AS total FROM (SELECT * FROM (")) {
+      return { rows: [{ total: 1 }] };
+    }
+    if (text.includes("ORDER BY data DESC") && text.includes("'combustivel' AS tipo")) {
+      return {
+        rows: [
+          {
+            id: 33,
+            source_id: "33",
+            data: "2026-07-01T10:00:00",
+            recorded_at_client: null,
+            updated_at: "2026-07-01T10:00:00",
+            motorista: "Motorista legado",
+            tipo: "combustivel",
+            tipo_label: "Combustível",
+            veiculo: "Veículo legado",
+            placa: "ABC1D23",
+            destino: null,
+            tipo_transporte: null,
+            observacao: null,
+            litros: 42,
+            tipo_combustivel: "Diesel",
+            horimetro: null,
+            hodometro: null,
+            total_horas: null,
+            checklist_resumo: null,
+            checklist: null,
+            contratado: null,
+            operador: null,
+            equipamento: null,
+            marca_modelo: null,
+            local: null,
+            expediente: null,
+            periodo: null,
+            clima: null,
+            horimetro_inicio: null,
+            horimetro_fim: null,
+            hodometro_inicio: null,
+            hodometro_fim: null,
+            total_km: null,
+            outros_descricao: null,
+            tempo_parado: null,
+            observacoes: null,
+            producao: null,
+            valor_total: null,
+            preco_por_litro: null,
+          },
+        ],
+      };
+    }
+    return { rows: [] };
+  };
+  try {
+    const { listManagerRecords } = require("../src/models/recordModel");
+    const result = await listManagerRecords({
+      empresa_id: 8,
+      tipo: "combustivel",
+      motorista: "Motorista",
+      page: 1,
+      limit: 20,
+    });
+    assert.strictEqual(modernFailed, true);
+    assert.strictEqual(result.total, 1);
+    assert.strictEqual(result.items.length, 1);
+    assert.strictEqual(result.items[0].source_id, "33");
+    assert.strictEqual(result.items[0].tipo, "combustivel");
+    const fallbackQuery = calls.find(
+      (c) =>
+        c.sql.includes("'combustivel' AS tipo") &&
+        c.sql.includes("COALESCE(c.id::text, c.id::text) AS source_id") &&
+        c.sql.includes("NULL::numeric AS valor_total") &&
+        c.sql.includes("NULL::numeric AS preco_por_litro")
+    );
+    assert.ok(fallbackQuery, "esperada query de fallback essencial");
+    assert.ok(!/c\.valor_total/.test(fallbackQuery.sql));
+    assert.ok(!/c\.preco_por_litro/.test(fallbackQuery.sql));
+    assert.match(fallbackQuery.sql, /c\.empresa_id = \$1/);
+  } finally {
+    db.pool.query = orig;
+    delete require.cache[pathRm];
+    delete require.cache[pathDb];
+  }
+});
+
 test("dashboardStats limita ranking por motorista a empresa do registro", async () => {
   delete require.cache[pathRm];
   delete require.cache[pathDb];
