@@ -450,6 +450,10 @@ test("dashboardStats limita ranking por motorista a empresa do registro", async 
     assert.strictEqual(calls.length, 1);
     assert.match(calls[0].sql, /SELECT empresa_id, DATE\(COALESCE\(recorded_at_client, data\)\) AS dia/);
     assert.match(calls[0].sql, /JOIN usuarios u ON u\.id = b\.usuario_id AND u\.empresa_id = b\.empresa_id/);
+    assert.match(calls[0].sql, /COUNT\(\*\) FILTER \(WHERE vi\.tipo = 'esteril'\)::int AS viagens_esteril/);
+    assert.match(calls[0].sql, /COUNT\(\*\) FILTER \(WHERE vi\.tipo = 'rocha'\)::int AS viagens_rocha/);
+    assert.match(calls[0].sql, /COALESCE\(vd\.viagens_esteril, 0\)::int AS viagens_esteril/);
+    assert.match(calls[0].sql, /COALESCE\(vd\.viagens_rocha, 0\)::int AS viagens_rocha/);
   } finally {
     db.pool.query = orig;
     delete require.cache[pathRm];

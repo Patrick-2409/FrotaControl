@@ -223,7 +223,13 @@ const listRecentViagensHojeApontadorSaoPaulo = async (empresa_id, apontador_id, 
   return rows;
 };
 
-/** Limites [start,end) em ISO UTC a partir de datas YYYY-MM-DD inclusive (fim = dia seguinte ao data_fim). */
+const saoPauloLocalMidnightUtcIso = (y, m0, d) =>
+  new Date(Date.UTC(y, m0, d, 3, 0, 0, 0)).toISOString();
+
+/**
+ * Limites [start,end) em ISO UTC a partir de datas YYYY-MM-DD inclusivas.
+ * As datas representam o dia civil operacional em America/Sao_Paulo.
+ */
 const utcBoundsFromDateRangeYmd = (data_inicio_ymd, data_fim_ymd) => {
   const parse = (ymd) => {
     const p = String(ymd).trim().split("-").map(Number);
@@ -233,9 +239,10 @@ const utcBoundsFromDateRangeYmd = (data_inicio_ymd, data_fim_ymd) => {
   const a = parse(data_inicio_ymd);
   const b = parse(data_fim_ymd);
   if (!a || !b) return null;
-  const start = new Date(Date.UTC(a.y, a.m - 1, a.d, 0, 0, 0, 0));
-  const endDay = new Date(Date.UTC(b.y, b.m - 1, b.d + 1, 0, 0, 0, 0));
-  return { start: start.toISOString(), end: endDay.toISOString() };
+  return {
+    start: saoPauloLocalMidnightUtcIso(a.y, a.m - 1, a.d),
+    end: saoPauloLocalMidnightUtcIso(b.y, b.m - 1, b.d + 1),
+  };
 };
 
 /**

@@ -519,7 +519,11 @@ const dashboardStats = async ({ empresa_id = null, periodo = null } = {}) => {
           COALESCE(COUNT(*) FILTER (WHERE b.tipo = 'romaneio'), 0)::int AS romaneios,
           COALESCE(COUNT(*) FILTER (WHERE b.tipo <> 'romaneio'), 0)::int AS apoio_registros,
           COALESCE(vd.total_viagens, 0)::int AS viagens,
-          COALESCE(vd.total_toneladas, 0)::double precision AS toneladas
+          COALESCE(vd.viagens_esteril, 0)::int AS viagens_esteril,
+          COALESCE(vd.viagens_rocha, 0)::int AS viagens_rocha,
+          COALESCE(vd.total_toneladas, 0)::double precision AS toneladas,
+          COALESCE(vd.toneladas_esteril, 0)::double precision AS toneladas_esteril,
+          COALESCE(vd.toneladas_rocha, 0)::double precision AS toneladas_rocha
         FROM ref,
              generate_series(ref.hoje - INTERVAL '6 days', ref.hoje, INTERVAL '1 day') d
         LEFT JOIN base b ON b.dia = d::date
@@ -527,6 +531,8 @@ const dashboardStats = async ({ empresa_id = null, periodo = null } = {}) => {
           SELECT
             (vi.marcacao AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
             COUNT(*)::int AS total_viagens,
+            COUNT(*) FILTER (WHERE vi.tipo = 'esteril')::int AS viagens_esteril,
+            COUNT(*) FILTER (WHERE vi.tipo = 'rocha')::int AS viagens_rocha,
             COALESCE(
               SUM(
                 CASE
@@ -564,7 +570,51 @@ const dashboardStats = async ({ empresa_id = null, periodo = null } = {}) => {
                 END
               ),
               0
-            )::double precision AS total_toneladas
+            )::double precision AS total_toneladas,
+            COALESCE(
+              SUM(
+                CASE
+                  WHEN vi.tipo = 'esteril' AND COALESCE(v.usa_para_transporte, false) = true
+                  THEN CASE
+                    WHEN COALESCE(v.transporta_esteril, CASE
+                      WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
+                        THEN v.capacidade_esteril_ton IS NOT NULL
+                      ELSE COALESCE(v.capacidade_ton, 0) > 0
+                    END)
+                    THEN CASE
+                      WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
+                        THEN COALESCE(v.capacidade_esteril_ton, 0)
+                      ELSE COALESCE(v.capacidade_ton, 0)
+                    END
+                    ELSE 0
+                  END
+                  ELSE 0
+                END
+              ),
+              0
+            )::double precision AS toneladas_esteril,
+            COALESCE(
+              SUM(
+                CASE
+                  WHEN vi.tipo = 'rocha' AND COALESCE(v.usa_para_transporte, false) = true
+                  THEN CASE
+                    WHEN COALESCE(v.transporta_rocha, CASE
+                      WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
+                        THEN v.capacidade_rocha_ton IS NOT NULL
+                      ELSE COALESCE(v.capacidade_ton, 0) > 0
+                    END)
+                    THEN CASE
+                      WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
+                        THEN COALESCE(v.capacidade_rocha_ton, 0)
+                      ELSE COALESCE(v.capacidade_ton, 0)
+                    END
+                    ELSE 0
+                  END
+                  ELSE 0
+                END
+              ),
+              0
+            )::double precision AS toneladas_rocha
           FROM viagens vi
           INNER JOIN veiculos v ON v.id = vi.veiculo_id AND v.empresa_id = vi.empresa_id
           CROSS JOIN ref
@@ -573,7 +623,8 @@ const dashboardStats = async ({ empresa_id = null, periodo = null } = {}) => {
             ${companyWhereViagens}
           GROUP BY (vi.marcacao AT TIME ZONE 'America/Sao_Paulo')::date
         ) vd ON vd.dia = d::date
-        GROUP BY d, vd.total_viagens, vd.total_toneladas
+        GROUP BY d, vd.total_viagens, vd.viagens_esteril, vd.viagens_rocha,
+          vd.total_toneladas, vd.toneladas_esteril, vd.toneladas_rocha
         ORDER BY d
       ) z) AS ultimos_7_dias`,
     values

@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import api, { extractApiErrorMessage } from "../../../../services/api";
 
 function getTransportTotal(row) {
-  const n = Number(row?.romaneios);
-  if (!Number.isFinite(n)) return 0;
-  return n;
+  const viagens = Number(row?.viagens);
+  if (Number.isFinite(viagens) && viagens > 0) return viagens;
+  const romaneios = Number(row?.romaneios);
+  if (!Number.isFinite(romaneios)) return 0;
+  return romaneios;
 }
 
 /**

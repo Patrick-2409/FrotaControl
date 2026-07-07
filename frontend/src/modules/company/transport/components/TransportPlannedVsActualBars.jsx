@@ -36,14 +36,14 @@ function labelPctClass(plan, exec, apiPct) {
 /**
  * Barras horizontais: planejado (fundo) vs executado (sobreposição), por material e total.
  */
-function TransportPlannedVsActualBars({ comparacao }) {
+function TransportPlannedVsActualBars({ comparacao, materialFilter = "todos" }) {
   const rows = useMemo(() => {
     if (!comparacao) return [];
     const pe = Number(comparacao.planejado_esteril || 0);
     const pr = Number(comparacao.planejado_rocha || 0);
     const ee = Number(comparacao.executado_esteril || 0);
     const er = Number(comparacao.executado_rocha || 0);
-    return [
+    const baseRows = [
       { key: "esteril", label: "Estéril", plan: pe, exec: ee, pct: Number(comparacao.percentual_esteril ?? 0) },
       { key: "rocha", label: "Rocha", plan: pr, exec: er, pct: Number(comparacao.percentual_rocha ?? 0) },
       {
@@ -54,7 +54,10 @@ function TransportPlannedVsActualBars({ comparacao }) {
         pct: Number(comparacao.percentual_total ?? 0),
       },
     ];
-  }, [comparacao]);
+    if (materialFilter === "esteril") return baseRows.filter((row) => row.key === "esteril");
+    if (materialFilter === "rocha") return baseRows.filter((row) => row.key === "rocha");
+    return baseRows;
+  }, [comparacao, materialFilter]);
 
   if (!comparacao) return null;
 

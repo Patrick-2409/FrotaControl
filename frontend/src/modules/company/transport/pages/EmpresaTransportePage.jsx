@@ -23,9 +23,25 @@ const fmtCountLabel = (count, singular, plural) => {
   return `${fmtInt(n)} ${n === 1 ? singular : plural}`;
 };
 
-function getTransportCount(row) {
-  const n = Number(row?.romaneios);
-  return Number.isFinite(n) ? n : 0;
+function getTransportCount(row, material = "todos") {
+  if (material === "esteril") {
+    const esteril = Number(row?.viagens_esteril);
+    return Number.isFinite(esteril) ? esteril : 0;
+  }
+  if (material === "rocha") {
+    const rocha = Number(row?.viagens_rocha);
+    return Number.isFinite(rocha) ? rocha : 0;
+  }
+  const viagens = Number(row?.viagens);
+  if (Number.isFinite(viagens) && viagens > 0) return viagens;
+  const romaneios = Number(row?.romaneios);
+  return Number.isFinite(romaneios) ? romaneios : 0;
+}
+
+function materialTitulo(material) {
+  if (material === "esteril") return "Estéril";
+  if (material === "rocha") return "Rocha";
+  return "Todos os materiais";
 }
 
 function fmtShortDateBr(ymd) {
@@ -58,8 +74,51 @@ function EmpresaTransportePageContent() {
 
   const maxTrend = useMemo(() => {
     if (!trendSorted.length) return 1;
-    return Math.max(1, ...trendSorted.map((d) => getTransportCount(d)));
-  }, [trendSorted]);
+    return Math.max(1, ...trendSorted.map((d) => getTransportCount(d, materialTab)));
+  }, [materialTab, trendSorted]);
+
+  const viagensResumoFiltrado = useMemo(() => {
+    const resumo = tr.viagensResumo || {};
+    const esterilTon = Number(resumo.total_toneladas_esteril || 0);
+    const rochaTon = Number(resumo.total_toneladas_rocha || 0);
+    const esterilViagens = Number(resumo.total_viagens_esteril || 0);
+    const rochaViagens = Number(resumo.total_viagens_rocha || 0);
+    return {
+      total_viagens_esteril: materialTab === "rocha" ? 0 : esterilViagens,
+      total_viagens_rocha: materialTab === "esteril" ? 0 : rochaViagens,
+      total_toneladas_esteril: materialTab === "rocha" ? 0 : esterilTon,
+      total_toneladas_rocha: materialTab === "esteril" ? 0 : rochaTon,
+    };
+  }, [materialTab, tr.viagensResumo]);
+
+  const comparacaoFiltrada = useMemo(() => {
+    if (!tr.comparacao) return null;
+    if (materialTab === "todos") return tr.comparacao;
+    const isEsteril = materialTab === "esteril";
+    return {
+      ...tr.comparacao,
+      planejado_esteril: isEsteril ? tr.comparacao.planejado_esteril : 0,
+      planejado_rocha: isEsteril ? 0 : tr.comparacao.planejado_rocha,
+      executado_esteril: isEsteril ? tr.comparacao.executado_esteril : 0,
+      executado_rocha: isEsteril ? 0 : tr.comparacao.executado_rocha,
+      percentual_esteril: isEsteril ? tr.comparacao.percentual_esteril : 0,
+      percentual_rocha: isEsteril ? 0 : tr.comparacao.percentual_rocha,
+      percentual_total: isEsteril ? tr.comparacao.percentual_esteril : tr.comparacao.percentual_rocha,
+    };
+  }, [materialTab, tr.comparacao]);
+
+  const metaPlanejadaFiltrada = useMemo(() => {
+    if (!comparacaoFiltrada) return 0;
+    return Number(comparacaoFiltrada.planejado_esteril || 0) + Number(comparacaoFiltrada.planejado_rocha || 0);
+  }, [comparacaoFiltrada]);
+
+  const executadoFiltrado = useMemo(() => {
+    if (!comparacaoFiltrada) return 0;
+    return Number(comparacaoFiltrada.executado_esteril || 0) + Number(comparacaoFiltrada.executado_rocha || 0);
+  }, [comparacaoFiltrada]);
+
+  const pctTotalFiltrado = Number(comparacaoFiltrada?.percentual_total ?? 0);
+  const materialAtualLabel = materialTitulo(materialTab);
 
   const pageLoading = prod.loading && !prod.stats;
 
@@ -99,12 +158,36 @@ function EmpresaTransportePageContent() {
 
   const totalToneladasPeriodo =
     tr.viagensResumo != null
-      ? Number(tr.viagensResumo.total_toneladas_esteril || 0) + Number(tr.viagensResumo.total_toneladas_rocha || 0)
+      ? Number(viagensResumoFiltrado.total_toneladas_esteril || 0) +
+        Number(viagensResumoFiltrado.total_toneladas_rocha || 0)
       : 0;
 
-  const pctTotal = Number(tr.comparacao?.percentual_total ?? 0);
-  const historicoTitle = "Histórico semanal de transporte";
-  const historicoLead = "Últimos 7 dias de operação (romaneios)";
+  const pctTotal = pctTotalFiltrado;
+  const historicoTitle = `Histórico semanal de transporte${materialTab === "todos" ? "" : ` — ${materialAtualLabel}`}`;
+  const historicoLead =
+    materialTab === "todos"
+      ? "Últimos 7 dias de operação (lançamentos do apontador)"
+      : `Últimos 7 dias de lançamentos de ${materialAtualLabel.toLowerCase()}`;
+  const materialCards = [
+    materialTab !== "rocha"
+      ? {
+          key: "esteril",
+          label: "Estéril",
+          labelClass: "text-zinc-500",
+          toneladas: viagensResumoFiltrado.total_toneladas_esteril,
+          viagens: viagensResumoFiltrado.total_viagens_esteril,
+        }
+      : null,
+    materialTab !== "esteril"
+      ? {
+          key: "rocha",
+          label: "Rocha",
+          labelClass: "text-amber-200/80",
+          toneladas: viagensResumoFiltrado.total_toneladas_rocha,
+          viagens: viagensResumoFiltrado.total_viagens_rocha,
+        }
+      : null,
+  ].filter(Boolean);
 
   return (
     <BIDashboardShell eyebrow="Indicadores" title="Transporte" lead="Toneladas, metas e planejamento do período.">
@@ -146,7 +229,7 @@ function EmpresaTransportePageContent() {
         defaultOpenDesktop
         defaultOpenMobile
         className={`overflow-hidden rounded-2xl border-2 ${
-          tr.comparacao && tr.metaPlanejadaTotal > 0
+          tr.comparacao && metaPlanejadaFiltrada > 0
             ? pctTotal >= 100
               ? "border-emerald-500/35 bg-emerald-950/20"
               : pctTotal >= 70
@@ -171,27 +254,19 @@ function EmpresaTransportePageContent() {
             <p className="mt-2 font-mono text-4xl font-black tabular-nums tracking-tight text-zinc-50 sm:text-5xl md:text-6xl">
               {fmtTon(totalToneladasPeriodo)} <span className="text-2xl font-bold text-zinc-400 sm:text-3xl">t</span>
             </p>
-            <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-                <p className="text-xs text-zinc-500">Estéril</p>
-                <p className="mt-1 text-xl font-bold tabular-nums text-zinc-100">
-                  {tr.viagensResumo ? `${fmtTon(tr.viagensResumo.total_toneladas_esteril)} t` : "—"}
-                </p>
-                <p className="mt-1 flex items-center gap-1.5 text-xs text-zinc-500">
-                  {fmtCountLabel(tr.viagensResumo?.total_viagens_esteril, "viagem", "viagens")}
-                  <TooltipInfo text="Quantidade de viagens realizadas pelo motorista ou veículo." />
-                </p>
-              </div>
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-                <p className="text-xs text-amber-200/80">Rocha</p>
-                <p className="mt-1 text-xl font-bold tabular-nums text-zinc-100">
-                  {tr.viagensResumo ? `${fmtTon(tr.viagensResumo.total_toneladas_rocha)} t` : "—"}
-                </p>
-                <p className="mt-1 flex items-center gap-1.5 text-xs text-zinc-500">
-                  {fmtCountLabel(tr.viagensResumo?.total_viagens_rocha, "viagem", "viagens")}
-                  <TooltipInfo text="Quantidade de viagens realizadas pelo motorista ou veículo." />
-                </p>
-              </div>
+            <div className={`mt-6 grid gap-3 ${materialCards.length > 1 ? "sm:grid-cols-2" : ""}`}>
+              {materialCards.map((card) => (
+                <div key={card.key} className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                  <p className={`text-xs ${card.labelClass}`}>{card.label}</p>
+                  <p className="mt-1 text-xl font-bold tabular-nums text-zinc-100">
+                    {tr.viagensResumo ? `${fmtTon(card.toneladas)} t` : "—"}
+                  </p>
+                  <p className="mt-1 flex items-center gap-1.5 text-xs text-zinc-500">
+                    {fmtCountLabel(card.viagens, "viagem", "viagens")}
+                    <TooltipInfo text="Quantidade de viagens lançadas pelo apontador para este material." />
+                  </p>
+                </div>
+              ))}
             </div>
           </>
         )}
@@ -220,7 +295,12 @@ function EmpresaTransportePageContent() {
               <button
                 key={p.id}
                 type="button"
-                onClick={() => tr.setPeriodoFiltro(p.id)}
+                onClick={() => {
+                  const mesmoPeriodo = tr.periodoFiltro === p.id;
+                  tr.setPeriodoFiltro(p.id);
+                  if (mesmoPeriodo) void tr.refetchViagens();
+                  void prod.refetchStats();
+                }}
                 className={`fc-btn rounded-md border px-3 py-2 text-sm font-medium transition ${
                   tr.periodoFiltro === p.id
                     ? "border-amber-500/50 bg-zinc-800/80 text-zinc-50 shadow-inner"
@@ -254,7 +334,11 @@ function EmpresaTransportePageContent() {
         </div>
 
         {!tr.viagensLoading && tr.viagensResumo && totalToneladasPeriodo <= 0 ? (
-          <p className="text-sm text-zinc-500">Sem toneladas com capacidade registada neste período.</p>
+          <p className="text-sm text-zinc-500">
+            {materialTab === "todos"
+              ? "Sem toneladas com capacidade registrada neste período."
+              : `Sem toneladas de ${materialAtualLabel.toLowerCase()} com capacidade registrada neste período.`}
+          </p>
         ) : null}
         </section>
       </AccordionSection>
@@ -282,21 +366,22 @@ function EmpresaTransportePageContent() {
             <div className="flex flex-col items-center gap-8 lg:flex-row lg:items-center lg:justify-center lg:gap-12 xl:gap-16">
               <div className="flex shrink-0 justify-center lg:flex-1 lg:justify-center">
                 <TransportPlanExecutadoPizza
-                  totalToneladasEsteril={Number(tr.viagensResumo?.total_toneladas_esteril ?? 0)}
-                  totalToneladasRocha={Number(tr.viagensResumo?.total_toneladas_rocha ?? 0)}
+                  totalToneladasEsteril={Number(viagensResumoFiltrado.total_toneladas_esteril ?? 0)}
+                  totalToneladasRocha={Number(viagensResumoFiltrado.total_toneladas_rocha ?? 0)}
+                  materialFilter={materialTab}
                 />
               </div>
               <div className="flex w-full min-w-0 flex-col justify-center gap-5 sm:max-w-md lg:max-w-none lg:flex-1">
                 <div>
                   <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Meta total</p>
                   <p className="mt-0.5 text-2xl font-bold tabular-nums tracking-tight text-zinc-100 sm:text-3xl">
-                    {fmtTon(tr.metaPlanejadaTotal)} t
+                    {fmtTon(metaPlanejadaFiltrada)} t
                   </p>
                 </div>
                 <div>
                   <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Executado</p>
                   <p className="mt-0.5 text-2xl font-bold tabular-nums tracking-tight text-zinc-100 sm:text-3xl">
-                    {fmtTon(tr.executadoTotal)} t
+                    {fmtTon(executadoFiltrado)} t
                   </p>
                 </div>
                 <div
@@ -318,7 +403,7 @@ function EmpresaTransportePageContent() {
                 </div>
               </div>
             </div>
-            <TransportPlannedVsActualBars comparacao={tr.comparacao} />
+            <TransportPlannedVsActualBars comparacao={comparacaoFiltrada} materialFilter={materialTab} />
           </div>
         ) : (
           <p className="text-sm text-zinc-500">Comparativo indisponível.</p>
@@ -344,10 +429,10 @@ function EmpresaTransportePageContent() {
               <div className="flex h-full w-full items-center justify-center text-xs text-zinc-500">Sem transporte</div>
             ) : (
               trendSorted.map((row) => {
-                const romaneios = getTransportCount(row);
-                const h = Math.max(8, Math.round((romaneios / maxTrend) * 100));
-                const barClass = romaneios > 0 ? "bg-amber-500/90" : "bg-zinc-700";
-                const tooltip = `${fmtShortDateBr(row.dia)} • ${fmtCountLabel(romaneios, "romaneio", "romaneios")}`;
+                const lancamentos = getTransportCount(row, materialTab);
+                const h = Math.max(8, Math.round((lancamentos / maxTrend) * 100));
+                const barClass = lancamentos > 0 ? "bg-amber-500/90" : "bg-zinc-700";
+                const tooltip = `${fmtShortDateBr(row.dia)} • ${fmtCountLabel(lancamentos, "lançamento", "lançamentos")}`;
                 return (
                   <div key={`hist-bar-${row.dia}`} className="flex min-w-0 flex-1 flex-col items-center gap-1">
                     <div className="flex h-16 w-full items-end sm:h-20" title={tooltip} aria-label={tooltip}>
@@ -378,8 +463,8 @@ function EmpresaTransportePageContent() {
                 </tr>
               ) : (
                 trendSorted.map((row) => {
-                  const v = getTransportCount(row);
-                  const transporteLabel = v > 0 ? fmtCountLabel(v, "romaneio", "romaneios") : "Sem transporte";
+                  const v = getTransportCount(row, materialTab);
+                  const transporteLabel = v > 0 ? fmtCountLabel(v, "lançamento", "lançamentos") : "Sem transporte";
                   const w = Math.round((v / maxTrend) * 100);
                   return (
                     <tr key={row.dia}>
@@ -418,7 +503,7 @@ function EmpresaTransportePageContent() {
         </h3>
         <p className="mt-1 text-xs text-zinc-500">Edite datas e metas, ou zere as metas do período ativo.</p>
 
-        {tr.metaPlanejadaTotal <= 0 && tr.comparacao ? (
+        {metaPlanejadaFiltrada <= 0 && tr.comparacao ? (
           <p className="mt-3 text-sm text-amber-200/90">Sem meta ativa para hoje. Defina datas que incluam hoje.</p>
         ) : null}
 

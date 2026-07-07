@@ -3,7 +3,11 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const { vehicleBodySchema, toVehicleWritePayload } = require("../src/validators/vehicleWriteSchema");
-const { getViagensResumoProducao, listViagensByVehicleDay } = require("../src/models/viagemModel");
+const {
+  getViagensResumoProducao,
+  listViagensByVehicleDay,
+  utcBoundsFromDateRangeYmd,
+} = require("../src/models/viagemModel");
 
 const createDb = (responses = []) => {
   const calls = [];
@@ -124,4 +128,13 @@ test("exportacao por veiculo retorna capacidades separadas para esteril e rocha"
   assert.match(db.calls[0].sql, /capacidade_rocha_ton/);
   assert.strictEqual(rows[0].ton_esteril, 32);
   assert.strictEqual(rows[0].ton_rocha, 28);
+});
+
+test("intervalo de viagens usa dia operacional America/Sao_Paulo", () => {
+  const bounds = utcBoundsFromDateRangeYmd("2026-07-07", "2026-07-07");
+
+  assert.deepStrictEqual(bounds, {
+    start: "2026-07-07T03:00:00.000Z",
+    end: "2026-07-08T03:00:00.000Z",
+  });
 });

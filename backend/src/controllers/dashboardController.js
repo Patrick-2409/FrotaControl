@@ -80,56 +80,6 @@ const normalizeMonthFilter = (rawValue) => {
   return raw;
 };
 
-const utcMidnight = (y, m0, d) => new Date(Date.UTC(y, m0, d, 0, 0, 0, 0));
-
-/** Interpreta YYYY-MM-DD como dia civil em UTC (início [start,end) em ISO). */
-const utcDayBoundsFromYmd = (yyyyMmDd) => {
-  const parts = yyyyMmDd.split("-").map(Number);
-  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return null;
-  const [y, m, d] = parts;
-  const start = utcMidnight(y, m - 1, d);
-  const end = utcMidnight(y, m - 1, d + 1);
-  return { start: start.toISOString(), end: end.toISOString() };
-};
-
-/** Segunda-feira 00:00 UTC da semana ISO que contém o ancoramento (YYYY-MM-DD). */
-const utcIsoWeekBoundsFromYmd = (yyyyMmDd) => {
-  const dayBounds = utcDayBoundsFromYmd(yyyyMmDd);
-  if (!dayBounds) return null;
-  const anchor = new Date(dayBounds.start);
-  const dow = anchor.getUTCDay();
-  const offsetToMonday = (dow + 6) % 7;
-  const start = new Date(anchor);
-  start.setUTCDate(start.getUTCDate() - offsetToMonday);
-  start.setUTCHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setUTCDate(end.getUTCDate() + 7);
-  return { start: start.toISOString(), end: end.toISOString() };
-};
-
-/** Primeiro dia do mês do ancoramento até o primeiro do mês seguinte (UTC). */
-const utcMonthBoundsFromYmd = (yyyyMmDd) => {
-  const parts = yyyyMmDd.split("-").map(Number);
-  if (parts.length < 2 || parts.some((n) => !Number.isFinite(n))) return null;
-  const [y, m] = parts;
-  const start = utcMidnight(y, m - 1, 1);
-  const end = utcMidnight(y, m, 1);
-  return { start: start.toISOString(), end: end.toISOString() };
-};
-
-/** Ano civil do ancoramento (1 jan UTC até 1 jan do ano seguinte). */
-const utcYearBoundsFromYmd = (yyyyMmDd) => {
-  const parts = String(yyyyMmDd)
-    .trim()
-    .split("-")
-    .map(Number);
-  if (parts.length < 1 || parts.some((n) => !Number.isFinite(n))) return null;
-  const y = parts[0];
-  const start = utcMidnight(y, 0, 1);
-  const end = utcMidnight(y + 1, 0, 1);
-  return { start: start.toISOString(), end: end.toISOString() };
-};
-
 /**
  * YYYY-MM-DD do "hoje" no calendário de São Paulo (alinhado ao que motoristas gravam sem fuso).
  */
@@ -190,13 +140,7 @@ const resolveCombustiveisPeriodBounds = (periodo, dataAnchorYmd) => {
 };
 
 const resolveViagensPeriodBounds = (periodo, dataAnchorYmd) => {
-  if (!periodo) return null;
-  const ymd = dataAnchorYmd || new Date().toISOString().slice(0, 10);
-  if (periodo === "dia") return utcDayBoundsFromYmd(ymd);
-  if (periodo === "semana") return utcIsoWeekBoundsFromYmd(ymd);
-  if (periodo === "mes") return utcMonthBoundsFromYmd(ymd);
-  if (periodo === "ano") return utcYearBoundsFromYmd(ymd);
-  return null;
+  return resolveCombustiveisPeriodBounds(periodo, dataAnchorYmd);
 };
 
 const list = async (req, res) => {
