@@ -440,10 +440,12 @@ const getMotoristaByLoginModern = async (login) => {
 const getMotoristaByLoginBasic = async (login) => {
   let userColumns = await getTableColumns("usuarios").catch(() => new Set());
   let vehicleColumns = await getTableColumns("veiculos").catch(() => new Set());
+  let companyColumns = await getTableColumns("empresas").catch(() => new Set());
   if (!userColumns.size) {
     userColumns = new Set(["id", "empresa_id", "nome", "email", "cpf_id", "senha_hash", "role", "veiculo_id", "created_at"]);
   }
   if (!vehicleColumns.size) vehicleColumns = new Set();
+  if (!companyColumns.size) companyColumns = new Set();
 
   const idColumn = resolveExistingColumn(userColumns, ["id"]);
   const companyColumn = resolveExistingColumn(userColumns, ["empresa_id", "company_id"]);
@@ -511,6 +513,13 @@ const getMotoristaByLoginBasic = async (login) => {
       ? `COALESCE(NULLIF(TRIM(v.${vehicleTypeColumn}), ''), CASE WHEN ${vehicleTransportSelect} THEN 'transporte' ELSE 'apoio' END)`
       : `CASE WHEN ${vehicleTransportSelect} THEN 'transporte' ELSE 'apoio' END`;
   const fallbackOrderBy = createdAtColumn ? `u.${createdAtColumn} DESC, u.${idColumn} DESC` : `u.${idColumn} DESC`;
+  const companyIdColumn = resolveExistingColumn(companyColumns, ["id"]);
+  const companyNameColumn = resolveExistingColumn(companyColumns, ["nome", "name"]);
+  const companyLogoColumn = resolveExistingColumn(companyColumns, ["logo_url"]);
+  const canJoinCompany = Boolean(companyIdColumn);
+  const companyJoinSql = canJoinCompany ? `LEFT JOIN empresas e ON e.${companyIdColumn} = u.${companyColumn}` : "";
+  const companyNameSelect = canJoinCompany && companyNameColumn ? `e.${companyNameColumn}` : "NULL::text";
+  const companyLogoSelect = canJoinCompany && companyLogoColumn ? `e.${companyLogoColumn}` : "NULL::text";
 
   const { rows } = await pool.query(
     `SELECT u.${idColumn} AS id,
@@ -522,8 +531,8 @@ const getMotoristaByLoginBasic = async (login) => {
             u.${roleColumn} AS role,
             ${vehicleColumn ? `u.${vehicleColumn}` : "NULL::int"} AS veiculo_id,
             ${contaStatusColumn ? `COALESCE(u.${contaStatusColumn}, 'ativo')` : "'ativo'::text"} AS conta_status,
-            e.nome AS empresa_nome,
-            e.logo_url,
+            ${companyNameSelect} AS empresa_nome,
+            ${companyLogoSelect} AS logo_url,
             ${vehicleNameSelect} AS veiculo_nome,
             ${vehiclePlateSelect} AS placa,
             ${vehicleBrandSelect} AS veiculo_marca,
@@ -535,7 +544,7 @@ const getMotoristaByLoginBasic = async (login) => {
             false AS tem_veiculo_transporte,
             false AS tem_veiculo_apoio
      FROM usuarios u
-     LEFT JOIN empresas e ON e.id = u.${companyColumn}
+     ${companyJoinSql}
      ${vehicleJoinSql}
      WHERE ${whereClauses.join(" AND ")}
      ORDER BY ${fallbackOrderBy}`,

@@ -249,6 +249,7 @@ test("getMotoristaByLogin usa fallback quando vínculos de veículos ainda estã
     assert.ok(fallbackCall, "esperada query essencial de fallback");
     assert.ok(!/LEFT JOIN LATERAL/.test(fallbackCall.sql));
     assert.ok(!/motorista_veiculos/.test(fallbackCall.sql));
+    assert.ok(!/e\.logo_url/.test(fallbackCall.sql));
   } finally {
     db.pool.query = originalQuery;
     delete require.cache[pathModel];
