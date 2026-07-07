@@ -26,24 +26,59 @@ const sendSourceConflict = (res) =>
     message: sourceConflictMessage,
   });
 
-const invalidVehicleMessage = "Veiculo invalido para esta empresa.";
+const invalidVehicleMessage = "Veiculo nao autorizado para este motorista.";
+const isMissingVehicleLinkSchema = (err) =>
+  ["42P01", "42703"].includes(String(err?.code || "").trim().toUpperCase());
 
-const vehicleBelongsToCompany = async (empresa_id, veiculo_id) => {
+const vehicleAllowedForMotorista = async (empresa_id, motorista_id, veiculo_id) => {
   if (veiculo_id == null) return true;
   const vehicleId = Number(veiculo_id);
   const companyId = Number(empresa_id);
-  if (!Number.isFinite(vehicleId) || vehicleId <= 0 || !Number.isFinite(companyId) || companyId <= 0) {
+  const driverId = Number(motorista_id);
+  if (
+    !Number.isFinite(vehicleId) ||
+    vehicleId <= 0 ||
+    !Number.isFinite(companyId) ||
+    companyId <= 0 ||
+    !Number.isFinite(driverId) ||
+    driverId <= 0
+  ) {
     return false;
   }
-  const { rows } = await pool.query("SELECT 1 FROM veiculos WHERE id = $1 AND empresa_id = $2", [
-    vehicleId,
-    companyId,
-  ]);
-  return rows.length > 0;
+  try {
+    const { rows } = await pool.query(
+      `SELECT 1
+       FROM veiculos v
+       INNER JOIN usuarios u ON u.id = $3 AND u.empresa_id = v.empresa_id AND u.role = 'MOTORISTA'
+       LEFT JOIN motorista_veiculos mv
+         ON mv.empresa_id = v.empresa_id
+        AND mv.motorista_id = u.id
+        AND mv.veiculo_id = v.id
+       WHERE v.id = $1
+         AND v.empresa_id = $2
+         AND (u.veiculo_id = v.id OR mv.veiculo_id IS NOT NULL)
+       LIMIT 1`,
+      [vehicleId, companyId, driverId]
+    );
+    return rows.length > 0;
+  } catch (err) {
+    if (!isMissingVehicleLinkSchema(err)) throw err;
+    const { rows } = await pool.query(
+      `SELECT 1
+       FROM veiculos v
+       INNER JOIN usuarios u ON u.id = $3 AND u.empresa_id = v.empresa_id AND u.role = 'MOTORISTA'
+       WHERE v.id = $1
+         AND v.empresa_id = $2
+         AND u.veiculo_id = v.id
+       LIMIT 1`,
+      [vehicleId, companyId, driverId]
+    );
+    return rows.length > 0;
+  }
 };
 
-const ensurePayloadVehicleBelongsToCompany = async (empresa_id, payload, res) => {
-  if (await vehicleBelongsToCompany(empresa_id, payload?.veiculo_id)) return true;
+const ensurePayloadVehicleAllowedForMotorista = async (req, payload, res) => {
+  if (await vehicleAllowedForMotorista(req.user?.empresa_id, req.user?.sub, payload?.veiculo_id)) return true;
   res.status(400).json({
     success: false,
     error: invalidVehicleMessage,
@@ -186,7 +221,7 @@ const createRomaneio = async (req, res) => {
     });
   }
   const payload = romaneioSchema.parse(req.body);
-  if (!(await ensurePayloadVehicleBelongsToCompany(req.user.empresa_id, payload, res))) return;
+  if (!(await ensurePayloadVehicleAllowedForMotorista(req, payload, res))) return;
   const before = await pool.query(
     "SELECT id FROM romaneios WHERE empresa_id = $1 AND source_id = $2",
     [req.user.empresa_id, payload.source_id]
@@ -214,7 +249,7 @@ const createCombustivel = async (req, res) => {
     });
   }
   const payload = combustivelSchema.parse(req.body);
-  if (!(await ensurePayloadVehicleBelongsToCompany(req.user.empresa_id, payload, res))) return;
+  if (!(await ensurePayloadVehicleAllowedForMotorista(req, payload, res))) return;
   const before = await pool.query(
     "SELECT id FROM combustiveis WHERE empresa_id = $1 AND source_id = $2",
     [req.user.empresa_id, payload.source_id]
@@ -257,7 +292,7 @@ const updateCombustivelBySourceId = async (req, res) => {
     client_id: params.id,
   };
   const payload = combustivelSchema.parse(body);
-  if (!(await ensurePayloadVehicleBelongsToCompany(req.user.empresa_id, payload, res))) return;
+  if (!(await ensurePayloadVehicleAllowedForMotorista(req, payload, res))) return;
   const before = await pool.query(
     "SELECT id, usuario_id FROM combustiveis WHERE empresa_id = $1 AND source_id = $2",
     [req.user.empresa_id, payload.source_id]
@@ -303,7 +338,7 @@ const createParteDiaria = async (req, res) => {
     });
   }
   const payload = parteSchema.parse(req.body);
-  if (!(await ensurePayloadVehicleBelongsToCompany(req.user.empresa_id, payload, res))) return;
+  if (!(await ensurePayloadVehicleAllowedForMotorista(req, payload, res))) return;
   const before = await pool.query(
     "SELECT id FROM parte_diaria WHERE empresa_id = $1 AND source_id = $2",
     [req.user.empresa_id, payload.source_id]
@@ -348,7 +383,7 @@ const syncPending = async (req, res) => {
     ...(data.combustiveis || []),
     ...(data.parteDiaria || []),
   ]) {
-    if (!(await ensurePayloadVehicleBelongsToCompany(req.user.empresa_id, item, res))) return;
+    if (!(await ensurePayloadVehicleAllowedForMotorista(req, item, res))) return;
   }
 
   for (const item of data.romaneios || []) {
@@ -432,26 +467,62 @@ const listAppVehicles = async (req, res) => {
   const paraRomaneioRaw = String(req.query.para_romaneio ?? req.query.romaneio ?? "").trim().toLowerCase();
   const apenasTransporte =
     paraRomaneioRaw === "1" || paraRomaneioRaw === "true" || paraRomaneioRaw === "sim";
-  const values = [req.user.empresa_id];
-  let whereSql = "WHERE empresa_id = $1";
+  const values = [req.user.empresa_id, req.user.sub];
+  const where = [
+    "v.empresa_id = $1",
+    "(u.veiculo_id = v.id OR mv.veiculo_id IS NOT NULL)",
+  ];
 
   if (apenasTransporte) {
-    whereSql += " AND COALESCE(usa_para_transporte, false) = true";
+    where.push("COALESCE(v.usa_para_transporte, false) = true");
   }
 
   if (search) {
     values.push(`%${search}%`);
-    whereSql += ` AND (nome ILIKE $2 OR placa ILIKE $2 OR COALESCE(marca, '') ILIKE $2 OR COALESCE(modelo, '') ILIKE $2)`;
+    const idx = values.length;
+    where.push(
+      `(v.nome ILIKE $${idx}
+        OR v.placa ILIKE $${idx}
+        OR COALESCE(v.marca, '') ILIKE $${idx}
+        OR COALESCE(v.modelo, '') ILIKE $${idx}
+        OR LPAD(COALESCE(v.codigo_operacional, 0)::text, 2, '0') ILIKE $${idx})`
+    );
   }
 
-  const { rows } = await pool.query(
-    `SELECT id, nome, placa, marca, modelo, capacidade_ton, capacidade_esteril_ton, capacidade_rocha_ton,
-            transporta_esteril, transporta_rocha, usa_para_transporte
-     FROM veiculos
-     ${whereSql}
-     ORDER BY nome ASC, placa ASC`,
-    values
-  );
+  const sql = `SELECT v.id, v.nome, v.placa, v.marca, v.modelo, v.codigo_operacional,
+                      v.capacidade_ton, v.capacidade_esteril_ton, v.capacidade_rocha_ton,
+                      v.transporta_esteril, v.transporta_rocha, v.usa_para_transporte,
+                      (u.veiculo_id = v.id OR COALESCE(mv.is_principal, false)) AS linked
+               FROM veiculos v
+               INNER JOIN usuarios u ON u.id = $2 AND u.empresa_id = v.empresa_id AND u.role = 'MOTORISTA'
+               LEFT JOIN motorista_veiculos mv
+                 ON mv.empresa_id = v.empresa_id
+                AND mv.motorista_id = u.id
+                AND mv.veiculo_id = v.id
+               WHERE ${where.join(" AND ")}
+               ORDER BY (u.veiculo_id = v.id OR COALESCE(mv.is_principal, false)) DESC,
+                        v.codigo_operacional ASC NULLS LAST,
+                        v.nome ASC,
+                        v.placa ASC`;
+
+  let rows;
+  try {
+    ({ rows } = await pool.query(sql, values));
+  } catch (err) {
+    if (!isMissingVehicleLinkSchema(err)) throw err;
+    const fallbackWhere = where.map((item) =>
+      item === "(u.veiculo_id = v.id OR mv.veiculo_id IS NOT NULL)" ? "u.veiculo_id = v.id" : item
+    );
+    const fallbackSql = `SELECT v.id, v.nome, v.placa, v.marca, v.modelo, v.codigo_operacional,
+                                v.capacidade_ton, v.capacidade_esteril_ton, v.capacidade_rocha_ton,
+                                v.transporta_esteril, v.transporta_rocha, v.usa_para_transporte,
+                                true AS linked
+                         FROM veiculos v
+                         INNER JOIN usuarios u ON u.id = $2 AND u.empresa_id = v.empresa_id AND u.role = 'MOTORISTA'
+                         WHERE ${fallbackWhere.join(" AND ")}
+                         ORDER BY v.codigo_operacional ASC NULLS LAST, v.nome ASC, v.placa ASC`;
+    ({ rows } = await pool.query(fallbackSql, values));
+  }
 
   return res.json({ items: rows });
 };

@@ -14,6 +14,11 @@ import {
   writeScopedEditRecord,
 } from "../services/editRecordStorage";
 import { nowLocalDateTimeString, toIsoWithCurrentTimeIfDateOnly } from "../utils/datetime";
+import {
+  formatVehicleBrandModel,
+  formatVehicleOperationalCode,
+  formatVehicleOptionLabel,
+} from "../utils/vehicleLabels";
 import { listHistory } from "../offline/offlineRepo";
 
 const checklistItems = [
@@ -351,7 +356,7 @@ export default function ParteDiariaPage({ onSaved }) {
       if (!id) continue;
       byId.set(id, {
         ...vehicle,
-        linked: userVehicleId === id,
+        linked: Boolean(vehicle.linked || userVehicleId === id),
       });
     }
     return Array.from(byId.values());
@@ -361,8 +366,6 @@ export default function ParteDiariaPage({ onSaved }) {
     () => vehicleOptions.find((vehicle) => Number(vehicle.id) === Number(form.veiculo_id)),
     [vehicleOptions, form.veiculo_id]
   );
-
-  const hasMultipleVehicles = vehicleOptions.length > 1;
 
   const todayDashboard = useMemo(() => {
     const today = operationYmd(new Date().toISOString());
@@ -737,32 +740,49 @@ export default function ParteDiariaPage({ onSaved }) {
                   />
                 </FormField>
               </div>
-              {hasMultipleVehicles ? (
-                <FormField label="Veículo vinculado nesta operação">
-                  <select
-                    className={inputClass}
-                    value={form.veiculo_id ?? ""}
-                    onChange={(e) => onVehicleChange(e.target.value)}
-                    disabled={vehiclesLoading}
-                  >
-                    <option value="">{vehiclesLoading ? "Carregando veículos..." : "Selecione um veículo"}</option>
-                    {vehicleOptions.map((vehicle) => (
-                      <option key={vehicle.id} value={vehicle.id}>
-                        {vehicle.nome} - {vehicle.placa || "Sem placa"}{vehicle.linked ? " (vinculado a você)" : ""}
-                      </option>
-                    ))}
-                  </select>
-                </FormField>
-              ) : null}
-              {selectedVehicle && (
-                <p className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-xs text-blue-200">
-                  Veículo selecionado: <strong>{selectedVehicle.nome}</strong> | Placa:{" "}
-                  <strong>{selectedVehicle.placa || "Sem placa"}</strong>
-                  {buildBrandModel(selectedVehicle.marca, selectedVehicle.modelo)
-                    ? ` | Marca/Modelo: ${buildBrandModel(selectedVehicle.marca, selectedVehicle.modelo)}`
-                    : ""}
-                  {selectedVehicle.linked ? " (vinculado ao seu perfil)" : ""}
+              <FormField label="Veículo da operação">
+                <select
+                  className={inputClass}
+                  value={form.veiculo_id ?? ""}
+                  onChange={(e) => onVehicleChange(e.target.value)}
+                  disabled={vehiclesLoading || !vehicleOptions.length}
+                >
+                  <option value="">
+                    {vehiclesLoading
+                      ? "Carregando veículos..."
+                      : vehicleOptions.length
+                      ? "Selecione um veículo"
+                      : "Nenhum veículo autorizado"}
+                  </option>
+                  {vehicleOptions.map((vehicle) => (
+                    <option key={vehicle.id} value={vehicle.id}>
+                      {formatVehicleOptionLabel(vehicle)}{vehicle.linked ? " - principal" : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-slate-400">
+                  O veículo principal entra automaticamente; altere quando a operação ocorrer em outro veículo autorizado.
                 </p>
+              </FormField>
+              {selectedVehicle && (
+                <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-3 py-3 text-xs text-blue-100">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-md border border-blue-300/40 bg-blue-300/10 px-2 py-1 font-semibold">
+                      {formatVehicleOperationalCode(selectedVehicle.codigo_operacional)}
+                    </span>
+                    {selectedVehicle.linked ? (
+                      <span className="rounded-md border border-emerald-300/30 bg-emerald-400/10 px-2 py-1 text-emerald-100">
+                        Principal do perfil
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-2 text-sm font-semibold text-white">{selectedVehicle.nome || "Veículo selecionado"}</p>
+                  <div className="mt-2 grid grid-cols-1 gap-2 text-slate-300 sm:grid-cols-3">
+                    <span>Placa: <strong className="text-white">{selectedVehicle.placa || "Sem placa"}</strong></span>
+                    <span>Marca/Modelo: <strong className="text-white">{formatVehicleBrandModel(selectedVehicle) || "-"}</strong></span>
+                    <span>Vínculo: <strong className="text-white">{selectedVehicle.linked ? "principal" : "autorizado"}</strong></span>
+                  </div>
+                </div>
               )}
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 {["equipamento", "marca_modelo", "local"].map((k) => (

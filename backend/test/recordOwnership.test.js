@@ -112,7 +112,7 @@ test("upsertParteDiaria nao atualiza source_id de outro motorista", async () => 
   assert.deepStrictEqual(db.calls[0].params.slice(0, 4), [1, 22, 3, "source-parte-1"]);
 });
 
-test("createCombustivel rejeita veiculo que nao pertence a empresa do motorista", async () => {
+test("createCombustivel rejeita veiculo nao autorizado ao motorista", async () => {
   const pathDb = require.resolve("../src/db");
   const pathCtrl = require.resolve("../src/controllers/recordController");
   delete require.cache[pathCtrl];
@@ -121,7 +121,7 @@ test("createCombustivel rejeita veiculo que nao pertence a empresa do motorista"
   const calls = [];
   db.pool.query = async (sql, params) => {
     calls.push({ sql: String(sql), params });
-    if (/SELECT 1 FROM veiculos WHERE id = \$1 AND empresa_id = \$2/.test(String(sql))) {
+    if (/FROM veiculos v/.test(String(sql)) && /LEFT JOIN motorista_veiculos/.test(String(sql))) {
       return { rows: [], rowCount: 0 };
     }
     throw new Error(`consulta inesperada: ${sql}`);
@@ -145,9 +145,56 @@ test("createCombustivel rejeita veiculo que nao pertence a empresa do motorista"
     );
 
     assert.strictEqual(res.statusCode, 400);
-    assert.match(res.body?.message || "", /veiculo invalido/i);
-    assert.deepStrictEqual(calls[0].params, [99, 7]);
+    assert.match(res.body?.message || "", /veiculo nao autorizado/i);
+    assert.deepStrictEqual(calls[0].params, [99, 7, 22]);
+    assert.match(calls[0].sql, /LEFT JOIN motorista_veiculos/);
     assert.ok(!calls.some((c) => /INSERT INTO combustiveis/.test(c.sql)));
+  } finally {
+    db.pool.query = orig;
+    delete require.cache[pathCtrl];
+    delete require.cache[pathDb];
+  }
+});
+
+test("listAppVehicles lista somente veiculos vinculados ao motorista com codigo operacional", async () => {
+  const pathDb = require.resolve("../src/db");
+  const pathCtrl = require.resolve("../src/controllers/recordController");
+  delete require.cache[pathCtrl];
+  const db = require("../src/db");
+  const orig = db.pool.query;
+  const calls = [];
+  db.pool.query = async (sql, params) => {
+    calls.push({ sql: String(sql), params });
+    return {
+      rows: [
+        {
+          id: 4,
+          nome: "Scania P360",
+          placa: "SGC2J38",
+          codigo_operacional: 1,
+          linked: true,
+        },
+      ],
+      rowCount: 1,
+    };
+  };
+  try {
+    const { listAppVehicles } = require("../src/controllers/recordController");
+    const res = createRes();
+    await listAppVehicles(
+      {
+        user: { role: "MOTORISTA", empresa_id: 7, sub: 22 },
+        query: {},
+      },
+      res
+    );
+
+    assert.strictEqual(res.statusCode, 200);
+    assert.deepStrictEqual(calls[0].params, [7, 22]);
+    assert.match(calls[0].sql, /LEFT JOIN motorista_veiculos/);
+    assert.match(calls[0].sql, /\(u\.veiculo_id = v\.id OR mv\.veiculo_id IS NOT NULL\)/);
+    assert.match(calls[0].sql, /v\.codigo_operacional/);
+    assert.strictEqual(res.body?.items?.[0]?.codigo_operacional, 1);
   } finally {
     db.pool.query = orig;
     delete require.cache[pathCtrl];

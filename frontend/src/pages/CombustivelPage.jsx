@@ -9,6 +9,11 @@ import { generateId } from "../utils/id";
 import api, { extractApiErrorMessage } from "../services/api";
 import { nowLocalDateTimeString, toIsoWithCurrentTimeIfDateOnly } from "../utils/datetime";
 import { parseDecimalInput } from "../utils/numberParse";
+import {
+  formatVehicleBrandModel,
+  formatVehicleOperationalCode,
+  formatVehicleOptionLabel,
+} from "../utils/vehicleLabels";
 import { listHistory, saveLocal } from "../offline/offlineRepo";
 
 const OPERATION_TIMEZONE = "America/Sao_Paulo";
@@ -138,15 +143,24 @@ export default function CombustivelPage({ onSaved }) {
         placa: user?.placa || "",
         marca: user?.veiculo_marca || "",
         modelo: user?.veiculo_modelo || "",
+        linked: true,
       });
     }
     for (const vehicle of Array.isArray(vehicles) ? vehicles : []) {
       const id = Number(vehicle.id);
       if (!id) continue;
-      byId.set(id, vehicle);
+      byId.set(id, {
+        ...vehicle,
+        linked: Boolean(vehicle.linked || userVehicleId === id),
+      });
     }
     return Array.from(byId.values());
   }, [vehicles, user?.veiculo_id, user?.veiculo_nome, user?.placa, user?.veiculo_marca, user?.veiculo_modelo]);
+
+  const selectedVehicle = useMemo(
+    () => vehicleOptions.find((vehicle) => Number(vehicle.id) === Number(createForm.veiculo_id)),
+    [vehicleOptions, createForm.veiculo_id]
+  );
 
   const mergeHistory = useCallback((remoteRows, localRows) => {
     const merged = new Map();
@@ -196,6 +210,17 @@ export default function CombustivelPage({ onSaved }) {
       active = false;
     };
   }, [refreshHistory]);
+
+  useEffect(() => {
+    if (createForm.veiculo_id || !vehicleOptions.length) return;
+    const defaultVehicle = vehicleOptions.find((vehicle) => vehicle.linked) || vehicleOptions[0];
+    if (!defaultVehicle) return;
+    setCreateForm((prev) =>
+      prev.veiculo_id
+        ? prev
+        : { ...prev, veiculo_id: Number(defaultVehicle.id) || undefined }
+    );
+  }, [createForm.veiculo_id, vehicleOptions]);
 
   const fuelDashboard = useMemo(() => {
     const today = getTodayInOperationTimezone();
@@ -468,13 +493,44 @@ export default function CombustivelPage({ onSaved }) {
               </select>
             </FormField>
             <FormField label="Veículo">
-              <select className={inputClass} value={createForm.veiculo_id ?? ""} onChange={(e) => setCreateForm((prev) => ({ ...prev, veiculo_id: e.target.value ? Number(e.target.value) : undefined }))} disabled={vehiclesLoading}>
-                <option value="">{vehiclesLoading ? "Carregando veículos..." : "Selecione um veículo"}</option>
+              <select className={inputClass} value={createForm.veiculo_id ?? ""} onChange={(e) => setCreateForm((prev) => ({ ...prev, veiculo_id: e.target.value ? Number(e.target.value) : undefined }))} disabled={vehiclesLoading || !vehicleOptions.length}>
+                <option value="">
+                  {vehiclesLoading
+                    ? "Carregando veículos..."
+                    : vehicleOptions.length
+                    ? "Selecione um veículo"
+                    : "Nenhum veículo autorizado"}
+                </option>
                 {vehicleOptions.map((vehicle) => (
-                  <option key={vehicle.id} value={vehicle.id}>{vehicle.nome} - {vehicle.placa || "Sem placa"}</option>
+                  <option key={vehicle.id} value={vehicle.id}>
+                    {formatVehicleOptionLabel(vehicle)}{vehicle.linked ? " - principal" : ""}
+                  </option>
                 ))}
               </select>
+              <p className="mt-1 text-xs text-slate-400">
+                O veículo principal entra automaticamente; troque quando o abastecimento for de outro veículo autorizado.
+              </p>
             </FormField>
+            {selectedVehicle ? (
+              <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-3 py-3 text-xs text-blue-100 md:col-span-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-md border border-blue-300/40 bg-blue-300/10 px-2 py-1 font-semibold">
+                    {formatVehicleOperationalCode(selectedVehicle.codigo_operacional)}
+                  </span>
+                  {selectedVehicle.linked ? (
+                    <span className="rounded-md border border-emerald-300/30 bg-emerald-400/10 px-2 py-1 text-emerald-100">
+                      Principal do perfil
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-2 text-sm font-semibold text-white">{selectedVehicle.nome || "Veículo selecionado"}</p>
+                <div className="mt-2 grid grid-cols-1 gap-2 text-slate-300 sm:grid-cols-3">
+                  <span>Placa: <strong className="text-white">{selectedVehicle.placa || "Sem placa"}</strong></span>
+                  <span>Marca/Modelo: <strong className="text-white">{formatVehicleBrandModel(selectedVehicle) || "-"}</strong></span>
+                  <span>Vínculo: <strong className="text-white">{selectedVehicle.linked ? "principal" : "autorizado"}</strong></span>
+                </div>
+              </div>
+            ) : null}
             <FormField label="Litros">
               <input type="number" min="0" step="0.01" inputMode="decimal" className={inputClass} value={createForm.litros} onChange={(e) => setCreateForm((prev) => ({ ...prev, litros: e.target.value }))} />
             </FormField>
