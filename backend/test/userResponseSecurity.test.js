@@ -167,6 +167,95 @@ test("GET /api/users/me não retorna senha_hash", async () => {
   }
 });
 
+test("getMotoristaByLogin usa fallback quando vínculos de veículos ainda estão em migração", async () => {
+  const pathDb = require.resolve("../src/db");
+  const pathModel = require.resolve("../src/models/userModel");
+  delete require.cache[pathModel];
+  delete require.cache[pathDb];
+  const db = require("../src/db");
+  const originalQuery = db.pool.query;
+  const calls = [];
+
+  db.pool.query = async (sql, vals) => {
+    const text = String(sql);
+    calls.push({ sql: text, vals: vals ? [...vals] : [] });
+    if (text.includes("LEFT JOIN LATERAL")) {
+      const err = new Error('relation "motorista_veiculos" does not exist');
+      err.code = "42P01";
+      throw err;
+    }
+    if (text.includes("information_schema.columns")) {
+      const tableName = String(vals?.[0] || "");
+      if (tableName === "usuarios") {
+        return {
+          rows: [
+            { column_name: "id" },
+            { column_name: "empresa_id" },
+            { column_name: "nome" },
+            { column_name: "email" },
+            { column_name: "cpf_id" },
+            { column_name: "senha_hash" },
+            { column_name: "role" },
+            { column_name: "veiculo_id" },
+            { column_name: "conta_status" },
+            { column_name: "created_at" },
+          ],
+        };
+      }
+      if (tableName === "veiculos") {
+        return {
+          rows: [
+            { column_name: "id" },
+            { column_name: "empresa_id" },
+            { column_name: "nome" },
+            { column_name: "placa" },
+          ],
+        };
+      }
+      return { rows: [] };
+    }
+    return {
+      rowCount: 1,
+      rows: [
+        {
+          id: 21,
+          empresa_id: 9,
+          nome: "Carlos Motorista",
+          email: "carlos@empresa.com",
+          cpf_id: "99999999999",
+          senha_hash: "$2b$10$hash",
+          role: "MOTORISTA",
+          veiculo_id: 4,
+          conta_status: "ativo",
+          empresa_nome: "Empresa Teste",
+          logo_url: null,
+          veiculo_nome: "Scania P360",
+          placa: "SGC2J38",
+        },
+      ],
+    };
+  };
+
+  try {
+    const { getMotoristaByLogin } = require("../src/models/userModel");
+    const rows = await getMotoristaByLogin({ cpf: "99999999999" });
+
+    assert.strictEqual(rows.length, 1);
+    assert.strictEqual(rows[0].nome, "Carlos Motorista");
+    assert.strictEqual(rows[0].veiculo_nome, "Scania P360");
+    const fallbackCall = calls.find(
+      (c) => c.sql.includes("AS veiculo_nome") && c.sql.includes("'[]'::json AS veiculos_vinculados")
+    );
+    assert.ok(fallbackCall, "esperada query essencial de fallback");
+    assert.ok(!/LEFT JOIN LATERAL/.test(fallbackCall.sql));
+    assert.ok(!/motorista_veiculos/.test(fallbackCall.sql));
+  } finally {
+    db.pool.query = originalQuery;
+    delete require.cache[pathModel];
+    delete require.cache[pathDb];
+  }
+});
+
 test("listagem de usuários SUPER_ADMIN não inclui senha_hash", async () => {
   const pathDb = require.resolve("../src/db");
   const pathCtrl = require.resolve("../src/controllers/adminController");

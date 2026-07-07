@@ -386,6 +386,17 @@ const normalizeUserLoginInput = (loginInput) => {
 
 const getMotoristaByLogin = async (loginInput) => {
   const login = normalizeMotoristaLoginInput(loginInput);
+  return getMotoristaByLoginModern(login).catch(async (err) => {
+    if (!isMissingSchemaField(err)) throw err;
+    logWarn("user:motorista-login-schema-fallback", {
+      message: err?.message,
+      code: err?.code,
+    });
+    return getMotoristaByLoginBasic(login);
+  });
+};
+
+const getMotoristaByLoginModern = async (login) => {
   const whereClauses = [];
   const params = [];
   let idx = 1;
@@ -421,6 +432,113 @@ const getMotoristaByLogin = async (loginInput) => {
      WHERE u.role = 'MOTORISTA'
        AND (${whereClauses.join(" OR ")})
        AND COALESCE(u.conta_status, 'ativo') = 'ativo'`,
+    params
+  );
+  return rows;
+};
+
+const getMotoristaByLoginBasic = async (login) => {
+  let userColumns = await getTableColumns("usuarios").catch(() => new Set());
+  let vehicleColumns = await getTableColumns("veiculos").catch(() => new Set());
+  if (!userColumns.size) {
+    userColumns = new Set(["id", "empresa_id", "nome", "email", "cpf_id", "senha_hash", "role", "veiculo_id", "created_at"]);
+  }
+  if (!vehicleColumns.size) vehicleColumns = new Set();
+
+  const idColumn = resolveExistingColumn(userColumns, ["id"]);
+  const companyColumn = resolveExistingColumn(userColumns, ["empresa_id", "company_id"]);
+  const nameColumn = resolveExistingColumn(userColumns, ["nome", "name"]);
+  const emailColumn = resolveExistingColumn(userColumns, ["email"]);
+  const cpfColumn = resolveExistingColumn(userColumns, ["cpf_id", "cpf"]);
+  const passwordColumn = resolveExistingColumn(userColumns, ["senha_hash", "password_hash"]);
+  const roleColumn = resolveExistingColumn(userColumns, ["role"]);
+  const vehicleColumn = resolveExistingColumn(userColumns, ["veiculo_id", "vehicle_id"]);
+  const contaStatusColumn = resolveExistingColumn(userColumns, ["conta_status"]);
+  const createdAtColumn = resolveExistingColumn(userColumns, ["created_at"]);
+
+  if (!idColumn || !companyColumn || !nameColumn || !passwordColumn || !roleColumn) {
+    return [];
+  }
+
+  const whereClauses = [`u.${roleColumn} = 'MOTORISTA'`];
+  const params = [];
+  let idx = 1;
+  const identityClauses = [];
+
+  if (login.cpf && cpfColumn) {
+    identityClauses.push(`u.${cpfColumn} = $${idx}`);
+    params.push(login.cpf);
+    idx += 1;
+  }
+  if (login.email && emailColumn) {
+    identityClauses.push(`LOWER(COALESCE(u.${emailColumn}, '')) = LOWER($${idx})`);
+    params.push(login.email);
+    idx += 1;
+  }
+  if (login.user_id) {
+    identityClauses.push(`u.${idColumn} = $${idx}`);
+    params.push(login.user_id);
+    idx += 1;
+  }
+
+  if (!identityClauses.length) return [];
+  whereClauses.push(`(${identityClauses.join(" OR ")})`);
+  if (contaStatusColumn) {
+    whereClauses.push(`COALESCE(u.${contaStatusColumn}, 'ativo') = 'ativo'`);
+  }
+
+  const vehicleIdColumn = resolveExistingColumn(vehicleColumns, ["id"]);
+  const vehicleCompanyColumn = resolveExistingColumn(vehicleColumns, ["empresa_id", "company_id"]);
+  const vehicleNameColumn = resolveExistingColumn(vehicleColumns, ["nome", "name"]);
+  const vehiclePlateColumn = resolveExistingColumn(vehicleColumns, ["placa", "plate"]);
+  const vehicleBrandColumn = resolveExistingColumn(vehicleColumns, ["marca", "brand"]);
+  const vehicleModelColumn = resolveExistingColumn(vehicleColumns, ["modelo", "model"]);
+  const vehicleTransportColumn = resolveExistingColumn(vehicleColumns, ["usa_para_transporte"]);
+  const vehicleTypeColumn = resolveExistingColumn(vehicleColumns, ["tipo_operacao"]);
+  const canJoinVehicle = Boolean(vehicleColumn && vehicleIdColumn && vehicleCompanyColumn);
+
+  const vehicleJoinSql = canJoinVehicle
+    ? `LEFT JOIN veiculos v ON v.${vehicleIdColumn} = u.${vehicleColumn} AND v.${vehicleCompanyColumn} = u.${companyColumn}`
+    : "";
+  const vehicleNameSelect = canJoinVehicle && vehicleNameColumn ? `v.${vehicleNameColumn}` : "NULL::text";
+  const vehiclePlateSelect = canJoinVehicle && vehiclePlateColumn ? `v.${vehiclePlateColumn}` : "NULL::text";
+  const vehicleBrandSelect = canJoinVehicle && vehicleBrandColumn ? `v.${vehicleBrandColumn}` : "NULL::text";
+  const vehicleModelSelect = canJoinVehicle && vehicleModelColumn ? `v.${vehicleModelColumn}` : "NULL::text";
+  const vehicleTransportSelect =
+    canJoinVehicle && vehicleTransportColumn ? `COALESCE(v.${vehicleTransportColumn}, false)` : "false";
+  const vehicleTypeSelect =
+    canJoinVehicle && vehicleTypeColumn
+      ? `COALESCE(NULLIF(TRIM(v.${vehicleTypeColumn}), ''), CASE WHEN ${vehicleTransportSelect} THEN 'transporte' ELSE 'apoio' END)`
+      : `CASE WHEN ${vehicleTransportSelect} THEN 'transporte' ELSE 'apoio' END`;
+  const fallbackOrderBy = createdAtColumn ? `u.${createdAtColumn} DESC, u.${idColumn} DESC` : `u.${idColumn} DESC`;
+
+  const { rows } = await pool.query(
+    `SELECT u.${idColumn} AS id,
+            u.${companyColumn} AS empresa_id,
+            u.${nameColumn} AS nome,
+            ${emailColumn ? `u.${emailColumn}` : "NULL::text"} AS email,
+            ${cpfColumn ? `u.${cpfColumn}` : "NULL::text"} AS cpf_id,
+            u.${passwordColumn} AS senha_hash,
+            u.${roleColumn} AS role,
+            ${vehicleColumn ? `u.${vehicleColumn}` : "NULL::int"} AS veiculo_id,
+            ${contaStatusColumn ? `COALESCE(u.${contaStatusColumn}, 'ativo')` : "'ativo'::text"} AS conta_status,
+            e.nome AS empresa_nome,
+            e.logo_url,
+            ${vehicleNameSelect} AS veiculo_nome,
+            ${vehiclePlateSelect} AS placa,
+            ${vehicleBrandSelect} AS veiculo_marca,
+            ${vehicleModelSelect} AS veiculo_modelo,
+            ${vehicleTypeSelect} AS veiculo_tipo_operacao,
+            ${vehicleTransportSelect} AS veiculo_usa_para_transporte,
+            '[]'::json AS veiculos_vinculados,
+            0::int AS veiculos_vinculados_count,
+            false AS tem_veiculo_transporte,
+            false AS tem_veiculo_apoio
+     FROM usuarios u
+     LEFT JOIN empresas e ON e.id = u.${companyColumn}
+     ${vehicleJoinSql}
+     WHERE ${whereClauses.join(" AND ")}
+     ORDER BY ${fallbackOrderBy}`,
     params
   );
   return rows;
