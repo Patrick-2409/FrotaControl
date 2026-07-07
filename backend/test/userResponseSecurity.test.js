@@ -167,7 +167,7 @@ test("GET /api/users/me não retorna senha_hash", async () => {
   }
 });
 
-test("getMotoristaByLogin usa fallback quando vínculos de veículos ainda estão em migração", async () => {
+test("getMotoristaByLogin usa fallback quando query moderna de vínculos fica ambígua", async () => {
   const pathDb = require.resolve("../src/db");
   const pathModel = require.resolve("../src/models/userModel");
   delete require.cache[pathModel];
@@ -180,8 +180,8 @@ test("getMotoristaByLogin usa fallback quando vínculos de veículos ainda estã
     const text = String(sql);
     calls.push({ sql: text, vals: vals ? [...vals] : [] });
     if (text.includes("LEFT JOIN LATERAL")) {
-      const err = new Error('relation "motorista_veiculos" does not exist');
-      err.code = "42P01";
+      const err = new Error('column reference "tipo_operacao" is ambiguous');
+      err.code = "42702";
       throw err;
     }
     if (text.includes("information_schema.columns")) {
@@ -243,6 +243,9 @@ test("getMotoristaByLogin usa fallback quando vínculos de veículos ainda estã
     assert.strictEqual(rows.length, 1);
     assert.strictEqual(rows[0].nome, "Carlos Motorista");
     assert.strictEqual(rows[0].veiculo_nome, "Scania P360");
+    const modernCall = calls.find((c) => c.sql.includes("LEFT JOIN LATERAL"));
+    assert.ok(modernCall, "esperada tentativa de query moderna");
+    assert.ok(!/vv\.\*/.test(modernCall.sql));
     const fallbackCall = calls.find(
       (c) => c.sql.includes("AS veiculo_nome") && c.sql.includes("'[]'::json AS veiculos_vinculados")
     );

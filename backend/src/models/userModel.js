@@ -61,6 +61,8 @@ const sanitizeUser = (user) => {
 const sanitizeUsers = (users = []) => users.map((row) => sanitizeUser(row));
 
 const isMissingSchemaField = (err) => ["42703", "42P01"].includes(String(err?.code || "").trim().toUpperCase());
+const isRecoverableLoginQueryError = (err) =>
+  isMissingSchemaField(err) || String(err?.code || "").trim().toUpperCase() === "42702";
 const SCHEMA_CACHE_TTL_MS = 30_000;
 const tableColumnsCache = new Map();
 const SAFE_TABLE_IDENTIFIER_REGEX = /^[a-z_][a-z0-9_]*$/;
@@ -219,7 +221,10 @@ const USER_VEHICLE_LINKS_JOIN = `
          BOOL_OR(link.tipo_operacao = 'apoio') AS tem_veiculo_apoio
        FROM (
          SELECT
-           vv.*,
+           vv.id,
+           vv.nome,
+           vv.placa,
+           vv.usa_para_transporte,
            uv.is_principal,
            COALESCE(
              NULLIF(TRIM(vv.tipo_operacao), ''),
@@ -387,7 +392,7 @@ const normalizeUserLoginInput = (loginInput) => {
 const getMotoristaByLogin = async (loginInput) => {
   const login = normalizeMotoristaLoginInput(loginInput);
   return getMotoristaByLoginModern(login).catch(async (err) => {
-    if (!isMissingSchemaField(err)) throw err;
+    if (!isRecoverableLoginQueryError(err)) throw err;
     logWarn("user:motorista-login-schema-fallback", {
       message: err?.message,
       code: err?.code,
