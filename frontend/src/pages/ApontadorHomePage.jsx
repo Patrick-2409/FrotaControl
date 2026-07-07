@@ -13,6 +13,8 @@ import {
 } from "./apontador/ApontadorHomeSections";
 
 const normalizarCodigoVeiculo = (value) => String(value || "").replace(/\D/g, "").slice(0, 4);
+const getDiaOperacionalSaoPaulo = () =>
+  new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
 
 export default function ApontadorHomePage() {
   const { user } = useAuth();
@@ -29,6 +31,7 @@ export default function ApontadorHomePage() {
   const [ultimosLancamentos, setUltimosLancamentos] = useState([]);
   const [desfazendoLancamentoId, setDesfazendoLancamentoId] = useState(null);
   const flashTimeoutsRef = useRef([]);
+  const diaOperacionalRef = useRef(getDiaOperacionalSaoPaulo());
 
   const clearFlashTimeouts = useCallback(() => {
     flashTimeoutsRef.current.forEach((id) => clearTimeout(id));
@@ -36,6 +39,14 @@ export default function ApontadorHomePage() {
   }, []);
 
   useEffect(() => () => clearFlashTimeouts(), [clearFlashTimeouts]);
+
+  const limparResumoVisualDia = useCallback(() => {
+    clearFlashTimeouts();
+    setHojeContagem({ esteril: 0, rocha: 0, tonTotal: 0 });
+    setUltimosLancamentos([]);
+    setDesfazendoLancamentoId(null);
+    setRegistradoFlash({ open: false, in: false, label: "" });
+  }, [clearFlashTimeouts]);
 
   const refreshPendentesCount = useCallback(async () => {
     try {
@@ -128,6 +139,31 @@ export default function ApontadorHomePage() {
       /* mantém valores atuais */
     }
   }, [normalizeLancamentos]);
+
+  useEffect(() => {
+    const verificarViradaDia = () => {
+      const diaAtual = getDiaOperacionalSaoPaulo();
+      if (diaOperacionalRef.current === diaAtual) return;
+      diaOperacionalRef.current = diaAtual;
+      limparResumoVisualDia();
+      void refreshPendentesCount();
+      void refreshContagemHoje();
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") verificarViradaDia();
+    };
+
+    const id = window.setInterval(verificarViradaDia, 60_000);
+    window.addEventListener("focus", verificarViradaDia);
+    document.addEventListener("visibilitychange", onVisibility);
+    verificarViradaDia();
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("focus", verificarViradaDia);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [limparResumoVisualDia, refreshContagemHoje, refreshPendentesCount]);
 
   const onSyncManual = useCallback(async () => {
     if (!online) {

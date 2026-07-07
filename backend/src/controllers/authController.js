@@ -20,11 +20,12 @@ const logAuthDebug = (tipo, payload) => {
 const motoristaLoginSchema = z
   .object({
     login: z.string().trim().min(3).optional(),
+    email: z.string().trim().min(3).optional(),
     cpf_id: z.string().trim().min(3).optional(),
     senha: z.string().min(6),
   })
   .transform((v) => ({
-    login: v.login || v.cpf_id,
+    login: v.login || v.email || v.cpf_id,
     senha: v.senha,
   }))
   .refine((v) => Boolean(v.login), {

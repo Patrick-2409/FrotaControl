@@ -10,6 +10,21 @@ const trimOrNull = (v) => {
   return s === "" ? null : s;
 };
 
+const normalizeCpfLogin = (value) => {
+  const raw = trimOrNull(value);
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, "");
+  return digits.length >= 11 ? digits : raw;
+};
+
+const normalizeEmailLogin = (value) => {
+  const raw = trimOrNull(value);
+  return raw ? raw.toLowerCase() : null;
+};
+
+const cpfLoginSql = (columnSql, paramSql) =>
+  `REGEXP_REPLACE(COALESCE(${columnSql}, ''), '\\D', '', 'g') = ${paramSql}`;
+
 const normalizeCnhDate = (v) => {
   if (v instanceof Date && !Number.isNaN(v.getTime())) {
     return v.toISOString().slice(0, 10);
@@ -344,13 +359,16 @@ const createUser = async (
 const normalizeMotoristaLoginInput = (loginInput) => {
   if (typeof loginInput === "object" && loginInput !== null) {
     return {
-      cpf: trimOrNull(loginInput.cpf),
-      email: trimOrNull(loginInput.email),
+      cpf: normalizeCpfLogin(loginInput.cpf),
+      email: normalizeEmailLogin(loginInput.email),
       user_id: Number.isInteger(loginInput.user_id) && loginInput.user_id > 0 ? loginInput.user_id : null,
     };
   }
+  const raw = trimOrNull(loginInput);
+  if (!raw) return { cpf: null, email: null, user_id: null };
+  if (isEmail(raw)) return { cpf: null, email: raw.toLowerCase(), user_id: null };
   return {
-    cpf: trimOrNull(loginInput),
+    cpf: normalizeCpfLogin(raw),
     email: null,
     user_id: null,
   };
@@ -361,8 +379,8 @@ const isEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "")
 const normalizeUserLoginInput = (loginInput) => {
   if (typeof loginInput === "object" && loginInput !== null) {
     return {
-      cpf: trimOrNull(loginInput.cpf),
-      email: trimOrNull(loginInput.email),
+      cpf: normalizeCpfLogin(loginInput.cpf),
+      email: normalizeEmailLogin(loginInput.email),
       user_id: Number.isInteger(loginInput.user_id) && loginInput.user_id > 0 ? loginInput.user_id : null,
     };
   }
@@ -407,7 +425,7 @@ const getMotoristaByLoginModern = async (login) => {
   let idx = 1;
 
   if (login.cpf) {
-    whereClauses.push(`u.cpf_id = $${idx}`);
+    whereClauses.push(cpfLoginSql("u.cpf_id", `$${idx}`));
     params.push(login.cpf);
     idx += 1;
   }
@@ -473,7 +491,7 @@ const getMotoristaByLoginBasic = async (login) => {
   const identityClauses = [];
 
   if (login.cpf && cpfColumn) {
-    identityClauses.push(`u.${cpfColumn} = $${idx}`);
+    identityClauses.push(cpfLoginSql(`u.${cpfColumn}`, `$${idx}`));
     params.push(login.cpf);
     idx += 1;
   }
@@ -565,7 +583,7 @@ const getUsersByRoleLogin = async (role, loginInput) => {
   let idx = 2;
 
   if (login.cpf) {
-    whereClauses.push(`u.cpf_id = $${idx}`);
+    whereClauses.push(cpfLoginSql("u.cpf_id", `$${idx}`));
     params.push(login.cpf);
     idx += 1;
   }

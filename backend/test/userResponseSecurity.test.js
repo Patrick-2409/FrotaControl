@@ -260,6 +260,121 @@ test("getMotoristaByLogin usa fallback quando query moderna de vínculos fica am
   }
 });
 
+test("getMotoristaByLogin compara CPF sem depender de máscara salva", async () => {
+  const pathDb = require.resolve("../src/db");
+  const pathModel = require.resolve("../src/models/userModel");
+  delete require.cache[pathModel];
+  delete require.cache[pathDb];
+  const db = require("../src/db");
+  const originalQuery = db.pool.query;
+  const calls = [];
+
+  db.pool.query = async (sql, vals) => {
+    const text = String(sql);
+    calls.push({ sql: text, vals: vals ? [...vals] : [] });
+    return {
+      rowCount: 1,
+      rows: [
+        {
+          id: 21,
+          empresa_id: 9,
+          nome: "Carlos Motorista",
+          email: "carlos@empresa.com",
+          cpf_id: "999.999.999-99",
+          senha_hash: "$2b$10$hash",
+          role: "MOTORISTA",
+          veiculo_id: 4,
+          conta_status: "ativo",
+          empresa_nome: "Empresa Teste",
+          logo_url: null,
+          veiculo_nome: "Scania P360",
+          placa: "SGC2J38",
+        },
+      ],
+    };
+  };
+
+  try {
+    const { getMotoristaByLogin } = require("../src/models/userModel");
+    const rows = await getMotoristaByLogin({ cpf: "99999999999" });
+
+    assert.strictEqual(rows.length, 1);
+    assert.strictEqual(rows[0].cpf_id, "999.999.999-99");
+    assert.ok(calls[0].sql.includes("REGEXP_REPLACE(COALESCE(u.cpf_id, ''), '\\D', '', 'g')"));
+    assert.deepStrictEqual(calls[0].vals, ["99999999999"]);
+  } finally {
+    db.pool.query = originalQuery;
+    delete require.cache[pathModel];
+    delete require.cache[pathDb];
+  }
+});
+
+test("motoristaLogin aceita e-mail como identificador", async () => {
+  const pathDb = require.resolve("../src/db");
+  const pathModel = require.resolve("../src/models/userModel");
+  const pathCtrl = require.resolve("../src/controllers/authController");
+  const pathAuthService = require.resolve("../src/services/authService");
+  delete require.cache[pathCtrl];
+  delete require.cache[pathModel];
+  delete require.cache[pathDb];
+  delete require.cache[pathAuthService];
+  const db = require("../src/db");
+  const bcrypt = require("bcryptjs");
+  const originalQuery = db.pool.query;
+  const originalCompare = bcrypt.compare;
+  const originalJwtSecret = process.env.JWT_SECRET;
+  const calls = [];
+
+  process.env.JWT_SECRET = "test-secret";
+  bcrypt.compare = async (senha) => senha === "Senha123";
+  db.pool.query = async (sql, vals) => {
+    calls.push({ sql: String(sql), vals: vals ? [...vals] : [] });
+    return {
+      rowCount: 1,
+      rows: [
+        {
+          id: 55,
+          empresa_id: 7,
+          nome: "Motorista Email",
+          email: "motorista@empresa.com",
+          cpf_id: "12345678901",
+          role: "MOTORISTA",
+          senha_hash: "$2b$10$hashvalido",
+          conta_status: "ativo",
+          empresa_nome: "Empresa Teste",
+          logo_url: null,
+          veiculo_id: null,
+          veiculo_nome: null,
+          placa: null,
+        },
+      ],
+    };
+  };
+
+  try {
+    const { motoristaLogin } = require("../src/controllers/authController");
+    const req = { body: { email: "Motorista@Empresa.com", senha: "Senha123" } };
+    const res = createRes();
+
+    await motoristaLogin(req, res);
+
+    assert.strictEqual(res.statusCode, 200);
+    assert.ok(res.body?.token);
+    assert.strictEqual(res.body?.user?.email, "motorista@empresa.com");
+    assert.deepStrictEqual(calls[0].vals, ["motorista@empresa.com"]);
+    assert.ok(calls[0].sql.includes("LOWER(COALESCE(u.email, '')) = LOWER($1)"));
+  } finally {
+    db.pool.query = originalQuery;
+    bcrypt.compare = originalCompare;
+    if (originalJwtSecret === undefined) delete process.env.JWT_SECRET;
+    else process.env.JWT_SECRET = originalJwtSecret;
+    delete require.cache[pathCtrl];
+    delete require.cache[pathModel];
+    delete require.cache[pathDb];
+    delete require.cache[pathAuthService];
+  }
+});
+
 test("listagem de usuários SUPER_ADMIN não inclui senha_hash", async () => {
   const pathDb = require.resolve("../src/db");
   const pathCtrl = require.resolve("../src/controllers/adminController");

@@ -56,7 +56,7 @@ const isRecoverableSessionRefreshError = (err) => {
 };
 
 const buildMotoristaLoginPayload = (payload = {}) => {
-  const rawLogin = sanitizePlainText(String(payload.login ?? payload.cpf_id ?? "").trim(), MAX_LOGIN_LEN);
+  const rawLogin = sanitizePlainText(String(payload.login ?? payload.email ?? payload.cpf_id ?? "").trim(), MAX_LOGIN_LEN);
   const senha = String(payload.senha ?? payload.password ?? "").slice(0, MAX_PASSWORD_LEN);
   return {
     login: rawLogin,

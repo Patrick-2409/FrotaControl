@@ -297,6 +297,12 @@ const normalizeCpfId = (value) => {
   return digits.length >= 11 ? digits : raw;
 };
 
+const cpfIdentityMatchSql = (columnSql, paramSql) =>
+  `(${columnSql} = ${paramSql} OR (` +
+  `LENGTH(REGEXP_REPLACE(${paramSql}, '\\D', '', 'g')) >= 11 ` +
+  `AND REGEXP_REPLACE(COALESCE(${columnSql}, ''), '\\D', '', 'g') = REGEXP_REPLACE(${paramSql}, '\\D', '', 'g')` +
+  `))`;
+
 const normalizeUserPayload = (payload) => ({
   ...payload,
   nome: String(payload?.nome || "").trim().replace(/\s+/g, " "),
@@ -315,7 +321,7 @@ const checkRoleScopedUniqueness = async ({ role, email, cpf_id, empresa_id = nul
               equipamento_vinculo, operacao_escopo, status_operacional, conta_status
        FROM usuarios
        WHERE role = 'MOTORISTA'
-         AND cpf_id = $1
+         AND ${cpfIdentityMatchSql("cpf_id", "$1")}
          AND empresa_id = $2
          ${andExclude}
        ORDER BY created_at DESC, id DESC
@@ -359,7 +365,7 @@ const checkRoleScopedUniqueness = async ({ role, email, cpf_id, empresa_id = nul
     `SELECT id
      FROM usuarios
      WHERE role IN ('ADMIN_EMPRESA', 'SUPER_ADMIN', 'APONTADOR')
-       AND cpf_id = $1
+       AND ${cpfIdentityMatchSql("cpf_id", "$1")}
        ${adminCpfExclude}
      LIMIT 1`,
     adminCpfParams
