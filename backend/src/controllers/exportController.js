@@ -483,6 +483,17 @@ const signatureNameOrLine = (value) => {
 
 const signatureText = (label, value) => `${label}: ${signatureNameOrLine(value)}`;
 
+const resolvePrimarySigner = (row = {}) => {
+  const tipo = String(row?.tipo || "").trim().toLowerCase();
+  if (tipo === "combustivel") {
+    return { label: "Motorista/Operador", value: row?.motorista || null };
+  }
+  if (tipo === "parte_diaria") {
+    return { label: "Operador", value: row?.operador || row?.motorista || null };
+  }
+  return { label: "Apontador", value: row?.apontador || null };
+};
+
 /**
  * Romaneio: uma ficha por combinação (dia local + veículo + placa), com até 10 viagens (colunas 1–10).
  * Mantém ordem de aparição dos grupos igual à listagem (data DESC).
@@ -631,7 +642,7 @@ const renderParteDiariaSheet = (row, companyName, logoUrl) => {
       </table>
 
       <div class="signatures">
-        <div>${escapeHtml(signatureText("Apontador", row.apontador))}</div>
+        <div>${escapeHtml(signatureText(resolvePrimarySigner(row).label, resolvePrimarySigner(row).value))}</div>
         <div>${escapeHtml(signatureText("Responsável", ""))}</div>
       </div>
     </section>
@@ -689,7 +700,7 @@ const renderCombustivelSheet = (row, companyName, logoUrl) => {
       </table>
       <div class="assinaturas-bar">ASSINATURAS</div>
       <div class="signatures">
-        <div>${escapeHtml(signatureText("Apontador", row.apontador))}</div>
+        <div>${escapeHtml(signatureText(resolvePrimarySigner(row).label, resolvePrimarySigner(row).value))}</div>
         <div>${escapeHtml(signatureText("Responsável", ""))}</div>
       </div>
     </section>
@@ -1041,6 +1052,7 @@ const buildFallbackPdfBuffer = async ({ companyName, records, logoImage, filterS
     };
 
     const drawParteDiaria = (row, startY) => {
+      const signer = resolvePrimarySigner(row);
       const col = pageWidth / 4;
       let y = drawRecordHeader(startY, row, "PARTE DIARIA DE EQUIPAMENTO");
       y = drawCells(y, 28, [
@@ -1161,13 +1173,14 @@ const buildFallbackPdfBuffer = async ({ companyName, records, logoImage, filterS
       y = drawFlowingBlock(y, null, asDisplayValue(row.producao), { withTitle: false });
       y = advancePage(y, 36);
       y = drawCells(y, 26, [
-        { width: pageWidth / 2, text: signatureText("Apontador", row.apontador) },
+        { width: pageWidth / 2, text: signatureText(signer.label, signer.value) },
         { width: pageWidth / 2, text: signatureText("Responsavel", "") },
       ]);
       return y;
     };
 
     const drawCombustivel = (row, startY) => {
+      const signer = resolvePrimarySigner(row);
       const preco = row.preco_por_litro ?? row.preco_litro;
       let y = drawRecordHeader(startY, row, "FICHA DE ABASTECIMENTO");
       y = drawCells(y, 26, [
@@ -1203,7 +1216,7 @@ const buildFallbackPdfBuffer = async ({ companyName, records, logoImage, filterS
         { width: pageWidth * 0.65, text: asDisplayValue(row.tipo_combustivel) },
       ]);
       y = drawCells(y, 26, [
-        { width: pageWidth / 2, text: signatureText("Apontador", row.apontador) },
+        { width: pageWidth / 2, text: signatureText(signer.label, signer.value) },
         { width: pageWidth / 2, text: signatureText("Responsavel", "") },
       ]);
       return y;
@@ -1440,6 +1453,7 @@ const putLabelValue = (worksheet, row, labelRange, valueRange, label, value) => 
 const markStatus = (status, expected) => (status === expected ? "X" : "");
 
 const addParteDiariaWorksheet = (workbook, row, companyName, logoImageId, index) => {
+  const signer = resolvePrimarySigner(row);
   const reportDate = getEffectiveDateValue(row);
   const worksheet = workbook.addWorksheet(`ParteDiaria-${index + 1}`);
   applyBaseStyle(worksheet);
@@ -1645,7 +1659,7 @@ const addParteDiariaWorksheet = (workbook, row, companyName, logoImageId, index)
 
   worksheet.mergeCells(`A${currentRow}:D${currentRow}`);
   worksheet.mergeCells(`E${currentRow}:H${currentRow}`);
-  worksheet.getCell(`A${currentRow}`).value = signatureText("Apontador", row.apontador);
+  worksheet.getCell(`A${currentRow}`).value = signatureText(signer.label, signer.value);
   worksheet.getCell(`E${currentRow}`).value = signatureText("Responsável", "");
   worksheet.getCell(`A${currentRow}`).alignment = { vertical: "middle", horizontal: "left" };
   worksheet.getCell(`E${currentRow}`).alignment = { vertical: "middle", horizontal: "left" };
@@ -2025,6 +2039,7 @@ const addProducaoPortoSheets = async (workbook, { empresaId, dataInicio, dataFim
 };
 
 const addSimpleFormWorksheet = (workbook, row, logoImageId, index) => {
+  const signer = resolvePrimarySigner(row);
   if (row.tipo !== "combustivel") {
     addRomaneioPortoWorksheet(workbook, row, logoImageId, index);
     return;
@@ -2102,7 +2117,7 @@ const addSimpleFormWorksheet = (workbook, row, logoImageId, index) => {
 
   worksheet.mergeCells("A13:D13");
   worksheet.mergeCells("E13:H13");
-  worksheet.getCell("A13").value = signatureText("Apontador", row.apontador);
+  worksheet.getCell("A13").value = signatureText(signer.label, signer.value);
   worksheet.getCell("E13").value = signatureText("Responsável", "");
   applyBorderAndFont(worksheet, 13, 13, 1, 8);
 };
@@ -2179,6 +2194,7 @@ const getProfessionalSheetTypeLabel = (tipo) => {
 
 const addProfessionalFichaWorksheet = (workbook, { row, logoImageId, sheetName = "Ficha" }) => {
   const ws = workbook.addWorksheet(sheetName);
+  const signer = resolvePrimarySigner(row);
   applyBaseStyle(ws);
   ws.columns = Array.from({ length: 8 }, () => ({ width: 17 }));
   ws.pageSetup = {
@@ -2298,7 +2314,7 @@ const addProfessionalFichaWorksheet = (workbook, { row, logoImageId, sheetName =
   }
 
   writePairRow(5, "MOTORISTA / OPERADOR", asDisplayValue(row.motorista), "VEICULO", asDisplayValue(row.veiculo));
-  writePairRow(6, "PLACA", asDisplayValue(row.placa), "APONTADOR", asDisplayValue(row.apontador));
+  writePairRow(6, "PLACA", asDisplayValue(row.placa), String(signer.label || "Assinatura").toUpperCase(), asDisplayValue(signer.value));
   writePairRow(7, "DATA DO REGISTRO", asDateTime(reportDate), "ATUALIZADO EM", asDateTime(row.updated_at || reportDate));
 
   ws.mergeCells("A9:H9");
@@ -2349,7 +2365,7 @@ const addProfessionalFichaWorksheet = (workbook, { row, logoImageId, sheetName =
 
   ws.mergeCells("A20:D20");
   ws.mergeCells("E20:H20");
-  ws.getCell("A20").value = signatureText("Apontador", row.apontador);
+  ws.getCell("A20").value = signatureText(signer.label, signer.value);
   ws.getCell("E20").value = signatureText("Responsavel", "");
   paintCell("A20", { size: 10 });
   paintCell("E20", { size: 10 });
