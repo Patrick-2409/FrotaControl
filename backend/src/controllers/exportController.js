@@ -468,6 +468,21 @@ const classifyRomaneioTransport = (tipoTransporte) => {
   return "";
 };
 
+const appendDistinctName = (current, candidate) => {
+  const next = String(candidate || "").trim();
+  if (!next) return current || "";
+  if (!current) return next;
+  if (String(current).includes(next)) return current;
+  return `${current} · ${next}`;
+};
+
+const signatureNameOrLine = (value) => {
+  const text = String(value || "").trim();
+  return text || "_______________________________";
+};
+
+const signatureText = (label, value) => `${label}: ${signatureNameOrLine(value)}`;
+
 /**
  * Romaneio: uma ficha por combinação (dia local + veículo + placa), com até 10 viagens (colunas 1–10).
  * Mantém ordem de aparição dos grupos igual à listagem (data DESC).
@@ -486,16 +501,14 @@ const buildSheetEntriesFromRecords = (records) => {
         veiculo: row.veiculo,
         placa: row.placa,
         motorista: "",
+        apontador: "",
         trips: [],
       });
     }
     const g = groupMap.get(key);
     g.trips.push(row);
-    const m = row.motorista ? String(row.motorista).trim() : "";
-    if (m) {
-      if (!g.motorista) g.motorista = m;
-      else if (!String(g.motorista).includes(m)) g.motorista = `${g.motorista} · ${m}`;
-    }
+    g.motorista = appendDistinctName(g.motorista, row.motorista);
+    g.apontador = appendDistinctName(g.apontador, row.apontador);
   }
   const parseTs = (row) => {
     const raw = getEffectiveDateValue(row);
@@ -618,8 +631,8 @@ const renderParteDiariaSheet = (row, companyName, logoUrl) => {
       </table>
 
       <div class="signatures">
-        <div>Operador: ________________________________</div>
-        <div>Responsável: ________________________________</div>
+        <div>${escapeHtml(signatureText("Apontador", row.apontador))}</div>
+        <div>${escapeHtml(signatureText("Responsável", ""))}</div>
       </div>
     </section>
   `;
@@ -676,8 +689,8 @@ const renderCombustivelSheet = (row, companyName, logoUrl) => {
       </table>
       <div class="assinaturas-bar">ASSINATURAS</div>
       <div class="signatures">
-        <div>Operador: ________________________________</div>
-        <div>Responsável: ________________________________</div>
+        <div>${escapeHtml(signatureText("Apontador", row.apontador))}</div>
+        <div>${escapeHtml(signatureText("Responsável", ""))}</div>
       </div>
     </section>
   `;
@@ -759,8 +772,8 @@ const renderRomaneioGroupSheet = (group, logoUrl) => {
     <p class="legend">Legenda: Site (ST) / Depósito de Rochas (DP) / Vias de Acesso (VA)</p>
     <div class="assinaturas-bar">ASSINATURAS</div>
     <div class="signatures">
-      <div>Apontador: ________________________________</div>
-      <div>Responsável: ________________________________</div>
+      <div>${escapeHtml(signatureText("Apontador", group.apontador))}</div>
+      <div>${escapeHtml(signatureText("Responsável", ""))}</div>
     </div>
   </section>
 `;
@@ -774,6 +787,7 @@ const renderRomaneioSheet = (row, logoUrl) =>
       veiculo: row.veiculo,
       placa: row.placa,
       motorista: row.motorista,
+      apontador: row.apontador,
       trips: [row],
     },
     logoUrl
@@ -1147,8 +1161,8 @@ const buildFallbackPdfBuffer = async ({ companyName, records, logoImage, filterS
       y = drawFlowingBlock(y, null, asDisplayValue(row.producao), { withTitle: false });
       y = advancePage(y, 36);
       y = drawCells(y, 26, [
-        { width: pageWidth / 2, text: "Operador: ________________________________" },
-        { width: pageWidth / 2, text: "Responsavel: ________________________________" },
+        { width: pageWidth / 2, text: signatureText("Apontador", row.apontador) },
+        { width: pageWidth / 2, text: signatureText("Responsavel", "") },
       ]);
       return y;
     };
@@ -1189,8 +1203,8 @@ const buildFallbackPdfBuffer = async ({ companyName, records, logoImage, filterS
         { width: pageWidth * 0.65, text: asDisplayValue(row.tipo_combustivel) },
       ]);
       y = drawCells(y, 26, [
-        { width: pageWidth / 2, text: "Operador: ________________________________" },
-        { width: pageWidth / 2, text: "Responsavel: ________________________________" },
+        { width: pageWidth / 2, text: signatureText("Apontador", row.apontador) },
+        { width: pageWidth / 2, text: signatureText("Responsavel", "") },
       ]);
       return y;
     };
@@ -1247,8 +1261,8 @@ const buildFallbackPdfBuffer = async ({ companyName, records, logoImage, filterS
       if (group.trips.length > 10) obsParts.push(`Nota: ${group.trips.length} viagens; ficha PDF mostra colunas 1-10.`);
       y = drawFlowingBlock(y, "Observacao", obsParts.length ? obsParts.join(" | ") : "-", { withTitle: true });
       y = drawCells(y, 26, [
-        { width: pageWidth / 2, text: "Apontador: ________________________________" },
-        { width: pageWidth / 2, text: "Responsavel: ________________________________" },
+        { width: pageWidth / 2, text: signatureText("Apontador", group.apontador) },
+        { width: pageWidth / 2, text: signatureText("Responsavel", "") },
       ]);
       return y;
     };
@@ -1260,6 +1274,7 @@ const buildFallbackPdfBuffer = async ({ companyName, records, logoImage, filterS
           veiculo: row.veiculo,
           placa: row.placa,
           motorista: row.motorista,
+          apontador: row.apontador,
           trips: [row],
         },
         startY
@@ -1630,8 +1645,8 @@ const addParteDiariaWorksheet = (workbook, row, companyName, logoImageId, index)
 
   worksheet.mergeCells(`A${currentRow}:D${currentRow}`);
   worksheet.mergeCells(`E${currentRow}:H${currentRow}`);
-  worksheet.getCell(`A${currentRow}`).value = "Operador: ________________________________";
-  worksheet.getCell(`E${currentRow}`).value = "Responsável: ________________________________";
+  worksheet.getCell(`A${currentRow}`).value = signatureText("Apontador", row.apontador);
+  worksheet.getCell(`E${currentRow}`).value = signatureText("Responsável", "");
   worksheet.getCell(`A${currentRow}`).alignment = { vertical: "middle", horizontal: "left" };
   worksheet.getCell(`E${currentRow}`).alignment = { vertical: "middle", horizontal: "left" };
   applyBorderAndFont(worksheet, currentRow, currentRow, 1, 8);
@@ -1806,8 +1821,8 @@ const addRomaneioPortoGroupWorksheet = (workbook, group, logoImageId, index) => 
   const sig = srow + 1;
   ws.mergeCells(`A${sig}:G${sig}`);
   ws.mergeCells(`H${sig}:N${sig}`);
-  ws.getCell(`A${sig}`).value = "Apontador: ________________________________";
-  ws.getCell(`H${sig}`).value = "Responsável: ________________________________";
+  ws.getCell(`A${sig}`).value = signatureText("Apontador", group.apontador);
+  ws.getCell(`H${sig}`).value = signatureText("Responsável", "");
   applyBorderAndFont(ws, sig, sig, 1, ROM_COL_LAST);
 };
 
@@ -1820,6 +1835,7 @@ const addRomaneioPortoWorksheet = (workbook, row, logoImageId, index) =>
       veiculo: row.veiculo,
       placa: row.placa,
       motorista: row.motorista,
+      apontador: row.apontador,
       trips: [row],
     },
     logoImageId,
@@ -2086,8 +2102,8 @@ const addSimpleFormWorksheet = (workbook, row, logoImageId, index) => {
 
   worksheet.mergeCells("A13:D13");
   worksheet.mergeCells("E13:H13");
-  worksheet.getCell("A13").value = "Operador: ________________________________";
-  worksheet.getCell("E13").value = "Responsável: ________________________________";
+  worksheet.getCell("A13").value = signatureText("Apontador", row.apontador);
+  worksheet.getCell("E13").value = signatureText("Responsável", "");
   applyBorderAndFont(worksheet, 13, 13, 1, 8);
 };
 
@@ -2154,9 +2170,17 @@ const getAbastecimentoSheetDateLabel = (row) => {
   return `${dd}-${mm}-${yyyy}`;
 };
 
+const getProfessionalSheetTypeLabel = (tipo) => {
+  if (tipo === "romaneio") return "Transporte";
+  if (tipo === "parte_diaria") return "ParteDiaria";
+  if (tipo === "combustivel") return "Combustivel";
+  return "Ficha";
+};
+
 const addProfessionalFichaWorksheet = (workbook, { row, logoImageId, sheetName = "Ficha" }) => {
   const ws = workbook.addWorksheet(sheetName);
   applyBaseStyle(ws);
+  ws.columns = Array.from({ length: 8 }, () => ({ width: 17 }));
   ws.pageSetup = {
     paperSize: 9,
     orientation: "portrait",
@@ -2168,16 +2192,98 @@ const addProfessionalFichaWorksheet = (workbook, { row, logoImageId, sheetName =
 
   const reportDate = getEffectiveDateValue(row);
   const preco = row.preco_por_litro ?? row.preco_litro;
+  const fichaTitle =
+    row.tipo === "romaneio"
+      ? "FICHA EXECUTIVA DE TRANSPORTE"
+      : row.tipo === "parte_diaria"
+        ? "FICHA EXECUTIVA DE PARTE DIARIA"
+        : "FICHA EXECUTIVA DE ABASTECIMENTO";
+  const secondarySubtitle =
+    row.tipo === "romaneio"
+      ? `${asDisplayValue(row.tipo_transporte)} · ${asDisplayValue(row.destino)}`
+      : row.tipo === "parte_diaria"
+        ? `${asDisplayValue(row.periodo)} · ${asDisplayValue(row.clima)}`
+        : `${asDisplayValue(row.tipo_combustivel)} · ${fmtLitrosBr(row.litros)} L`;
+  const theme = {
+    headerBg: "FF0F172A",
+    headerFg: "FFFFFFFF",
+    sectionBg: "FFE2E8F0",
+    labelBg: "FFF8FAFC",
+    valueBg: "FFFFFFFF",
+    textMain: "FF0F172A",
+    textMuted: "FF334155",
+    border: "FFCBD5E1",
+  };
+  const styleRowBorders = (rowStart, rowEnd = rowStart) => {
+    for (let r = rowStart; r <= rowEnd; r += 1) {
+      for (let c = 1; c <= 8; c += 1) {
+        const cell = ws.getCell(`${getColumnLetter(c)}${r}`);
+        cell.border = {
+          top: { style: "thin", color: { argb: theme.border } },
+          left: { style: "thin", color: { argb: theme.border } },
+          bottom: { style: "thin", color: { argb: theme.border } },
+          right: { style: "thin", color: { argb: theme.border } },
+        };
+      }
+    }
+  };
+  const fillRow = (rowNumber, color) => {
+    for (let c = 1; c <= 8; c += 1) {
+      ws.getCell(`${getColumnLetter(c)}${rowNumber}`).fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: color },
+      };
+    }
+  };
+  const paintCell = (addr, { bold = false, size = 10, color = theme.textMain, h = "left" } = {}) => {
+    const cell = ws.getCell(addr);
+    cell.font = { name: "Calibri", size, bold, color: { argb: color } };
+    cell.alignment = { horizontal: h, vertical: "middle", wrapText: true };
+  };
+  const writePairRow = (rowNumber, leftLabel, leftValue, rightLabel, rightValue) => {
+    ws.mergeCells(`A${rowNumber}:B${rowNumber}`);
+    ws.mergeCells(`C${rowNumber}:D${rowNumber}`);
+    ws.mergeCells(`E${rowNumber}:F${rowNumber}`);
+    ws.mergeCells(`G${rowNumber}:H${rowNumber}`);
+    ws.getCell(`A${rowNumber}`).value = leftLabel;
+    ws.getCell(`C${rowNumber}`).value = leftValue;
+    ws.getCell(`E${rowNumber}`).value = rightLabel;
+    ws.getCell(`G${rowNumber}`).value = rightValue;
+    fillRow(rowNumber, theme.valueBg);
+    ws.getCell(`A${rowNumber}`).fill = { type: "pattern", pattern: "solid", fgColor: { argb: theme.labelBg } };
+    ws.getCell(`E${rowNumber}`).fill = { type: "pattern", pattern: "solid", fgColor: { argb: theme.labelBg } };
+    paintCell(`A${rowNumber}`, { bold: true, color: theme.textMuted });
+    paintCell(`C${rowNumber}`);
+    paintCell(`E${rowNumber}`, { bold: true, color: theme.textMuted });
+    paintCell(`G${rowNumber}`);
+    styleRowBorders(rowNumber);
+  };
+  const writeWideRow = (rowNumber, label, value) => {
+    ws.mergeCells(`A${rowNumber}:B${rowNumber}`);
+    ws.mergeCells(`C${rowNumber}:H${rowNumber}`);
+    ws.getCell(`A${rowNumber}`).value = label;
+    ws.getCell(`C${rowNumber}`).value = value;
+    fillRow(rowNumber, theme.valueBg);
+    ws.getCell(`A${rowNumber}`).fill = { type: "pattern", pattern: "solid", fgColor: { argb: theme.labelBg } };
+    paintCell(`A${rowNumber}`, { bold: true, color: theme.textMuted });
+    paintCell(`C${rowNumber}`);
+    styleRowBorders(rowNumber);
+  };
+
   ws.mergeCells("A1:B3");
   ws.mergeCells("C1:H2");
-  ws.getCell("C1").value = "FICHA DE ABASTECIMENTO";
-  ws.getCell("C1").font = { name: "Arial", size: 14, bold: true, color: { argb: "FF0F172A" } };
+  ws.getCell("C1").value = fichaTitle;
+  ws.getCell("C1").font = { name: "Calibri", size: 15, bold: true, color: { argb: theme.headerFg } };
   ws.getCell("C1").alignment = { horizontal: "center", vertical: "middle" };
   ws.mergeCells("C3:H3");
-  ws.getCell("C3").value = `Atividade principal: ${getActivityName(row?.tipo)} • Data executada: ${asDate(reportDate)}`;
-  ws.getCell("C3").font = { name: "Arial", size: 10, color: { argb: "FF334155" } };
+  ws.getCell("C3").value = `Atividade: ${getActivityName(row?.tipo)} • Data: ${asDate(reportDate)} • ${secondarySubtitle}`;
+  ws.getCell("C3").font = { name: "Calibri", size: 10, color: { argb: theme.headerFg } };
   ws.getCell("C3").alignment = { horizontal: "center", vertical: "middle", wrapText: true };
-  applyBorderAndFont(ws, 1, 3, 1, 8);
+  fillRow(1, theme.headerBg);
+  fillRow(2, theme.headerBg);
+  fillRow(3, theme.headerBg);
+  styleRowBorders(1, 3);
 
   if (logoImageId !== null && logoImageId !== undefined) {
     ws.addImage(logoImageId, {
@@ -2188,56 +2294,85 @@ const addProfessionalFichaWorksheet = (workbook, { row, logoImageId, sheetName =
   } else {
     ws.getCell("A1").value = "LOGO";
     ws.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
-    ws.getCell("A1").font = { name: "Arial", size: 10, italic: true, color: { argb: "FF64748B" } };
+    ws.getCell("A1").font = { name: "Calibri", size: 10, italic: true, color: { argb: "FFE2E8F0" } };
   }
 
-  putLabelValue(ws, 5, "A5:B5", "C5:H5", "MOTORISTA / OPERADOR:", row.motorista);
-  putLabelValue(ws, 6, "A6:B6", "C6:H6", "EQUIPAMENTO:", row.veiculo);
-  putLabelValue(ws, 7, "A7:B7", "C7:D7", "PLACA:", row.placa);
-  putLabelValue(ws, 7, "E7:F7", "G7:H7", "COMBUSTÍVEL:", row.tipo_combustivel);
+  writePairRow(5, "MOTORISTA / OPERADOR", asDisplayValue(row.motorista), "VEICULO", asDisplayValue(row.veiculo));
+  writePairRow(6, "PLACA", asDisplayValue(row.placa), "APONTADOR", asDisplayValue(row.apontador));
+  writePairRow(7, "DATA DO REGISTRO", asDateTime(reportDate), "ATUALIZADO EM", asDateTime(row.updated_at || reportDate));
 
   ws.mergeCells("A9:H9");
-  ws.getCell("A9").value = "VALORES DO LANÇAMENTO";
-  ws.getCell("A9").font = { name: "Arial", size: 11, bold: true };
-  ws.getCell("A9").alignment = { horizontal: "left", vertical: "middle" };
-  ws.getCell("A9").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE2E8F0" } };
-  applyBorderAndFont(ws, 9, 9, 1, 8);
+  ws.getCell("A9").value = "RESUMO OPERACIONAL";
+  paintCell("A9", { bold: true, size: 11, color: theme.textMain });
+  fillRow(9, theme.sectionBg);
+  styleRowBorders(9);
 
-  ws.getCell("A10").value = "Litros (L)";
-  ws.getCell("B10").value = row.litros != null ? Number(row.litros) : "";
-  ws.getCell("B10").numFmt = "#,##0.000";
-  ws.getCell("C10").value = "Valor total (R$)";
-  ws.getCell("D10").value = row.valor_total != null ? Number(row.valor_total) : "";
-  ws.getCell("D10").numFmt = '"R$" #,##0.00';
-  ws.getCell("E10").value = "Preço por litro (R$)";
-  ws.mergeCells("F10:H10");
-  ws.getCell("F10").value = preco != null ? Number(preco) : "";
-  ws.getCell("F10").numFmt = '"R$" #,##0.00';
-  applyBorderAndFont(ws, 10, 10, 1, 8);
-  ["A10", "C10", "E10"].forEach((addr) => (ws.getCell(addr).font = { name: "Arial", size: 10, bold: true }));
-
-  ws.getCell("A12").value = "Horímetro";
-  ws.getCell("B12").value = asDisplayValue(row.horimetro);
-  ws.getCell("C12").value = "Hodômetro";
-  ws.getCell("D12").value = asDisplayValue(row.hodometro);
-  ws.getCell("E12").value = "Combustível";
-  ws.mergeCells("F12:H12");
-  ws.getCell("F12").value = asDisplayValue(row.tipo_combustivel);
-  applyBorderAndFont(ws, 12, 12, 1, 8);
-  ["A12", "C12", "E12"].forEach((addr) => (ws.getCell(addr).font = { name: "Arial", size: 10, bold: true }));
+  if (row.tipo === "romaneio") {
+    writePairRow(10, "TIPO TRANSPORTE", asDisplayValue(row.tipo_transporte), "DESTINO", asDisplayValue(row.destino));
+    writePairRow(11, "VEICULO", asDisplayValue(row.veiculo), "PLACA", asDisplayValue(row.placa));
+    writeWideRow(12, "OBSERVACAO", asDisplayValue(row.observacao));
+  } else if (row.tipo === "parte_diaria") {
+    writePairRow(10, "TOTAL HORAS", asDisplayValue(row.total_horas), "PERIODO", asDisplayValue(row.periodo));
+    writePairRow(11, "CLIMA", asDisplayValue(row.clima), "TOTAL KM", asDisplayValue(row.total_km));
+    writePairRow(12, "HORIMETRO (INI/FIM)", `${asDisplayValue(row.horimetro_inicio)} / ${asDisplayValue(row.horimetro_fim)}`, "EXPEDIENTE", asDisplayValue(row.expediente));
+  } else {
+    writePairRow(10, "LITROS (L)", fmtLitrosBr(row.litros), "VALOR TOTAL", fmtMoneyBr(row.valor_total));
+    writePairRow(11, "PRECO / LITRO", fmtMoneyBr(preco), "COMBUSTIVEL", asDisplayValue(row.tipo_combustivel));
+    writePairRow(12, "HORIMETRO", asDisplayValue(row.horimetro), "HODOMETRO", asDisplayValue(row.hodometro));
+  }
 
   ws.mergeCells("A14:H14");
-  ws.getCell("A14").value = "ASSINATURAS";
-  ws.getCell("A14").font = { name: "Arial", size: 11, bold: true };
-  ws.getCell("A14").alignment = { horizontal: "center", vertical: "middle" };
-  ws.getCell("A14").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF3F4F6" } };
-  applyBorderAndFont(ws, 14, 14, 1, 8);
+  ws.getCell("A14").value = "OBSERVACOES E CONTEXTO";
+  paintCell("A14", { bold: true, size: 11, color: theme.textMain });
+  fillRow(14, theme.sectionBg);
+  styleRowBorders(14);
+  ws.mergeCells("A15:H17");
+  const observationsText =
+    row.tipo === "romaneio"
+      ? asDisplayValue(row.observacao)
+      : row.tipo === "parte_diaria"
+        ? `${asDisplayValue(row.observacoes)}\n\nProducao: ${asDisplayValue(row.producao)}`
+        : `Tipo: ${asDisplayValue(row.tipo_combustivel)}\nValor total: ${fmtMoneyBr(row.valor_total)}\nPreco por litro: ${fmtMoneyBr(preco)}`;
+  ws.getCell("A15").value = observationsText;
+  ws.getCell("A15").alignment = { horizontal: "left", vertical: "top", wrapText: true };
+  ws.getCell("A15").font = { name: "Calibri", size: 10, color: { argb: theme.textMain } };
+  fillRow(15, theme.valueBg);
+  fillRow(16, theme.valueBg);
+  fillRow(17, theme.valueBg);
+  styleRowBorders(15, 17);
 
-  ws.mergeCells("A15:D15");
-  ws.mergeCells("E15:H15");
-  ws.getCell("A15").value = "Operador: ________________________________";
-  ws.getCell("E15").value = "Responsável: ________________________________";
-  applyBorderAndFont(ws, 15, 15, 1, 8);
+  ws.mergeCells("A19:H19");
+  ws.getCell("A19").value = "ASSINATURAS";
+  paintCell("A19", { bold: true, size: 11, h: "center", color: theme.textMain });
+  fillRow(19, theme.sectionBg);
+  styleRowBorders(19);
+
+  ws.mergeCells("A20:D20");
+  ws.mergeCells("E20:H20");
+  ws.getCell("A20").value = signatureText("Apontador", row.apontador);
+  ws.getCell("E20").value = signatureText("Responsavel", "");
+  paintCell("A20", { size: 10 });
+  paintCell("E20", { size: 10 });
+  fillRow(20, theme.valueBg);
+  styleRowBorders(20);
+
+  ws.getRow(1).height = 24;
+  ws.getRow(2).height = 24;
+  ws.getRow(3).height = 24;
+  ws.getRow(5).height = 22;
+  ws.getRow(6).height = 22;
+  ws.getRow(7).height = 22;
+  ws.getRow(9).height = 22;
+  ws.getRow(10).height = 22;
+  ws.getRow(11).height = 22;
+  ws.getRow(12).height = 22;
+  ws.getRow(14).height = 22;
+  ws.getRow(15).height = 24;
+  ws.getRow(16).height = 24;
+  ws.getRow(17).height = 24;
+  ws.getRow(19).height = 22;
+  ws.getRow(20).height = 22;
+  ws.views = [{ showGridLines: false, state: "frozen", ySplit: 4 }];
 };
 
 const exportExcel = async (req, res) => {
@@ -2297,12 +2432,12 @@ const exportExcel = async (req, res) => {
     empty.getCell("A1").value = `Sem registros para exportação (${companyName})`;
     empty.getCell("A1").font = { name: "Arial", size: 12, bold: true };
   } else if (isProfessionalLayout) {
-    const fichaRows = data.filter((row) => row.tipo === "combustivel");
-    const rows = fichaRows.length ? fichaRows : data;
+    const rows = data;
     const usedSheetNames = new Set();
     rows.forEach((row, idx) => {
-      const preferredSheetName =
-        rows.length > 1 ? getAbastecimentoSheetDateLabel(row) || `Ficha ${idx + 1}` : `Ficha ${idx + 1}`;
+      const dateLabel = getAbastecimentoSheetDateLabel(row);
+      const typeLabel = getProfessionalSheetTypeLabel(row?.tipo);
+      const preferredSheetName = rows.length > 1 ? `${typeLabel} ${dateLabel || idx + 1}` : `${typeLabel} ${idx + 1}`;
       const sheetName = reserveSheetName(usedSheetNames, preferredSheetName);
       addProfessionalFichaWorksheet(workbook, {
         row,

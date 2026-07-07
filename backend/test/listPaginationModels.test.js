@@ -611,6 +611,7 @@ test("listManagerRecords inclui viagens no relatório quando ativado e sem roman
               recorded_at_client: null,
               updated_at: "2026-07-07T08:01:00",
               motorista: "Motorista apontador",
+              apontador: "Carlos Apontador",
               tipo: "romaneio",
               tipo_label: "Romaneio",
               veiculo: "Caminhão 07",
@@ -666,10 +667,12 @@ test("listManagerRecords inclui viagens no relatório quando ativado e sem roman
     assert.strictEqual(result.items.length, 1);
     assert.strictEqual(result.items[0].source_id, "viagem:77");
     assert.strictEqual(result.items[0].tipo, "romaneio");
+    assert.strictEqual(result.items[0].apontador, "Carlos Apontador");
     const viagensCountCall = calls.find(
       (c) => c.sql.includes("FROM viagens vi") && c.sql.includes("COUNT(*)::int AS total")
     );
     assert.ok(viagensCountCall, "esperada consulta de viagens para relatório");
+    assert.match(viagensCountCall.sql, /LEFT JOIN usuarios ap ON ap\.id = vi\.apontador_id AND ap\.empresa_id = vi\.empresa_id/);
     assert.match(viagensCountCall.sql, /vi\.empresa_id = \$1/);
     assert.match(viagensCountCall.sql, /DATE\(vi\.marcacao AT TIME ZONE 'America\/Sao_Paulo'\) >= \$2/);
     assert.match(viagensCountCall.sql, /DATE\(vi\.marcacao AT TIME ZONE 'America\/Sao_Paulo'\) <= \$3/);

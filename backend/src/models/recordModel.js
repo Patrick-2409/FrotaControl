@@ -299,6 +299,7 @@ const buildLegacyManagerRecordsTableQuery = ({
       CASE WHEN ${recordedExpr} IS NULL THEN NULL ELSE to_char(${recordedExpr}, 'YYYY-MM-DD"T"HH24:MI:SS') END AS recorded_at_client,
       CASE WHEN ${updatedExpr} IS NULL THEN NULL ELSE to_char(${updatedExpr}, 'YYYY-MM-DD"T"HH24:MI:SS') END AS updated_at,
       ${motoristaExpr} AS motorista,
+      NULL::text AS apontador,
       '${tipo}' AS tipo,
       '${tipoLabel}' AS tipo_label,
       ${veiculoExpr} AS veiculo,
@@ -579,6 +580,7 @@ const listManagerRecordsFromViagens = async ({
         ELSE to_char(vi.created_at AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD"T"HH24:MI:SS')
       END AS updated_at,
       u.nome AS motorista,
+      COALESCE(ap.nome, NULL::text) AS apontador,
       'romaneio' AS tipo,
       'Romaneio' AS tipo_label,
       v.nome AS veiculo,
@@ -618,6 +620,7 @@ const listManagerRecordsFromViagens = async ({
       NULL::numeric AS preco_por_litro
     FROM viagens vi
     LEFT JOIN usuarios u ON u.id = vi.motorista_id AND u.empresa_id = vi.empresa_id
+    LEFT JOIN usuarios ap ON ap.id = vi.apontador_id AND ap.empresa_id = vi.empresa_id
     LEFT JOIN veiculos v ON v.id = vi.veiculo_id AND v.empresa_id = vi.empresa_id
     WHERE ${whereSql}`;
 
@@ -871,6 +874,7 @@ const listManagerRecordsModern = async ({
        END AS recorded_at_client,
        to_char(r.updated_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS updated_at,
        u.nome AS motorista,
+       NULL::text AS apontador,
        'romaneio' AS tipo,
        'Romaneio' AS tipo_label,
        v.nome AS veiculo,
@@ -918,6 +922,7 @@ const listManagerRecordsModern = async ({
        END AS recorded_at_client,
        to_char(c.updated_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS updated_at,
        u.nome AS motorista,
+       NULL::text AS apontador,
        'combustivel' AS tipo,
        'Combustível' AS tipo_label,
        v.nome AS veiculo,
@@ -965,6 +970,7 @@ const listManagerRecordsModern = async ({
        END AS recorded_at_client,
        to_char(p.updated_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS updated_at,
        u.nome AS motorista,
+       NULL::text AS apontador,
        'parte_diaria' AS tipo,
        'Parte Diária' AS tipo_label,
        v.nome AS veiculo,
