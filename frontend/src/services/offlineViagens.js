@@ -4,6 +4,7 @@
  */
 
 import api from "./api";
+import { normalizeOfflineTipo } from "./offlineViagensTipo.js";
 
 const DB_NAME = "frotacontrol_offline";
 const DB_VERSION = 1;
@@ -71,7 +72,7 @@ function openDatabase() {
  * @param {string} [viagem.id_local]
  * @param {number} viagem.veiculo_id
  * @param {number} viagem.motorista_id
- * @param {"esteril"|"rocha"} viagem.tipo
+ * @param {"esteril"|"rocha"|"rocha_pulmao"|"rocha_armacao"} viagem.tipo
  * @param {number} viagem.timestamp
  * @returns {Promise<object>}
  */
@@ -86,7 +87,7 @@ export async function saveOfflineViagem(viagem) {
   const veiculo_id = Number(viagem.veiculo_id);
   const motorista_id = Number(viagem.motorista_id);
   const timestamp = Number(viagem.timestamp);
-  const tipo = viagem.tipo;
+  const tipo = normalizeOfflineTipo(viagem.tipo);
 
   if (!Number.isFinite(veiculo_id) || veiculo_id <= 0) {
     throw new Error("saveOfflineViagem: veiculo_id inválido.");
@@ -97,8 +98,8 @@ export async function saveOfflineViagem(viagem) {
   if (!Number.isFinite(timestamp)) {
     throw new Error("saveOfflineViagem: timestamp inválido.");
   }
-  if (tipo !== "esteril" && tipo !== "rocha") {
-    throw new Error("saveOfflineViagem: tipo deve ser 'esteril' ou 'rocha'.");
+  if (!tipo) {
+    throw new Error("saveOfflineViagem: tipo inválido para apontamento.");
   }
 
   const id_local =
@@ -349,7 +350,7 @@ async function syncPendentesInternal() {
         {
           veiculo_id: v.veiculo_id,
           motorista_id: v.motorista_id,
-          tipo: v.tipo,
+          tipo: normalizeOfflineTipo(v.tipo) || v.tipo,
           timestamp: v.timestamp,
         },
         { skipGlobalErrorToast: true }

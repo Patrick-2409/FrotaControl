@@ -22,6 +22,7 @@ import {
   isValidatedSessionRole,
   setValidatedSessionRole,
 } from "../src/services/sessionSecurity.js";
+import { normalizeOfflineTipo } from "../src/services/offlineViagensTipo.js";
 
 describe("chartMath", () => {
   it("yScaleRange inclui margem superior", () => {
@@ -196,5 +197,16 @@ describe("editRecordStorage", () => {
     assert.equal(localStorage.getItem("fc_draft_parte_4_9"), null);
     assert.equal(localStorage.getItem("fc_apontador_veiculo_id:4:9"), null);
     assert.equal(localStorage.getItem("fc_field_extreme_mode"), "1");
+  });
+});
+
+describe("offlineViagens", () => {
+  it("normaliza tipos de rocha para envio offline", () => {
+    assert.equal(normalizeOfflineTipo("rocha_pulmao"), "rocha_pulmao");
+    assert.equal(normalizeOfflineTipo("rocha_armacao"), "rocha_armacao");
+    assert.equal(normalizeOfflineTipo("rocha_amarracao"), "rocha_armacao");
+    assert.equal(normalizeOfflineTipo("  ROCHA-AMARRACAO  "), "rocha_armacao");
+    assert.equal(normalizeOfflineTipo("esteril"), "esteril");
+    assert.equal(normalizeOfflineTipo("invalido"), null);
   });
 });
