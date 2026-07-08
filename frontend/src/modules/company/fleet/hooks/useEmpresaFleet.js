@@ -30,8 +30,12 @@ const emptyVehicleForm = () => ({
   capacidade_ton: "",
   capacidade_esteril_ton: "",
   capacidade_rocha_ton: "",
+  capacidade_rocha_pulmao_ton: "",
+  capacidade_rocha_armacao_ton: "",
   transporta_esteril: false,
   transporta_rocha: false,
+  transporta_rocha_pulmao: false,
+  transporta_rocha_armacao: false,
   horimetro_atual: "",
   hodometro_atual: "",
   usa_para_transporte: false,
@@ -47,19 +51,37 @@ const emptyVehicleForm = () => ({
 function rowToForm(v) {
   const f = emptyVehicleForm();
   if (!v) return f;
-  const hasSpecificCapacity = v.capacidade_esteril_ton != null || v.capacidade_rocha_ton != null;
+  const capacidadeRochaLegacy = v.capacidade_rocha_ton;
+  const capacidadeRochaPulmao = v.capacidade_rocha_pulmao_ton;
+  const capacidadeRochaArmacao = v.capacidade_rocha_armacao_ton;
+  const hasSpecificCapacity =
+    v.capacidade_esteril_ton != null ||
+    capacidadeRochaLegacy != null ||
+    capacidadeRochaPulmao != null ||
+    capacidadeRochaArmacao != null;
   const transportaEsteril =
     v.transporta_esteril != null
       ? Boolean(v.transporta_esteril)
       : hasSpecificCapacity
         ? v.capacidade_esteril_ton != null
         : v.capacidade_ton != null;
-  const transportaRocha =
-    v.transporta_rocha != null
-      ? Boolean(v.transporta_rocha)
-      : hasSpecificCapacity
-        ? v.capacidade_rocha_ton != null
-        : v.capacidade_ton != null;
+  const transportaRochaPulmao =
+    v.transporta_rocha_pulmao != null
+      ? Boolean(v.transporta_rocha_pulmao)
+      : v.transporta_rocha != null
+        ? Boolean(v.transporta_rocha)
+        : hasSpecificCapacity
+          ? capacidadeRochaPulmao != null || capacidadeRochaLegacy != null
+          : v.capacidade_ton != null;
+  const transportaRochaArmacao =
+    v.transporta_rocha_armacao != null
+      ? Boolean(v.transporta_rocha_armacao)
+      : v.transporta_rocha != null
+        ? Boolean(v.transporta_rocha)
+        : hasSpecificCapacity
+          ? capacidadeRochaArmacao != null || capacidadeRochaLegacy != null
+          : v.capacidade_ton != null;
+  const transportaRocha = transportaRochaPulmao || transportaRochaArmacao;
   const ymd = (d) => {
     if (!d) return "";
     const s = String(d).slice(0, 10);
@@ -87,13 +109,35 @@ function rowToForm(v) {
           ? String(v.capacidade_ton)
           : "",
     capacidade_rocha_ton:
-      v.capacidade_rocha_ton != null
-        ? String(v.capacidade_rocha_ton)
+      capacidadeRochaLegacy != null
+        ? String(capacidadeRochaLegacy)
         : !hasSpecificCapacity && v.capacidade_ton != null
           ? String(v.capacidade_ton)
+          : capacidadeRochaPulmao != null
+            ? String(capacidadeRochaPulmao)
+            : capacidadeRochaArmacao != null
+              ? String(capacidadeRochaArmacao)
+              : "",
+    capacidade_rocha_pulmao_ton:
+      capacidadeRochaPulmao != null
+        ? String(capacidadeRochaPulmao)
+        : capacidadeRochaLegacy != null
+          ? String(capacidadeRochaLegacy)
+          : !hasSpecificCapacity && v.capacidade_ton != null
+            ? String(v.capacidade_ton)
+            : "",
+    capacidade_rocha_armacao_ton:
+      capacidadeRochaArmacao != null
+        ? String(capacidadeRochaArmacao)
+        : capacidadeRochaLegacy != null
+          ? String(capacidadeRochaLegacy)
+          : !hasSpecificCapacity && v.capacidade_ton != null
+            ? String(v.capacidade_ton)
           : "",
     transporta_esteril: transportaEsteril,
     transporta_rocha: transportaRocha,
+    transporta_rocha_pulmao: transportaRochaPulmao,
+    transporta_rocha_armacao: transportaRochaArmacao,
     horimetro_atual: v.horimetro_atual != null ? String(v.horimetro_atual) : "",
     hodometro_atual: v.hodometro_atual != null ? String(v.hodometro_atual) : "",
     usa_para_transporte: Boolean(v.usa_para_transporte),
@@ -123,9 +167,13 @@ function formToPayload(form) {
   };
   const usa = Boolean(form.usa_para_transporte);
   const transportaEsteril = usa && Boolean(form.transporta_esteril);
-  const transportaRocha = usa && Boolean(form.transporta_rocha);
+  const transportaRochaPulmao = usa && Boolean(form.transporta_rocha_pulmao);
+  const transportaRochaArmacao = usa && Boolean(form.transporta_rocha_armacao);
+  const transportaRocha = transportaRochaPulmao || transportaRochaArmacao;
   const capacidadeEsterilTon = num(form.capacidade_esteril_ton);
   const capacidadeRochaTon = num(form.capacidade_rocha_ton);
+  const capacidadeRochaPulmaoTon = num(form.capacidade_rocha_pulmao_ton);
+  const capacidadeRochaArmacaoTon = num(form.capacidade_rocha_armacao_ton);
   return {
     nome: form.nome.trim(),
     placa: form.placa.trim(),
@@ -139,11 +187,23 @@ function formToPayload(form) {
     chassi: form.chassi.trim() || null,
     combustivel_principal: form.combustivel_principal.trim() || null,
     capacidade_litros: num(form.capacidade_litros),
-    capacidade_ton: usa ? (transportaEsteril ? capacidadeEsterilTon : null) ?? (transportaRocha ? capacidadeRochaTon : null) ?? num(form.capacidade_ton) : null,
+    capacidade_ton: usa
+      ? (transportaEsteril ? capacidadeEsterilTon : null) ??
+        (transportaRochaPulmao ? capacidadeRochaPulmaoTon : null) ??
+        (transportaRochaArmacao ? capacidadeRochaArmacaoTon : null) ??
+        (transportaRocha ? capacidadeRochaTon : null) ??
+        num(form.capacidade_ton)
+      : null,
     transporta_esteril: transportaEsteril,
     transporta_rocha: transportaRocha,
+    transporta_rocha_pulmao: transportaRochaPulmao,
+    transporta_rocha_armacao: transportaRochaArmacao,
     capacidade_esteril_ton: transportaEsteril ? capacidadeEsterilTon : null,
-    capacidade_rocha_ton: transportaRocha ? capacidadeRochaTon : null,
+    capacidade_rocha_ton: transportaRocha
+      ? capacidadeRochaTon ?? capacidadeRochaPulmaoTon ?? capacidadeRochaArmacaoTon
+      : null,
+    capacidade_rocha_pulmao_ton: transportaRochaPulmao ? capacidadeRochaPulmaoTon : null,
+    capacidade_rocha_armacao_ton: transportaRochaArmacao ? capacidadeRochaArmacaoTon : null,
     horimetro_atual: num(form.horimetro_atual),
     hodometro_atual: num(form.hodometro_atual),
     usa_para_transporte: usa,
@@ -178,26 +238,48 @@ const codigoOperacionalLabel = (vehicle) => {
 
 const materialLabel = (vehicle) => {
   const parts = [];
-  const hasSpecificCapacity = vehicle.capacidade_esteril_ton != null || vehicle.capacidade_rocha_ton != null;
+  const hasSpecificCapacity =
+    vehicle.capacidade_esteril_ton != null ||
+    vehicle.capacidade_rocha_ton != null ||
+    vehicle.capacidade_rocha_pulmao_ton != null ||
+    vehicle.capacidade_rocha_armacao_ton != null;
   const transportaEsteril =
     vehicle.transporta_esteril != null
       ? Boolean(vehicle.transporta_esteril)
       : hasSpecificCapacity
         ? vehicle.capacidade_esteril_ton != null
         : vehicle.capacidade_ton != null;
-  const transportaRocha =
-    vehicle.transporta_rocha != null
-      ? Boolean(vehicle.transporta_rocha)
-      : hasSpecificCapacity
-        ? vehicle.capacidade_rocha_ton != null
-        : vehicle.capacidade_ton != null;
+  const transportaRochaPulmao =
+    vehicle.transporta_rocha_pulmao != null
+      ? Boolean(vehicle.transporta_rocha_pulmao)
+      : vehicle.transporta_rocha != null
+        ? Boolean(vehicle.transporta_rocha)
+        : hasSpecificCapacity
+          ? vehicle.capacidade_rocha_pulmao_ton != null || vehicle.capacidade_rocha_ton != null
+          : vehicle.capacidade_ton != null;
+  const transportaRochaArmacao =
+    vehicle.transporta_rocha_armacao != null
+      ? Boolean(vehicle.transporta_rocha_armacao)
+      : vehicle.transporta_rocha != null
+        ? Boolean(vehicle.transporta_rocha)
+        : hasSpecificCapacity
+          ? vehicle.capacidade_rocha_armacao_ton != null || vehicle.capacidade_rocha_ton != null
+          : vehicle.capacidade_ton != null;
   const capacidadeEsteril = hasSpecificCapacity ? vehicle.capacidade_esteril_ton : vehicle.capacidade_ton;
-  const capacidadeRocha = hasSpecificCapacity ? vehicle.capacidade_rocha_ton : vehicle.capacidade_ton;
+  const capacidadeRochaPulmao = hasSpecificCapacity
+    ? vehicle.capacidade_rocha_pulmao_ton ?? vehicle.capacidade_rocha_ton
+    : vehicle.capacidade_ton;
+  const capacidadeRochaArmacao = hasSpecificCapacity
+    ? vehicle.capacidade_rocha_armacao_ton ?? vehicle.capacidade_rocha_ton
+    : vehicle.capacidade_ton;
   if (transportaEsteril && capacidadeEsteril != null) {
     parts.push(`Estéril ${Number(capacidadeEsteril).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} t`);
   }
-  if (transportaRocha && capacidadeRocha != null) {
-    parts.push(`Rocha ${Number(capacidadeRocha).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} t`);
+  if (transportaRochaPulmao && capacidadeRochaPulmao != null) {
+    parts.push(`Rocha Pulmão ${Number(capacidadeRochaPulmao).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} t`);
+  }
+  if (transportaRochaArmacao && capacidadeRochaArmacao != null) {
+    parts.push(`Rocha Armação ${Number(capacidadeRochaArmacao).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} t`);
   }
   return parts.length ? parts.join(" / ") : "Não configurado";
 };

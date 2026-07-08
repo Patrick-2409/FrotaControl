@@ -15,13 +15,29 @@ import {
 const normalizarCodigoVeiculo = (value) => String(value || "").replace(/\D/g, "").slice(0, 4);
 const getDiaOperacionalSaoPaulo = () =>
   new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
+const MATERIAL_META = {
+  esteril: { chave: "esteril", label: "Estéril", toast: "estéril" },
+  rocha_pulmao: { chave: "rocha_pulmao", label: "Rocha Pulmão", toast: "rocha pulmão" },
+  rocha_armacao: { chave: "rocha_armacao", label: "Rocha Armação", toast: "rocha armação" },
+};
+const normalizeTipoMaterial = (tipo) => {
+  if (tipo === "esteril") return "esteril";
+  if (tipo === "rocha_pulmao") return "rocha_pulmao";
+  if (tipo === "rocha_armacao" || tipo === "rocha") return "rocha_armacao";
+  return null;
+};
 
 export default function ApontadorHomePage() {
   const { user } = useAuth();
   const [veiculos, setVeiculos] = useState([]);
   const [veiculoId, setVeiculoId] = useState("");
   const [codigoVeiculo, setCodigoVeiculo] = useState("");
-  const [hojeContagem, setHojeContagem] = useState({ esteril: 0, rocha: 0, tonTotal: 0 });
+  const [hojeContagem, setHojeContagem] = useState({
+    esteril: 0,
+    rocha_pulmao: 0,
+    rocha_armacao: 0,
+    tonTotal: 0,
+  });
   const [loadingVeiculos, setLoadingVeiculos] = useState(true);
   const [registradoFlash, setRegistradoFlash] = useState({ open: false, in: false, label: "" });
   const [online, setOnline] = useState(navigator.onLine);
@@ -42,7 +58,12 @@ export default function ApontadorHomePage() {
 
   const limparResumoVisualDia = useCallback(() => {
     clearFlashTimeouts();
-    setHojeContagem({ esteril: 0, rocha: 0, tonTotal: 0 });
+    setHojeContagem({
+      esteril: 0,
+      rocha_pulmao: 0,
+      rocha_armacao: 0,
+      tonTotal: 0,
+    });
     setUltimosLancamentos([]);
     setDesfazendoLancamentoId(null);
     setRegistradoFlash({ open: false, in: false, label: "" });
@@ -67,7 +88,7 @@ export default function ApontadorHomePage() {
     (items) =>
       (Array.isArray(items) ? items : [])
         .map((item, index) => {
-          const tipo = item?.tipo === "esteril" ? "esteril" : item?.tipo === "rocha" ? "rocha" : null;
+          const tipo = normalizeTipoMaterial(item?.tipo);
           const timestamp = Number(item?.timestamp);
           if (!tipo || !Number.isFinite(timestamp)) return null;
           const viagemId = Number(item?.viagem_id ?? item?.id);
@@ -125,13 +146,19 @@ export default function ApontadorHomePage() {
     try {
       const { data } = await api.get("/apontador/viagens/contagem-hoje");
       const h = data?.hoje;
+      const temSubtiposRocha =
+        h?.ton_rocha_pulmao != null || h?.ton_rocha_armacao != null || h?.rocha_pulmao != null || h?.rocha_armacao != null;
       const ton =
         h?.ton_total != null
           ? Number(h.ton_total)
-          : (Number(h?.ton_esteril) || 0) + (Number(h?.ton_rocha) || 0);
+          : (Number(h?.ton_esteril) || 0) +
+            (temSubtiposRocha
+              ? (Number(h?.ton_rocha_pulmao) || 0) + (Number(h?.ton_rocha_armacao) || 0)
+              : Number(h?.ton_rocha) || 0);
       setHojeContagem({
-        esteril: Number(h?.esteril) || 0,
-        rocha: Number(h?.rocha) || 0,
+        esteril: Number(h?.esteril ?? 0),
+        rocha_pulmao: Number(h?.rocha_pulmao ?? 0),
+        rocha_armacao: Number(h?.rocha_armacao ?? h?.rocha ?? 0),
         tonTotal: Number.isFinite(ton) ? ton : 0,
       });
       setUltimosLancamentos(normalizeLancamentos(data?.ultimos_lancamentos));
@@ -234,7 +261,9 @@ export default function ApontadorHomePage() {
 
   const showRegistradoOk = useCallback((tipo) => {
     clearFlashTimeouts();
-    const label = tipo === "esteril" ? "+1 Estéril ✔" : "+1 Rocha ✔";
+    const tipoNormalizado = normalizeTipoMaterial(tipo);
+    const material = tipoNormalizado ? MATERIAL_META[tipoNormalizado] : MATERIAL_META.rocha_armacao;
+    const label = `+1 ${material.label} ✔`;
     setRegistradoFlash({ open: true, in: false, label });
     requestAnimationFrame(() => {
       requestAnimationFrame(() => setRegistradoFlash((prev) => ({ ...prev, open: true, in: true })));
@@ -408,9 +437,11 @@ export default function ApontadorHomePage() {
   }, [veiculoSelecionado?.codigoLabel]);
 
   const capacidadeEsterilTon = Number(veiculoSelecionado?.capacidadePorMaterial?.esteril) || 0;
-  const capacidadeRochaTon = Number(veiculoSelecionado?.capacidadePorMaterial?.rocha) || 0;
+  const capacidadeRochaPulmaoTon = Number(veiculoSelecionado?.capacidadePorMaterial?.rocha_pulmao) || 0;
+  const capacidadeRochaArmacaoTon = Number(veiculoSelecionado?.capacidadePorMaterial?.rocha_armacao) || 0;
   const temMotoristaVinculado = Boolean(veiculoSelecionado?.motorista?.id);
-  const temMaterialConfigurado = capacidadeEsterilTon > 0 || capacidadeRochaTon > 0;
+  const temMaterialConfigurado =
+    capacidadeEsterilTon > 0 || capacidadeRochaPulmaoTon > 0 || capacidadeRochaArmacaoTon > 0;
   const codigoVeiculoInvalido = Boolean(codigoVeiculo) && !veiculoSelecionado && codigoSugestoes.length === 0;
 
   const idsVeiculosEmpresa = useMemo(
@@ -499,7 +530,8 @@ export default function ApontadorHomePage() {
 
         setUltimosLancamentos((prev) => prev.filter((row) => String(row.id) !== uiId));
         if (!temViagemServidor && item.local_id) {
-          const chaveTipo = item.tipo === "esteril" ? "esteril" : "rocha";
+          const tipoNormalizado = normalizeTipoMaterial(item.tipo);
+          const chaveTipo = tipoNormalizado ? MATERIAL_META[tipoNormalizado].chave : MATERIAL_META.rocha_armacao.chave;
           const tonDelta = Number(item.tonDelta) || 0;
           setHojeContagem((prev) => ({
             ...prev,
@@ -523,10 +555,18 @@ export default function ApontadorHomePage() {
   const registrar = useCallback(
     async (tipo) => {
       if (!veiculoSelecionado?.motorista?.id) return;
-      const chaveTipo = tipo === "esteril" ? "esteril" : "rocha";
-      const capacidadeTipo = chaveTipo === "esteril" ? capacidadeEsterilTon : capacidadeRochaTon;
+      const tipoNormalizado = normalizeTipoMaterial(tipo);
+      if (!tipoNormalizado) return;
+      const material = MATERIAL_META[tipoNormalizado];
+      const chaveTipo = material.chave;
+      const capacidadeTipo =
+        tipoNormalizado === "esteril"
+          ? capacidadeEsterilTon
+          : tipoNormalizado === "rocha_pulmao"
+            ? capacidadeRochaPulmaoTon
+            : capacidadeRochaArmacaoTon;
       if (!Number.isFinite(capacidadeTipo) || capacidadeTipo <= 0) {
-        emitToast(`Capacidade de ${chaveTipo === "esteril" ? "estéril" : "rocha"} não configurada para este veículo.`, "warning");
+        emitToast(`Capacidade de ${material.toast} não configurada para este veículo.`, "warning");
         return;
       }
       try {
@@ -540,7 +580,7 @@ export default function ApontadorHomePage() {
       const viagem = {
         veiculo_id: veiculoSelecionado.id,
         motorista_id: veiculoSelecionado.motorista.id,
-        tipo,
+        tipo: tipoNormalizado,
         timestamp: ts,
       };
       let id_local;
@@ -574,7 +614,7 @@ export default function ApontadorHomePage() {
         serverViagemId: null,
       };
 
-      const mensagem = tipo === "esteril" ? "✔ Estéril registrado" : "✔ Rocha registrado";
+      const mensagem = `✔ ${material.label} registrado`;
       emitToast(mensagem, "success", {
         durationMs: 5000,
         actionLabel: "Desfazer",
@@ -627,7 +667,8 @@ export default function ApontadorHomePage() {
     [
       veiculoSelecionado,
       capacidadeEsterilTon,
-      capacidadeRochaTon,
+      capacidadeRochaPulmaoTon,
+      capacidadeRochaArmacaoTon,
       showRegistradoOk,
       refreshPendentesCount,
       refreshContagemHoje,
@@ -640,14 +681,15 @@ export default function ApontadorHomePage() {
     const onKey = (e) => {
       if (e.repeat) return;
       const k = e.key.toLowerCase();
-      if (k !== "e" && k !== "r") return;
+      if (!["e", "p", "a", "r"].includes(k)) return;
       const tag = (e.target && e.target.tagName) || "";
       if (tag === "INPUT" || tag === "TEXTAREA") return;
       if (!veiculoSelecionado?.motorista?.id) return;
       e.preventDefault();
       e.stopPropagation();
       if (k === "e") void registrar("esteril");
-      else void registrar("rocha");
+      else if (k === "p") void registrar("rocha_pulmao");
+      else void registrar("rocha_armacao");
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
@@ -657,7 +699,7 @@ export default function ApontadorHomePage() {
   const avisoApontador = !temMotoristaVinculado
     ? "Selecione um veículo com motorista vinculado"
     : !temMaterialConfigurado
-      ? "Cadastre a capacidade de estéril ou rocha para este veículo"
+      ? "Cadastre a capacidade de estéril, rocha pulmão ou rocha armação para este veículo"
       : "";
   const mostrarAvisoVeiculoInvalido =
     !loadingVeiculos && veiculos.length > 0 && !podeRegistrar;
@@ -696,7 +738,10 @@ export default function ApontadorHomePage() {
             <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-center text-sm text-amber-100">
               Nenhum veículo disponível para apontamento. O administrador deve cadastrar veículos de{" "}
               <strong className="text-amber-50">transporte (romaneio)</strong> com{" "}
-              <strong className="text-amber-50">capacidade para estéril ou rocha</strong> e{" "}
+              <strong className="text-amber-50">
+                capacidade para estéril, rocha pulmão e rocha armação
+              </strong>{" "}
+              e{" "}
               <strong className="text-amber-50">motorista vinculado</strong> na gestão da empresa.
             </p>
           )}
@@ -706,18 +751,23 @@ export default function ApontadorHomePage() {
             avisoInvalido={mostrarAvisoVeiculoInvalido}
             avisoMensagem={avisoApontador}
             capacidadeEsterilTon={capacidadeEsterilTon}
-            capacidadeRochaTon={capacidadeRochaTon}
+            capacidadeRochaPulmaoTon={capacidadeRochaPulmaoTon}
+            capacidadeRochaArmacaoTon={capacidadeRochaArmacaoTon}
             onEsteril={() => {
               void registrar("esteril");
             }}
-            onRocha={() => {
-              void registrar("rocha");
+            onRochaPulmao={() => {
+              void registrar("rocha_pulmao");
+            }}
+            onRochaArmacao={() => {
+              void registrar("rocha_armacao");
             }}
           />
 
           <ApontadorHojeResumo
             esteril={hojeContagem.esteril}
-            rocha={hojeContagem.rocha}
+            rochaPulmao={hojeContagem.rocha_pulmao}
+            rochaArmacao={hojeContagem.rocha_armacao}
             tonTotal={hojeContagem.tonTotal}
             ultimosLancamentos={ultimosLancamentos}
             onDesfazerLancamento={(item) => {

@@ -714,8 +714,12 @@ test("dashboardStats limita ranking por motorista a empresa do registro", async 
     assert.match(calls[0].sql, /SELECT empresa_id, DATE\(COALESCE\(recorded_at_client, data\)\) AS dia/);
     assert.match(calls[0].sql, /JOIN usuarios u ON u\.id = b\.usuario_id AND u\.empresa_id = b\.empresa_id/);
     assert.match(calls[0].sql, /COUNT\(\*\) FILTER \(WHERE vi\.tipo = 'esteril'\)::int AS viagens_esteril/);
-    assert.match(calls[0].sql, /COUNT\(\*\) FILTER \(WHERE vi\.tipo = 'rocha'\)::int AS viagens_rocha/);
+    assert.match(calls[0].sql, /COUNT\(\*\) FILTER \(WHERE vi\.tipo = 'rocha_pulmao'\)::int AS viagens_rocha_pulmao/);
+    assert.match(calls[0].sql, /COUNT\(\*\) FILTER \(WHERE vi\.tipo IN \('rocha_armacao', 'rocha'\)\)::int AS viagens_rocha_armacao/);
+    assert.match(calls[0].sql, /COUNT\(\*\) FILTER \(WHERE vi\.tipo IN \('rocha', 'rocha_pulmao', 'rocha_armacao'\)\)::int AS viagens_rocha/);
     assert.match(calls[0].sql, /COALESCE\(vd\.viagens_esteril, 0\)::int AS viagens_esteril/);
+    assert.match(calls[0].sql, /COALESCE\(vd\.viagens_rocha_pulmao, 0\)::int AS viagens_rocha_pulmao/);
+    assert.match(calls[0].sql, /COALESCE\(vd\.viagens_rocha_armacao, 0\)::int AS viagens_rocha_armacao/);
     assert.match(calls[0].sql, /COALESCE\(vd\.viagens_rocha, 0\)::int AS viagens_rocha/);
   } finally {
     db.pool.query = orig;

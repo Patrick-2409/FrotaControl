@@ -1,39 +1,14 @@
 const { pool } = require("../db");
+const {
+  MATERIAL_CAPACITY_SQL,
+  ROCHA_TIPOS_SQL,
+  rochaTotalTonSql,
+} = require("../utils/transportMaterialSql");
 
-const TRANSPORTA_ESTERIL_SQL = `COALESCE(
-  v.transporta_esteril,
-  CASE
-    WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-      THEN v.capacidade_esteril_ton IS NOT NULL
-    ELSE COALESCE(v.capacidade_ton, 0) > 0
-  END
-)`;
-const TRANSPORTA_ROCHA_SQL = `COALESCE(
-  v.transporta_rocha,
-  CASE
-    WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-      THEN v.capacidade_rocha_ton IS NOT NULL
-    ELSE COALESCE(v.capacidade_ton, 0) > 0
-  END
-)`;
-const CAPACIDADE_ESTERIL_SQL = `CASE
-  WHEN ${TRANSPORTA_ESTERIL_SQL} THEN
-    CASE
-      WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-        THEN COALESCE(v.capacidade_esteril_ton, 0)
-      ELSE COALESCE(v.capacidade_ton, 0)
-    END
-  ELSE 0
-END`;
-const CAPACIDADE_ROCHA_SQL = `CASE
-  WHEN ${TRANSPORTA_ROCHA_SQL} THEN
-    CASE
-      WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-        THEN COALESCE(v.capacidade_rocha_ton, 0)
-      ELSE COALESCE(v.capacidade_ton, 0)
-    END
-  ELSE 0
-END`;
+const CAPACIDADE_ESTERIL_SQL = MATERIAL_CAPACITY_SQL.esteril;
+const CAPACIDADE_ROCHA_SQL = MATERIAL_CAPACITY_SQL.rocha;
+const CAPACIDADE_ROCHA_PULMAO_SQL = MATERIAL_CAPACITY_SQL.rocha_pulmao;
+const CAPACIDADE_ROCHA_ARMACAO_SQL = MATERIAL_CAPACITY_SQL.rocha_armacao;
 
 const insertViagem = async (
   { empresa_id, veiculo_id, motorista_id, apontador_id = null, tipo, marcacao },
@@ -57,7 +32,9 @@ const getViagensResumoProducao = async (empresa_id, bounds = {}, db = pool) => {
   let sql = `
     SELECT
       COUNT(*) FILTER (WHERE vi.tipo = 'esteril')::int AS total_viagens_esteril,
-      COUNT(*) FILTER (WHERE vi.tipo = 'rocha')::int AS total_viagens_rocha,
+      COUNT(*) FILTER (WHERE vi.tipo = 'rocha_pulmao')::int AS total_viagens_rocha_pulmao,
+      COUNT(*) FILTER (WHERE vi.tipo IN ('rocha_armacao', 'rocha'))::int AS total_viagens_rocha_armacao,
+      COUNT(*) FILTER (WHERE vi.tipo IN (${ROCHA_TIPOS_SQL}))::int AS total_viagens_rocha,
       COALESCE(
         SUM(
           CASE
@@ -71,8 +48,31 @@ const getViagensResumoProducao = async (empresa_id, bounds = {}, db = pool) => {
       COALESCE(
         SUM(
           CASE
-            WHEN vi.tipo = 'rocha' AND COALESCE(v.usa_para_transporte, false) = true
-            THEN ${CAPACIDADE_ROCHA_SQL}
+            WHEN vi.tipo = 'rocha_pulmao' AND COALESCE(v.usa_para_transporte, false) = true
+            THEN ${CAPACIDADE_ROCHA_PULMAO_SQL}
+            ELSE 0
+          END
+        ),
+        0
+      )::double precision AS total_toneladas_rocha_pulmao,
+      COALESCE(
+        SUM(
+          CASE
+            WHEN vi.tipo IN ('rocha_armacao', 'rocha') AND COALESCE(v.usa_para_transporte, false) = true
+            THEN CASE
+              WHEN vi.tipo = 'rocha_armacao' THEN ${CAPACIDADE_ROCHA_ARMACAO_SQL}
+              ELSE ${CAPACIDADE_ROCHA_SQL}
+            END
+            ELSE 0
+          END
+        ),
+        0
+      )::double precision AS total_toneladas_rocha_armacao,
+      COALESCE(
+        SUM(
+          CASE
+            WHEN vi.tipo IN (${ROCHA_TIPOS_SQL}) AND COALESCE(v.usa_para_transporte, false) = true
+            THEN ${rochaTotalTonSql("vi.tipo")}
             ELSE 0
           END
         ),
@@ -95,7 +95,9 @@ const countViagensHojeEmpresaSaoPaulo = async (empresa_id, db = pool) => {
   const { rows } = await db.query(
     `SELECT
       COALESCE(COUNT(*) FILTER (WHERE vi.tipo = 'esteril'), 0)::int AS esteril,
-      COALESCE(COUNT(*) FILTER (WHERE vi.tipo = 'rocha'), 0)::int AS rocha,
+      COALESCE(COUNT(*) FILTER (WHERE vi.tipo = 'rocha_pulmao'), 0)::int AS rocha_pulmao,
+      COALESCE(COUNT(*) FILTER (WHERE vi.tipo IN ('rocha_armacao', 'rocha')), 0)::int AS rocha_armacao,
+      COALESCE(COUNT(*) FILTER (WHERE vi.tipo IN (${ROCHA_TIPOS_SQL})), 0)::int AS rocha,
       COALESCE(
         SUM(
           CASE
@@ -109,8 +111,31 @@ const countViagensHojeEmpresaSaoPaulo = async (empresa_id, db = pool) => {
       COALESCE(
         SUM(
           CASE
-            WHEN vi.tipo = 'rocha' AND COALESCE(v.usa_para_transporte, false) = true
-            THEN ${CAPACIDADE_ROCHA_SQL}
+            WHEN vi.tipo = 'rocha_pulmao' AND COALESCE(v.usa_para_transporte, false) = true
+            THEN ${CAPACIDADE_ROCHA_PULMAO_SQL}
+            ELSE 0
+          END
+        ),
+        0
+      )::double precision AS ton_rocha_pulmao,
+      COALESCE(
+        SUM(
+          CASE
+            WHEN vi.tipo IN ('rocha_armacao', 'rocha') AND COALESCE(v.usa_para_transporte, false) = true
+            THEN CASE
+              WHEN vi.tipo = 'rocha_armacao' THEN ${CAPACIDADE_ROCHA_ARMACAO_SQL}
+              ELSE ${CAPACIDADE_ROCHA_SQL}
+            END
+            ELSE 0
+          END
+        ),
+        0
+      )::double precision AS ton_rocha_armacao,
+      COALESCE(
+        SUM(
+          CASE
+            WHEN vi.tipo IN (${ROCHA_TIPOS_SQL}) AND COALESCE(v.usa_para_transporte, false) = true
+            THEN ${rochaTotalTonSql("vi.tipo")}
             ELSE 0
           END
         ),
@@ -125,11 +150,17 @@ const countViagensHojeEmpresaSaoPaulo = async (empresa_id, db = pool) => {
   );
   const row = rows[0];
   const te = Number(row?.ton_esteril) || 0;
+  const trp = Number(row?.ton_rocha_pulmao) || 0;
+  const tra = Number(row?.ton_rocha_armacao) || 0;
   const tr = Number(row?.ton_rocha) || 0;
   return {
     esteril: row?.esteril ?? 0,
+    rocha_pulmao: row?.rocha_pulmao ?? 0,
+    rocha_armacao: row?.rocha_armacao ?? 0,
     rocha: row?.rocha ?? 0,
     ton_esteril: te,
+    ton_rocha_pulmao: trp,
+    ton_rocha_armacao: tra,
     ton_rocha: tr,
     ton_total: te + tr,
   };
@@ -140,7 +171,9 @@ const countViagensHojeApontadorSaoPaulo = async (empresa_id, apontador_id, db = 
   const { rows } = await db.query(
     `SELECT
       COALESCE(COUNT(*) FILTER (WHERE vi.tipo = 'esteril'), 0)::int AS esteril,
-      COALESCE(COUNT(*) FILTER (WHERE vi.tipo = 'rocha'), 0)::int AS rocha,
+      COALESCE(COUNT(*) FILTER (WHERE vi.tipo = 'rocha_pulmao'), 0)::int AS rocha_pulmao,
+      COALESCE(COUNT(*) FILTER (WHERE vi.tipo IN ('rocha_armacao', 'rocha')), 0)::int AS rocha_armacao,
+      COALESCE(COUNT(*) FILTER (WHERE vi.tipo IN (${ROCHA_TIPOS_SQL})), 0)::int AS rocha,
       COALESCE(
         SUM(
           CASE
@@ -154,8 +187,31 @@ const countViagensHojeApontadorSaoPaulo = async (empresa_id, apontador_id, db = 
       COALESCE(
         SUM(
           CASE
-            WHEN vi.tipo = 'rocha' AND COALESCE(v.usa_para_transporte, false) = true
-            THEN ${CAPACIDADE_ROCHA_SQL}
+            WHEN vi.tipo = 'rocha_pulmao' AND COALESCE(v.usa_para_transporte, false) = true
+            THEN ${CAPACIDADE_ROCHA_PULMAO_SQL}
+            ELSE 0
+          END
+        ),
+        0
+      )::double precision AS ton_rocha_pulmao,
+      COALESCE(
+        SUM(
+          CASE
+            WHEN vi.tipo IN ('rocha_armacao', 'rocha') AND COALESCE(v.usa_para_transporte, false) = true
+            THEN CASE
+              WHEN vi.tipo = 'rocha_armacao' THEN ${CAPACIDADE_ROCHA_ARMACAO_SQL}
+              ELSE ${CAPACIDADE_ROCHA_SQL}
+            END
+            ELSE 0
+          END
+        ),
+        0
+      )::double precision AS ton_rocha_armacao,
+      COALESCE(
+        SUM(
+          CASE
+            WHEN vi.tipo IN (${ROCHA_TIPOS_SQL}) AND COALESCE(v.usa_para_transporte, false) = true
+            THEN ${rochaTotalTonSql("vi.tipo")}
             ELSE 0
           END
         ),
@@ -171,11 +227,17 @@ const countViagensHojeApontadorSaoPaulo = async (empresa_id, apontador_id, db = 
   );
   const row = rows[0];
   const te = Number(row?.ton_esteril) || 0;
+  const trp = Number(row?.ton_rocha_pulmao) || 0;
+  const tra = Number(row?.ton_rocha_armacao) || 0;
   const tr = Number(row?.ton_rocha) || 0;
   return {
     esteril: row?.esteril ?? 0,
+    rocha_pulmao: row?.rocha_pulmao ?? 0,
+    rocha_armacao: row?.rocha_armacao ?? 0,
     rocha: row?.rocha ?? 0,
     ton_esteril: te,
+    ton_rocha_pulmao: trp,
+    ton_rocha_armacao: tra,
     ton_rocha: tr,
     ton_total: te + tr,
   };
@@ -257,17 +319,22 @@ const listViagensByVehicleDay = async (empresa_id, startIso, endIso, db = pool) 
             v.nome AS veiculo_nome,
             v.placa,
             ${CAPACIDADE_ESTERIL_SQL}::double precision AS ton_esteril,
+            ${CAPACIDADE_ROCHA_PULMAO_SQL}::double precision AS ton_rocha_pulmao,
+            ${CAPACIDADE_ROCHA_ARMACAO_SQL}::double precision AS ton_rocha_armacao,
             ${CAPACIDADE_ROCHA_SQL}::double precision AS ton_rocha,
             (vi.marcacao AT TIME ZONE 'America/Sao_Paulo')::date AS dia_local,
             COUNT(*) FILTER (WHERE vi.tipo = 'esteril')::int AS esteril,
-            COUNT(*) FILTER (WHERE vi.tipo = 'rocha')::int AS rocha
+            COUNT(*) FILTER (WHERE vi.tipo = 'rocha_pulmao')::int AS rocha_pulmao,
+            COUNT(*) FILTER (WHERE vi.tipo IN ('rocha_armacao', 'rocha'))::int AS rocha_armacao,
+            COUNT(*) FILTER (WHERE vi.tipo IN (${ROCHA_TIPOS_SQL}))::int AS rocha
      FROM viagens vi
      INNER JOIN veiculos v ON v.id = vi.veiculo_id AND v.empresa_id = vi.empresa_id
      WHERE vi.empresa_id = $1
        AND vi.marcacao >= $2::timestamptz
        AND vi.marcacao < $3::timestamptz
-     GROUP BY v.id, v.nome, v.placa, v.capacidade_ton, v.capacidade_esteril_ton, v.capacidade_rocha_ton,
-       v.transporta_esteril, v.transporta_rocha,
+     GROUP BY v.id, v.nome, v.placa,
+       v.capacidade_ton, v.capacidade_esteril_ton, v.capacidade_rocha_ton, v.capacidade_rocha_pulmao_ton, v.capacidade_rocha_armacao_ton,
+       v.transporta_esteril, v.transporta_rocha, v.transporta_rocha_pulmao, v.transporta_rocha_armacao,
        (vi.marcacao AT TIME ZONE 'America/Sao_Paulo')::date
      ORDER BY v.nome, dia_local`,
     [empresa_id, startIso, endIso]

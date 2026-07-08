@@ -83,6 +83,10 @@ const initDb = async () => {
       modelo VARCHAR(120),
       transporta_esteril BOOLEAN,
       transporta_rocha BOOLEAN,
+      transporta_rocha_pulmao BOOLEAN,
+      transporta_rocha_armacao BOOLEAN,
+      capacidade_rocha_pulmao_ton NUMERIC(10, 2),
+      capacidade_rocha_armacao_ton NUMERIC(10, 2),
       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
       UNIQUE (empresa_id, placa)
     );
@@ -188,9 +192,13 @@ const initDb = async () => {
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS capacidade_ton NUMERIC(10, 2);
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS capacidade_esteril_ton NUMERIC(10, 2);
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS capacidade_rocha_ton NUMERIC(10, 2);
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS capacidade_rocha_pulmao_ton NUMERIC(10, 2);
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS capacidade_rocha_armacao_ton NUMERIC(10, 2);
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS codigo_operacional INTEGER;
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS transporta_esteril BOOLEAN;
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS transporta_rocha BOOLEAN;
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS transporta_rocha_pulmao BOOLEAN;
+    ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS transporta_rocha_armacao BOOLEAN;
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS usa_para_transporte BOOLEAN NOT NULL DEFAULT false;
     ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS tipo_operacao VARCHAR(20) NOT NULL DEFAULT 'apoio';
     ALTER TABLE romaneios ADD COLUMN IF NOT EXISTS version_of VARCHAR(80);
@@ -243,10 +251,38 @@ const initDb = async () => {
     UPDATE veiculos
     SET transporta_rocha = CASE
       WHEN COALESCE(usa_para_transporte, false) = false THEN false
-      WHEN capacidade_esteril_ton IS NOT NULL OR capacidade_rocha_ton IS NOT NULL THEN capacidade_rocha_ton IS NOT NULL
+      WHEN capacidade_esteril_ton IS NOT NULL
+        OR capacidade_rocha_ton IS NOT NULL
+        OR capacidade_rocha_pulmao_ton IS NOT NULL
+        OR capacidade_rocha_armacao_ton IS NOT NULL
+        THEN capacidade_rocha_ton IS NOT NULL
       ELSE COALESCE(capacidade_ton, 0) > 0
     END
     WHERE transporta_rocha IS NULL;
+
+    UPDATE veiculos
+    SET transporta_rocha_pulmao = CASE
+      WHEN COALESCE(usa_para_transporte, false) = false THEN false
+      WHEN capacidade_esteril_ton IS NOT NULL
+        OR capacidade_rocha_ton IS NOT NULL
+        OR capacidade_rocha_pulmao_ton IS NOT NULL
+        OR capacidade_rocha_armacao_ton IS NOT NULL
+        THEN COALESCE(capacidade_rocha_pulmao_ton, capacidade_rocha_ton) IS NOT NULL
+      ELSE COALESCE(capacidade_ton, 0) > 0
+    END
+    WHERE transporta_rocha_pulmao IS NULL;
+
+    UPDATE veiculos
+    SET transporta_rocha_armacao = CASE
+      WHEN COALESCE(usa_para_transporte, false) = false THEN false
+      WHEN capacidade_esteril_ton IS NOT NULL
+        OR capacidade_rocha_ton IS NOT NULL
+        OR capacidade_rocha_pulmao_ton IS NOT NULL
+        OR capacidade_rocha_armacao_ton IS NOT NULL
+        THEN COALESCE(capacidade_rocha_armacao_ton, capacidade_rocha_ton) IS NOT NULL
+      ELSE COALESCE(capacidade_ton, 0) > 0
+    END
+    WHERE transporta_rocha_armacao IS NULL;
 
     UPDATE veiculos
     SET capacidade_esteril_ton = NULL
@@ -255,6 +291,20 @@ const initDb = async () => {
     UPDATE veiculos
     SET capacidade_rocha_ton = NULL
     WHERE transporta_rocha IS FALSE;
+
+    UPDATE veiculos
+    SET capacidade_rocha_pulmao_ton = NULL
+    WHERE transporta_rocha_pulmao IS FALSE;
+
+    UPDATE veiculos
+    SET capacidade_rocha_armacao_ton = NULL
+    WHERE transporta_rocha_armacao IS FALSE;
+
+    UPDATE veiculos
+    SET transporta_rocha = COALESCE(transporta_rocha, false)
+      OR COALESCE(transporta_rocha_pulmao, false)
+      OR COALESCE(transporta_rocha_armacao, false)
+    WHERE COALESCE(usa_para_transporte, false) = true;
   `);
 
   await pool.query(`
@@ -375,7 +425,7 @@ const initDb = async () => {
       veiculo_id INTEGER NOT NULL REFERENCES veiculos(id) ON DELETE CASCADE,
       motorista_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE RESTRICT,
       apontador_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
-      tipo VARCHAR(20) NOT NULL CHECK (tipo IN ('esteril', 'rocha')),
+      tipo VARCHAR(20) NOT NULL CHECK (tipo IN ('esteril', 'rocha', 'rocha_pulmao', 'rocha_armacao')),
       marcacao TIMESTAMPTZ NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
@@ -391,6 +441,10 @@ const initDb = async () => {
       END IF;
     END
     $$;
+    ALTER TABLE viagens DROP CONSTRAINT IF EXISTS viagens_tipo_check;
+    ALTER TABLE viagens
+      ADD CONSTRAINT viagens_tipo_check
+      CHECK (tipo IN ('esteril', 'rocha', 'rocha_pulmao', 'rocha_armacao'));
     CREATE INDEX IF NOT EXISTS idx_viagens_empresa_marcacao ON viagens (empresa_id, marcacao DESC);
     CREATE INDEX IF NOT EXISTS idx_viagens_empresa_apontador_marcacao
       ON viagens (empresa_id, apontador_id, marcacao DESC)

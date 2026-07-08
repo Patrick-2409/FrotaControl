@@ -463,7 +463,9 @@ const asYmdSp = (value) => {
 const classifyRomaneioTransport = (tipoTransporte) => {
   const s = String(tipoTransporte || "").toLowerCase();
   if (s.includes("estéril") || s.includes("esteril")) return "e";
-  if (s.includes("amarração") || s.includes("amarracao")) return "ra";
+  if (s.includes("armação") || s.includes("armacao") || s.includes("amarração") || s.includes("amarracao")) {
+    return "ra";
+  }
   if (s.includes("pulmão") || s.includes("pulmao")) return "rp";
   return "";
 };
@@ -766,7 +768,7 @@ const renderRomaneioGroupSheet = (group, logoUrl) => {
           ${colMarks("e")}
         </tr>
         <tr>
-          <td class="narrow bold">Rocha (amarração)</td>
+          <td class="narrow bold">Rocha (armação)</td>
           ${colMarks("ra")}
         </tr>
         <tr>
@@ -1248,7 +1250,7 @@ const buildFallbackPdfBuffer = async ({ companyName, records, logoImage, filterS
       y = drawCells(y, 22, headCells);
       const typeRows = [
         ["Estéril", "e"],
-        ["Rocha (amarração)", "ra"],
+        ["Rocha (armação)", "ra"],
         ["Rocha (pulmao)", "rp"],
       ];
       typeRows.forEach(([label, code]) => {
@@ -1782,7 +1784,7 @@ const addRomaneioPortoGroupWorksheet = (workbook, group, logoImageId, index) => 
 
   const typeRows = [
     ["Estéril", "e"],
-    ["Rocha (amarração)", "ra"],
+    ["Rocha (armação)", "ra"],
     ["Rocha (pulmão)", "rp"],
   ];
   typeRows.forEach(([label, code], i) => {

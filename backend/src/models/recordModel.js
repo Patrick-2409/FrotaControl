@@ -1,5 +1,10 @@
 const { pool } = require("../db");
 const { logError } = require("../services/loggerService");
+const {
+  MATERIAL_CAPACITY_SQL,
+  ROCHA_TIPOS_SQL,
+  rochaTotalTonSql,
+} = require("../utils/transportMaterialSql");
 
 const isMissingSchemaField = (err) => ["42703", "42P01"].includes(String(err?.code || "").trim().toUpperCase());
 const SCHEMA_CACHE_TTL_MS = 30_000;
@@ -588,7 +593,8 @@ const listManagerRecordsFromViagens = async ({
       'Transporte registrado via apontador'::text AS destino,
       CASE
         WHEN COALESCE(vi.tipo, '') = 'esteril' THEN 'Estéril'
-        WHEN COALESCE(vi.tipo, '') = 'rocha' THEN 'Rocha (amarração)'
+        WHEN COALESCE(vi.tipo, '') = 'rocha_pulmao' THEN 'Rocha (pulmão)'
+        WHEN COALESCE(vi.tipo, '') IN ('rocha_armacao', 'rocha') THEN 'Rocha (armação)'
         ELSE NULL::text
       END AS tipo_transporte,
       'Origem: viagens'::text AS observacao,
@@ -1181,9 +1187,13 @@ const dashboardStats = async ({ empresa_id = null, periodo = null } = {}) => {
           COALESCE(COUNT(*) FILTER (WHERE b.tipo <> 'romaneio'), 0)::int AS apoio_registros,
           COALESCE(vd.total_viagens, 0)::int AS viagens,
           COALESCE(vd.viagens_esteril, 0)::int AS viagens_esteril,
+          COALESCE(vd.viagens_rocha_pulmao, 0)::int AS viagens_rocha_pulmao,
+          COALESCE(vd.viagens_rocha_armacao, 0)::int AS viagens_rocha_armacao,
           COALESCE(vd.viagens_rocha, 0)::int AS viagens_rocha,
           COALESCE(vd.total_toneladas, 0)::double precision AS toneladas,
           COALESCE(vd.toneladas_esteril, 0)::double precision AS toneladas_esteril,
+          COALESCE(vd.toneladas_rocha_pulmao, 0)::double precision AS toneladas_rocha_pulmao,
+          COALESCE(vd.toneladas_rocha_armacao, 0)::double precision AS toneladas_rocha_armacao,
           COALESCE(vd.toneladas_rocha, 0)::double precision AS toneladas_rocha
         FROM ref,
              generate_series(ref.hoje - INTERVAL '6 days', ref.hoje, INTERVAL '1 day') d
@@ -1193,38 +1203,16 @@ const dashboardStats = async ({ empresa_id = null, periodo = null } = {}) => {
             (vi.marcacao AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
             COUNT(*)::int AS total_viagens,
             COUNT(*) FILTER (WHERE vi.tipo = 'esteril')::int AS viagens_esteril,
-            COUNT(*) FILTER (WHERE vi.tipo = 'rocha')::int AS viagens_rocha,
+            COUNT(*) FILTER (WHERE vi.tipo = 'rocha_pulmao')::int AS viagens_rocha_pulmao,
+            COUNT(*) FILTER (WHERE vi.tipo IN ('rocha_armacao', 'rocha'))::int AS viagens_rocha_armacao,
+            COUNT(*) FILTER (WHERE vi.tipo IN (${ROCHA_TIPOS_SQL}))::int AS viagens_rocha,
             COALESCE(
               SUM(
                 CASE
                   WHEN COALESCE(v.usa_para_transporte, false) = true
                   THEN CASE
-                    WHEN vi.tipo = 'esteril' THEN CASE
-                      WHEN COALESCE(v.transporta_esteril, CASE
-                        WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-                          THEN v.capacidade_esteril_ton IS NOT NULL
-                        ELSE COALESCE(v.capacidade_ton, 0) > 0
-                      END)
-                      THEN CASE
-                        WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-                          THEN COALESCE(v.capacidade_esteril_ton, 0)
-                        ELSE COALESCE(v.capacidade_ton, 0)
-                      END
-                      ELSE 0
-                    END
-                    WHEN vi.tipo = 'rocha' THEN CASE
-                      WHEN COALESCE(v.transporta_rocha, CASE
-                        WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-                          THEN v.capacidade_rocha_ton IS NOT NULL
-                        ELSE COALESCE(v.capacidade_ton, 0) > 0
-                      END)
-                      THEN CASE
-                        WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-                          THEN COALESCE(v.capacidade_rocha_ton, 0)
-                        ELSE COALESCE(v.capacidade_ton, 0)
-                      END
-                      ELSE 0
-                    END
+                    WHEN vi.tipo = 'esteril' THEN ${MATERIAL_CAPACITY_SQL.esteril}
+                    WHEN vi.tipo IN (${ROCHA_TIPOS_SQL}) THEN ${rochaTotalTonSql("vi.tipo")}
                     ELSE COALESCE(v.capacidade_ton, 0)
                   END
                   ELSE 0
@@ -1236,19 +1224,7 @@ const dashboardStats = async ({ empresa_id = null, periodo = null } = {}) => {
               SUM(
                 CASE
                   WHEN vi.tipo = 'esteril' AND COALESCE(v.usa_para_transporte, false) = true
-                  THEN CASE
-                    WHEN COALESCE(v.transporta_esteril, CASE
-                      WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-                        THEN v.capacidade_esteril_ton IS NOT NULL
-                      ELSE COALESCE(v.capacidade_ton, 0) > 0
-                    END)
-                    THEN CASE
-                      WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-                        THEN COALESCE(v.capacidade_esteril_ton, 0)
-                      ELSE COALESCE(v.capacidade_ton, 0)
-                    END
-                    ELSE 0
-                  END
+                  THEN ${MATERIAL_CAPACITY_SQL.esteril}
                   ELSE 0
                 END
               ),
@@ -1257,20 +1233,31 @@ const dashboardStats = async ({ empresa_id = null, periodo = null } = {}) => {
             COALESCE(
               SUM(
                 CASE
-                  WHEN vi.tipo = 'rocha' AND COALESCE(v.usa_para_transporte, false) = true
+                  WHEN vi.tipo = 'rocha_pulmao' AND COALESCE(v.usa_para_transporte, false) = true
+                  THEN ${MATERIAL_CAPACITY_SQL.rocha_pulmao}
+                  ELSE 0
+                END
+              ),
+              0
+            )::double precision AS toneladas_rocha_pulmao,
+            COALESCE(
+              SUM(
+                CASE
+                  WHEN vi.tipo IN ('rocha_armacao', 'rocha') AND COALESCE(v.usa_para_transporte, false) = true
                   THEN CASE
-                    WHEN COALESCE(v.transporta_rocha, CASE
-                      WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-                        THEN v.capacidade_rocha_ton IS NOT NULL
-                      ELSE COALESCE(v.capacidade_ton, 0) > 0
-                    END)
-                    THEN CASE
-                      WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-                        THEN COALESCE(v.capacidade_rocha_ton, 0)
-                      ELSE COALESCE(v.capacidade_ton, 0)
-                    END
-                    ELSE 0
+                    WHEN vi.tipo = 'rocha_armacao' THEN ${MATERIAL_CAPACITY_SQL.rocha_armacao}
+                    ELSE ${MATERIAL_CAPACITY_SQL.rocha}
                   END
+                  ELSE 0
+                END
+              ),
+              0
+            )::double precision AS toneladas_rocha_armacao,
+            COALESCE(
+              SUM(
+                CASE
+                  WHEN vi.tipo IN (${ROCHA_TIPOS_SQL}) AND COALESCE(v.usa_para_transporte, false) = true
+                  THEN ${rochaTotalTonSql("vi.tipo")}
                   ELSE 0
                 END
               ),
@@ -1284,8 +1271,8 @@ const dashboardStats = async ({ empresa_id = null, periodo = null } = {}) => {
             ${companyWhereViagens}
           GROUP BY (vi.marcacao AT TIME ZONE 'America/Sao_Paulo')::date
         ) vd ON vd.dia = d::date
-        GROUP BY d, vd.total_viagens, vd.viagens_esteril, vd.viagens_rocha,
-          vd.total_toneladas, vd.toneladas_esteril, vd.toneladas_rocha
+        GROUP BY d, vd.total_viagens, vd.viagens_esteril, vd.viagens_rocha_pulmao, vd.viagens_rocha_armacao, vd.viagens_rocha,
+          vd.total_toneladas, vd.toneladas_esteril, vd.toneladas_rocha_pulmao, vd.toneladas_rocha_armacao, vd.toneladas_rocha
         ORDER BY d
       ) z) AS ultimos_7_dias`,
     values

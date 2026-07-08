@@ -1,51 +1,13 @@
 const { pool } = require("../db");
 const { queryTimed } = require("../utils/queryTimed");
+const { MATERIAL_ALLOWED_SQL, MATERIAL_CAPACITY_SQL } = require("../utils/transportMaterialSql");
 
 const STATUS_VALUES = new Set(["ativo", "manutencao", "indisponivel", "parado", "operacao"]);
 
-const MATERIAL_ALLOWED_SQL = {
-  esteril: `COALESCE(
-    v.transporta_esteril,
-    CASE
-      WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-        THEN v.capacidade_esteril_ton IS NOT NULL
-      ELSE COALESCE(v.capacidade_ton, 0) > 0
-    END
-  )`,
-  rocha: `COALESCE(
-    v.transporta_rocha,
-    CASE
-      WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-        THEN v.capacidade_rocha_ton IS NOT NULL
-      ELSE COALESCE(v.capacidade_ton, 0) > 0
-    END
-  )`,
-};
-
-const MATERIAL_CAPACITY_SQL = {
-  esteril: `CASE
-    WHEN ${MATERIAL_ALLOWED_SQL.esteril} THEN
-      CASE
-        WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-          THEN COALESCE(v.capacidade_esteril_ton, 0)
-        ELSE COALESCE(v.capacidade_ton, 0)
-      END
-    ELSE 0
-  END`,
-  rocha: `CASE
-    WHEN ${MATERIAL_ALLOWED_SQL.rocha} THEN
-      CASE
-        WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-          THEN COALESCE(v.capacidade_rocha_ton, 0)
-        ELSE COALESCE(v.capacidade_ton, 0)
-      END
-    ELSE 0
-  END`,
-};
-
 const VEHICLE_LIST_COLS = `v.id, v.empresa_id, v.codigo_operacional, v.nome, v.placa, v.marca, v.modelo, v.tipo, v.categoria, v.ano,
   v.renavam, v.chassi, v.combustivel_principal, v.capacidade_litros, v.capacidade_ton,
-  v.capacidade_esteril_ton, v.capacidade_rocha_ton, v.transporta_esteril, v.transporta_rocha,
+  v.capacidade_esteril_ton, v.capacidade_rocha_ton, v.capacidade_rocha_pulmao_ton, v.capacidade_rocha_armacao_ton,
+  v.transporta_esteril, v.transporta_rocha, v.transporta_rocha_pulmao, v.transporta_rocha_armacao,
   v.horimetro_atual, v.hodometro_atual, v.usa_para_transporte, v.tipo_operacao, v.status_operacional,
   v.doc_revisao_validade, v.doc_licenciamento_validade, v.doc_seguro_validade, v.doc_inspecao_validade,
   v.manutencao_agendar_ate, v.fleet_telemetry_meta, v.created_at`;
@@ -156,8 +118,12 @@ const createVehicle = async ({
   capacidade_ton = null,
   capacidade_esteril_ton = null,
   capacidade_rocha_ton = null,
+  capacidade_rocha_pulmao_ton = null,
+  capacidade_rocha_armacao_ton = null,
   transporta_esteril = undefined,
   transporta_rocha = undefined,
+  transporta_rocha_pulmao = undefined,
+  transporta_rocha_armacao = undefined,
   usa_para_transporte = false,
   tipo_operacao = "apoio",
   tipo = null,
@@ -184,7 +150,14 @@ const createVehicle = async ({
         ? "transporte"
         : "apoio";
   const usa = tipoOperacao === "transporte";
-  const hasSpecificCapacity = capacidade_esteril_ton != null || capacidade_rocha_ton != null;
+  const legacyRochaCapacity = capacidade_rocha_ton;
+  const capRochaPulmaoInput = capacidade_rocha_pulmao_ton ?? legacyRochaCapacity;
+  const capRochaArmacaoInput = capacidade_rocha_armacao_ton ?? legacyRochaCapacity;
+  const hasSpecificCapacity =
+    capacidade_esteril_ton != null ||
+    capacidade_rocha_ton != null ||
+    capacidade_rocha_pulmao_ton != null ||
+    capacidade_rocha_armacao_ton != null;
   const transportaEsteril = usa
     ? transporta_esteril === undefined
       ? hasSpecificCapacity
@@ -192,20 +165,41 @@ const createVehicle = async ({
         : capacidade_ton != null
       : Boolean(transporta_esteril)
     : false;
-  const transportaRocha = usa
-    ? transporta_rocha === undefined
-      ? hasSpecificCapacity
-        ? capacidade_rocha_ton != null
-        : capacidade_ton != null
-      : Boolean(transporta_rocha)
+  const transportaRochaPulmao = usa
+    ? transporta_rocha_pulmao !== undefined
+      ? Boolean(transporta_rocha_pulmao)
+      : transporta_rocha !== undefined
+        ? Boolean(transporta_rocha)
+        : hasSpecificCapacity
+          ? capRochaPulmaoInput != null
+          : capacidade_ton != null
     : false;
+  const transportaRochaArmacao = usa
+    ? transporta_rocha_armacao !== undefined
+      ? Boolean(transporta_rocha_armacao)
+      : transporta_rocha !== undefined
+        ? Boolean(transporta_rocha)
+        : hasSpecificCapacity
+          ? capRochaArmacaoInput != null
+          : capacidade_ton != null
+    : false;
+  const transportaRocha = transportaRochaPulmao || transportaRochaArmacao;
   const capEsteril = transportaEsteril
     ? normalizeCapacidade(usa, hasSpecificCapacity ? capacidade_esteril_ton : capacidade_ton)
     : null;
-  const capRocha = transportaRocha
-    ? normalizeCapacidade(usa, hasSpecificCapacity ? capacidade_rocha_ton : capacidade_ton)
+  const capRochaPulmao = transportaRochaPulmao
+    ? normalizeCapacidade(usa, hasSpecificCapacity ? capRochaPulmaoInput : capacidade_ton)
     : null;
-  const cap = normalizeCapacidade(usa, capacidade_ton ?? capEsteril ?? capRocha);
+  const capRochaArmacao = transportaRochaArmacao
+    ? normalizeCapacidade(usa, hasSpecificCapacity ? capRochaArmacaoInput : capacidade_ton)
+    : null;
+  const capRocha = transportaRocha
+    ? normalizeCapacidade(usa, legacyRochaCapacity ?? capRochaPulmaoInput ?? capRochaArmacaoInput ?? capacidade_ton)
+    : null;
+  const cap = normalizeCapacidade(
+    usa,
+    capacidade_ton ?? capEsteril ?? capRochaPulmao ?? capRochaArmacao ?? capRocha
+  );
   const meta = normalizeTelemetryMeta(fleet_telemetry_meta);
   const st = normalizeStatus(status_operacional);
   const client = await pool.connect();
@@ -213,8 +207,9 @@ const createVehicle = async ({
     await client.query("BEGIN");
     const { rows } = await client.query(
       `INSERT INTO veiculos (
-         empresa_id, codigo_operacional, nome, placa, marca, modelo, capacidade_ton, capacidade_esteril_ton, capacidade_rocha_ton,
-         transporta_esteril, transporta_rocha,
+         empresa_id, codigo_operacional, nome, placa, marca, modelo,
+         capacidade_ton, capacidade_esteril_ton, capacidade_rocha_ton, capacidade_rocha_pulmao_ton, capacidade_rocha_armacao_ton,
+         transporta_esteril, transporta_rocha, transporta_rocha_pulmao, transporta_rocha_armacao,
          usa_para_transporte, tipo_operacao,
          tipo, categoria, ano, renavam, chassi, combustivel_principal, capacidade_litros,
          horimetro_atual, hodometro_atual, status_operacional,
@@ -222,7 +217,7 @@ const createVehicle = async ({
          manutencao_agendar_ate, fleet_telemetry_meta
        )
        VALUES (
-         $1,NULL,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28::jsonb
+         $1,NULL,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32::jsonb
        )
        RETURNING id`,
       [
@@ -234,8 +229,12 @@ const createVehicle = async ({
         cap,
         capEsteril,
         capRocha,
+        capRochaPulmao,
+        capRochaArmacao,
         transportaEsteril,
         transportaRocha,
+        transportaRochaPulmao,
+        transportaRochaArmacao,
         usa,
         tipoOperacao,
         trimOrNull(tipo),
@@ -289,7 +288,8 @@ const listVehicles = async (
   const capacidadeClause = exige_capacidade
     ? `AND (
         ${MATERIAL_CAPACITY_SQL.esteril} > 0
-        OR ${MATERIAL_CAPACITY_SQL.rocha} > 0
+        OR ${MATERIAL_CAPACITY_SQL.rocha_pulmao} > 0
+        OR ${MATERIAL_CAPACITY_SQL.rocha_armacao} > 0
       )`
     : "";
   let paramIdx = 2;
@@ -417,14 +417,28 @@ const updateVehicle = async (id, empresa_id, data) => {
   let capacidade_ton = existing.capacidade_ton;
   let capacidade_esteril_ton = existing.capacidade_esteril_ton;
   let capacidade_rocha_ton = existing.capacidade_rocha_ton;
+  let capacidade_rocha_pulmao_ton = existing.capacidade_rocha_pulmao_ton ?? existing.capacidade_rocha_ton;
+  let capacidade_rocha_armacao_ton = existing.capacidade_rocha_armacao_ton ?? existing.capacidade_rocha_ton;
   let transporta_esteril = existing.transporta_esteril;
   let transporta_rocha = existing.transporta_rocha;
+  let transporta_rocha_pulmao =
+    existing.transporta_rocha_pulmao != null
+      ? Boolean(existing.transporta_rocha_pulmao)
+      : Boolean(existing.transporta_rocha);
+  let transporta_rocha_armacao =
+    existing.transporta_rocha_armacao != null
+      ? Boolean(existing.transporta_rocha_armacao)
+      : Boolean(existing.transporta_rocha);
   if (!usa) {
     capacidade_ton = null;
     capacidade_esteril_ton = null;
     capacidade_rocha_ton = null;
+    capacidade_rocha_pulmao_ton = null;
+    capacidade_rocha_armacao_ton = null;
     transporta_esteril = false;
     transporta_rocha = false;
+    transporta_rocha_pulmao = false;
+    transporta_rocha_armacao = false;
   } else if (Object.prototype.hasOwnProperty.call(data, "capacidade_ton")) {
     capacidade_ton = normalizeCapacidade(true, data.capacidade_ton);
   }
@@ -432,17 +446,36 @@ const updateVehicle = async (id, empresa_id, data) => {
     const hasCapacidadeTon = Object.prototype.hasOwnProperty.call(data, "capacidade_ton");
     const hasCapacidadeEsteril = Object.prototype.hasOwnProperty.call(data, "capacidade_esteril_ton");
     const hasCapacidadeRocha = Object.prototype.hasOwnProperty.call(data, "capacidade_rocha_ton");
+    const hasCapacidadeRochaPulmao = Object.prototype.hasOwnProperty.call(data, "capacidade_rocha_pulmao_ton");
+    const hasCapacidadeRochaArmacao = Object.prototype.hasOwnProperty.call(data, "capacidade_rocha_armacao_ton");
     const hasTransportaEsteril = Object.prototype.hasOwnProperty.call(data, "transporta_esteril");
     const hasTransportaRocha = Object.prototype.hasOwnProperty.call(data, "transporta_rocha");
+    const hasTransportaRochaPulmao = Object.prototype.hasOwnProperty.call(data, "transporta_rocha_pulmao");
+    const hasTransportaRochaArmacao = Object.prototype.hasOwnProperty.call(data, "transporta_rocha_armacao");
     const hasSpecificCapacityInput =
       (hasCapacidadeEsteril && data.capacidade_esteril_ton != null && data.capacidade_esteril_ton !== "") ||
-      (hasCapacidadeRocha && data.capacidade_rocha_ton != null && data.capacidade_rocha_ton !== "");
+      (hasCapacidadeRocha && data.capacidade_rocha_ton != null && data.capacidade_rocha_ton !== "") ||
+      (hasCapacidadeRochaPulmao && data.capacidade_rocha_pulmao_ton != null && data.capacidade_rocha_pulmao_ton !== "") ||
+      (hasCapacidadeRochaArmacao &&
+        data.capacidade_rocha_armacao_ton != null &&
+        data.capacidade_rocha_armacao_ton !== "");
     const existingHasSpecificCapacity =
-      existing.capacidade_esteril_ton != null || existing.capacidade_rocha_ton != null;
+      existing.capacidade_esteril_ton != null ||
+      existing.capacidade_rocha_ton != null ||
+      existing.capacidade_rocha_pulmao_ton != null ||
+      existing.capacidade_rocha_armacao_ton != null;
     const shouldFallbackFromCapacityTon = !hasSpecificCapacityInput && !existingHasSpecificCapacity;
+    const legacyRochaCapacity = hasCapacidadeRocha ? normalizeCapacidade(true, data.capacidade_rocha_ton) : null;
 
     if (hasTransportaEsteril) transporta_esteril = Boolean(data.transporta_esteril);
-    if (hasTransportaRocha) transporta_rocha = Boolean(data.transporta_rocha);
+    if (hasTransportaRocha) {
+      const next = Boolean(data.transporta_rocha);
+      transporta_rocha = next;
+      if (!hasTransportaRochaPulmao) transporta_rocha_pulmao = next;
+      if (!hasTransportaRochaArmacao) transporta_rocha_armacao = next;
+    }
+    if (hasTransportaRochaPulmao) transporta_rocha_pulmao = Boolean(data.transporta_rocha_pulmao);
+    if (hasTransportaRochaArmacao) transporta_rocha_armacao = Boolean(data.transporta_rocha_armacao);
 
     if (hasCapacidadeEsteril) {
       capacidade_esteril_ton = normalizeCapacidade(true, data.capacidade_esteril_ton);
@@ -451,23 +484,55 @@ const updateVehicle = async (id, empresa_id, data) => {
     }
 
     if (hasCapacidadeRocha) {
-      capacidade_rocha_ton = normalizeCapacidade(true, data.capacidade_rocha_ton);
+      capacidade_rocha_ton = legacyRochaCapacity;
     } else if (hasCapacidadeTon && capacidade_rocha_ton == null && shouldFallbackFromCapacityTon) {
       capacidade_rocha_ton = capacidade_ton;
     }
+    if (hasCapacidadeRochaPulmao) {
+      capacidade_rocha_pulmao_ton = normalizeCapacidade(true, data.capacidade_rocha_pulmao_ton);
+    } else if (hasCapacidadeRocha && legacyRochaCapacity != null && !hasCapacidadeRochaPulmao) {
+      capacidade_rocha_pulmao_ton = legacyRochaCapacity;
+    } else if (hasCapacidadeTon && capacidade_rocha_pulmao_ton == null && shouldFallbackFromCapacityTon) {
+      capacidade_rocha_pulmao_ton = capacidade_ton;
+    }
+    if (hasCapacidadeRochaArmacao) {
+      capacidade_rocha_armacao_ton = normalizeCapacidade(true, data.capacidade_rocha_armacao_ton);
+    } else if (hasCapacidadeRocha && legacyRochaCapacity != null && !hasCapacidadeRochaArmacao) {
+      capacidade_rocha_armacao_ton = legacyRochaCapacity;
+    } else if (hasCapacidadeTon && capacidade_rocha_armacao_ton == null && shouldFallbackFromCapacityTon) {
+      capacidade_rocha_armacao_ton = capacidade_ton;
+    }
 
     if (!hasCapacidadeTon) {
-      capacidade_ton = normalizeCapacidade(true, capacidade_ton ?? capacidade_esteril_ton ?? capacidade_rocha_ton);
+      capacidade_ton = normalizeCapacidade(
+        true,
+        capacidade_ton ??
+          capacidade_esteril_ton ??
+          capacidade_rocha_pulmao_ton ??
+          capacidade_rocha_armacao_ton ??
+          capacidade_rocha_ton
+      );
     }
 
     if (transporta_esteril == null) {
       transporta_esteril = capacidade_esteril_ton != null;
     }
-    if (transporta_rocha == null) {
-      transporta_rocha = capacidade_rocha_ton != null;
+    if (transporta_rocha_pulmao == null) {
+      transporta_rocha_pulmao = capacidade_rocha_pulmao_ton != null || capacidade_rocha_ton != null;
     }
+    if (transporta_rocha_armacao == null) {
+      transporta_rocha_armacao = capacidade_rocha_armacao_ton != null || capacidade_rocha_ton != null;
+    }
+    transporta_rocha = Boolean(transporta_rocha_pulmao) || Boolean(transporta_rocha_armacao);
     if (!transporta_esteril) capacidade_esteril_ton = null;
-    if (!transporta_rocha) capacidade_rocha_ton = null;
+    if (!transporta_rocha_pulmao) capacidade_rocha_pulmao_ton = null;
+    if (!transporta_rocha_armacao) capacidade_rocha_armacao_ton = null;
+    capacidade_rocha_ton = transporta_rocha
+      ? normalizeCapacidade(
+          true,
+          capacidade_rocha_ton ?? capacidade_rocha_pulmao_ton ?? capacidade_rocha_armacao_ton
+        )
+      : null;
   }
 
   const nome = data.nome ?? existing.nome;
@@ -533,26 +598,30 @@ const updateVehicle = async (id, empresa_id, data) => {
            capacidade_ton = $7,
            capacidade_esteril_ton = $8,
            capacidade_rocha_ton = $9,
-           transporta_esteril = $10,
-           transporta_rocha = $11,
-           usa_para_transporte = $12,
-           tipo_operacao = $13,
-           tipo = $14,
-           categoria = $15,
-           ano = $16,
-           renavam = $17,
-           chassi = $18,
-           combustivel_principal = $19,
-           capacidade_litros = $20,
-           horimetro_atual = $21,
-           hodometro_atual = $22,
-           status_operacional = $23,
-           doc_revisao_validade = $24,
-           doc_licenciamento_validade = $25,
-           doc_seguro_validade = $26,
-           doc_inspecao_validade = $27,
-           manutencao_agendar_ate = $28,
-           fleet_telemetry_meta = $29::jsonb
+           capacidade_rocha_pulmao_ton = $10,
+           capacidade_rocha_armacao_ton = $11,
+           transporta_esteril = $12,
+           transporta_rocha = $13,
+           transporta_rocha_pulmao = $14,
+           transporta_rocha_armacao = $15,
+           usa_para_transporte = $16,
+           tipo_operacao = $17,
+           tipo = $18,
+           categoria = $19,
+           ano = $20,
+           renavam = $21,
+           chassi = $22,
+           combustivel_principal = $23,
+           capacidade_litros = $24,
+           horimetro_atual = $25,
+           hodometro_atual = $26,
+           status_operacional = $27,
+           doc_revisao_validade = $28,
+           doc_licenciamento_validade = $29,
+           doc_seguro_validade = $30,
+           doc_inspecao_validade = $31,
+           manutencao_agendar_ate = $32,
+           fleet_telemetry_meta = $33::jsonb
        WHERE id = $1 AND empresa_id = $2
        RETURNING id`,
       [
@@ -565,8 +634,12 @@ const updateVehicle = async (id, empresa_id, data) => {
         capacidade_ton,
         capacidade_esteril_ton,
         capacidade_rocha_ton,
+        capacidade_rocha_pulmao_ton,
+        capacidade_rocha_armacao_ton,
         transporta_esteril,
         transporta_rocha,
+        transporta_rocha_pulmao,
+        transporta_rocha_armacao,
         usa,
         tipoOperacao,
         tipoVeiculo,

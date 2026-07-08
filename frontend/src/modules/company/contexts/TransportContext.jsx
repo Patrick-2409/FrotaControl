@@ -6,7 +6,7 @@ import { readSessionJson, writeSessionJson } from "../shared/sessionFilters";
 
 const TransportContext = createContext(null);
 
-const MATERIAL_TABS = new Set(["todos", "esteril", "rocha"]);
+const MATERIAL_TABS = new Set(["todos", "esteril", "rocha_pulmao", "rocha_armacao"]);
 
 /**
  * Contexto isolado do módulo Transporte (viagens, metas, produtividade).
@@ -28,7 +28,7 @@ export function TransportProvider({ children }) {
     () => ({
       operations,
       metrics,
-      /** Foco visual na produção: todos | esteril | rocha (sem alterar contratos de API). */
+      /** Foco visual na produção: todos | esteril | rocha_pulmao | rocha_armacao. */
       materialTab,
       setMaterialTab,
     }),

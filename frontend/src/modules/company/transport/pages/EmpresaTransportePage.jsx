@@ -28,6 +28,14 @@ function getTransportCount(row, material = "todos") {
     const esteril = Number(row?.viagens_esteril);
     return Number.isFinite(esteril) ? esteril : 0;
   }
+  if (material === "rocha_pulmao") {
+    const rochaPulmao = Number(row?.viagens_rocha_pulmao);
+    return Number.isFinite(rochaPulmao) ? rochaPulmao : 0;
+  }
+  if (material === "rocha_armacao") {
+    const rochaArmacao = Number(row?.viagens_rocha_armacao);
+    return Number.isFinite(rochaArmacao) ? rochaArmacao : 0;
+  }
   if (material === "rocha") {
     const rocha = Number(row?.viagens_rocha);
     return Number.isFinite(rocha) ? rocha : 0;
@@ -40,7 +48,8 @@ function getTransportCount(row, material = "todos") {
 
 function materialTitulo(material) {
   if (material === "esteril") return "Estéril";
-  if (material === "rocha") return "Rocha";
+  if (material === "rocha_pulmao") return "Rocha Pulmão";
+  if (material === "rocha_armacao") return "Rocha Armação";
   return "Todos os materiais";
 }
 
@@ -80,30 +89,110 @@ function EmpresaTransportePageContent() {
   const viagensResumoFiltrado = useMemo(() => {
     const resumo = tr.viagensResumo || {};
     const esterilTon = Number(resumo.total_toneladas_esteril || 0);
-    const rochaTon = Number(resumo.total_toneladas_rocha || 0);
+    const rochaPulmaoTon = Number(resumo.total_toneladas_rocha_pulmao || 0);
+    const rochaArmacaoTon = Number(resumo.total_toneladas_rocha_armacao || 0);
+    const rochaTon = Number(resumo.total_toneladas_rocha || rochaPulmaoTon + rochaArmacaoTon);
     const esterilViagens = Number(resumo.total_viagens_esteril || 0);
-    const rochaViagens = Number(resumo.total_viagens_rocha || 0);
+    const rochaPulmaoViagens = Number(resumo.total_viagens_rocha_pulmao || 0);
+    const rochaArmacaoViagens = Number(resumo.total_viagens_rocha_armacao || 0);
+    const rochaViagens = Number(resumo.total_viagens_rocha || rochaPulmaoViagens + rochaArmacaoViagens);
+
+    if (materialTab === "esteril") {
+      return {
+        total_viagens_esteril: esterilViagens,
+        total_viagens_rocha_pulmao: 0,
+        total_viagens_rocha_armacao: 0,
+        total_viagens_rocha: 0,
+        total_toneladas_esteril: esterilTon,
+        total_toneladas_rocha_pulmao: 0,
+        total_toneladas_rocha_armacao: 0,
+        total_toneladas_rocha: 0,
+      };
+    }
+    if (materialTab === "rocha_pulmao") {
+      return {
+        total_viagens_esteril: 0,
+        total_viagens_rocha_pulmao: rochaPulmaoViagens,
+        total_viagens_rocha_armacao: 0,
+        total_viagens_rocha: rochaPulmaoViagens,
+        total_toneladas_esteril: 0,
+        total_toneladas_rocha_pulmao: rochaPulmaoTon,
+        total_toneladas_rocha_armacao: 0,
+        total_toneladas_rocha: rochaPulmaoTon,
+      };
+    }
+    if (materialTab === "rocha_armacao") {
+      return {
+        total_viagens_esteril: 0,
+        total_viagens_rocha_pulmao: 0,
+        total_viagens_rocha_armacao: rochaArmacaoViagens,
+        total_viagens_rocha: rochaArmacaoViagens,
+        total_toneladas_esteril: 0,
+        total_toneladas_rocha_pulmao: 0,
+        total_toneladas_rocha_armacao: rochaArmacaoTon,
+        total_toneladas_rocha: rochaArmacaoTon,
+      };
+    }
     return {
-      total_viagens_esteril: materialTab === "rocha" ? 0 : esterilViagens,
-      total_viagens_rocha: materialTab === "esteril" ? 0 : rochaViagens,
-      total_toneladas_esteril: materialTab === "rocha" ? 0 : esterilTon,
-      total_toneladas_rocha: materialTab === "esteril" ? 0 : rochaTon,
+      total_viagens_esteril: esterilViagens,
+      total_viagens_rocha_pulmao: rochaPulmaoViagens,
+      total_viagens_rocha_armacao: rochaArmacaoViagens,
+      total_viagens_rocha: rochaViagens,
+      total_toneladas_esteril: esterilTon,
+      total_toneladas_rocha_pulmao: rochaPulmaoTon,
+      total_toneladas_rocha_armacao: rochaArmacaoTon,
+      total_toneladas_rocha: rochaTon,
     };
   }, [materialTab, tr.viagensResumo]);
 
   const comparacaoFiltrada = useMemo(() => {
     if (!tr.comparacao) return null;
     if (materialTab === "todos") return tr.comparacao;
-    const isEsteril = materialTab === "esteril";
+    if (materialTab === "esteril") {
+      return {
+        ...tr.comparacao,
+        planejado_esteril: tr.comparacao.planejado_esteril,
+        planejado_rocha: 0,
+        executado_esteril: tr.comparacao.executado_esteril,
+        executado_rocha_pulmao: 0,
+        executado_rocha_armacao: 0,
+        executado_rocha: 0,
+        percentual_esteril: tr.comparacao.percentual_esteril,
+        percentual_rocha_pulmao: 0,
+        percentual_rocha_armacao: 0,
+        percentual_rocha: 0,
+        percentual_total: tr.comparacao.percentual_esteril,
+      };
+    }
+    if (materialTab === "rocha_pulmao") {
+      return {
+        ...tr.comparacao,
+        planejado_esteril: 0,
+        planejado_rocha: tr.comparacao.planejado_rocha,
+        executado_esteril: 0,
+        executado_rocha_pulmao: tr.comparacao.executado_rocha_pulmao,
+        executado_rocha_armacao: 0,
+        executado_rocha: tr.comparacao.executado_rocha_pulmao,
+        percentual_esteril: 0,
+        percentual_rocha_pulmao: tr.comparacao.percentual_rocha_pulmao,
+        percentual_rocha_armacao: 0,
+        percentual_rocha: tr.comparacao.percentual_rocha_pulmao,
+        percentual_total: tr.comparacao.percentual_rocha_pulmao,
+      };
+    }
     return {
       ...tr.comparacao,
-      planejado_esteril: isEsteril ? tr.comparacao.planejado_esteril : 0,
-      planejado_rocha: isEsteril ? 0 : tr.comparacao.planejado_rocha,
-      executado_esteril: isEsteril ? tr.comparacao.executado_esteril : 0,
-      executado_rocha: isEsteril ? 0 : tr.comparacao.executado_rocha,
-      percentual_esteril: isEsteril ? tr.comparacao.percentual_esteril : 0,
-      percentual_rocha: isEsteril ? 0 : tr.comparacao.percentual_rocha,
-      percentual_total: isEsteril ? tr.comparacao.percentual_esteril : tr.comparacao.percentual_rocha,
+      planejado_esteril: 0,
+      planejado_rocha: tr.comparacao.planejado_rocha,
+      executado_esteril: 0,
+      executado_rocha_pulmao: 0,
+      executado_rocha_armacao: tr.comparacao.executado_rocha_armacao,
+      executado_rocha: tr.comparacao.executado_rocha_armacao,
+      percentual_esteril: 0,
+      percentual_rocha_pulmao: 0,
+      percentual_rocha_armacao: tr.comparacao.percentual_rocha_armacao,
+      percentual_rocha: tr.comparacao.percentual_rocha_armacao,
+      percentual_total: tr.comparacao.percentual_rocha_armacao,
     };
   }, [materialTab, tr.comparacao]);
 
@@ -159,7 +248,8 @@ function EmpresaTransportePageContent() {
   const totalToneladasPeriodo =
     tr.viagensResumo != null
       ? Number(viagensResumoFiltrado.total_toneladas_esteril || 0) +
-        Number(viagensResumoFiltrado.total_toneladas_rocha || 0)
+        Number(viagensResumoFiltrado.total_toneladas_rocha_pulmao || 0) +
+        Number(viagensResumoFiltrado.total_toneladas_rocha_armacao || 0)
       : 0;
 
   const pctTotal = pctTotalFiltrado;
@@ -169,7 +259,7 @@ function EmpresaTransportePageContent() {
       ? "Últimos 7 dias de operação (lançamentos do apontador)"
       : `Últimos 7 dias de lançamentos de ${materialAtualLabel.toLowerCase()}`;
   const materialCards = [
-    materialTab !== "rocha"
+    materialTab === "todos" || materialTab === "esteril"
       ? {
           key: "esteril",
           label: "Estéril",
@@ -178,13 +268,22 @@ function EmpresaTransportePageContent() {
           viagens: viagensResumoFiltrado.total_viagens_esteril,
         }
       : null,
-    materialTab !== "esteril"
+    materialTab === "todos" || materialTab === "rocha_pulmao"
       ? {
-          key: "rocha",
-          label: "Rocha",
+          key: "rocha_pulmao",
+          label: "Rocha Pulmão",
           labelClass: "text-amber-200/80",
-          toneladas: viagensResumoFiltrado.total_toneladas_rocha,
-          viagens: viagensResumoFiltrado.total_viagens_rocha,
+          toneladas: viagensResumoFiltrado.total_toneladas_rocha_pulmao,
+          viagens: viagensResumoFiltrado.total_viagens_rocha_pulmao,
+        }
+      : null,
+    materialTab === "todos" || materialTab === "rocha_armacao"
+      ? {
+          key: "rocha_armacao",
+          label: "Rocha Armação",
+          labelClass: "text-fuchsia-200/80",
+          toneladas: viagensResumoFiltrado.total_toneladas_rocha_armacao,
+          viagens: viagensResumoFiltrado.total_viagens_rocha_armacao,
         }
       : null,
   ].filter(Boolean);
@@ -316,7 +415,8 @@ function EmpresaTransportePageContent() {
           {[
             { id: "todos", label: "Todos" },
             { id: "esteril", label: "Estéril" },
-            { id: "rocha", label: "Rocha" },
+            { id: "rocha_pulmao", label: "Rocha Pulmão" },
+            { id: "rocha_armacao", label: "Rocha Armação" },
           ].map((t) => (
             <button
               key={t.id}
@@ -367,7 +467,8 @@ function EmpresaTransportePageContent() {
               <div className="flex shrink-0 justify-center lg:flex-1 lg:justify-center">
                 <TransportPlanExecutadoPizza
                   totalToneladasEsteril={Number(viagensResumoFiltrado.total_toneladas_esteril ?? 0)}
-                  totalToneladasRocha={Number(viagensResumoFiltrado.total_toneladas_rocha ?? 0)}
+                  totalToneladasRochaPulmao={Number(viagensResumoFiltrado.total_toneladas_rocha_pulmao ?? 0)}
+                  totalToneladasRochaArmacao={Number(viagensResumoFiltrado.total_toneladas_rocha_armacao ?? 0)}
                   materialFilter={materialTab}
                 />
               </div>

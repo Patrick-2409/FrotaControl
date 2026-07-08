@@ -1,10 +1,11 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 
 const GREEN = "#22c55e";
-const BLUE = "#3b82f6";
+const AMBER = "#f59e0b";
+const PURPLE = "#a855f7";
 
 const GLOW =
-  "0 0 20px rgba(34,197,94,0.12), 0 0 24px rgba(59,130,246,0.1), 0 0 40px rgba(34,197,94,0.04)";
+  "0 0 20px rgba(34,197,94,0.12), 0 0 24px rgba(245,158,11,0.1), 0 0 24px rgba(168,85,247,0.1)";
 
 const fmtTonLegend = (n) =>
   Number(n || 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
@@ -16,40 +17,61 @@ function easeOutCubic(t) {
   return 1 - (1 - t) ** 3;
 }
 
-/**
- * Donut: distribuição Estéril vs Rocha (toneladas do período).
- * Dados: total_toneladas_esteril / total_toneladas_rocha do resumo de viagens.
- */
-function TransportPlanExecutadoPizza({ totalToneladasEsteril, totalToneladasRocha, materialFilter = "todos" }) {
-  const { esteril, rocha, total, percentEsteril, percentRocha } = useMemo(() => {
-    const e = Math.max(0, Number(totalToneladasEsteril) || 0);
-    const r = Math.max(0, Number(totalToneladasRocha) || 0);
-    const t = e + r;
-    const pe = t > 0 ? (e / t) * 100 : 0;
-    const pr = t > 0 ? (r / t) * 100 : 0;
-    return { esteril: e, rocha: r, total: t, percentEsteril: pe, percentRocha: pr };
-  }, [totalToneladasEsteril, totalToneladasRocha]);
+const isMaterialVisible = (filter, id) => filter === "todos" || filter === id;
 
-  const [animSlice, setAnimSlice] = useState(0);
+function centroLabelByFilter(materialFilter) {
+  if (materialFilter === "esteril") return "Estéril";
+  if (materialFilter === "rocha_pulmao") return "Rocha Pulmão";
+  if (materialFilter === "rocha_armacao") return "Rocha Armação";
+  return "Total";
+}
+
+/**
+ * Donut: distribuição Estéril vs Rocha Pulmão vs Rocha Armação (toneladas do período).
+ */
+function TransportPlanExecutadoPizza({
+  totalToneladasEsteril,
+  totalToneladasRochaPulmao,
+  totalToneladasRochaArmacao,
+  materialFilter = "todos",
+}) {
+  const { esteril, rochaPulmao, rochaArmacao, total, percentEsteril, percentRochaPulmao, percentRochaArmacao } =
+    useMemo(() => {
+      const e = Math.max(0, Number(totalToneladasEsteril) || 0);
+      const rp = Math.max(0, Number(totalToneladasRochaPulmao) || 0);
+      const ra = Math.max(0, Number(totalToneladasRochaArmacao) || 0);
+      const t = e + rp + ra;
+      return {
+        esteril: e,
+        rochaPulmao: rp,
+        rochaArmacao: ra,
+        total: t,
+        percentEsteril: t > 0 ? (e / t) * 100 : 0,
+        percentRochaPulmao: t > 0 ? (rp / t) * 100 : 0,
+        percentRochaArmacao: t > 0 ? (ra / t) * 100 : 0,
+      };
+    }, [totalToneladasEsteril, totalToneladasRochaPulmao, totalToneladasRochaArmacao]);
+
+  const [animProgress, setAnimProgress] = useState(0);
   const rafRef = useRef(0);
 
   useEffect(() => {
-    const target = total > 0 ? percentEsteril : 0;
     let cancelled = false;
     const start = performance.now();
     const duration = 800;
 
-    setAnimSlice(0);
+    setAnimProgress(0);
     cancelAnimationFrame(rafRef.current);
 
     const tick = (now) => {
       if (cancelled) return;
-      const el = Math.min(1, (now - start) / duration);
-      setAnimSlice(easeOutCubic(el) * target);
-      if (el < 1) {
+      const elapsed = Math.min(1, (now - start) / duration);
+      const eased = easeOutCubic(elapsed);
+      setAnimProgress(eased);
+      if (elapsed < 1) {
         rafRef.current = requestAnimationFrame(tick);
       } else {
-        setAnimSlice(target);
+        setAnimProgress(1);
         rafRef.current = 0;
       }
     };
@@ -61,16 +83,29 @@ function TransportPlanExecutadoPizza({ totalToneladasEsteril, totalToneladasRoch
       cancelAnimationFrame(rafRef.current);
       rafRef.current = 0;
     };
-  }, [total, percentEsteril]);
+  }, [total, percentEsteril, percentRochaPulmao, percentRochaArmacao]);
 
+  const animatedEsteril = percentEsteril * animProgress;
+  const animatedPulmao = percentRochaPulmao * animProgress;
+  const animatedArmacao = percentRochaArmacao * animProgress;
+  const limitPulmao = animatedEsteril + animatedPulmao;
+  const limitArmacao = limitPulmao + animatedArmacao;
   const donutBackground =
     total > 0
-      ? `conic-gradient(${GREEN} 0% ${animSlice}%, ${BLUE} ${animSlice}% 100%)`
+      ? `conic-gradient(${GREEN} 0% ${animatedEsteril}%, ${AMBER} ${animatedEsteril}% ${limitPulmao}%, ${PURPLE} ${limitPulmao}% ${limitArmacao}%, #1f2937 ${limitArmacao}% 100%)`
       : "conic-gradient(#1f2937 0% 100%)";
-  const showEsteril = materialFilter !== "rocha";
-  const showRocha = materialFilter !== "esteril";
-  const centroLabel =
-    materialFilter === "esteril" ? "Estéril" : materialFilter === "rocha" ? "Rocha" : "Total";
+  const showEsteril = isMaterialVisible(materialFilter, "esteril");
+  const showRochaPulmao = isMaterialVisible(materialFilter, "rocha_pulmao");
+  const showRochaArmacao = isMaterialVisible(materialFilter, "rocha_armacao");
+  const centroLabel = centroLabelByFilter(materialFilter);
+  const centroValor =
+    materialFilter === "esteril"
+      ? esteril
+      : materialFilter === "rocha_pulmao"
+        ? rochaPulmao
+        : materialFilter === "rocha_armacao"
+          ? rochaArmacao
+          : total;
 
   const pctLine = (p) =>
     `${p.toLocaleString("pt-BR", { maximumFractionDigits: 0, minimumFractionDigits: 0 })}%`;
@@ -79,7 +114,7 @@ function TransportPlanExecutadoPizza({ totalToneladasEsteril, totalToneladasRoch
     <div className="flex w-full max-w-xs flex-col items-center gap-4 sm:max-w-none">
       <div
         className="group relative inline-flex shrink-0 flex-col items-center"
-        aria-label="Distribuição de toneladas entre estéril e rocha"
+        aria-label="Distribuição de toneladas por material"
       >
         <div className="transition-transform duration-300 ease-out will-change-transform group-hover:scale-[1.03]">
           <div className="relative flex h-[120px] w-[120px] items-center justify-center rounded-full sm:h-[160px] sm:w-[160px]">
@@ -96,7 +131,7 @@ function TransportPlanExecutadoPizza({ totalToneladasEsteril, totalToneladasRoch
               style={{ boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)" }}
             >
               <span className="text-center text-xl font-black tabular-nums leading-none tracking-tight text-zinc-50 sm:text-3xl">
-                {fmtTonCenter(total)} t
+                {fmtTonCenter(centroValor)} t
               </span>
               <span className="mt-1 text-[10px] font-medium uppercase tracking-wide text-zinc-500 sm:text-xs">
                 {centroLabel}
@@ -115,10 +150,20 @@ function TransportPlanExecutadoPizza({ totalToneladasEsteril, totalToneladasRoch
               <span className="font-semibold text-zinc-100">{pctLine(percentEsteril)}</span>
             </p>
           ) : null}
-          {showRocha ? (
+          {showRochaPulmao ? (
             <p className={showEsteril ? "mt-1 tabular-nums leading-relaxed" : "tabular-nums leading-relaxed"}>
-              <span className="text-zinc-400">Rocha:</span>{" "}
-              <span className="font-semibold text-zinc-100">{pctLine(percentRocha)}</span>
+              <span className="text-zinc-400">Rocha Pulmão:</span>{" "}
+              <span className="font-semibold text-zinc-100">{pctLine(percentRochaPulmao)}</span>
+            </p>
+          ) : null}
+          {showRochaArmacao ? (
+            <p
+              className={
+                showEsteril || showRochaPulmao ? "mt-1 tabular-nums leading-relaxed" : "tabular-nums leading-relaxed"
+              }
+            >
+              <span className="text-zinc-400">Rocha Armação:</span>{" "}
+              <span className="font-semibold text-zinc-100">{pctLine(percentRochaArmacao)}</span>
             </p>
           ) : null}
         </div>
@@ -136,14 +181,25 @@ function TransportPlanExecutadoPizza({ totalToneladasEsteril, totalToneladasRoch
             </span>
           </li>
         ) : null}
-        {showRocha ? (
+        {showRochaPulmao ? (
           <li className="flex items-start gap-2.5">
             <span className="mt-0.5 shrink-0 text-base leading-none" aria-hidden>
-              🔵
+              🟠
             </span>
             <span>
-              <span className="font-semibold text-zinc-100">Rocha:</span>{" "}
-              <span className="tabular-nums text-zinc-300">{fmtTonLegend(rocha)} t</span>
+              <span className="font-semibold text-zinc-100">Rocha Pulmão:</span>{" "}
+              <span className="tabular-nums text-zinc-300">{fmtTonLegend(rochaPulmao)} t</span>
+            </span>
+          </li>
+        ) : null}
+        {showRochaArmacao ? (
+          <li className="flex items-start gap-2.5">
+            <span className="mt-0.5 shrink-0 text-base leading-none" aria-hidden>
+              🟣
+            </span>
+            <span>
+              <span className="font-semibold text-zinc-100">Rocha Armação:</span>{" "}
+              <span className="tabular-nums text-zinc-300">{fmtTonLegend(rochaArmacao)} t</span>
             </span>
           </li>
         ) : null}

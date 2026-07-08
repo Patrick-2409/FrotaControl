@@ -116,7 +116,7 @@ const romaneioSchema = z
     data: z.string(),
     recorded_at_client: z.string().optional(),
     veiculo_id: z.coerce.number().int().positive().optional(),
-    tipo_transporte: z.enum(["Estéril", "Rocha (amarração)", "Rocha (pulmão)"]),
+    tipo_transporte: z.enum(["Estéril", "Rocha (armação)", "Rocha (amarração)", "Rocha (pulmão)"]),
     destino: z.string().min(2),
     observacao: z.string().optional(),
   })

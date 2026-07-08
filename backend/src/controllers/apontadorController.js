@@ -9,51 +9,15 @@ const { pool } = require("../db");
 const { z } = require("zod");
 const { logAudit } = require("../services/auditService");
 const { logInfo } = require("../services/loggerService");
-
-const MATERIAL_ALLOWED_SQL = {
-  esteril: `COALESCE(
-    v.transporta_esteril,
-    CASE
-      WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-        THEN v.capacidade_esteril_ton IS NOT NULL
-      ELSE COALESCE(v.capacidade_ton, 0) > 0
-    END
-  )`,
-  rocha: `COALESCE(
-    v.transporta_rocha,
-    CASE
-      WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-        THEN v.capacidade_rocha_ton IS NOT NULL
-      ELSE COALESCE(v.capacidade_ton, 0) > 0
-    END
-  )`,
-};
-
-const MATERIAL_CAPACITY_SQL = {
-  esteril: `CASE
-    WHEN ${MATERIAL_ALLOWED_SQL.esteril} THEN
-      CASE
-        WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-          THEN COALESCE(v.capacidade_esteril_ton, 0)
-        ELSE COALESCE(v.capacidade_ton, 0)
-      END
-    ELSE 0
-  END`,
-  rocha: `CASE
-    WHEN ${MATERIAL_ALLOWED_SQL.rocha} THEN
-      CASE
-        WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-          THEN COALESCE(v.capacidade_rocha_ton, 0)
-        ELSE COALESCE(v.capacidade_ton, 0)
-      END
-    ELSE 0
-  END`,
-};
+const {
+  MATERIAL_ALLOWED_SQL,
+  MATERIAL_CAPACITY_SQL,
+} = require("../utils/transportMaterialSql");
 
 const viagemCreateSchema = z.object({
   veiculo_id: z.coerce.number().int().positive(),
   motorista_id: z.coerce.number().int().positive(),
-  tipo: z.enum(["esteril", "rocha"]),
+  tipo: z.enum(["esteril", "rocha", "rocha_pulmao", "rocha_armacao"]),
   timestamp: z.union([z.coerce.number(), z.string().trim().min(1)]),
 });
 
@@ -61,7 +25,7 @@ const viagemUndoSchema = z
   .object({
     veiculo_id: z.coerce.number().int().positive().optional(),
     motorista_id: z.coerce.number().int().positive().optional(),
-    tipo: z.enum(["esteril", "rocha"]).optional(),
+    tipo: z.enum(["esteril", "rocha", "rocha_pulmao", "rocha_armacao"]).optional(),
     timestamp: z.union([z.coerce.number(), z.string().trim().min(1)]).optional(),
     viagem_id: z.coerce.number().int().positive().optional().nullable(),
   })
@@ -92,8 +56,12 @@ const assertVeiculoMotoristaTransporte = async (empresaId, veiculo_id, motorista
     `SELECT COALESCE(v.usa_para_transporte, false) AS usa_para_transporte,
             (${MATERIAL_ALLOWED_SQL.esteril}) AS transporta_esteril,
             (${MATERIAL_ALLOWED_SQL.rocha}) AS transporta_rocha,
+            (${MATERIAL_ALLOWED_SQL.rocha_pulmao}) AS transporta_rocha_pulmao,
+            (${MATERIAL_ALLOWED_SQL.rocha_armacao}) AS transporta_rocha_armacao,
             (${MATERIAL_CAPACITY_SQL.esteril})::double precision AS capacidade_esteril_ton,
-            (${MATERIAL_CAPACITY_SQL.rocha})::double precision AS capacidade_rocha_ton
+            (${MATERIAL_CAPACITY_SQL.rocha})::double precision AS capacidade_rocha_ton,
+            (${MATERIAL_CAPACITY_SQL.rocha_pulmao})::double precision AS capacidade_rocha_pulmao_ton,
+            (${MATERIAL_CAPACITY_SQL.rocha_armacao})::double precision AS capacidade_rocha_armacao_ton
      FROM veiculos v
      INNER JOIN usuarios u ON u.id = $3
        AND u.empresa_id = v.empresa_id
@@ -138,18 +106,32 @@ const assertVeiculoMotoristaTransporte = async (empresaId, veiculo_id, motorista
     };
   }
 
-  if (tipo === "rocha" && (!validRows[0].transporta_rocha || Number(validRows[0].capacidade_rocha_ton) <= 0)) {
+  if (
+    tipo === "rocha_pulmao" &&
+    (!validRows[0].transporta_rocha_pulmao || Number(validRows[0].capacidade_rocha_pulmao_ton) <= 0)
+  ) {
     return {
       ok: false,
       status: 400,
-      message: "Veiculo sem capacidade de rocha configurada.",
+      message: "Veiculo sem capacidade de rocha pulmão configurada.",
+    };
+  }
+
+  if (
+    (tipo === "rocha_armacao" || tipo === "rocha") &&
+    (!validRows[0].transporta_rocha_armacao || Number(validRows[0].capacidade_rocha_armacao_ton) <= 0)
+  ) {
+    return {
+      ok: false,
+      status: 400,
+      message: "Veiculo sem capacidade de rocha armação configurada.",
     };
   }
 
   return { ok: true };
 };
 
-/** Lista veiculos aptos ao apontamento: transporte com capacidade de esteril ou rocha. */
+/** Lista veiculos aptos ao apontamento: transporte com capacidade de estéril, rocha pulmão ou rocha armação. */
 const listVehiclesApontador = async (req, res) => {
   const empresaId = req.user?.empresa_id;
   if (!empresaId) {
@@ -209,8 +191,12 @@ const listVehiclesApontador = async (req, res) => {
          v.capacidade_ton,
          (${MATERIAL_ALLOWED_SQL.esteril}) AS transporta_esteril,
          (${MATERIAL_ALLOWED_SQL.rocha}) AS transporta_rocha,
+         (${MATERIAL_ALLOWED_SQL.rocha_pulmao}) AS transporta_rocha_pulmao,
+         (${MATERIAL_ALLOWED_SQL.rocha_armacao}) AS transporta_rocha_armacao,
          (${MATERIAL_CAPACITY_SQL.esteril})::double precision AS capacidade_esteril_ton,
          (${MATERIAL_CAPACITY_SQL.rocha})::double precision AS capacidade_rocha_ton,
+         (${MATERIAL_CAPACITY_SQL.rocha_pulmao})::double precision AS capacidade_rocha_pulmao_ton,
+         (${MATERIAL_CAPACITY_SQL.rocha_armacao})::double precision AS capacidade_rocha_armacao_ton,
          v.horimetro_atual,
          v.hodometro_atual,
          v.usa_para_transporte,
@@ -232,7 +218,8 @@ const listVehiclesApontador = async (req, res) => {
          AND COALESCE(v.usa_para_transporte, false) = true
          AND (
            ${MATERIAL_CAPACITY_SQL.esteril} > 0
-           OR ${MATERIAL_CAPACITY_SQL.rocha} > 0
+          OR ${MATERIAL_CAPACITY_SQL.rocha_pulmao} > 0
+          OR ${MATERIAL_CAPACITY_SQL.rocha_armacao} > 0
          )
          AND (u.veiculo_id = v.id OR mv.veiculo_id = v.id)
          ${searchSql}
@@ -278,8 +265,12 @@ const getContagemHojeApontador = async (req, res) => {
     success: true,
     hoje: {
       esteril: counts.esteril,
+      rocha_pulmao: counts.rocha_pulmao ?? 0,
+      rocha_armacao: counts.rocha_armacao ?? 0,
       rocha: counts.rocha,
       ton_esteril: counts.ton_esteril,
+      ton_rocha_pulmao: counts.ton_rocha_pulmao ?? 0,
+      ton_rocha_armacao: counts.ton_rocha_armacao ?? 0,
       ton_rocha: counts.ton_rocha,
       ton_total: counts.ton_total,
     },

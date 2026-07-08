@@ -69,8 +69,12 @@ test("contagem do apontador filtra por empresa_id e apontador_id", async () => {
   assert.deepStrictEqual(db.calls[0].params, [7, 9]);
   assert.deepStrictEqual(result, {
     esteril: 2,
+    rocha_pulmao: 0,
+    rocha_armacao: 0,
     rocha: 1,
     ton_esteril: 10,
+    ton_rocha_pulmao: 0,
+    ton_rocha_armacao: 0,
     ton_rocha: 5,
     ton_total: 15,
   });
@@ -155,8 +159,12 @@ test("apontador A cria e apontador B da mesma empresa não enxerga no contador",
   assert.deepStrictEqual(db.calls[1].params, [7, 202]);
   assert.deepStrictEqual(countB, {
     esteril: 0,
+    rocha_pulmao: 0,
+    rocha_armacao: 0,
     rocha: 0,
     ton_esteril: 0,
+    ton_rocha_pulmao: 0,
+    ton_rocha_armacao: 0,
     ton_rocha: 0,
     ton_total: 0,
   });

@@ -152,13 +152,29 @@ const numberOrBlank = (value) => {
 
 const materialLabel = (vehicle) => {
   const parts = [];
+  const transportaRochaPulmao =
+    vehicle?.transporta_rocha_pulmao != null
+      ? Boolean(vehicle.transporta_rocha_pulmao)
+      : Boolean(vehicle?.transporta_rocha);
+  const transportaRochaArmacao =
+    vehicle?.transporta_rocha_armacao != null
+      ? Boolean(vehicle.transporta_rocha_armacao)
+      : Boolean(vehicle?.transporta_rocha);
   if (vehicle?.transporta_esteril) {
     const cap = numberOrBlank(vehicle.capacidade_esteril_ton ?? vehicle.capacidade_ton);
     parts.push(`Estéril${cap !== "" ? ` (${cap} t)` : ""}`);
   }
-  if (vehicle?.transporta_rocha) {
-    const cap = numberOrBlank(vehicle.capacidade_rocha_ton ?? vehicle.capacidade_ton);
-    parts.push(`Rocha${cap !== "" ? ` (${cap} t)` : ""}`);
+  if (transportaRochaPulmao) {
+    const cap = numberOrBlank(
+      vehicle.capacidade_rocha_pulmao_ton ?? vehicle.capacidade_rocha_ton ?? vehicle.capacidade_ton
+    );
+    parts.push(`Rocha Pulmão${cap !== "" ? ` (${cap} t)` : ""}`);
+  }
+  if (transportaRochaArmacao) {
+    const cap = numberOrBlank(
+      vehicle.capacidade_rocha_armacao_ton ?? vehicle.capacidade_rocha_ton ?? vehicle.capacidade_ton
+    );
+    parts.push(`Rocha Armação${cap !== "" ? ` (${cap} t)` : ""}`);
   }
   return parts.length ? parts.join(" / ") : "Não configurado";
 };
@@ -289,7 +305,8 @@ const addFleetVehiclesSheet = (workbook, { vehicles }) => {
     ["Operação", "operacao"],
     ["Materiais autorizados", "materiais"],
     ["Cap. estéril (t)", "capacidade_esteril_ton"],
-    ["Cap. rocha (t)", "capacidade_rocha_ton"],
+    ["Cap. rocha pulmão (t)", "capacidade_rocha_pulmao_ton"],
+    ["Cap. rocha armação (t)", "capacidade_rocha_armacao_ton"],
     ["Status", "status"],
     ["Tipo", "tipo"],
     ["Categoria", "categoria"],
@@ -331,7 +348,8 @@ const addFleetVehiclesSheet = (workbook, { vehicles }) => {
       vehicle.usa_para_transporte ? "Transporte" : "Apoio",
       materialLabel(vehicle),
       numberOrBlank(vehicle.capacidade_esteril_ton),
-      numberOrBlank(vehicle.capacidade_rocha_ton),
+      numberOrBlank(vehicle.capacidade_rocha_pulmao_ton ?? vehicle.capacidade_rocha_ton),
+      numberOrBlank(vehicle.capacidade_rocha_armacao_ton ?? vehicle.capacidade_rocha_ton),
       statusLabel(vehicle.status_operacional),
       vehicle.tipo || "",
       vehicle.categoria || "",
@@ -370,7 +388,7 @@ const addFleetVehiclesSheet = (workbook, { vehicles }) => {
       });
     }
   });
-  [7, 8, 16, 17, 18].forEach((col) => {
+  [7, 8, 9, 17, 18, 19].forEach((col) => {
     ws.getColumn(col).numFmt = '#,##0.00';
   });
   ws.getColumn(1).alignment = { horizontal: "center" };
@@ -489,8 +507,12 @@ const exportVehiclesCsv = async (req, res) => {
     "capacidade_ton",
     "capacidade_esteril_ton",
     "capacidade_rocha_ton",
+    "capacidade_rocha_pulmao_ton",
+    "capacidade_rocha_armacao_ton",
     "transporta_esteril",
     "transporta_rocha",
+    "transporta_rocha_pulmao",
+    "transporta_rocha_armacao",
     "capacidade_litros",
     "usa_para_transporte",
     "motorista_nome",

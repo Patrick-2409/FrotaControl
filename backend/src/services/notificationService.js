@@ -6,6 +6,7 @@
 const crypto = require("crypto");
 const { pool } = require("../db");
 const { queryTimed } = require("../utils/queryTimed");
+const { MATERIAL_CAPACITY_SQL } = require("../utils/transportMaterialSql");
 const { buildAlertsFromSignals } = require("./alertRules");
 const { logWarn } = require("./loggerService");
 
@@ -80,20 +81,12 @@ async function gatherSignalsLite(empresaId) {
   const [capRows, rom72, transpCount, cnhRows, docRevisaoRows, docExtrasRows, manutRows] =
     await Promise.all([
       queryTimed(
-        `SELECT COUNT(*)::int AS c FROM veiculos
-         WHERE empresa_id = $1 AND COALESCE(usa_para_transporte, false) = true
+        `SELECT COUNT(*)::int AS c FROM veiculos v
+         WHERE v.empresa_id = $1 AND COALESCE(v.usa_para_transporte, false) = true
            AND (
-             CASE
-               WHEN COALESCE(transporta_esteril, false) = true
-                 THEN COALESCE(capacidade_esteril_ton, capacidade_ton, 0) > 0
-               ELSE false
-             END
-             OR
-             CASE
-               WHEN COALESCE(transporta_rocha, false) = true
-                 THEN COALESCE(capacidade_rocha_ton, capacidade_ton, 0) > 0
-               ELSE false
-             END
+            ${MATERIAL_CAPACITY_SQL.esteril} > 0
+            OR ${MATERIAL_CAPACITY_SQL.rocha_pulmao} > 0
+            OR ${MATERIAL_CAPACITY_SQL.rocha_armacao} > 0
            ) = false`,
         [empresaId],
         { label: "feed-lite-cap", timeoutMs: 4000 }

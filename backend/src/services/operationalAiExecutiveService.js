@@ -6,6 +6,7 @@ const { pool } = require("../db");
 const fuelSvc = require("./fuelService");
 const transportSvc = require("./transportService");
 const { getCompanyById } = require("../models/companyModel");
+const { MATERIAL_CAPACITY_SQL, ROCHA_TIPOS_SQL, rochaTotalTonSql } = require("../utils/transportMaterialSql");
 
 const PERIODOS = new Set(["dia", "semana", "mes", "ano"]);
 const MONTHLY_LIMIT_DEFAULT = 10;
@@ -244,36 +245,12 @@ const aggregateTransport = async (empresaId, bounds) => {
               COUNT(*)::int AS viagens,
               COALESCE(
                 SUM(CASE
-                      WHEN COALESCE(v.usa_para_transporte, false) = true AND vi.tipo = 'esteril'
-                      THEN CASE
-                        WHEN COALESCE(v.transporta_esteril, CASE
-                          WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-                            THEN v.capacidade_esteril_ton IS NOT NULL
-                          ELSE COALESCE(v.capacidade_ton, 0) > 0
-                        END)
-                        THEN CASE
-                          WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-                            THEN COALESCE(v.capacidade_esteril_ton, 0)
-                          ELSE COALESCE(v.capacidade_ton, 0)
-                        END
-                        ELSE 0
-                      END
-                      WHEN COALESCE(v.usa_para_transporte, false) = true AND vi.tipo = 'rocha'
-                      THEN CASE
-                        WHEN COALESCE(v.transporta_rocha, CASE
-                          WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-                            THEN v.capacidade_rocha_ton IS NOT NULL
-                          ELSE COALESCE(v.capacidade_ton, 0) > 0
-                        END)
-                        THEN CASE
-                          WHEN v.capacidade_esteril_ton IS NOT NULL OR v.capacidade_rocha_ton IS NOT NULL
-                            THEN COALESCE(v.capacidade_rocha_ton, 0)
-                          ELSE COALESCE(v.capacidade_ton, 0)
-                        END
-                        ELSE 0
-                      END
                       WHEN COALESCE(v.usa_para_transporte, false) = true
-                      THEN COALESCE(v.capacidade_ton, 0)
+                      THEN CASE
+                        WHEN vi.tipo = 'esteril' THEN ${MATERIAL_CAPACITY_SQL.esteril}
+                        WHEN vi.tipo IN (${ROCHA_TIPOS_SQL}) THEN ${rochaTotalTonSql("vi.tipo")}
+                        ELSE COALESCE(v.capacidade_ton, 0)
+                      END
                       ELSE 0
                     END),
                 0

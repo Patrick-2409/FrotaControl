@@ -9,6 +9,7 @@ const dailyOps = require("../services/dailyOperationsService");
 const fuelSvc = require("../services/fuelService");
 const transportSvc = require("../services/transportService");
 const { logInfo } = require("../services/loggerService");
+const { MATERIAL_CAPACITY_SQL } = require("../utils/transportMaterialSql");
 
 const planejamentoBodySchema = z
   .object({
@@ -347,8 +348,12 @@ const viagensResumo = async (req, res) => {
 
   return res.json({
     total_viagens_esteril: toNum(row.total_viagens_esteril),
+    total_viagens_rocha_pulmao: toNum(row.total_viagens_rocha_pulmao),
+    total_viagens_rocha_armacao: toNum(row.total_viagens_rocha_armacao),
     total_viagens_rocha: toNum(row.total_viagens_rocha),
     total_toneladas_esteril: toNum(row.total_toneladas_esteril),
+    total_toneladas_rocha_pulmao: toNum(row.total_toneladas_rocha_pulmao),
+    total_toneladas_rocha_armacao: toNum(row.total_toneladas_rocha_armacao),
     total_toneladas_rocha: toNum(row.total_toneladas_rocha),
   });
 };
@@ -533,8 +538,12 @@ const getViagensComparacao = async (req, res) => {
     planejado_esteril: 0,
     planejado_rocha: 0,
     executado_esteril: 0,
+    executado_rocha_pulmao: 0,
+    executado_rocha_armacao: 0,
     executado_rocha: 0,
     percentual_esteril: 0,
+    percentual_rocha_pulmao: 0,
+    percentual_rocha_armacao: 0,
     percentual_rocha: 0,
     percentual_total: 0,
   });
@@ -556,6 +565,8 @@ const getViagensComparacao = async (req, res) => {
   const pe = toNum(plan.meta_esteril_ton);
   const pr = toNum(plan.meta_rocha_ton);
   const ee = toNum(row.total_toneladas_esteril);
+  const erp = toNum(row.total_toneladas_rocha_pulmao);
+  const era = toNum(row.total_toneladas_rocha_armacao);
   const er = toNum(row.total_toneladas_rocha);
   const pct = (exe, planejado) => (planejado > 0 ? (exe / planejado) * 100 : 0);
   const planejTotal = pe + pr;
@@ -565,8 +576,12 @@ const getViagensComparacao = async (req, res) => {
     planejado_esteril: pe,
     planejado_rocha: pr,
     executado_esteril: ee,
+    executado_rocha_pulmao: erp,
+    executado_rocha_armacao: era,
     executado_rocha: er,
     percentual_esteril: pct(ee, pe),
+    percentual_rocha_pulmao: pct(erp, pr),
+    percentual_rocha_armacao: pct(era, pr),
     percentual_rocha: pct(er, pr),
     percentual_total: planejTotal > 0 ? (execTotal / planejTotal) * 100 : 0,
   });
@@ -619,21 +634,13 @@ const dashboardAlertas = async (req, res) => {
 
   const { rows: capRows } = await pool.query(
     `SELECT COUNT(*)::int AS c
-     FROM veiculos
-     WHERE empresa_id = $1
-       AND COALESCE(usa_para_transporte, false) = true
+     FROM veiculos v
+     WHERE v.empresa_id = $1
+       AND COALESCE(v.usa_para_transporte, false) = true
        AND (
-         CASE
-           WHEN COALESCE(transporta_esteril, false) = true
-             THEN COALESCE(capacidade_esteril_ton, capacidade_ton, 0) > 0
-           ELSE false
-         END
-         OR
-         CASE
-           WHEN COALESCE(transporta_rocha, false) = true
-             THEN COALESCE(capacidade_rocha_ton, capacidade_ton, 0) > 0
-           ELSE false
-         END
+         ${MATERIAL_CAPACITY_SQL.esteril} > 0
+         OR ${MATERIAL_CAPACITY_SQL.rocha_pulmao} > 0
+         OR ${MATERIAL_CAPACITY_SQL.rocha_armacao} > 0
        ) = false`,
     [empresa_id]
   );

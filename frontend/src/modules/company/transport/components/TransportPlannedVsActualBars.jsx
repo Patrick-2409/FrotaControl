@@ -42,10 +42,25 @@ function TransportPlannedVsActualBars({ comparacao, materialFilter = "todos" }) 
     const pe = Number(comparacao.planejado_esteril || 0);
     const pr = Number(comparacao.planejado_rocha || 0);
     const ee = Number(comparacao.executado_esteril || 0);
+    const erp = Number(comparacao.executado_rocha_pulmao || 0);
+    const era = Number(comparacao.executado_rocha_armacao || 0);
     const er = Number(comparacao.executado_rocha || 0);
     const baseRows = [
       { key: "esteril", label: "Estéril", plan: pe, exec: ee, pct: Number(comparacao.percentual_esteril ?? 0) },
-      { key: "rocha", label: "Rocha", plan: pr, exec: er, pct: Number(comparacao.percentual_rocha ?? 0) },
+      {
+        key: "rocha_pulmao",
+        label: "Rocha Pulmão",
+        plan: pr,
+        exec: erp,
+        pct: Number(comparacao.percentual_rocha_pulmao ?? 0),
+      },
+      {
+        key: "rocha_armacao",
+        label: "Rocha Armação",
+        plan: pr,
+        exec: era,
+        pct: Number(comparacao.percentual_rocha_armacao ?? 0),
+      },
       {
         key: "total",
         label: "Total",
@@ -55,7 +70,8 @@ function TransportPlannedVsActualBars({ comparacao, materialFilter = "todos" }) 
       },
     ];
     if (materialFilter === "esteril") return baseRows.filter((row) => row.key === "esteril");
-    if (materialFilter === "rocha") return baseRows.filter((row) => row.key === "rocha");
+    if (materialFilter === "rocha_pulmao") return baseRows.filter((row) => row.key === "rocha_pulmao");
+    if (materialFilter === "rocha_armacao") return baseRows.filter((row) => row.key === "rocha_armacao");
     return baseRows;
   }, [comparacao, materialFilter]);
 

@@ -85,8 +85,12 @@ export function useEmpresaTransporte(options = {}) {
       });
       const next = {
         total_viagens_esteril: data?.total_viagens_esteril ?? 0,
+        total_viagens_rocha_pulmao: data?.total_viagens_rocha_pulmao ?? 0,
+        total_viagens_rocha_armacao: data?.total_viagens_rocha_armacao ?? 0,
         total_viagens_rocha: data?.total_viagens_rocha ?? 0,
         total_toneladas_esteril: data?.total_toneladas_esteril ?? 0,
+        total_toneladas_rocha_pulmao: data?.total_toneladas_rocha_pulmao ?? 0,
+        total_toneladas_rocha_armacao: data?.total_toneladas_rocha_armacao ?? 0,
         total_toneladas_rocha: data?.total_toneladas_rocha ?? 0,
       };
       viagensCacheRef.current.set(cacheKey, { t: now, data: next });
@@ -129,8 +133,12 @@ export function useEmpresaTransporte(options = {}) {
         planejado_esteril: data?.planejado_esteril ?? 0,
         planejado_rocha: data?.planejado_rocha ?? 0,
         executado_esteril: data?.executado_esteril ?? 0,
+        executado_rocha_pulmao: data?.executado_rocha_pulmao ?? 0,
+        executado_rocha_armacao: data?.executado_rocha_armacao ?? 0,
         executado_rocha: data?.executado_rocha ?? 0,
         percentual_esteril: data?.percentual_esteril ?? 0,
+        percentual_rocha_pulmao: data?.percentual_rocha_pulmao ?? 0,
+        percentual_rocha_armacao: data?.percentual_rocha_armacao ?? 0,
         percentual_rocha: data?.percentual_rocha ?? 0,
         percentual_total: data?.percentual_total ?? 0,
       });

@@ -542,8 +542,12 @@ export default function EmpresaFrotaPage() {
                         usa_para_transporte: e.target.checked,
                         transporta_esteril: e.target.checked ? f.transporta_esteril : false,
                         transporta_rocha: e.target.checked ? f.transporta_rocha : false,
+                        transporta_rocha_pulmao: e.target.checked ? f.transporta_rocha_pulmao : false,
+                        transporta_rocha_armacao: e.target.checked ? f.transporta_rocha_armacao : false,
                         capacidade_esteril_ton: e.target.checked ? f.capacidade_esteril_ton : "",
                         capacidade_rocha_ton: e.target.checked ? f.capacidade_rocha_ton : "",
+                        capacidade_rocha_pulmao_ton: e.target.checked ? f.capacidade_rocha_pulmao_ton : "",
+                        capacidade_rocha_armacao_ton: e.target.checked ? f.capacidade_rocha_armacao_ton : "",
                       }))
                     }
                   />
@@ -564,7 +568,7 @@ export default function EmpresaFrotaPage() {
                         Apontador
                       </span>
                     </div>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                       <div className="rounded-lg border border-zinc-800 bg-zinc-950/55 p-3">
                         <label className="flex items-center gap-2 text-xs font-semibold text-zinc-200">
                           <input
@@ -593,23 +597,55 @@ export default function EmpresaFrotaPage() {
                         <label className="flex items-center gap-2 text-xs font-semibold text-zinc-200">
                           <input
                             type="checkbox"
-                            checked={fl.form.transporta_rocha}
+                            checked={fl.form.transporta_rocha_pulmao}
                             onChange={(e) =>
                               fl.setForm((f) => ({
                                 ...f,
-                                transporta_rocha: e.target.checked,
-                                capacidade_rocha_ton: e.target.checked ? f.capacidade_rocha_ton : "",
+                                transporta_rocha_pulmao: e.target.checked,
+                                transporta_rocha:
+                                  e.target.checked || Boolean(f.transporta_rocha_armacao),
+                                capacidade_rocha_pulmao_ton: e.target.checked ? f.capacidade_rocha_pulmao_ton : "",
                               }))
                             }
                           />
-                          Transporta rocha
+                          Transporta rocha pulmão
                         </label>
                         <input
                           inputMode="decimal"
-                          disabled={!fl.form.transporta_rocha}
+                          disabled={!fl.form.transporta_rocha_pulmao}
                           className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
-                          value={fl.form.capacidade_rocha_ton}
-                          onChange={(e) => fl.setForm((f) => ({ ...f, capacidade_rocha_ton: e.target.value }))}
+                          value={fl.form.capacidade_rocha_pulmao_ton}
+                          onChange={(e) =>
+                            fl.setForm((f) => ({ ...f, capacidade_rocha_pulmao_ton: e.target.value }))
+                          }
+                          placeholder="Toneladas por viagem"
+                        />
+                      </div>
+                      <div className="rounded-lg border border-zinc-800 bg-zinc-950/55 p-3">
+                        <label className="flex items-center gap-2 text-xs font-semibold text-zinc-200">
+                          <input
+                            type="checkbox"
+                            checked={fl.form.transporta_rocha_armacao}
+                            onChange={(e) =>
+                              fl.setForm((f) => ({
+                                ...f,
+                                transporta_rocha_armacao: e.target.checked,
+                                transporta_rocha:
+                                  e.target.checked || Boolean(f.transporta_rocha_pulmao),
+                                capacidade_rocha_armacao_ton: e.target.checked ? f.capacidade_rocha_armacao_ton : "",
+                              }))
+                            }
+                          />
+                          Transporta rocha armação
+                        </label>
+                        <input
+                          inputMode="decimal"
+                          disabled={!fl.form.transporta_rocha_armacao}
+                          className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
+                          value={fl.form.capacidade_rocha_armacao_ton}
+                          onChange={(e) =>
+                            fl.setForm((f) => ({ ...f, capacidade_rocha_armacao_ton: e.target.value }))
+                          }
                           placeholder="Toneladas por viagem"
                         />
                       </div>

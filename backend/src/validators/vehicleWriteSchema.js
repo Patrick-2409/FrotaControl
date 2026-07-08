@@ -18,8 +18,12 @@ const vehicleBodySchema = z.object({
   capacidade_ton: z.coerce.number().positive().optional().nullable(),
   capacidade_esteril_ton: z.coerce.number().positive().optional().nullable(),
   capacidade_rocha_ton: z.coerce.number().positive().optional().nullable(),
+  capacidade_rocha_pulmao_ton: z.coerce.number().positive().optional().nullable(),
+  capacidade_rocha_armacao_ton: z.coerce.number().positive().optional().nullable(),
   transporta_esteril: optionalBoolean,
   transporta_rocha: optionalBoolean,
+  transporta_rocha_pulmao: optionalBoolean,
+  transporta_rocha_armacao: optionalBoolean,
   usa_para_transporte: z.coerce.boolean().optional().default(false),
   tipo_operacao: z.enum(["transporte", "apoio"]).optional(),
   tipo: z.string().trim().max(80).optional().nullable(),
@@ -62,10 +66,21 @@ const toVehicleWritePayload = (parsed) => {
         ? "transporte"
         : "apoio";
   const usa = tipo === "transporte";
+  const legacyRochaCapacity = parsed.capacidade_rocha_ton ?? null;
+  const capacidadeRochaPulmaoInput =
+    parsed.capacidade_rocha_pulmao_ton ?? legacyRochaCapacity;
+  const capacidadeRochaArmacaoInput =
+    parsed.capacidade_rocha_armacao_ton ?? legacyRochaCapacity;
   const hasSpecificCapacity =
-    parsed.capacidade_esteril_ton != null || parsed.capacidade_rocha_ton != null;
+    parsed.capacidade_esteril_ton != null ||
+    parsed.capacidade_rocha_ton != null ||
+    parsed.capacidade_rocha_pulmao_ton != null ||
+    parsed.capacidade_rocha_armacao_ton != null;
   const hasExplicitMaterial =
-    parsed.transporta_esteril !== undefined || parsed.transporta_rocha !== undefined;
+    parsed.transporta_esteril !== undefined ||
+    parsed.transporta_rocha !== undefined ||
+    parsed.transporta_rocha_pulmao !== undefined ||
+    parsed.transporta_rocha_armacao !== undefined;
   const transportaEsteril = usa
     ? hasExplicitMaterial
       ? Boolean(parsed.transporta_esteril)
@@ -73,23 +88,58 @@ const toVehicleWritePayload = (parsed) => {
         ? parsed.capacidade_esteril_ton != null
         : parsed.capacidade_ton != null
     : false;
-  const transportaRocha = usa
-    ? hasExplicitMaterial
-      ? Boolean(parsed.transporta_rocha)
-      : hasSpecificCapacity
-        ? parsed.capacidade_rocha_ton != null
-        : parsed.capacidade_ton != null
+  const transportaRochaPulmao = usa
+    ? parsed.transporta_rocha_pulmao !== undefined
+      ? Boolean(parsed.transporta_rocha_pulmao)
+      : parsed.transporta_rocha !== undefined
+        ? Boolean(parsed.transporta_rocha)
+        : hasSpecificCapacity
+          ? capacidadeRochaPulmaoInput != null
+          : parsed.capacidade_ton != null
     : false;
+  const transportaRochaArmacao = usa
+    ? parsed.transporta_rocha_armacao !== undefined
+      ? Boolean(parsed.transporta_rocha_armacao)
+      : parsed.transporta_rocha !== undefined
+        ? Boolean(parsed.transporta_rocha)
+        : hasSpecificCapacity
+          ? capacidadeRochaArmacaoInput != null
+          : parsed.capacidade_ton != null
+    : false;
+  const transportaRocha = transportaRochaPulmao || transportaRochaArmacao;
+  const capacidadeRochaPulmao = usa
+    ? !transportaRochaPulmao
+      ? null
+      : hasSpecificCapacity
+        ? capacidadeRochaPulmaoInput ?? null
+        : parsed.capacidade_ton ?? null
+    : null;
+  const capacidadeRochaArmacao = usa
+    ? !transportaRochaArmacao
+      ? null
+      : hasSpecificCapacity
+        ? capacidadeRochaArmacaoInput ?? null
+        : parsed.capacidade_ton ?? null
+    : null;
+  const capacidadeRochaLegacy = transportaRocha
+    ? capacidadeRochaPulmao ?? capacidadeRochaArmacao ?? legacyRochaCapacity ?? null
+    : null;
   const out = {
     nome: parsed.nome,
     placa: parsed.placa,
     usa_para_transporte: usa,
     tipo_operacao: tipo,
     capacidade_ton: usa
-      ? parsed.capacidade_ton ?? parsed.capacidade_esteril_ton ?? parsed.capacidade_rocha_ton ?? null
+      ? parsed.capacidade_ton ??
+        parsed.capacidade_esteril_ton ??
+        capacidadeRochaPulmaoInput ??
+        capacidadeRochaArmacaoInput ??
+        null
       : null,
     transporta_esteril: transportaEsteril,
     transporta_rocha: transportaRocha,
+    transporta_rocha_pulmao: transportaRochaPulmao,
+    transporta_rocha_armacao: transportaRochaArmacao,
     capacidade_esteril_ton: usa
       ? !transportaEsteril
         ? null
@@ -97,13 +147,9 @@ const toVehicleWritePayload = (parsed) => {
         ? parsed.capacidade_esteril_ton ?? null
         : parsed.capacidade_ton ?? null
       : null,
-    capacidade_rocha_ton: usa
-      ? !transportaRocha
-        ? null
-        : hasSpecificCapacity
-        ? parsed.capacidade_rocha_ton ?? null
-        : parsed.capacidade_ton ?? null
-      : null,
+    capacidade_rocha_ton: usa ? capacidadeRochaLegacy : null,
+    capacidade_rocha_pulmao_ton: usa ? capacidadeRochaPulmao : null,
+    capacidade_rocha_armacao_ton: usa ? capacidadeRochaArmacao : null,
   };
   if (parsed.codigo_operacional !== undefined) out.codigo_operacional = parsed.codigo_operacional ?? null;
   if (parsed.marca !== undefined) out.marca = trimOrNull(parsed.marca);

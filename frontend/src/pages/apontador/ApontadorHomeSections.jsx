@@ -62,7 +62,9 @@ function playTipoButtonTap(el, variant) {
   const glow =
     variant === "esteril"
       ? "0 0 38px 4px rgba(34, 211, 238, 0.5)"
-      : "0 0 38px 4px rgba(251, 146, 60, 0.52)";
+      : variant === "pulmao"
+        ? "0 0 38px 4px rgba(251, 146, 60, 0.52)"
+        : "0 0 38px 4px rgba(168, 85, 247, 0.5)";
   el.animate(
     [
       { transform: "scale(0.95)", filter: "brightness(1)", boxShadow: "0 0 0 0 rgba(0,0,0,0)" },
@@ -181,10 +183,12 @@ export const ApontadorVeiculoField = memo(function ApontadorVeiculoField({
               <option value="">Selecionar</option>
               {veiculos.map((v) => {
                 const capacidadeEsteril = formatCapacidadeTon(v.capacidadeEsterilTon);
-                const capacidadeRocha = formatCapacidadeTon(v.capacidadeRochaTon);
+                const capacidadeRochaPulmao = formatCapacidadeTon(v.capacidadeRochaPulmaoTon);
+                const capacidadeRochaArmacao = formatCapacidadeTon(v.capacidadeRochaArmacaoTon);
                 const capacidades = [
                   capacidadeEsteril ? `Estéril ${capacidadeEsteril}` : null,
-                  capacidadeRocha ? `Rocha ${capacidadeRocha}` : null,
+                  capacidadeRochaPulmao ? `Rocha Pulmão ${capacidadeRochaPulmao}` : null,
+                  capacidadeRochaArmacao ? `Rocha Armação ${capacidadeRochaArmacao}` : null,
                 ].filter(Boolean);
                 const codigo = v.codigoLabel ? `#${v.codigoLabel} · ` : "";
                 return (
@@ -207,18 +211,27 @@ export const ApontadorVeiculoField = memo(function ApontadorVeiculoField({
 export const ApontadorTipoButtons = memo(function ApontadorTipoButtons({
   podeRegistrar,
   onEsteril,
-  onRocha,
+  onRochaPulmao,
+  onRochaArmacao,
   avisoInvalido,
   avisoMensagem,
   capacidadeEsterilTon,
-  capacidadeRochaTon,
+  capacidadeRochaPulmaoTon,
+  capacidadeRochaArmacaoTon,
 }) {
   const esterilDisponivel = podeRegistrar && Number(capacidadeEsterilTon) > 0;
-  const rochaDisponivel = podeRegistrar && Number(capacidadeRochaTon) > 0;
+  const rochaPulmaoDisponivel = podeRegistrar && Number(capacidadeRochaPulmaoTon) > 0;
+  const rochaArmacaoDisponivel = podeRegistrar && Number(capacidadeRochaArmacaoTon) > 0;
   const capacidadeEsterilLabel = formatCapacidadeTon(capacidadeEsterilTon);
-  const capacidadeRochaLabel = formatCapacidadeTon(capacidadeRochaTon);
+  const capacidadeRochaPulmaoLabel = formatCapacidadeTon(capacidadeRochaPulmaoTon);
+  const capacidadeRochaArmacaoLabel = formatCapacidadeTon(capacidadeRochaArmacaoTon);
   const esterilLabel = capacidadeEsterilLabel ? `${capacidadeEsterilLabel} por viagem` : "Não transporta estéril";
-  const rochaLabel = capacidadeRochaLabel ? `${capacidadeRochaLabel} por viagem` : "Não transporta rocha";
+  const rochaPulmaoLabel = capacidadeRochaPulmaoLabel
+    ? `${capacidadeRochaPulmaoLabel} por viagem`
+    : "Não transporta rocha pulmão";
+  const rochaArmacaoLabel = capacidadeRochaArmacaoLabel
+    ? `${capacidadeRochaArmacaoLabel} por viagem`
+    : "Não transporta rocha armação";
   const pressEsteril = useCallback(
     (e) => {
       if (!esterilDisponivel) return;
@@ -228,13 +241,22 @@ export const ApontadorTipoButtons = memo(function ApontadorTipoButtons({
     [esterilDisponivel, onEsteril]
   );
 
-  const pressRocha = useCallback(
+  const pressRochaPulmao = useCallback(
     (e) => {
-      if (!rochaDisponivel) return;
-      playTipoButtonTap(e.currentTarget, "rocha");
-      onRocha();
+      if (!rochaPulmaoDisponivel) return;
+      playTipoButtonTap(e.currentTarget, "pulmao");
+      onRochaPulmao();
     },
-    [rochaDisponivel, onRocha]
+    [rochaPulmaoDisponivel, onRochaPulmao]
+  );
+
+  const pressRochaArmacao = useCallback(
+    (e) => {
+      if (!rochaArmacaoDisponivel) return;
+      playTipoButtonTap(e.currentTarget, "armacao");
+      onRochaArmacao();
+    },
+    [rochaArmacaoDisponivel, onRochaArmacao]
   );
 
   return (
@@ -264,16 +286,31 @@ export const ApontadorTipoButtons = memo(function ApontadorTipoButtons({
       </button>
       <button
         type="button"
-        disabled={!rochaDisponivel}
-        aria-disabled={!rochaDisponivel}
-        onClick={pressRocha}
+        disabled={!rochaPulmaoDisponivel}
+        aria-disabled={!rochaPulmaoDisponivel}
+        onClick={pressRochaPulmao}
         className="fc-btn fc-apontador-tipo-btn flex w-full min-h-[96px] max-w-sm items-center justify-center gap-2.5 rounded-2xl border-2 border-orange-300/85 bg-gradient-to-b from-orange-500/55 to-orange-700/45 px-4 py-5 text-2xl font-extrabold tracking-wide text-orange-50 shadow-xl shadow-orange-950/40 ring-1 ring-orange-200/15 transition enabled:hover:border-amber-300 enabled:hover:from-orange-500/70 enabled:hover:to-orange-700/60 enabled:hover:ring-orange-100/20 disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-[104px] sm:gap-3 sm:text-3xl"
       >
         <IconRocha className="h-5 w-5 shrink-0 text-orange-100/90 sm:h-6 sm:w-6" />
         <span className="flex min-w-0 flex-col items-center leading-tight drop-shadow-sm">
-          <span>[ + ROCHA ]</span>
+          <span>[ + ROCHA PULMÃO ]</span>
           <span className="mt-1 text-xs font-semibold normal-case tracking-normal text-orange-100/85 sm:text-sm">
-            {rochaLabel}
+            {rochaPulmaoLabel}
+          </span>
+        </span>
+      </button>
+      <button
+        type="button"
+        disabled={!rochaArmacaoDisponivel}
+        aria-disabled={!rochaArmacaoDisponivel}
+        onClick={pressRochaArmacao}
+        className="fc-btn fc-apontador-tipo-btn flex w-full min-h-[96px] max-w-sm items-center justify-center gap-2.5 rounded-2xl border-2 border-fuchsia-300/80 bg-gradient-to-b from-fuchsia-500/45 to-violet-700/40 px-4 py-5 text-2xl font-extrabold tracking-wide text-fuchsia-50 shadow-xl shadow-fuchsia-950/40 ring-1 ring-fuchsia-200/20 transition enabled:hover:border-fuchsia-200 enabled:hover:from-fuchsia-500/65 enabled:hover:to-violet-700/60 enabled:hover:ring-fuchsia-100/30 disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-[104px] sm:gap-3 sm:text-3xl"
+      >
+        <IconRocha className="h-5 w-5 shrink-0 text-fuchsia-100/90 sm:h-6 sm:w-6" />
+        <span className="flex min-w-0 flex-col items-center leading-tight drop-shadow-sm">
+          <span>[ + ROCHA ARMAÇÃO ]</span>
+          <span className="mt-1 text-xs font-semibold normal-case tracking-normal text-fuchsia-100/85 sm:text-sm">
+            {rochaArmacaoLabel}
           </span>
         </span>
       </button>
@@ -283,14 +320,15 @@ export const ApontadorTipoButtons = memo(function ApontadorTipoButtons({
 
 export const ApontadorHojeResumo = memo(function ApontadorHojeResumo({
   esteril,
-  rocha,
+  rochaPulmao,
+  rochaArmacao,
   tonTotal,
   onLimparDia,
   onDesfazerLancamento,
   desfazendoLancamentoId,
   ultimosLancamentos = [],
 }) {
-  const totalViagens = (Number(esteril) || 0) + (Number(rocha) || 0);
+  const totalViagens = (Number(esteril) || 0) + (Number(rochaPulmao) || 0) + (Number(rochaArmacao) || 0);
   const ton = Number(tonTotal);
   const mostrarToneladas = Number.isFinite(ton) && ton > 0;
   const tonArred = Math.round(ton);
@@ -302,7 +340,7 @@ export const ApontadorHojeResumo = memo(function ApontadorHojeResumo({
     >
       <p className="text-center text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Hoje</p>
       <div
-        className="mt-4 grid grid-cols-3 gap-2 sm:gap-4"
+        className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-4"
         role="status"
         aria-live="polite"
         aria-atomic="true"
@@ -314,9 +352,15 @@ export const ApontadorHojeResumo = memo(function ApontadorHojeResumo({
           </p>
         </div>
         <div className="min-w-0 text-center">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:text-xs">Rocha</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:text-xs">Rocha Pulmão</p>
           <p className="mt-1 text-4xl font-black tabular-nums leading-none text-amber-300 sm:text-5xl sm:leading-none md:text-6xl">
-            {rocha}
+            {rochaPulmao}
+          </p>
+        </div>
+        <div className="min-w-0 text-center">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:text-xs">Rocha Armação</p>
+          <p className="mt-1 text-4xl font-black tabular-nums leading-none text-fuchsia-300 sm:text-5xl sm:leading-none md:text-6xl">
+            {rochaArmacao}
           </p>
         </div>
         <div className="min-w-0 text-center">
@@ -353,9 +397,21 @@ export const ApontadorHojeResumo = memo(function ApontadorHojeResumo({
               >
                 <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
                   <span className="font-medium text-slate-200">{item.hora}</span>
-                  <span className={`font-semibold ${item.tipo === "esteril" ? "text-cyan-300" : "text-amber-300"}`}>
-                  {item.tipo === "esteril" ? "Estéril" : "Rocha"}
-                </span>
+                  <span
+                    className={`font-semibold ${
+                      item.tipo === "esteril"
+                        ? "text-cyan-300"
+                        : item.tipo === "rocha_pulmao"
+                          ? "text-amber-300"
+                          : "text-fuchsia-300"
+                    }`}
+                  >
+                    {item.tipo === "esteril"
+                      ? "Estéril"
+                      : item.tipo === "rocha_pulmao"
+                        ? "Rocha Pulmão"
+                        : "Rocha Armação"}
+                  </span>
                 </div>
                 {typeof onDesfazerLancamento === "function" ? (
                   <button
