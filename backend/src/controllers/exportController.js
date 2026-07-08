@@ -1248,7 +1248,7 @@ const buildFallbackPdfBuffer = async ({ companyName, records, logoImage, filterS
       y = drawCells(y, 22, headCells);
       const typeRows = [
         ["Estéril", "e"],
-        ["Rocha (amarracao)", "ra"],
+        ["Rocha (amarração)", "ra"],
         ["Rocha (pulmao)", "rp"],
       ];
       typeRows.forEach(([label, code]) => {
