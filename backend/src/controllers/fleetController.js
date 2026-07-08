@@ -174,7 +174,7 @@ const materialLabel = (vehicle) => {
     const cap = numberOrBlank(
       vehicle.capacidade_rocha_armacao_ton ?? vehicle.capacidade_rocha_ton ?? vehicle.capacidade_ton
     );
-    parts.push(`Rocha Armação${cap !== "" ? ` (${cap} t)` : ""}`);
+    parts.push(`Rocha Amarração${cap !== "" ? ` (${cap} t)` : ""}`);
   }
   return parts.length ? parts.join(" / ") : "Não configurado";
 };
@@ -306,7 +306,7 @@ const addFleetVehiclesSheet = (workbook, { vehicles }) => {
     ["Materiais autorizados", "materiais"],
     ["Cap. estéril (t)", "capacidade_esteril_ton"],
     ["Cap. rocha pulmão (t)", "capacidade_rocha_pulmao_ton"],
-    ["Cap. rocha armação (t)", "capacidade_rocha_armacao_ton"],
+    ["Cap. rocha amarração (t)", "capacidade_rocha_armacao_ton"],
     ["Status", "status"],
     ["Tipo", "tipo"],
     ["Categoria", "categoria"],

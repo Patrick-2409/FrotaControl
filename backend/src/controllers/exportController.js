@@ -768,7 +768,7 @@ const renderRomaneioGroupSheet = (group, logoUrl) => {
           ${colMarks("e")}
         </tr>
         <tr>
-          <td class="narrow bold">Rocha (armação)</td>
+          <td class="narrow bold">Rocha (amarração)</td>
           ${colMarks("ra")}
         </tr>
         <tr>
@@ -1250,7 +1250,7 @@ const buildFallbackPdfBuffer = async ({ companyName, records, logoImage, filterS
       y = drawCells(y, 22, headCells);
       const typeRows = [
         ["Estéril", "e"],
-        ["Rocha (armação)", "ra"],
+        ["Rocha (amarração)", "ra"],
         ["Rocha (pulmao)", "rp"],
       ];
       typeRows.forEach(([label, code]) => {
@@ -1784,7 +1784,7 @@ const addRomaneioPortoGroupWorksheet = (workbook, group, logoImageId, index) => 
 
   const typeRows = [
     ["Estéril", "e"],
-    ["Rocha (armação)", "ra"],
+    ["Rocha (amarração)", "ra"],
     ["Rocha (pulmão)", "rp"],
   ];
   typeRows.forEach(([label, code], i) => {

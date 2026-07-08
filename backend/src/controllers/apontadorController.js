@@ -124,14 +124,14 @@ const assertVeiculoMotoristaTransporte = async (empresaId, veiculo_id, motorista
     return {
       ok: false,
       status: 400,
-      message: "Veiculo sem capacidade de rocha armação configurada.",
+      message: "Veiculo sem capacidade de rocha amarração configurada.",
     };
   }
 
   return { ok: true };
 };
 
-/** Lista veiculos aptos ao apontamento: transporte com capacidade de estéril, rocha pulmão ou rocha armação. */
+/** Lista veiculos aptos ao apontamento: transporte com capacidade de estéril, rocha pulmão ou rocha amarração. */
 const listVehiclesApontador = async (req, res) => {
   const empresaId = req.user?.empresa_id;
   if (!empresaId) {

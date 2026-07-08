@@ -24,6 +24,25 @@ function normalizePeriodoTransporte(v) {
 const VIAGENS_CACHE_TTL_MS = 35_000;
 const VIAGENS_CACHE_MAX = 8;
 
+const toNonNegativeNumber = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return n;
+};
+
+const resolveRochaPlan = (source = {}) => {
+  const pulmao = toNonNegativeNumber(source.meta_rocha_pulmao_ton);
+  let amarracao = toNonNegativeNumber(source.meta_rocha_amarracao_ton ?? source.meta_rocha_armacao_ton);
+  if (pulmao + amarracao <= 0) {
+    amarracao = toNonNegativeNumber(source.meta_rocha_ton);
+  }
+  return {
+    meta_rocha_pulmao_ton: pulmao,
+    meta_rocha_amarracao_ton: amarracao,
+    meta_rocha_ton: pulmao + amarracao,
+  };
+};
+
 /**
  * Estado e carregamento exclusivos do módulo Transporte (viagens, metas, alertas operacionais do período).
  * @param {{ enabled?: boolean }} [options]
@@ -46,7 +65,8 @@ export function useEmpresaTransporte(options = {}) {
   const [planForm, setPlanForm] = useState(() => ({
     ...defaultWeekRangeLocal(),
     meta_esteril_ton: "",
-    meta_rocha_ton: "",
+    meta_rocha_pulmao_ton: "",
+    meta_rocha_amarracao_ton: "",
   }));
   const [planSaving, setPlanSaving] = useState(false);
 
@@ -129,15 +149,27 @@ export function useEmpresaTransporte(options = {}) {
     setComparError(null);
     try {
       const { data } = await api.get("/dashboard/viagens/comparacao");
+      const metaRocha = resolveRochaPlan({
+        meta_rocha_ton: data?.planejado_rocha,
+        meta_rocha_pulmao_ton: data?.planejado_rocha_pulmao,
+        meta_rocha_amarracao_ton: data?.planejado_rocha_amarracao,
+        meta_rocha_armacao_ton: data?.planejado_rocha_armacao,
+      });
       setComparacao({
         planejado_esteril: data?.planejado_esteril ?? 0,
-        planejado_rocha: data?.planejado_rocha ?? 0,
+        planejado_rocha_pulmao: metaRocha.meta_rocha_pulmao_ton,
+        planejado_rocha_amarracao: metaRocha.meta_rocha_amarracao_ton,
+        planejado_rocha_armacao: metaRocha.meta_rocha_amarracao_ton,
+        planejado_rocha: metaRocha.meta_rocha_ton,
         executado_esteril: data?.executado_esteril ?? 0,
         executado_rocha_pulmao: data?.executado_rocha_pulmao ?? 0,
+        executado_rocha_amarracao: data?.executado_rocha_amarracao ?? data?.executado_rocha_armacao ?? 0,
         executado_rocha_armacao: data?.executado_rocha_armacao ?? 0,
         executado_rocha: data?.executado_rocha ?? 0,
         percentual_esteril: data?.percentual_esteril ?? 0,
         percentual_rocha_pulmao: data?.percentual_rocha_pulmao ?? 0,
+        percentual_rocha_amarracao:
+          data?.percentual_rocha_amarracao ?? data?.percentual_rocha_armacao ?? 0,
         percentual_rocha_armacao: data?.percentual_rocha_armacao ?? 0,
         percentual_rocha: data?.percentual_rocha ?? 0,
         percentual_total: data?.percentual_total ?? 0,
@@ -169,11 +201,17 @@ export function useEmpresaTransporte(options = {}) {
       e.preventDefault();
       setPlanSaving(true);
       try {
+        const metaRocha = resolveRochaPlan({
+          meta_rocha_pulmao_ton: planForm.meta_rocha_pulmao_ton,
+          meta_rocha_amarracao_ton: planForm.meta_rocha_amarracao_ton,
+        });
         await api.post("/dashboard/planejamento", {
           data_inicio: planForm.data_inicio,
           data_fim: planForm.data_fim,
           meta_esteril_ton: Number(planForm.meta_esteril_ton) || 0,
-          meta_rocha_ton: Number(planForm.meta_rocha_ton) || 0,
+          meta_rocha_ton: metaRocha.meta_rocha_ton,
+          meta_rocha_pulmao_ton: metaRocha.meta_rocha_pulmao_ton,
+          meta_rocha_amarracao_ton: metaRocha.meta_rocha_amarracao_ton,
         });
         emitToast("Planejamento salvo.", "success");
         await loadComparacao();
@@ -193,12 +231,14 @@ export function useEmpresaTransporte(options = {}) {
       const { data } = await api.get("/dashboard/planejamento/atual");
       const p = data?.planejamento;
       if (p?.data_inicio && p?.data_fim) {
+        const metaRocha = resolveRochaPlan(p);
         setPlanForm((prev) => ({
           ...prev,
           data_inicio: String(p.data_inicio).slice(0, 10),
           data_fim: String(p.data_fim).slice(0, 10),
           meta_esteril_ton: p.meta_esteril_ton != null ? String(p.meta_esteril_ton) : "",
-          meta_rocha_ton: p.meta_rocha_ton != null ? String(p.meta_rocha_ton) : "",
+          meta_rocha_pulmao_ton: String(metaRocha.meta_rocha_pulmao_ton),
+          meta_rocha_amarracao_ton: String(metaRocha.meta_rocha_amarracao_ton),
         }));
       }
     } catch {
@@ -221,6 +261,8 @@ export function useEmpresaTransporte(options = {}) {
         data_fim: String(p.data_fim).slice(0, 10),
         meta_esteril_ton: 0,
         meta_rocha_ton: 0,
+        meta_rocha_pulmao_ton: 0,
+        meta_rocha_amarracao_ton: 0,
       });
       emitToast("Metas do período atual foram zeradas.", "success");
       setPlanForm((prev) => ({
@@ -228,7 +270,8 @@ export function useEmpresaTransporte(options = {}) {
         data_inicio: String(p.data_inicio).slice(0, 10),
         data_fim: String(p.data_fim).slice(0, 10),
         meta_esteril_ton: "0",
-        meta_rocha_ton: "0",
+        meta_rocha_pulmao_ton: "0",
+        meta_rocha_amarracao_ton: "0",
       }));
       await loadComparacao();
     } catch (err) {

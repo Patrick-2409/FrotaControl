@@ -594,7 +594,7 @@ const listManagerRecordsFromViagens = async ({
       CASE
         WHEN COALESCE(vi.tipo, '') = 'esteril' THEN 'Estéril'
         WHEN COALESCE(vi.tipo, '') = 'rocha_pulmao' THEN 'Rocha (pulmão)'
-        WHEN COALESCE(vi.tipo, '') IN ('rocha_armacao', 'rocha') THEN 'Rocha (armação)'
+        WHEN COALESCE(vi.tipo, '') IN ('rocha_armacao', 'rocha') THEN 'Rocha (amarração)'
         ELSE NULL::text
       END AS tipo_transporte,
       'Origem: viagens'::text AS observacao,

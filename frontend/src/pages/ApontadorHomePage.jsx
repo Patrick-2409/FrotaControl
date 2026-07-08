@@ -18,7 +18,7 @@ const getDiaOperacionalSaoPaulo = () =>
 const MATERIAL_META = {
   esteril: { chave: "esteril", label: "Estéril", toast: "estéril" },
   rocha_pulmao: { chave: "rocha_pulmao", label: "Rocha Pulmão", toast: "rocha pulmão" },
-  rocha_armacao: { chave: "rocha_armacao", label: "Rocha Armação", toast: "rocha armação" },
+  rocha_armacao: { chave: "rocha_armacao", label: "Rocha Amarração", toast: "rocha amarração" },
 };
 const normalizeTipoMaterial = (tipo) => {
   if (tipo === "esteril") return "esteril";
@@ -699,7 +699,7 @@ export default function ApontadorHomePage() {
   const avisoApontador = !temMotoristaVinculado
     ? "Selecione um veículo com motorista vinculado"
     : !temMaterialConfigurado
-      ? "Cadastre a capacidade de estéril, rocha pulmão ou rocha armação para este veículo"
+      ? "Cadastre a capacidade de estéril, rocha pulmão ou rocha amarração para este veículo"
       : "";
   const mostrarAvisoVeiculoInvalido =
     !loadingVeiculos && veiculos.length > 0 && !podeRegistrar;
@@ -739,7 +739,7 @@ export default function ApontadorHomePage() {
               Nenhum veículo disponível para apontamento. O administrador deve cadastrar veículos de{" "}
               <strong className="text-amber-50">transporte (romaneio)</strong> com{" "}
               <strong className="text-amber-50">
-                capacidade para estéril, rocha pulmão e rocha armação
+                capacidade para estéril, rocha pulmão e rocha amarração
               </strong>{" "}
               e{" "}
               <strong className="text-amber-50">motorista vinculado</strong> na gestão da empresa.

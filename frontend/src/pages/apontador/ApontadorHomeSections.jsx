@@ -188,7 +188,7 @@ export const ApontadorVeiculoField = memo(function ApontadorVeiculoField({
                 const capacidades = [
                   capacidadeEsteril ? `Estéril ${capacidadeEsteril}` : null,
                   capacidadeRochaPulmao ? `Rocha Pulmão ${capacidadeRochaPulmao}` : null,
-                  capacidadeRochaArmacao ? `Rocha Armação ${capacidadeRochaArmacao}` : null,
+                  capacidadeRochaArmacao ? `Rocha Amarração ${capacidadeRochaArmacao}` : null,
                 ].filter(Boolean);
                 const codigo = v.codigoLabel ? `#${v.codigoLabel} · ` : "";
                 return (
@@ -231,7 +231,7 @@ export const ApontadorTipoButtons = memo(function ApontadorTipoButtons({
     : "Não transporta rocha pulmão";
   const rochaArmacaoLabel = capacidadeRochaArmacaoLabel
     ? `${capacidadeRochaArmacaoLabel} por viagem`
-    : "Não transporta rocha armação";
+    : "Não transporta rocha amarração";
   const pressEsteril = useCallback(
     (e) => {
       if (!esterilDisponivel) return;
@@ -308,7 +308,7 @@ export const ApontadorTipoButtons = memo(function ApontadorTipoButtons({
       >
         <IconRocha className="h-5 w-5 shrink-0 text-fuchsia-100/90 sm:h-6 sm:w-6" />
         <span className="flex min-w-0 flex-col items-center leading-tight drop-shadow-sm">
-          <span>[ + ROCHA ARMAÇÃO ]</span>
+          <span>[ + ROCHA AMARRAÇÃO ]</span>
           <span className="mt-1 text-xs font-semibold normal-case tracking-normal text-fuchsia-100/85 sm:text-sm">
             {rochaArmacaoLabel}
           </span>
@@ -358,7 +358,7 @@ export const ApontadorHojeResumo = memo(function ApontadorHojeResumo({
           </p>
         </div>
         <div className="min-w-0 text-center">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:text-xs">Rocha Armação</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:text-xs">Rocha Amarração</p>
           <p className="mt-1 text-4xl font-black tabular-nums leading-none text-fuchsia-300 sm:text-5xl sm:leading-none md:text-6xl">
             {rochaArmacao}
           </p>
@@ -410,7 +410,7 @@ export const ApontadorHojeResumo = memo(function ApontadorHojeResumo({
                       ? "Estéril"
                       : item.tipo === "rocha_pulmao"
                         ? "Rocha Pulmão"
-                        : "Rocha Armação"}
+                        : "Rocha Amarração"}
                   </span>
                 </div>
                 {typeof onDesfazerLancamento === "function" ? (

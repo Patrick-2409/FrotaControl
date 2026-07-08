@@ -279,7 +279,9 @@ const materialLabel = (vehicle) => {
     parts.push(`Rocha Pulmão ${Number(capacidadeRochaPulmao).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} t`);
   }
   if (transportaRochaArmacao && capacidadeRochaArmacao != null) {
-    parts.push(`Rocha Armação ${Number(capacidadeRochaArmacao).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} t`);
+    parts.push(
+      `Rocha Amarração ${Number(capacidadeRochaArmacao).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} t`
+    );
   }
   return parts.length ? parts.join(" / ") : "Não configurado";
 };

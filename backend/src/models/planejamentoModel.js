@@ -10,16 +10,45 @@ const toYmd = (value) => {
 };
 
 const insertPlanejamento = async (
-  { empresa_id, data_inicio, data_fim, meta_esteril_ton, meta_rocha_ton },
+  {
+    empresa_id,
+    data_inicio,
+    data_fim,
+    meta_esteril_ton,
+    meta_rocha_ton = null,
+    meta_rocha_pulmao_ton = 0,
+    meta_rocha_armacao_ton = 0,
+  },
   db = pool
 ) => {
   const di = toYmd(data_inicio);
   const df = toYmd(data_fim);
+  const rochaPulmaoTon = Number(meta_rocha_pulmao_ton || 0);
+  const rochaArmacaoTon = Number(meta_rocha_armacao_ton || 0);
+  const rochaTotalTon =
+    meta_rocha_ton == null ? rochaPulmaoTon + rochaArmacaoTon : Number(meta_rocha_ton || 0);
   const { rows } = await db.query(
-    `INSERT INTO planejamento_semanal (empresa_id, data_inicio, data_fim, meta_esteril_ton, meta_rocha_ton)
-     VALUES ($1, $2::date, $3::date, $4, $5)
-     RETURNING id, empresa_id, data_inicio, data_fim, meta_esteril_ton, meta_rocha_ton, created_at`,
-    [empresa_id, di, df, meta_esteril_ton, meta_rocha_ton]
+    `INSERT INTO planejamento_semanal (
+       empresa_id,
+       data_inicio,
+       data_fim,
+       meta_esteril_ton,
+       meta_rocha_ton,
+       meta_rocha_pulmao_ton,
+       meta_rocha_armacao_ton
+     )
+     VALUES ($1, $2::date, $3::date, $4, $5, $6, $7)
+     RETURNING
+       id,
+       empresa_id,
+       data_inicio,
+       data_fim,
+       meta_esteril_ton,
+       meta_rocha_ton,
+       meta_rocha_pulmao_ton,
+       meta_rocha_armacao_ton,
+       created_at`,
+    [empresa_id, di, df, meta_esteril_ton, rochaTotalTon, rochaPulmaoTon, rochaArmacaoTon]
   );
   return rows[0];
 };
@@ -27,7 +56,16 @@ const insertPlanejamento = async (
 /** Planejamento cuja janela [data_inicio, data_fim] inclui a data corrente (servidor), o mais recente por created_at. */
 const getPlanejamentoAtual = async (empresa_id, db = pool) => {
   const { rows } = await db.query(
-    `SELECT id, empresa_id, data_inicio, data_fim, meta_esteril_ton, meta_rocha_ton, created_at
+    `SELECT
+       id,
+       empresa_id,
+       data_inicio,
+       data_fim,
+       meta_esteril_ton,
+       meta_rocha_ton,
+       meta_rocha_pulmao_ton,
+       meta_rocha_armacao_ton,
+       created_at
      FROM planejamento_semanal
      WHERE empresa_id = $1
        AND CURRENT_DATE BETWEEN data_inicio AND data_fim

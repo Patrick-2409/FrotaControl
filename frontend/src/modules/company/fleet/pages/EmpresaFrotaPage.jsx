@@ -636,7 +636,7 @@ export default function EmpresaFrotaPage() {
                               }))
                             }
                           />
-                          Transporta rocha armação
+                          Transporta rocha amarração
                         </label>
                         <input
                           inputMode="decimal"

@@ -457,9 +457,16 @@ const initDb = async () => {
       data_fim DATE NOT NULL,
       meta_esteril_ton NUMERIC(12, 2) NOT NULL DEFAULT 0,
       meta_rocha_ton NUMERIC(12, 2) NOT NULL DEFAULT 0,
+      meta_rocha_pulmao_ton NUMERIC(12, 2) NOT NULL DEFAULT 0,
+      meta_rocha_armacao_ton NUMERIC(12, 2) NOT NULL DEFAULT 0,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       CHECK (data_inicio <= data_fim),
-      CHECK (meta_esteril_ton >= 0 AND meta_rocha_ton >= 0)
+      CHECK (
+        meta_esteril_ton >= 0
+        AND meta_rocha_ton >= 0
+        AND meta_rocha_pulmao_ton >= 0
+        AND meta_rocha_armacao_ton >= 0
+      )
     );
     CREATE INDEX IF NOT EXISTS idx_planejamento_empresa_datas ON planejamento_semanal (empresa_id, data_inicio, data_fim);
 
@@ -544,6 +551,40 @@ const initDb = async () => {
     );
     CREATE INDEX IF NOT EXISTS idx_veiculo_manut_empresa ON veiculo_manutencoes (empresa_id, data_servico DESC);
     CREATE INDEX IF NOT EXISTS idx_veiculo_manut_veiculo ON veiculo_manutencoes (veiculo_id, data_servico DESC);
+  `);
+
+  await pool.query(`
+    ALTER TABLE planejamento_semanal
+      ADD COLUMN IF NOT EXISTS meta_rocha_pulmao_ton NUMERIC(12, 2) NOT NULL DEFAULT 0;
+    ALTER TABLE planejamento_semanal
+      ADD COLUMN IF NOT EXISTS meta_rocha_armacao_ton NUMERIC(12, 2) NOT NULL DEFAULT 0;
+
+    UPDATE planejamento_semanal
+    SET meta_rocha_armacao_ton = COALESCE(meta_rocha_ton, 0)
+    WHERE COALESCE(meta_rocha_ton, 0) > 0
+      AND COALESCE(meta_rocha_pulmao_ton, 0) = 0
+      AND COALESCE(meta_rocha_armacao_ton, 0) = 0;
+
+    UPDATE planejamento_semanal
+    SET meta_rocha_ton = COALESCE(meta_rocha_pulmao_ton, 0) + COALESCE(meta_rocha_armacao_ton, 0)
+    WHERE meta_rocha_ton IS DISTINCT FROM COALESCE(meta_rocha_pulmao_ton, 0) + COALESCE(meta_rocha_armacao_ton, 0);
+
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'planejamento_semanal_meta_split_chk'
+      ) THEN
+        ALTER TABLE planejamento_semanal
+          ADD CONSTRAINT planejamento_semanal_meta_split_chk
+          CHECK (
+            meta_esteril_ton >= 0
+            AND meta_rocha_ton >= 0
+            AND meta_rocha_pulmao_ton >= 0
+            AND meta_rocha_armacao_ton >= 0
+          );
+      END IF;
+    END
+    $$;
   `);
 
   await pool.query(`

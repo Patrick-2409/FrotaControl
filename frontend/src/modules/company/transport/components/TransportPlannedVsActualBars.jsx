@@ -40,26 +40,32 @@ function TransportPlannedVsActualBars({ comparacao, materialFilter = "todos" }) 
   const rows = useMemo(() => {
     if (!comparacao) return [];
     const pe = Number(comparacao.planejado_esteril || 0);
-    const pr = Number(comparacao.planejado_rocha || 0);
+    const prLegacy = Number(comparacao.planejado_rocha || 0);
+    const prp = Number(comparacao.planejado_rocha_pulmao || 0);
+    let pra = Number((comparacao.planejado_rocha_amarracao ?? comparacao.planejado_rocha_armacao) || 0);
+    if (prp + pra <= 0 && prLegacy > 0) {
+      pra = prLegacy;
+    }
+    const pr = prp + pra;
     const ee = Number(comparacao.executado_esteril || 0);
     const erp = Number(comparacao.executado_rocha_pulmao || 0);
-    const era = Number(comparacao.executado_rocha_armacao || 0);
+    const era = Number((comparacao.executado_rocha_amarracao ?? comparacao.executado_rocha_armacao) || 0);
     const er = Number(comparacao.executado_rocha || 0);
     const baseRows = [
       { key: "esteril", label: "Estéril", plan: pe, exec: ee, pct: Number(comparacao.percentual_esteril ?? 0) },
       {
         key: "rocha_pulmao",
         label: "Rocha Pulmão",
-        plan: pr,
+        plan: prp,
         exec: erp,
         pct: Number(comparacao.percentual_rocha_pulmao ?? 0),
       },
       {
         key: "rocha_armacao",
-        label: "Rocha Armação",
-        plan: pr,
+        label: "Rocha Amarração",
+        plan: pra,
         exec: era,
-        pct: Number(comparacao.percentual_rocha_armacao ?? 0),
+        pct: Number(comparacao.percentual_rocha_amarracao ?? comparacao.percentual_rocha_armacao ?? 0),
       },
       {
         key: "total",

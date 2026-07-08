@@ -195,7 +195,11 @@ const queryTransportData = async (empresaId, bounds) => {
       [empresaId, bounds.start, bounds.end]
     ),
     pool.query(
-      `SELECT meta_esteril_ton, meta_rocha_ton
+      `SELECT
+         meta_esteril_ton,
+         meta_rocha_ton,
+         meta_rocha_pulmao_ton,
+         meta_rocha_armacao_ton
        FROM planejamento_semanal
        WHERE empresa_id = $1
          AND data_inicio <= $2::date
@@ -206,7 +210,16 @@ const queryTransportData = async (empresaId, bounds) => {
     ),
   ]);
 
-  const metaTotal = planRows[0] ? num(planRows[0].meta_esteril_ton) + num(planRows[0].meta_rocha_ton) : null;
+  const metaTotal = (() => {
+    if (!planRows[0]) return null;
+    const metaEsteril = num(planRows[0].meta_esteril_ton);
+    const metaRochaPulmao = num(planRows[0].meta_rocha_pulmao_ton);
+    let metaRochaAmarracao = num(planRows[0].meta_rocha_armacao_ton);
+    if (metaRochaPulmao + metaRochaAmarracao <= 0) {
+      metaRochaAmarracao = num(planRows[0].meta_rocha_ton);
+    }
+    return metaEsteril + metaRochaPulmao + metaRochaAmarracao;
+  })();
   const atingimento = metaTotal && metaTotal > 0 ? pct((totalTon / metaTotal) * 100) : null;
 
   return {

@@ -16,13 +16,47 @@ const planejamentoBodySchema = z
     data_inicio: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     data_fim: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     meta_esteril_ton: z.coerce.number().nonnegative(),
-    meta_rocha_ton: z.coerce.number().nonnegative(),
+    meta_rocha_ton: z.coerce.number().nonnegative().optional(),
+    meta_rocha_pulmao_ton: z.coerce.number().nonnegative().optional(),
+    meta_rocha_amarracao_ton: z.coerce.number().nonnegative().optional(),
+    meta_rocha_armacao_ton: z.coerce.number().nonnegative().optional(),
     empresa_id: z.coerce.number().int().positive().optional(),
   })
   .strict()
   .refine((d) => d.data_inicio <= d.data_fim, {
     message: "data_inicio deve ser anterior ou igual a data_fim.",
   });
+
+const asNonNegativeNumber = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return n;
+};
+
+const resolveRochaPlanMeta = (source = {}) => {
+  const legacy = asNonNegativeNumber(source.meta_rocha_ton);
+  const pulmao = asNonNegativeNumber(source.meta_rocha_pulmao_ton);
+  let amarracao = asNonNegativeNumber(source.meta_rocha_amarracao_ton ?? source.meta_rocha_armacao_ton);
+  if (pulmao + amarracao <= 0 && legacy > 0) {
+    amarracao = legacy;
+  }
+  const total = pulmao + amarracao;
+  return {
+    meta_rocha_ton: total,
+    meta_rocha_pulmao_ton: pulmao,
+    meta_rocha_armacao_ton: amarracao,
+    meta_rocha_amarracao_ton: amarracao,
+  };
+};
+
+const serializePlanejamento = (plan) => {
+  if (!plan) return null;
+  const metaRocha = resolveRochaPlanMeta(plan);
+  return {
+    ...plan,
+    ...metaRocha,
+  };
+};
 
 const dashboardPeriodoSchema = z.enum(["dia", "semana", "mes", "ano"]).optional();
 
@@ -502,13 +536,17 @@ const postPlanejamento = async (req, res) => {
     });
   }
 
-  const { empresa_id: _ignoredEmpresaId, ...payload } = parsed.data;
+  const { empresa_id: _ignoredEmpresaId, data_inicio, data_fim, meta_esteril_ton, ...metaRaw } = parsed.data;
+  const metaRocha = resolveRochaPlanMeta(metaRaw);
   const row = await transportSvc.insertPlanejamento({
     empresa_id,
-    ...payload,
+    data_inicio,
+    data_fim,
+    meta_esteril_ton,
+    ...metaRocha,
   });
 
-  return res.status(201).json({ success: true, planejamento: row });
+  return res.status(201).json({ success: true, planejamento: serializePlanejamento(row) });
 };
 
 const getPlanejamentoAtualHandler = async (req, res) => {
@@ -521,7 +559,7 @@ const getPlanejamentoAtualHandler = async (req, res) => {
     });
   }
   const planejamento = await transportSvc.getPlanejamentoAtual(empresa_id);
-  return res.json({ planejamento });
+  return res.json({ planejamento: serializePlanejamento(planejamento) });
 };
 
 const getViagensComparacao = async (req, res) => {
@@ -536,13 +574,18 @@ const getViagensComparacao = async (req, res) => {
 
   const empty = () => ({
     planejado_esteril: 0,
+    planejado_rocha_pulmao: 0,
+    planejado_rocha_amarracao: 0,
+    planejado_rocha_armacao: 0,
     planejado_rocha: 0,
     executado_esteril: 0,
     executado_rocha_pulmao: 0,
+    executado_rocha_amarracao: 0,
     executado_rocha_armacao: 0,
     executado_rocha: 0,
     percentual_esteril: 0,
     percentual_rocha_pulmao: 0,
+    percentual_rocha_amarracao: 0,
     percentual_rocha_armacao: 0,
     percentual_rocha: 0,
     percentual_total: 0,
@@ -563,7 +606,10 @@ const getViagensComparacao = async (req, res) => {
   const row = await transportSvc.getViagensResumoProducao(empresa_id, bounds);
   const toNum = (v) => (v == null ? 0 : Number(v));
   const pe = toNum(plan.meta_esteril_ton);
-  const pr = toNum(plan.meta_rocha_ton);
+  const metaRocha = resolveRochaPlanMeta(plan);
+  const prp = toNum(metaRocha.meta_rocha_pulmao_ton);
+  const pra = toNum(metaRocha.meta_rocha_amarracao_ton);
+  const pr = prp + pra;
   const ee = toNum(row.total_toneladas_esteril);
   const erp = toNum(row.total_toneladas_rocha_pulmao);
   const era = toNum(row.total_toneladas_rocha_armacao);
@@ -574,14 +620,19 @@ const getViagensComparacao = async (req, res) => {
 
   return res.json({
     planejado_esteril: pe,
+    planejado_rocha_pulmao: prp,
+    planejado_rocha_amarracao: pra,
+    planejado_rocha_armacao: pra,
     planejado_rocha: pr,
     executado_esteril: ee,
     executado_rocha_pulmao: erp,
+    executado_rocha_amarracao: era,
     executado_rocha_armacao: era,
     executado_rocha: er,
     percentual_esteril: pct(ee, pe),
-    percentual_rocha_pulmao: pct(erp, pr),
-    percentual_rocha_armacao: pct(era, pr),
+    percentual_rocha_pulmao: pct(erp, prp),
+    percentual_rocha_amarracao: pct(era, pra),
+    percentual_rocha_armacao: pct(era, pra),
     percentual_rocha: pct(er, pr),
     percentual_total: planejTotal > 0 ? (execTotal / planejTotal) * 100 : 0,
   });
@@ -670,7 +721,8 @@ const dashboardAlertas = async (req, res) => {
     if (boundsPlan?.start && boundsPlan?.end) {
       const row = await transportSvc.getViagensResumoProducao(empresa_id, boundsPlan);
       const pe = toNum(plan.meta_esteril_ton);
-      const pr = toNum(plan.meta_rocha_ton);
+      const metaRocha = resolveRochaPlanMeta(plan);
+      const pr = toNum(metaRocha.meta_rocha_ton);
       const ee = toNum(row.total_toneladas_esteril);
       const er = toNum(row.total_toneladas_rocha);
       const planejTotal = pe + pr;

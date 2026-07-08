@@ -49,7 +49,7 @@ function getTransportCount(row, material = "todos") {
 function materialTitulo(material) {
   if (material === "esteril") return "Estéril";
   if (material === "rocha_pulmao") return "Rocha Pulmão";
-  if (material === "rocha_armacao") return "Rocha Armação";
+  if (material === "rocha_armacao") return "Rocha Amarração";
   return "Todos os materiais";
 }
 
@@ -168,13 +168,18 @@ function EmpresaTransportePageContent() {
       return {
         ...tr.comparacao,
         planejado_esteril: 0,
-        planejado_rocha: tr.comparacao.planejado_rocha,
+        planejado_rocha_pulmao: tr.comparacao.planejado_rocha_pulmao,
+        planejado_rocha_amarracao: 0,
+        planejado_rocha_armacao: 0,
+        planejado_rocha: tr.comparacao.planejado_rocha_pulmao,
         executado_esteril: 0,
         executado_rocha_pulmao: tr.comparacao.executado_rocha_pulmao,
+        executado_rocha_amarracao: 0,
         executado_rocha_armacao: 0,
         executado_rocha: tr.comparacao.executado_rocha_pulmao,
         percentual_esteril: 0,
         percentual_rocha_pulmao: tr.comparacao.percentual_rocha_pulmao,
+        percentual_rocha_amarracao: 0,
         percentual_rocha_armacao: 0,
         percentual_rocha: tr.comparacao.percentual_rocha_pulmao,
         percentual_total: tr.comparacao.percentual_rocha_pulmao,
@@ -183,16 +188,21 @@ function EmpresaTransportePageContent() {
     return {
       ...tr.comparacao,
       planejado_esteril: 0,
-      planejado_rocha: tr.comparacao.planejado_rocha,
+      planejado_rocha_pulmao: 0,
+      planejado_rocha_amarracao: tr.comparacao.planejado_rocha_amarracao,
+      planejado_rocha_armacao: tr.comparacao.planejado_rocha_amarracao,
+      planejado_rocha: tr.comparacao.planejado_rocha_amarracao,
       executado_esteril: 0,
       executado_rocha_pulmao: 0,
-      executado_rocha_armacao: tr.comparacao.executado_rocha_armacao,
-      executado_rocha: tr.comparacao.executado_rocha_armacao,
+      executado_rocha_amarracao: tr.comparacao.executado_rocha_amarracao,
+      executado_rocha_armacao: tr.comparacao.executado_rocha_amarracao,
+      executado_rocha: tr.comparacao.executado_rocha_amarracao,
       percentual_esteril: 0,
       percentual_rocha_pulmao: 0,
-      percentual_rocha_armacao: tr.comparacao.percentual_rocha_armacao,
-      percentual_rocha: tr.comparacao.percentual_rocha_armacao,
-      percentual_total: tr.comparacao.percentual_rocha_armacao,
+      percentual_rocha_amarracao: tr.comparacao.percentual_rocha_amarracao,
+      percentual_rocha_armacao: tr.comparacao.percentual_rocha_amarracao,
+      percentual_rocha: tr.comparacao.percentual_rocha_amarracao,
+      percentual_total: tr.comparacao.percentual_rocha_amarracao,
     };
   }, [materialTab, tr.comparacao]);
 
@@ -280,7 +290,7 @@ function EmpresaTransportePageContent() {
     materialTab === "todos" || materialTab === "rocha_armacao"
       ? {
           key: "rocha_armacao",
-          label: "Rocha Armação",
+          label: "Rocha Amarração",
           labelClass: "text-fuchsia-200/80",
           toneladas: viagensResumoFiltrado.total_toneladas_rocha_armacao,
           viagens: viagensResumoFiltrado.total_viagens_rocha_armacao,
@@ -416,7 +426,7 @@ function EmpresaTransportePageContent() {
             { id: "todos", label: "Todos" },
             { id: "esteril", label: "Estéril" },
             { id: "rocha_pulmao", label: "Rocha Pulmão" },
-            { id: "rocha_armacao", label: "Rocha Armação" },
+            { id: "rocha_armacao", label: "Rocha Amarração" },
           ].map((t) => (
             <button
               key={t.id}
@@ -641,14 +651,27 @@ function EmpresaTransportePageContent() {
             />
           </label>
           <label className="flex flex-col gap-1.5 text-sm text-zinc-300">
-            <span className="fc-erp-eyebrow">Meta rocha (t)</span>
+            <span className="fc-erp-eyebrow">Meta rocha pulmão (t)</span>
             <input
               type="number"
               min={0}
               step="0.01"
               className="fc-input rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100"
-              value={tr.planForm.meta_rocha_ton}
-              onChange={(ev) => tr.setPlanForm((p) => ({ ...p, meta_rocha_ton: ev.target.value }))}
+              value={tr.planForm.meta_rocha_pulmao_ton}
+              onChange={(ev) => tr.setPlanForm((p) => ({ ...p, meta_rocha_pulmao_ton: ev.target.value }))}
+            />
+          </label>
+          <label className="flex flex-col gap-1.5 text-sm text-zinc-300">
+            <span className="fc-erp-eyebrow">Meta rocha amarração (t)</span>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              className="fc-input rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100"
+              value={tr.planForm.meta_rocha_amarracao_ton}
+              onChange={(ev) =>
+                tr.setPlanForm((p) => ({ ...p, meta_rocha_amarracao_ton: ev.target.value }))
+              }
             />
           </label>
           <div className="flex flex-wrap gap-2 sm:col-span-2">
@@ -698,7 +721,7 @@ function EmpresaTransportePageContent() {
       <ConfirmActionModal
         open={confirmClearPlanOpen}
         title="Zerar metas do planejamento ativo"
-        description="As metas de estéril e rocha do período atual serão zeradas."
+        description="As metas de estéril, rocha pulmão e rocha amarração do período atual serão zeradas."
         consequence="A referência de desempenho do período ficará em zero até novo preenchimento."
         confirmLabel="Zerar metas"
         confirmLoadingLabel="Zerando..."

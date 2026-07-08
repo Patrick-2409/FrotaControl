@@ -139,7 +139,7 @@ function buildOperationalPreviewEntries(records) {
   return merged;
 }
 
-/** Uma marca ✕ por célula — cada viagem (registo) ocupa uma coluna; no máximo um ✕ entre Estéril / Rocha armação / Rocha pulmão (igual ao PDF). */
+/** Uma marca ✕ por célula — cada viagem (registo) ocupa uma coluna; no máximo um ✕ entre Estéril / Rocha amarração / Rocha pulmão (igual ao PDF). */
 function TallyMark({ on }) {
   return <span className="inline-block min-h-[1.1rem] min-w-[1.1rem] text-center font-bold">{on ? "\u2715" : "\u00a0"}</span>;
 }
@@ -234,7 +234,7 @@ function RomaneioGroupTable({ group }) {
             {colMarks("e")}
           </tr>
           <tr>
-            <td className="whitespace-nowrap text-[10px] font-bold">Rocha (armação)</td>
+            <td className="whitespace-nowrap text-[10px] font-bold">Rocha (amarração)</td>
             {colMarks("ra")}
           </tr>
           <tr>

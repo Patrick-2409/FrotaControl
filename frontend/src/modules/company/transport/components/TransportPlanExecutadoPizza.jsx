@@ -22,12 +22,12 @@ const isMaterialVisible = (filter, id) => filter === "todos" || filter === id;
 function centroLabelByFilter(materialFilter) {
   if (materialFilter === "esteril") return "Estéril";
   if (materialFilter === "rocha_pulmao") return "Rocha Pulmão";
-  if (materialFilter === "rocha_armacao") return "Rocha Armação";
+  if (materialFilter === "rocha_armacao") return "Rocha Amarração";
   return "Total";
 }
 
 /**
- * Donut: distribuição Estéril vs Rocha Pulmão vs Rocha Armação (toneladas do período).
+ * Donut: distribuição Estéril vs Rocha Pulmão vs Rocha Amarração (toneladas do período).
  */
 function TransportPlanExecutadoPizza({
   totalToneladasEsteril,
@@ -162,7 +162,7 @@ function TransportPlanExecutadoPizza({
                 showEsteril || showRochaPulmao ? "mt-1 tabular-nums leading-relaxed" : "tabular-nums leading-relaxed"
               }
             >
-              <span className="text-zinc-400">Rocha Armação:</span>{" "}
+              <span className="text-zinc-400">Rocha Amarração:</span>{" "}
               <span className="font-semibold text-zinc-100">{pctLine(percentRochaArmacao)}</span>
             </p>
           ) : null}
@@ -198,7 +198,7 @@ function TransportPlanExecutadoPizza({
               🟣
             </span>
             <span>
-              <span className="font-semibold text-zinc-100">Rocha Armação:</span>{" "}
+              <span className="font-semibold text-zinc-100">Rocha Amarração:</span>{" "}
               <span className="tabular-nums text-zinc-300">{fmtTonLegend(rochaArmacao)} t</span>
             </span>
           </li>

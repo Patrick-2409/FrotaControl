@@ -78,7 +78,14 @@ export function useEmpresaExecutiveStats() {
     const tonRocha = Number(viagens?.total_toneladas_rocha || 0);
     const toneladas = tonEsteril + tonRocha;
     const metaEsteril = Number(planejamento?.meta_esteril_ton || 0);
-    const metaRocha = Number(planejamento?.meta_rocha_ton || 0);
+    const metaRochaPulmao = Number(planejamento?.meta_rocha_pulmao_ton || 0);
+    let metaRochaAmarracao = Number(
+      planejamento?.meta_rocha_amarracao_ton ?? planejamento?.meta_rocha_armacao_ton ?? 0
+    );
+    if (metaRochaPulmao + metaRochaAmarracao <= 0) {
+      metaRochaAmarracao = Number(planejamento?.meta_rocha_ton || 0);
+    }
+    const metaRocha = metaRochaPulmao + metaRochaAmarracao;
     const metaTotal = metaEsteril + metaRocha;
     const atingimento =
       periodo === "semana" && metaTotal > 0 ? (toneladas / metaTotal) * 100 : null;
