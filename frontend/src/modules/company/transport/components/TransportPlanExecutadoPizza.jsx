@@ -26,6 +26,10 @@ function centroLabelByFilter(materialFilter) {
   return "Total";
 }
 
+function isCentroLabelLong(materialFilter) {
+  return materialFilter === "rocha_armacao";
+}
+
 /**
  * Donut: distribuição Estéril vs Rocha Pulmão vs Rocha Amarração (toneladas do período).
  */
@@ -98,6 +102,7 @@ function TransportPlanExecutadoPizza({
   const showRochaPulmao = isMaterialVisible(materialFilter, "rocha_pulmao");
   const showRochaArmacao = isMaterialVisible(materialFilter, "rocha_armacao");
   const centroLabel = centroLabelByFilter(materialFilter);
+  const centroLabelLong = isCentroLabelLong(materialFilter);
   const centroValor =
     materialFilter === "esteril"
       ? esteril
@@ -133,7 +138,13 @@ function TransportPlanExecutadoPizza({
               <span className="text-center text-xl font-black tabular-nums leading-none tracking-tight text-zinc-50 sm:text-3xl">
                 {fmtTonCenter(centroValor)} t
               </span>
-              <span className="mt-1 text-[10px] font-medium uppercase tracking-wide text-zinc-500 sm:text-xs">
+              <span
+                className={`mt-1 text-center font-medium text-zinc-500 ${
+                  centroLabelLong
+                    ? "max-w-[4.9rem] text-[9px] leading-tight tracking-[0.01em] sm:max-w-[6.5rem] sm:text-[11px]"
+                    : "text-[10px] uppercase tracking-wide sm:text-xs"
+                }`}
+              >
                 {centroLabel}
               </span>
             </div>

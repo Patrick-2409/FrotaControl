@@ -272,13 +272,22 @@ const listRecentViagensHojeEmpresaSaoPaulo = async (empresa_id, limit = 5, db = 
 const listRecentViagensHojeApontadorSaoPaulo = async (empresa_id, apontador_id, limit = 5, db = pool) => {
   const parsedLimit = Math.min(Math.max(Number(limit) || 5, 1), 20);
   const { rows } = await db.query(
-    `SELECT id, veiculo_id, motorista_id, tipo, marcacao
-     FROM viagens
-     WHERE empresa_id = $1
-       AND apontador_id = $2
-       AND (marcacao AT TIME ZONE 'America/Sao_Paulo')::date
+    `SELECT
+       vi.id,
+       vi.veiculo_id,
+       vi.motorista_id,
+       vi.tipo,
+       vi.marcacao,
+       v.codigo_operacional AS codigo_apontador
+     FROM viagens vi
+     LEFT JOIN veiculos v
+       ON v.id = vi.veiculo_id
+      AND v.empresa_id = vi.empresa_id
+     WHERE vi.empresa_id = $1
+       AND vi.apontador_id = $2
+       AND (vi.marcacao AT TIME ZONE 'America/Sao_Paulo')::date
          = (CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')::date
-     ORDER BY marcacao DESC
+     ORDER BY vi.marcacao DESC
      LIMIT $3`,
     [empresa_id, apontador_id, parsedLimit]
   );

@@ -277,6 +277,10 @@ const getContagemHojeApontador = async (req, res) => {
     ultimos_lancamentos: (recentes || []).map((item) => ({
       id: item.id,
       veiculo_id: item.veiculo_id,
+      veiculo_codigo:
+        Number.isFinite(Number(item.codigo_apontador)) && Number(item.codigo_apontador) > 0
+          ? String(Number(item.codigo_apontador)).padStart(2, "0")
+          : null,
       motorista_id: item.motorista_id,
       tipo: item.tipo,
       timestamp: item.marcacao instanceof Date ? item.marcacao.getTime() : new Date(item.marcacao).getTime(),

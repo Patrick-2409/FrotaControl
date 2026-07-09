@@ -37,6 +37,11 @@ const EmpresaAlertasPage = lazy(() => import("./modules/company/alerts/pages/Emp
 const InteligenciaPage = lazy(() => import("./pages/inteligencia.jsx"));
 const RelatorioInteligenciaPage = lazy(() => import("./pages/relatorio-inteligencia.jsx"));
 
+const API_ERROR_TOAST_BURST_WINDOW_MS = 12_000;
+const API_ERROR_TOAST_MAX_BURST = 2;
+const API_ERROR_TOAST_COOLDOWN_MS = 6_000;
+const API_TIMEOUT_TOAST_COOLDOWN_MS = 15_000;
+
 function Protected({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <ScreenLoading />;
@@ -85,6 +90,13 @@ function App() {
   const [toasts, setToasts] = useState([]);
   const [sessionExpiredNotice, setSessionExpiredNotice] = useState("");
   const toastTimersRef = useRef(new Map());
+  const apiErrorToastMetaRef = useRef({
+    lastMessage: "",
+    lastAt: 0,
+    timeoutLastAt: 0,
+    burstWindowStartedAt: 0,
+    burstCount: 0,
+  });
 
   const refreshPending = async () => setPendingCount(await countPending());
 
@@ -133,10 +145,34 @@ function App() {
       }
     };
     const onApiError = (ev) => {
+      const message = typeof ev?.detail === "string" ? ev.detail.trim() : "";
+      if (!message) return;
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+
+      const now = Date.now();
+      const meta = apiErrorToastMetaRef.current;
+      if (!meta.burstWindowStartedAt || now - meta.burstWindowStartedAt > API_ERROR_TOAST_BURST_WINDOW_MS) {
+        meta.burstWindowStartedAt = now;
+        meta.burstCount = 0;
+      }
+
+      const normalized = message.toLowerCase();
+      const isTimeoutMessage = /tempo limite|tempo de espera|esgotado|timeout/.test(normalized);
+      const sameMessageCooldownMs = isTimeoutMessage ? API_TIMEOUT_TOAST_COOLDOWN_MS : API_ERROR_TOAST_COOLDOWN_MS;
+
+      if (message === meta.lastMessage && now - meta.lastAt < sameMessageCooldownMs) return;
+      if (isTimeoutMessage && now - meta.timeoutLastAt < API_TIMEOUT_TOAST_COOLDOWN_MS) return;
+      if (meta.burstCount >= API_ERROR_TOAST_MAX_BURST && now - meta.lastAt < API_ERROR_TOAST_COOLDOWN_MS) return;
+
+      meta.lastMessage = message;
+      meta.lastAt = now;
+      meta.burstCount += 1;
+      if (isTimeoutMessage) meta.timeoutLastAt = now;
+
       const id = generateId();
       setToasts((prev) => [
         ...prev,
-        { id, message: ev.detail, type: navigator.onLine ? "error" : "warning" },
+        { id, message, type: navigator.onLine ? "error" : "warning" },
       ]);
       setTimeout(() => {
         setToasts((prev) => prev.filter((x) => x.id !== id));

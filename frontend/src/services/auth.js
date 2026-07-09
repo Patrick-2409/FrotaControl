@@ -119,8 +119,10 @@ export const AuthProvider = ({ children }) => {
   );
 
   const refreshUser = useCallback(async (options = {}) => {
+    const skipGlobalErrorToast =
+      options.skipGlobalErrorToast === undefined ? true : Boolean(options.skipGlobalErrorToast);
     const { data } = await api.get("/auth/me", {
-      skipGlobalErrorToast: Boolean(options.skipGlobalErrorToast),
+      skipGlobalErrorToast,
       skipErrorLog: Boolean(options.skipErrorLog),
     });
     const normalized = normalizeUser(data);

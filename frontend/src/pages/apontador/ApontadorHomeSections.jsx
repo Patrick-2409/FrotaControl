@@ -36,6 +36,13 @@ const formatCapacidadeTon = (value) => {
   return `${n.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} t`;
 };
 
+const formatLancamentoVeiculo = (item) => {
+  const codigo = String(item?.veiculo_codigo ?? "").trim();
+  if (codigo) return `#${codigo}`;
+  const id = Number(item?.veiculo_id);
+  return Number.isFinite(id) && id > 0 ? `ID ${id}` : "ID --";
+};
+
 export const ApontadorRegistradoFlash = memo(function ApontadorRegistradoFlash({ open, visibleIn, message }) {
   if (!open) return null;
   const text = typeof message === "string" && message.trim() ? message.trim() : "+1 ✔";
@@ -395,10 +402,13 @@ export const ApontadorHojeResumo = memo(function ApontadorHojeResumo({
                 key={String(item.id)}
                 className="flex items-center justify-between gap-2 rounded-lg border border-slate-600/35 bg-slate-900/45 px-3 py-2 text-xs"
               >
-                <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
-                  <span className="font-medium text-slate-200">{item.hora}</span>
+                <div className="flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden">
+                  <span className="shrink-0 rounded-md border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-bold text-amber-100">
+                    {formatLancamentoVeiculo(item)}
+                  </span>
+                  <span className="shrink-0 font-medium text-slate-200">{item.hora}</span>
                   <span
-                    className={`font-semibold ${
+                    className={`min-w-0 truncate font-semibold ${
                       item.tipo === "esteril"
                         ? "text-cyan-300"
                         : item.tipo === "rocha_pulmao"

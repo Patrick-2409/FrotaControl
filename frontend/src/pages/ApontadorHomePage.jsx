@@ -48,6 +48,7 @@ export default function ApontadorHomePage() {
   const [desfazendoLancamentoId, setDesfazendoLancamentoId] = useState(null);
   const flashTimeoutsRef = useRef([]);
   const diaOperacionalRef = useRef(getDiaOperacionalSaoPaulo());
+  const refreshContagemInFlightRef = useRef(false);
 
   const clearFlashTimeouts = useCallback(() => {
     flashTimeoutsRef.current.forEach((id) => clearTimeout(id));
@@ -93,11 +94,14 @@ export default function ApontadorHomePage() {
           if (!tipo || !Number.isFinite(timestamp)) return null;
           const viagemId = Number(item?.viagem_id ?? item?.id);
           const veiculoId = Number(item?.veiculo_id);
+          const veiculoCodigo =
+            item?.veiculo_codigo == null ? "" : String(item.veiculo_codigo).trim();
           const motoristaId = Number(item?.motorista_id);
           return {
             id: item?.id ?? `local-${timestamp}-${tipo}-${index}`,
             viagem_id: Number.isFinite(viagemId) && viagemId > 0 ? viagemId : null,
             veiculo_id: Number.isFinite(veiculoId) && veiculoId > 0 ? veiculoId : null,
+            veiculo_codigo: veiculoCodigo || null,
             motorista_id: Number.isFinite(motoristaId) && motoristaId > 0 ? motoristaId : null,
             local_id: item?.local_id || null,
             tonDelta: Number(item?.tonDelta) > 0 ? Number(item.tonDelta) : 0,
@@ -113,11 +117,12 @@ export default function ApontadorHomePage() {
   );
 
   const pushLancamentoLocal = useCallback(
-    ({ tipo, timestamp, localId, veiculo_id, motorista_id, tonDelta }) => {
+    ({ tipo, timestamp, localId, veiculo_id, veiculo_codigo, motorista_id, tonDelta }) => {
       const next = {
         id: localId || `local-${timestamp}-${tipo}`,
         viagem_id: null,
         veiculo_id: Number(veiculo_id) || null,
+        veiculo_codigo: veiculo_codigo ? String(veiculo_codigo) : null,
         motorista_id: Number(motorista_id) || null,
         local_id: localId || null,
         tonDelta: Number(tonDelta) > 0 ? Number(tonDelta) : 0,
@@ -143,8 +148,13 @@ export default function ApontadorHomePage() {
   );
 
   const refreshContagemHoje = useCallback(async () => {
+    if (refreshContagemInFlightRef.current) return;
+    refreshContagemInFlightRef.current = true;
     try {
-      const { data } = await api.get("/apontador/viagens/contagem-hoje");
+      const { data } = await api.get("/apontador/viagens/contagem-hoje", {
+        skipGlobalErrorToast: true,
+        skipErrorLog: true,
+      });
       const h = data?.hoje;
       const temSubtiposRocha =
         h?.ton_rocha_pulmao != null || h?.ton_rocha_armacao != null || h?.rocha_pulmao != null || h?.rocha_armacao != null;
@@ -164,6 +174,8 @@ export default function ApontadorHomePage() {
       setUltimosLancamentos(normalizeLancamentos(data?.ultimos_lancamentos));
     } catch {
       /* mantém valores atuais */
+    } finally {
+      refreshContagemInFlightRef.current = false;
     }
   }, [normalizeLancamentos]);
 
@@ -235,7 +247,7 @@ export default function ApontadorHomePage() {
     const id = setInterval(() => {
       void refreshPendentesCount();
       void refreshContagemHoje();
-    }, 3000);
+    }, 8000);
     return () => clearInterval(id);
   }, [refreshPendentesCount, refreshContagemHoje]);
 
@@ -282,7 +294,10 @@ export default function ApontadorHomePage() {
     const load = async () => {
       setLoadingVeiculos(true);
       try {
-        const { data } = await api.get("/apontador/veiculos", { params: { limit: 200, page: 1 } });
+        const { data } = await api.get("/apontador/veiculos", {
+          params: { limit: 200, page: 1 },
+          skipGlobalErrorToast: true,
+        });
         const items = Array.isArray(data?.items) ? data.items : [];
         if (!cancelled) {
           setVeiculos(items.map(mapVeiculoApi));
@@ -601,6 +616,7 @@ export default function ApontadorHomePage() {
         timestamp: ts,
         localId: id_local,
         veiculo_id: viagem.veiculo_id,
+        veiculo_codigo: veiculoSelecionado?.codigoLabel || null,
         motorista_id: viagem.motorista_id,
         tonDelta: capacidadeTipo,
       });
