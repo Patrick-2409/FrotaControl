@@ -76,6 +76,7 @@ test("getPeopleSummary calcula risco de romaneio apenas para motoristas de trans
     assert.match(semRomaneioQuery.sql, /mv\.empresa_id = u\.empresa_id/);
     assert.match(semRomaneioQuery.sql, /INNER JOIN veiculos vt ON vt\.id = uv2\.veiculo_id AND vt\.empresa_id = u\.empresa_id/);
     assert.match(semRomaneioQuery.sql, /= 'transporte'/);
+    assert.match(semRomaneioQuery.sql, /FROM viagens vi/);
 
     const baixaAtividadeQuery = calls.find((c) => /rom_stats/.test(c.sql));
     assert.ok(baixaAtividadeQuery, "esperada query de baixa atividade");
@@ -83,6 +84,14 @@ test("getPeopleSummary calcula risco de romaneio apenas para motoristas de trans
     assert.match(baixaAtividadeQuery.sql, /mv\.empresa_id = u\.empresa_id/);
     assert.match(baixaAtividadeQuery.sql, /INNER JOIN veiculos vt ON vt\.id = uv2\.veiculo_id AND vt\.empresa_id = u\.empresa_id/);
     assert.match(baixaAtividadeQuery.sql, /= 'transporte'/);
+    assert.match(baixaAtividadeQuery.sql, /FROM viagens vi/);
+
+    const romaneios7dQuery = calls.find(
+      (c) => /COUNT\(\*\)::int AS c/.test(c.sql) && /transport_events/.test(c.sql) && !/NOT EXISTS/.test(c.sql)
+    );
+    assert.ok(romaneios7dQuery, "esperada query de contagem consolidada de romaneios");
+    assert.match(romaneios7dQuery.sql, /FROM romaneios r/);
+    assert.match(romaneios7dQuery.sql, /FROM viagens vi/);
   } finally {
     db.pool.query = orig;
     delete require.cache[pathPeople];
@@ -166,6 +175,7 @@ test("getPeopleProductivity usa fallback quando motorista_veiculos ainda nao exi
     assert.strictEqual(rows.length, 1);
     assert.strictEqual(rows[0].nome, "Motorista A");
     assert.ok(calls.length >= 2, "esperada tentativa completa seguida de fallback");
+    assert.ok(calls.some((sql) => /FROM viagens vi/.test(sql)), "esperada agregacao de viagens no ranking");
   } finally {
     db.pool.query = orig;
     delete require.cache[pathPeople];

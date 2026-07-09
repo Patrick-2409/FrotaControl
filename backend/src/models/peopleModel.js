@@ -61,6 +61,42 @@ const USER_PRIMARY_OR_TRANSPORT_VEHICLE_JOIN = `
        LIMIT 1
      ) uv ON true`;
 
+const TRANSPORT_EVENTS_7D_SQL = `
+      SELECT r.usuario_id AS motorista_id, r.data AS evento_at
+      FROM romaneios r
+      WHERE r.empresa_id = $1
+        AND r.data >= NOW() - INTERVAL '7 days'
+      UNION ALL
+      SELECT vi.motorista_id AS motorista_id, vi.marcacao AS evento_at
+      FROM viagens vi
+      WHERE vi.empresa_id = $1
+        AND vi.marcacao >= NOW() - INTERVAL '7 days'
+    `;
+
+const TRANSPORT_EVENTS_14D_SQL = `
+      SELECT r.usuario_id AS motorista_id, r.data AS evento_at
+      FROM romaneios r
+      WHERE r.empresa_id = $1
+        AND r.data >= NOW() - INTERVAL '14 days'
+      UNION ALL
+      SELECT vi.motorista_id AS motorista_id, vi.marcacao AS evento_at
+      FROM viagens vi
+      WHERE vi.empresa_id = $1
+        AND vi.marcacao >= NOW() - INTERVAL '14 days'
+    `;
+
+const transportEventsWindowSql = () => `
+      SELECT r.usuario_id AS usuario_id, r.data AS evento_at
+      FROM romaneios r
+      WHERE r.empresa_id = $1
+        AND r.data >= NOW() - ($2::int * INTERVAL '1 day')
+      UNION ALL
+      SELECT vi.motorista_id AS usuario_id, vi.marcacao AS evento_at
+      FROM viagens vi
+      WHERE vi.empresa_id = $1
+        AND vi.marcacao >= NOW() - ($2::int * INTERVAL '1 day')
+    `;
+
 async function getPeopleSummaryBasic(empresa_id, cause = null) {
   logPeopleSchemaFallback("summary", cause);
   const [rolesRow, rom7Row, pd7Row] = await Promise.all([
@@ -209,8 +245,8 @@ async function getPeopleSummary(empresa_id) {
       { label: "pessoas-summary-cnh" }
     ),
     queryTimed(
-      `SELECT COUNT(*)::int AS c FROM romaneios
-       WHERE empresa_id = $1 AND data >= NOW() - INTERVAL '7 days'`,
+      `SELECT COUNT(*)::int AS c
+       FROM (${TRANSPORT_EVENTS_7D_SQL}) transport_events`,
       [empresa_id],
       { label: "pessoas-summary-rom7" }
     ),
@@ -225,23 +261,26 @@ async function getPeopleSummary(empresa_id) {
        WHERE u.empresa_id = $1 AND u.role = 'MOTORISTA'
          AND ${TRANSPORT_VEHICLE_EXISTS_SQL}
          AND NOT EXISTS (
-           SELECT 1 FROM romaneios r
-           WHERE r.usuario_id = u.id AND r.empresa_id = $1
-             AND r.data >= NOW() - INTERVAL '7 days'
+           SELECT 1
+           FROM (${TRANSPORT_EVENTS_7D_SQL}) transport_events
+           WHERE transport_events.motorista_id = u.id
          )`,
       [empresa_id],
       { label: "pessoas-summary-sem-rom7" }
     ),
     queryTimed(
       `WITH rom_stats AS (
-         SELECT usuario_id,
+         SELECT motorista_id AS usuario_id,
            COUNT(*) FILTER (WHERE data >= NOW() - INTERVAL '7 days')::int AS c7,
            COUNT(*) FILTER (
              WHERE data >= NOW() - INTERVAL '14 days' AND data < NOW() - INTERVAL '7 days'
            )::int AS cprev
-         FROM romaneios
-         WHERE empresa_id = $1 AND data >= NOW() - INTERVAL '14 days'
-         GROUP BY usuario_id
+         FROM (
+           SELECT events.motorista_id,
+             events.evento_at AS data
+           FROM (${TRANSPORT_EVENTS_14D_SQL}) events
+         ) events_window
+         GROUP BY motorista_id
        )
        SELECT COUNT(*)::int AS c
        FROM usuarios u
@@ -304,14 +343,12 @@ async function getPeopleProductivity(empresa_id, { days = 30, limit = 40, with_7
 
   const romAgg = dual
     ? `SELECT usuario_id,
-         COUNT(*) FILTER (WHERE data >= NOW() - ($2::int * INTERVAL '1 day'))::int AS c_d,
-         COUNT(*) FILTER (WHERE data >= NOW() - INTERVAL '7 days')::int AS c_7
-       FROM romaneios
-       WHERE empresa_id = $1 AND data >= NOW() - ($2::int * INTERVAL '1 day')
+         COUNT(*) FILTER (WHERE evento_at >= NOW() - ($2::int * INTERVAL '1 day'))::int AS c_d,
+         COUNT(*) FILTER (WHERE evento_at >= NOW() - INTERVAL '7 days')::int AS c_7
+       FROM (${transportEventsWindowSql()}) transport_events
        GROUP BY usuario_id`
     : `SELECT usuario_id, COUNT(*)::int AS c_d
-       FROM romaneios
-       WHERE empresa_id = $1 AND data >= NOW() - ($2::int * INTERVAL '1 day')
+       FROM (${transportEventsWindowSql()}) transport_events
        GROUP BY usuario_id`;
 
   const pdAgg = dual
