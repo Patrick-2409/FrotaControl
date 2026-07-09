@@ -234,6 +234,13 @@ export default function EmpresaRelatoriosPage() {
     [download, selectedSourceIds]
   );
 
+  const exportWithCurrentFilters = useCallback(
+    async (format) => {
+      await download(format);
+    },
+    [download]
+  );
+
   const quickActions = useMemo(
     () => [
       {
@@ -560,7 +567,7 @@ export default function EmpresaRelatoriosPage() {
           <AccordionSection
             id="relatorios-exportacao"
             title="Exportação"
-            description="Gere PDF/Excel com os registros selecionados."
+            description="Gere PDF/Excel do período ou apenas dos registros selecionados."
             defaultOpenDesktop={false}
             defaultOpenMobile={false}
             className="print:hidden"
@@ -578,13 +585,13 @@ export default function EmpresaRelatoriosPage() {
                   onClick={() => exportWithCurrentSelection("excel")}
                   className="fc-btn rounded-lg border border-emerald-500 px-3 py-2 text-sm text-emerald-300 disabled:opacity-40"
                 >
-                  Exportar selecionados ({selectedSourceIds.length})
+                  Exportar selecionados ({selectedSourceIds.length}) — Excel
                 </button>
               ) : null}
               <button
                 type="button"
                 disabled={Boolean(exporting) || !hasDataToExport}
-                onClick={() => exportWithCurrentSelection("pdf")}
+                onClick={() => exportWithCurrentFilters("pdf")}
                 className="fc-btn rounded-lg border border-blue-500 px-3 py-2 text-sm text-blue-300 disabled:opacity-40"
               >
                 Exportar PDF
@@ -592,7 +599,7 @@ export default function EmpresaRelatoriosPage() {
               <button
                 type="button"
                 disabled={Boolean(exporting) || !hasDataToExport}
-                onClick={() => exportWithCurrentSelection("excel")}
+                onClick={() => exportWithCurrentFilters("excel")}
                 className="fc-btn rounded-lg border border-blue-500 px-3 py-2 text-sm text-blue-300 disabled:opacity-40"
               >
                 Exportar Excel
