@@ -34,6 +34,7 @@ const EmpresaFrotaPage = lazy(() => import("./modules/company/fleet/pages/Empres
 const EmpresaPessoasPage = lazy(() => import("./modules/company/people/pages/EmpresaPessoasPage"));
 const EmpresaRelatoriosPage = lazy(() => import("./modules/company/reports/pages/EmpresaRelatoriosPage"));
 const EmpresaAlertasPage = lazy(() => import("./modules/company/alerts/pages/EmpresaAlertasPage"));
+const EmpresaAutomacoesPage = lazy(() => import("./modules/company/automations/pages/EmpresaAutomacoesPage"));
 const InteligenciaPage = lazy(() => import("./pages/inteligencia.jsx"));
 const RelatorioInteligenciaPage = lazy(() => import("./pages/relatorio-inteligencia.jsx"));
 
@@ -381,6 +382,7 @@ function App() {
                       <Route path="pessoas" element={<EmpresaPessoasPage />} />
                       <Route path="relatorios" element={<EmpresaRelatoriosPage />} />
                       <Route path="alertas" element={<EmpresaAlertasPage />} />
+                      <Route path="automacoes" element={<EmpresaAutomacoesPage />} />
                       <Route path="*" element={<Navigate to="dashboard" replace />} />
                     </Routes>
                   </RouteTransition>

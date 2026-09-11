@@ -1,5 +1,5 @@
 /**
- * Fundação de dados do módulo de Automações (Bloco 1).
+ * Fundação de dados do módulo de Automações (Bloco 1 + evolução aditiva do Bloco 2).
  *
  * Módulo NOVO e aditivo: nenhuma tabela existente do FrotaMax é alterada aqui.
  * Segue o mesmo padrão de `src/db.js::initDb()` — SQL manual via `pg`, criação
@@ -185,13 +185,42 @@ const initAutomationsSchema = async (pool) => {
     );
   `);
 
+  // 1.5) Colunas adicionadas de forma aditiva ao próprio módulo (Bloco 2) — nunca
+  // toca tabela antiga do FrotaMax, apenas evolui as tabelas criadas no Bloco 1,
+  // com ALTER ... ADD COLUMN IF NOT EXISTS (idempotente, mesmo padrão de db.js).
+  //
+  // Decisão: soft delete em automacao_configs (`deleted_at`). DELETE físico é
+  // perigoso porque automacao_execucoes/automacao_eventos/automacao_arquivos
+  // referenciam automacao_config_id com ON DELETE CASCADE — apagar a config de
+  // verdade apagaria em cascata qualquer histórico futuro de execuções. Ainda não
+  // existem execuções reais neste bloco, mas a política é definida agora para
+  // nunca precisar de retrabalho quando existirem. O endpoint DELETE do Bloco 2
+  // sempre marca `deleted_at = NOW()` (nunca `DELETE FROM automacao_configs`), e
+  // toda leitura/listagem filtra `deleted_at IS NULL` por padrão.
+  await pool.query(`
+    ALTER TABLE automacao_configs ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+  `);
+
   // 2) Índices de apoio a consulta (todos por empresa_id e/ou chave de acesso mais comum).
+  // Nota: mantidos SEM cláusula WHERE deleted_at IS NULL de propósito — como
+  // `CREATE INDEX IF NOT EXISTS` não altera a definição de um índice já existente
+  // (o Bloco 1 já criou estes 3 sem filtro parcial), adicionar o filtro aqui seria
+  // silenciosamente ignorado em qualquer banco que já rodou o Bloco 1, criando
+  // uma definição divergente entre ambientes "antigos" e "novos". O filtro
+  // `deleted_at IS NULL` é sempre aplicado explicitamente nas queries do model
+  // (automationConfigModel.js) — o índice normal ainda acelera o `empresa_id =`
+  // da mesma forma, só sem a otimização marginal de excluir linhas soft-deleted.
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_automacao_templates_automacao ON automacao_templates (automacao_id);
 
     CREATE INDEX IF NOT EXISTS idx_automacao_configs_empresa ON automacao_configs (empresa_id);
     CREATE INDEX IF NOT EXISTS idx_automacao_configs_automacao ON automacao_configs (automacao_id);
     CREATE INDEX IF NOT EXISTS idx_automacao_configs_empresa_ativo ON automacao_configs (empresa_id, ativo);
+    -- Índice novo (nome inédito, sem conflito com os do Bloco 1) para a listagem
+    -- padrão do painel, que sempre exclui soft-deleted.
+    CREATE INDEX IF NOT EXISTS idx_automacao_configs_empresa_not_deleted
+      ON automacao_configs (empresa_id, created_at DESC)
+      WHERE deleted_at IS NULL;
 
     CREATE INDEX IF NOT EXISTS idx_automacao_execucoes_empresa ON automacao_execucoes (empresa_id);
     CREATE INDEX IF NOT EXISTS idx_automacao_execucoes_config_data ON automacao_execucoes (automacao_config_id, data_referencia DESC);
@@ -278,6 +307,18 @@ const initAutomationsSchema = async (pool) => {
       $$;
     `);
   }
+
+  // 4) Catálogo estrutural inicial (Bloco 2) — dado ESTRUTURAL da plataforma
+  // (um "tipo de automação" disponível), não dado de cliente: nunca inclui
+  // PPFlora, gestores, chat IDs, aprovadores, horários ou pasta de Drive, que
+  // são configuração (automacao_configs), sempre cadastrada manualmente pelo
+  // usuário do painel. `ON CONFLICT (codigo) DO NOTHING` garante idempotência —
+  // testado em automationCatalogSeed.test.js (não duplica em restart).
+  await pool.query(`
+    INSERT INTO automacoes (codigo, nome, descricao)
+    VALUES ('diario_obra', 'Diário de Obra', 'Geração automatizada de Diário de Obra a partir de registros diários de uma configuração (ex.: grupo de Telegram de uma obra).')
+    ON CONFLICT (codigo) DO NOTHING;
+  `);
 };
 
 module.exports = { initAutomationsSchema };
