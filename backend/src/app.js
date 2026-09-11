@@ -19,6 +19,7 @@ const devRoutes = require("./routes/devRoutes");
 const aiRoutes = require("./routes/aiRoutes");
 const intelligenceRoutes = require("./routes/intelligenceRoutes");
 const automationRoutes = require("./modules/automations/routes/automationRoutes");
+const telegramWebhookRoutes = require("./modules/automations/telegram/telegramWebhookRoutes");
 const { authMiddleware, requireRole } = require("./middleware/authMiddleware");
 const { requireAccountActive } = require("./middleware/accountActiveMiddleware");
 const { errorMiddleware } = require("./middleware/errorMiddleware");
@@ -127,6 +128,31 @@ app.use(
     crossOriginResourcePolicy: { policy: "cross-origin" },
   })
 );
+
+// Webhook Telegram: rota PÚBLICA (o Telegram não tem JWT do FrotaMax) e
+// isolada das rotas administrativas /api/automations/* (protegidas por
+// authMiddleware + requireRole mais abaixo). Montada de propósito ANTES de:
+//   - globalLimiter: um álbum de fotos gera várias mensagens em sequência
+//     rápida — a rota usa seu próprio limiter, mais generoso, sem competir
+//     pelo mesmo contador de 100 req/min do resto da API (telegramWebhookRoutes.js);
+//   - express.json(): usa express.raw() próprio para poder controlar o parse
+//     do corpo (parseTelegramJson) e preservar inteiros de 64 bits do
+//     Telegram (chat_id/message_id/user_id), que o parser JSON padrão
+//     converteria em Number e perderia precisão silenciosamente;
+//   - sanitizeInputMiddleware: espera req.body como objeto — aplicado a um
+//     Buffer bruto, corromperia o corpo (Buffer vira objeto com uma entrada
+//     por byte).
+// helmet (acima) e requestLogMiddleware continuam válidos para esta rota
+// (nenhum dos dois depende de req.body) e são aplicados explicitamente aqui;
+// cors() é irrelevante para uma chamada server-to-server sem header Origin,
+// e por isso foi deliberadamente omitido nesta rota.
+app.use(
+  "/api/integrations/telegram/webhook",
+  express.raw({ type: "*/*", limit: "1mb" }),
+  requestLogMiddleware,
+  telegramWebhookRoutes
+);
+
 app.use(globalLimiter);
 app.use(
   cors({

@@ -201,6 +201,31 @@ const initAutomationsSchema = async (pool) => {
     ALTER TABLE automacao_configs ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
   `);
 
+  // Evolução aditiva do Bloco 3 (captura Telegram) — telegram_mensagens ganha
+  // os campos necessários para persistir o subconjunto relevante do update da
+  // Bot API. Nenhuma tabela antiga do FrotaMax é tocada; nenhum destes campos
+  // é secret.
+  //   - data_referencia: dia do D.O. já calculado (message.date + timezone da
+  //     config) — nunca recalculado a partir da hora do servidor depois.
+  //   - telegram_username: @usuário, quando disponível (nome/first+last_name
+  //     já cobertos por autor_nome, existente desde o Bloco 1).
+  //   - telegram_file_unique_id: identificador estável do arquivo (diferente
+  //     de telegram_file_id, que pode variar entre bots) — útil para o Bloco 4.
+  //   - media_group_id: preserva pertencimento a um álbum, sem tentar montá-lo
+  //     neste bloco.
+  //   - foto_largura/foto_altura/foto_tamanho_bytes: metadados da variante de
+  //     foto selecionada (a maior), nunca o arquivo em si — download fica para
+  //     o Bloco 4.
+  await pool.query(`
+    ALTER TABLE telegram_mensagens ADD COLUMN IF NOT EXISTS data_referencia DATE;
+    ALTER TABLE telegram_mensagens ADD COLUMN IF NOT EXISTS telegram_username VARCHAR(190);
+    ALTER TABLE telegram_mensagens ADD COLUMN IF NOT EXISTS telegram_file_unique_id VARCHAR(190);
+    ALTER TABLE telegram_mensagens ADD COLUMN IF NOT EXISTS media_group_id VARCHAR(190);
+    ALTER TABLE telegram_mensagens ADD COLUMN IF NOT EXISTS foto_largura INTEGER;
+    ALTER TABLE telegram_mensagens ADD COLUMN IF NOT EXISTS foto_altura INTEGER;
+    ALTER TABLE telegram_mensagens ADD COLUMN IF NOT EXISTS foto_tamanho_bytes BIGINT;
+  `);
+
   // 2) Índices de apoio a consulta (todos por empresa_id e/ou chave de acesso mais comum).
   // Nota: mantidos SEM cláusula WHERE deleted_at IS NULL de propósito — como
   // `CREATE INDEX IF NOT EXISTS` não altera a definição de um índice já existente
@@ -262,6 +287,13 @@ const initAutomationsSchema = async (pool) => {
     CREATE INDEX IF NOT EXISTS idx_telegram_mensagens_execucao ON telegram_mensagens (automacao_execucao_id);
     CREATE INDEX IF NOT EXISTS idx_telegram_mensagens_config_data ON telegram_mensagens (automacao_config_id, data_hora_original DESC);
     CREATE INDEX IF NOT EXISTS idx_telegram_mensagens_empresa ON telegram_mensagens (empresa_id);
+    -- Bloco 3: busca por dia do D.O. dentro de uma execução/config específica.
+    CREATE INDEX IF NOT EXISTS idx_telegram_mensagens_config_data_referencia
+      ON telegram_mensagens (automacao_config_id, data_referencia);
+    -- Resolução de config ativa por chat do Telegram — caminho mais quente do webhook.
+    CREATE INDEX IF NOT EXISTS idx_automacao_configs_telegram_chat_ativo
+      ON automacao_configs (telegram_chat_id)
+      WHERE ativo = true AND deleted_at IS NULL AND telegram_chat_id IS NOT NULL;
   `);
 
   // 3) CHECK constraints de domínio (padrão já usado em veiculos_status_operacional_chk /
