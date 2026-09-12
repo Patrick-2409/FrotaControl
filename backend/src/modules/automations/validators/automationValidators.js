@@ -7,6 +7,7 @@
  */
 
 const { z } = require("zod");
+const { DocumentConfigSchema } = require("../documents/documentConfigSchema");
 
 // Mesma técnica usada para validar timezone sem adicionar dependência nova:
 // `Intl.supportedValuesOf` é nativo do Node (disponível desde a v18, o projeto
@@ -54,6 +55,12 @@ const automationConfigCreateSchema = z.object({
   telegram_chat_id: telegramIdSchema,
   google_drive_pasta_raiz_id: optionalString(190),
   usa_ia: z.boolean().optional().default(true),
+  // Bloco 7B (Seção 47/50) — dados documentais do Diário de Obra, gravados em
+  // `configuracao.documento` (JSONB já existente, nenhuma coluna nova).
+  // Opcional: uma config pode ser criada/editada sem esses dados; só a
+  // GERAÇÃO do documento exige que estejam completos (ver
+  // documentPrerequisites.js).
+  configuracao_documento: DocumentConfigSchema.optional(),
   // SUPER_ADMIN pode informar a empresa alvo; ADMIN_EMPRESA nunca precisa (e se
   // informar, tenantContext.resolveEmpresaScopeWrite já rejeita valor diferente
   // da própria empresa antes deste schema ser avaliado).

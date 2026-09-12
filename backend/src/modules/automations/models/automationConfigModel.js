@@ -18,16 +18,20 @@ const { pool } = require("../../../db");
 const CONFIG_COLUMNS = `
   c.id, c.empresa_id, c.automacao_id, c.automacao_template_id, c.nome, c.label,
   c.projeto_nome, c.ativo, c.timezone, c.horario_fechamento, c.telegram_chat_id,
-  c.google_drive_pasta_raiz_id, c.usa_ia, c.created_at, c.updated_at,
+  c.google_drive_pasta_raiz_id, c.usa_ia, c.configuracao, c.created_at, c.updated_at,
   a.codigo AS automacao_codigo, a.nome AS automacao_nome
 `;
+
+/** configuracao.documento (Bloco 7B) — nunca sobrescreve outras chaves futuras de configuracao. */
+const documentoJsonOrNull = (configuracaoDocumento) =>
+  configuracaoDocumento ? JSON.stringify({ documento: configuracaoDocumento }) : null;
 
 const createConfig = async (data) => {
   const { rows } = await pool.query(
     `INSERT INTO automacao_configs
        (empresa_id, automacao_id, automacao_template_id, nome, label, projeto_nome,
-        ativo, timezone, horario_fechamento, telegram_chat_id, google_drive_pasta_raiz_id, usa_ia)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        ativo, timezone, horario_fechamento, telegram_chat_id, google_drive_pasta_raiz_id, usa_ia, configuracao)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, COALESCE($13::jsonb, '{}'::jsonb))
      RETURNING id`,
     [
       data.empresa_id,
@@ -42,6 +46,7 @@ const createConfig = async (data) => {
       data.telegram_chat_id ?? null,
       data.google_drive_pasta_raiz_id ?? null,
       data.usa_ia ?? true,
+      documentoJsonOrNull(data.configuracao_documento),
     ]
   );
   return getConfigById(rows[0].id, null);
@@ -86,6 +91,9 @@ const updateConfig = async (id, empresaId, data) => {
        telegram_chat_id = $11,
        google_drive_pasta_raiz_id = $12,
        usa_ia = COALESCE($13, usa_ia),
+       -- Merge raso: só a chave "documento" é substituída, qualquer outra
+       -- chave futura de configuracao permanece intacta (Bloco 7B).
+       configuracao = CASE WHEN $14::jsonb IS NOT NULL THEN configuracao || $14::jsonb ELSE configuracao END,
        updated_at = NOW()
      WHERE id = $1 AND deleted_at IS NULL AND ($2::int IS NULL OR empresa_id = $2)
      RETURNING id`,
@@ -103,6 +111,7 @@ const updateConfig = async (id, empresaId, data) => {
       data.telegram_chat_id ?? null,
       data.google_drive_pasta_raiz_id ?? null,
       data.usa_ia ?? null,
+      documentoJsonOrNull(data.configuracao_documento),
     ]
   );
   if (!rows.length) return null;

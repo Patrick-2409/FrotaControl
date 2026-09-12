@@ -14,16 +14,19 @@
 // Máquina de estados da execução diária. COLLECTING/PROCESSING existiam desde
 // o Bloco 1 sem uso real; o Bloco 5 implementou COLLECTING -> PROCESSING ->
 // READY_FOR_GENERATION (com ERROR como estado de retry recuperável). O Bloco
-// 6 estende com AI_PROCESSING (estruturação inteligente do dia) e
-// READY_FOR_DOCUMENT (dados prontos para o gerador do D.O. de um bloco
-// futuro — nenhum documento é gerado ainda). AWAITING_APPROVAL em diante
-// ficam reservados para blocos futuros (aprovação, envio).
+// 6 estendeu com AI_PROCESSING (estruturação inteligente do dia) e
+// READY_FOR_DOCUMENT. O Bloco 7B estende com DOCUMENT_PROCESSING/
+// DOCUMENT_READY (geração versionada do Excel/PDF — nenhum envio ainda).
+// AWAITING_APPROVAL em diante ficam reservados para um bloco futuro (envio
+// ao Telegram/aprovação).
 const AUTOMATION_EXECUTION_STATUSES = Object.freeze([
   "COLLECTING",
   "PROCESSING",
   "READY_FOR_GENERATION",
   "AI_PROCESSING",
   "READY_FOR_DOCUMENT",
+  "DOCUMENT_PROCESSING",
+  "DOCUMENT_READY",
   "AWAITING_APPROVAL",
   "APPROVED",
   "SENDING",
@@ -104,12 +107,48 @@ const AUTOMATION_AI_RECOVERABLE_ERROR_CODES = Object.freeze([
   "AI_LIMIT_EXCEEDED",
 ]);
 
+// Códigos de erro da GERAÇÃO DE DOCUMENTO (Bloco 7B) — mesma coluna
+// compartilhada automacao_execucoes.erro_codigo.
+const AUTOMATION_DOCUMENT_ERROR_CODES = Object.freeze([
+  "DOCUMENT_CONFIG_INCOMPLETE",
+  "DOCUMENT_TEMPLATE_NOT_FOUND",
+  "DOCUMENT_INPUT_INVALID",
+  "DOCUMENT_LAYOUT_OVERFLOW",
+  "DOCUMENT_EXCEL_GENERATION_FAILED",
+  "DOCUMENT_PDF_GENERATION_FAILED",
+  "DOCUMENT_STORAGE_FAILED",
+]);
+
+// DOCUMENT_CONFIG_INCOMPLETE fica de fora: exige preencher configuração
+// (ação humana), nunca resolve só de tentar de novo — mesma lógica de
+// AI_DISABLED. DOCUMENT_TEMPLATE_NOT_FOUND também exige intervenção (o
+// template precisa existir/estar ativo). Os demais são todos transitórios ou
+// corrigíveis numa nova tentativa sem mudança externa (bug momentâneo,
+// indisponibilidade do Drive, etc.).
+const AUTOMATION_DOCUMENT_RECOVERABLE_ERROR_CODES = Object.freeze([
+  "DOCUMENT_INPUT_INVALID",
+  "DOCUMENT_LAYOUT_OVERFLOW",
+  "DOCUMENT_EXCEL_GENERATION_FAILED",
+  "DOCUMENT_PDF_GENERATION_FAILED",
+  "DOCUMENT_STORAGE_FAILED",
+]);
+
 // União usada SÓ na CHECK constraint de automacao_execucoes.erro_codigo —
-// a coluna é compartilhada entre os dois subsistemas (Seção 5 do Bloco 6).
+// a coluna é compartilhada entre os três subsistemas (fechamento, IA,
+// documento).
 const AUTOMATION_EXECUTION_ERROR_CODES = Object.freeze([
   ...AUTOMATION_CLOSING_ERROR_CODES,
   ...AUTOMATION_AI_ERROR_CODES,
+  ...AUTOMATION_DOCUMENT_ERROR_CODES,
 ]);
+
+// Ciclo de vida de UMA linha de automacao_execucao_documentos (Bloco 7B) —
+// mesmo espírito de AUTOMATION_INTELLIGENCE_STATUSES.
+const AUTOMATION_DOCUMENT_STATUSES = Object.freeze(["PROCESSING", "COMPLETED", "FAILED"]);
+
+// Tipos de geração de documento suportados (Bloco 7B) — hoje só o híbrido
+// Excel+PDF; deixa espaço para um bloco futuro que talvez gere só um dos dois.
+const AUTOMATION_DOCUMENT_GENERATOR_TYPES = Object.freeze(["EXCEL_PDF_HIBRIDO"]);
 
 // Ciclo de vida de UMA linha de automacao_execucao_inteligencias (Bloco 6) —
 // distinto do status da EXECUÇÃO (que também passa por AI_PROCESSING): esta
@@ -155,4 +194,8 @@ module.exports = {
   AUTOMATION_INTELLIGENCE_STATUSES,
   AUTOMATION_AI_FACT_CATEGORIES,
   AUTOMATION_AI_EVIDENCE_TYPES,
+  AUTOMATION_DOCUMENT_ERROR_CODES,
+  AUTOMATION_DOCUMENT_RECOVERABLE_ERROR_CODES,
+  AUTOMATION_DOCUMENT_STATUSES,
+  AUTOMATION_DOCUMENT_GENERATOR_TYPES,
 };

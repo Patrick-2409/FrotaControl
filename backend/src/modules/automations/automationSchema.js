@@ -32,6 +32,9 @@ const {
   AUTOMATION_EXECUTION_ERROR_CODES,
   AUTOMATION_INTELLIGENCE_STATUSES,
   AUTOMATION_AI_ERROR_CODES,
+  AUTOMATION_DOCUMENT_STATUSES,
+  AUTOMATION_DOCUMENT_GENERATOR_TYPES,
+  AUTOMATION_DOCUMENT_ERROR_CODES,
 } = require("./constants/automationEnums");
 
 const sqlEnumList = (values) => values.map((v) => `'${v}'`).join(", ");
@@ -359,6 +362,59 @@ const runSchemaStatements = async (pool) => {
     );
   `);
 
+  // Evolução aditiva do Bloco 7B (geração versionada do Diário de Obra em
+  // Excel/PDF).
+  //
+  //   - automacao_execucao_documentos: histórico de GERAÇÕES de documento por
+  //     (execução, snapshot, inteligência, template) — nunca sobrescrito;
+  //     mesma disciplina de versionamento dos Blocos 5/6. UNIQUE inclui
+  //     `generator_id` de propósito: uma troca de gerador (ex.: v1 -> v2 de
+  //     código) para o MESMO template/versão ainda deve poder coexistir como
+  //     histórico distinto, nunca colidir silenciosamente.
+  //   - automacao_templates ganha metadados (template_hash, generator_id,
+  //     tipo, source_filename, metadata) — o BINÁRIO do xlsx/pdf de
+  //     referência NUNCA é armazenado no banco, só o hash e o nome do
+  //     arquivo de origem (auditoria do Bloco 7A).
+  //   - automacao_arquivos ganha um vínculo OPCIONAL para o documento que o
+  //     gerou — só se aplica a arquivos tipo EXCEL/PDF produzidos por este
+  //     motor; PHOTO nunca tem este vínculo preenchido.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS automacao_execucao_documentos (
+      id SERIAL PRIMARY KEY,
+      empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+      automacao_execucao_id INTEGER NOT NULL REFERENCES automacao_execucoes(id) ON DELETE CASCADE,
+      snapshot_id INTEGER NOT NULL REFERENCES automacao_execucao_snapshots(id) ON DELETE CASCADE,
+      intelligence_id INTEGER NOT NULL REFERENCES automacao_execucao_inteligencias(id) ON DELETE CASCADE,
+      automacao_template_id INTEGER NOT NULL REFERENCES automacao_templates(id) ON DELETE RESTRICT,
+      versao INTEGER NOT NULL DEFAULT 1,
+      generator_id VARCHAR(60) NOT NULL,
+      status VARCHAR(20) NOT NULL DEFAULT 'PROCESSING',
+      input_hash VARCHAR(64),
+      excel_hash VARCHAR(64),
+      pdf_hash VARCHAR(64),
+      excel_arquivo_id INTEGER REFERENCES automacao_arquivos(id) ON DELETE SET NULL,
+      pdf_arquivo_id INTEGER REFERENCES automacao_arquivos(id) ON DELETE SET NULL,
+      erro_codigo VARCHAR(60),
+      erro_mensagem TEXT,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      started_at TIMESTAMPTZ,
+      completed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (automacao_execucao_id, snapshot_id, intelligence_id, automacao_template_id, generator_id, versao)
+    );
+  `);
+
+  await pool.query(`
+    ALTER TABLE automacao_templates ADD COLUMN IF NOT EXISTS template_hash VARCHAR(64);
+    ALTER TABLE automacao_templates ADD COLUMN IF NOT EXISTS generator_id VARCHAR(60);
+    ALTER TABLE automacao_templates ADD COLUMN IF NOT EXISTS tipo VARCHAR(30);
+    ALTER TABLE automacao_templates ADD COLUMN IF NOT EXISTS source_filename VARCHAR(255);
+    ALTER TABLE automacao_templates ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+    ALTER TABLE automacao_arquivos ADD COLUMN IF NOT EXISTS automacao_documento_id INTEGER
+      REFERENCES automacao_execucao_documentos(id) ON DELETE SET NULL;
+  `);
+
   // 2) Índices de apoio a consulta (todos por empresa_id e/ou chave de acesso mais comum).
   // Nota: mantidos SEM cláusula WHERE deleted_at IS NULL de propósito — como
   // `CREATE INDEX IF NOT EXISTS` não altera a definição de um índice já existente
@@ -467,6 +523,20 @@ const runSchemaStatements = async (pool) => {
     -- empresa é adicional.
     CREATE INDEX IF NOT EXISTS idx_automacao_arquivo_analises_empresa
       ON automacao_arquivo_analises (empresa_id);
+
+    -- Bloco 7B: histórico de documentos por execução/empresa, mais recente primeiro.
+    CREATE INDEX IF NOT EXISTS idx_automacao_execucao_documentos_execucao
+      ON automacao_execucao_documentos (automacao_execucao_id, versao DESC);
+    CREATE INDEX IF NOT EXISTS idx_automacao_execucao_documentos_empresa
+      ON automacao_execucao_documentos (empresa_id);
+    CREATE INDEX IF NOT EXISTS idx_automacao_execucao_documentos_snapshot
+      ON automacao_execucao_documentos (snapshot_id);
+    CREATE INDEX IF NOT EXISTS idx_automacao_execucao_documentos_intelligence
+      ON automacao_execucao_documentos (intelligence_id);
+
+    CREATE INDEX IF NOT EXISTS idx_automacao_arquivos_documento
+      ON automacao_arquivos (automacao_documento_id)
+      WHERE automacao_documento_id IS NOT NULL;
   `);
 
   // 3) CHECK constraints de domínio (padrão já usado em veiculos_status_operacional_chk /
@@ -530,6 +600,21 @@ const runSchemaStatements = async (pool) => {
       table: "automacao_execucao_inteligencias",
       expression: `erro_codigo IN (${sqlEnumList(AUTOMATION_AI_ERROR_CODES)})`,
     },
+    {
+      name: "automacao_execucao_documentos_status_chk",
+      table: "automacao_execucao_documentos",
+      expression: `status IN (${sqlEnumList(AUTOMATION_DOCUMENT_STATUSES)})`,
+    },
+    {
+      name: "automacao_execucao_documentos_erro_codigo_chk",
+      table: "automacao_execucao_documentos",
+      expression: `erro_codigo IN (${sqlEnumList(AUTOMATION_DOCUMENT_ERROR_CODES)})`,
+    },
+    {
+      name: "automacao_templates_tipo_chk",
+      table: "automacao_templates",
+      expression: `tipo IS NULL OR tipo IN (${sqlEnumList(AUTOMATION_DOCUMENT_GENERATOR_TYPES)})`,
+    },
   ];
 
   // DROP + ADD (nunca só "cria se não existir"): a DEFINIÇÃO de uma CHECK
@@ -556,6 +641,22 @@ const runSchemaStatements = async (pool) => {
   await pool.query(`
     INSERT INTO automacoes (codigo, nome, descricao)
     VALUES ('diario_obra', 'Diário de Obra', 'Geração automatizada de Diário de Obra a partir de registros diários de uma configuração (ex.: grupo de Telegram de uma obra).')
+    ON CONFLICT (codigo) DO NOTHING;
+  `);
+
+  // Seed do template v1 (Bloco 7B) — estrutural da plataforma (um "layout
+  // disponível" para a automação diario_obra), não dado de cliente. O layout
+  // em si foi AUDITADO a partir do arquivo de referência do Bloco 7A
+  // (PPFlora_DO_07-09-2026_TESTE_R01.xlsx — hash abaixo), mas nenhum dado do
+  // PPFlora (projeto, local, cliente) é gravado aqui — isso é sempre
+  // `automacao_configs`, cadastrado manualmente. `ON CONFLICT (codigo) DO
+  // NOTHING` garante idempotência (testado em documentTemplateSeed.test.js).
+  await pool.query(`
+    INSERT INTO automacao_templates (automacao_id, codigo, versao, nome, schema_campos, template_hash, generator_id, tipo, source_filename)
+    SELECT id, 'diario_obra_ppflora', 1, 'Diário de Obra — modelo v1 (auditoria Bloco 7A)', '{}'::jsonb,
+           'ca7ffdf2af3ab73f4f4012ee6c2053c60ccc6bf4ffdb6626009811a22d589f18', 'diario_obra_ppflora_v1', 'EXCEL_PDF_HIBRIDO',
+           'PPFlora_DO_07-09-2026_TESTE_R01.xlsx'
+    FROM automacoes WHERE codigo = 'diario_obra'
     ON CONFLICT (codigo) DO NOTHING;
   `);
 };
@@ -587,7 +688,11 @@ async function isSchemaFullyMigrated(pool) {
        (SELECT COUNT(*) FROM pg_tables WHERE tablename = 'automacao_execucao_inteligencias') AS c5,
        (SELECT COUNT(*) FROM pg_constraint
           WHERE conname = 'automacao_execucoes_status_chk'
-            AND pg_get_constraintdef(oid) LIKE '%AI_PROCESSING%') AS c6`
+            AND pg_get_constraintdef(oid) LIKE '%AI_PROCESSING%') AS c6,
+       (SELECT COUNT(*) FROM pg_tables WHERE tablename = 'automacao_execucao_documentos') AS c7,
+       (SELECT COUNT(*) FROM pg_constraint
+          WHERE conname = 'automacao_execucoes_status_chk'
+            AND pg_get_constraintdef(oid) LIKE '%DOCUMENT_READY%') AS c8`
   );
   const r = rows[0];
   return (
@@ -596,7 +701,9 @@ async function isSchemaFullyMigrated(pool) {
     Number(r.c3) > 0 &&
     Number(r.c4) > 0 &&
     Number(r.c5) > 0 &&
-    Number(r.c6) > 0
+    Number(r.c6) > 0 &&
+    Number(r.c7) > 0 &&
+    Number(r.c8) > 0
   );
 }
 

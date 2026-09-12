@@ -48,6 +48,18 @@ function StatusBadge({ ativo }) {
   );
 }
 
+function emptyDocumentoFormState() {
+  return {
+    referenciaContratual: "",
+    local: "",
+    clienteRazaoSocial: "",
+    clienteEndereco: "",
+    responsavelTecnico: "",
+    expedienteInicio: "",
+    expedienteFim: "",
+  };
+}
+
 function emptyFormState() {
   return {
     automacao_id: "",
@@ -59,7 +71,18 @@ function emptyFormState() {
     telegram_chat_id: "",
     google_drive_pasta_raiz_id: "",
     usa_ia: true,
+    documento: emptyDocumentoFormState(),
   };
+}
+
+/** Só inclui campos preenchidos (Zod exige min(1) quando presente — nunca envia string vazia). */
+function buildDocumentoPayload(documento) {
+  const result = {};
+  for (const [key, value] of Object.entries(documento || {})) {
+    const trimmed = typeof value === "string" ? value.trim() : value;
+    if (trimmed) result[key] = trimmed;
+  }
+  return result;
 }
 
 function ApproversSection({ config, busy, onAdd, onRemove }) {
@@ -226,6 +249,7 @@ function AutomationDrawer({ open, onClose, catalog, config, busy, onCreate, onUp
     setSavedConfig(config || null);
     setFormError("");
     if (config) {
+      const documento = config.configuracao?.documento || {};
       setForm({
         automacao_id: String(config.automacao_id),
         nome: config.nome || "",
@@ -236,6 +260,15 @@ function AutomationDrawer({ open, onClose, catalog, config, busy, onCreate, onUp
         telegram_chat_id: config.telegram_chat_id || "",
         google_drive_pasta_raiz_id: config.google_drive_pasta_raiz_id || "",
         usa_ia: config.usa_ia,
+        documento: {
+          referenciaContratual: documento.referenciaContratual || "",
+          local: documento.local || "",
+          clienteRazaoSocial: documento.clienteRazaoSocial || "",
+          clienteEndereco: documento.clienteEndereco || "",
+          responsavelTecnico: documento.responsavelTecnico || "",
+          expedienteInicio: documento.expedienteInicio || "",
+          expedienteFim: documento.expedienteFim || "",
+        },
       });
     } else {
       setForm({ ...emptyFormState(), automacao_id: catalog[0]?.id ? String(catalog[0].id) : "" });
@@ -248,6 +281,10 @@ function AutomationDrawer({ open, onClose, catalog, config, busy, onCreate, onUp
 
   function field(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function fieldDocumento(key, value) {
+    setForm((prev) => ({ ...prev, documento: { ...prev.documento, [key]: value } }));
   }
 
   async function handleSubmit(event) {
@@ -263,6 +300,7 @@ function AutomationDrawer({ open, onClose, catalog, config, busy, onCreate, onUp
       telegram_chat_id: form.telegram_chat_id.trim() || null,
       google_drive_pasta_raiz_id: form.google_drive_pasta_raiz_id.trim() || null,
       usa_ia: form.usa_ia,
+      configuracao_documento: buildDocumentoPayload(form.documento),
     };
     try {
       if (isEditing) {
@@ -435,6 +473,85 @@ function AutomationDrawer({ open, onClose, catalog, config, busy, onCreate, onUp
             </label>
             <p className="mt-2 text-xs text-zinc-500">
               Nenhuma chamada de IA será feita nesta fase — apenas a preferência é registrada.
+            </p>
+          </AccordionSection>
+
+          <AccordionSection
+            id="secao-diario-obra"
+            title="Dados do Diário de Obra"
+            description="Campos usados na geração do documento (Excel/PDF) — todos opcionais aqui, mas necessários para gerar o documento"
+          >
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs text-zinc-400">Referência contratual</span>
+                <input
+                  className="fc-input w-full"
+                  value={form.documento.referenciaContratual}
+                  onChange={(e) => fieldDocumento("referenciaContratual", e.target.value)}
+                  placeholder="Ex.: Contrato 01/2026"
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs text-zinc-400">Local</span>
+                <input
+                  className="fc-input w-full"
+                  value={form.documento.local}
+                  onChange={(e) => fieldDocumento("local", e.target.value)}
+                  placeholder="Ex.: Canteiro Central"
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs text-zinc-400">Razão social do cliente</span>
+                <input
+                  className="fc-input w-full"
+                  value={form.documento.clienteRazaoSocial}
+                  onChange={(e) => fieldDocumento("clienteRazaoSocial", e.target.value)}
+                  placeholder="Ex.: Cliente LTDA"
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs text-zinc-400">Endereço do cliente</span>
+                <input
+                  className="fc-input w-full"
+                  value={form.documento.clienteEndereco}
+                  onChange={(e) => fieldDocumento("clienteEndereco", e.target.value)}
+                  placeholder="Ex.: Rua Exemplo, 100"
+                />
+              </label>
+              <label className="block text-sm sm:col-span-2">
+                <span className="mb-1 block text-xs text-zinc-400">Responsável técnico (opcional — assinatura do documento)</span>
+                <input
+                  className="fc-input w-full"
+                  value={form.documento.responsavelTecnico}
+                  onChange={(e) => fieldDocumento("responsavelTecnico", e.target.value)}
+                  placeholder="Ex.: Eng. Fulano de Tal"
+                />
+                <span className="mt-1 block text-xs text-zinc-500">
+                  Nome exibido na assinatura do documento — diferente do(s) Aprovador(es) do Telegram, cadastrados na seção
+                  “Aprovação”.
+                </span>
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs text-zinc-400">Expediente — início</span>
+                <input
+                  type="time"
+                  className="fc-input w-full"
+                  value={form.documento.expedienteInicio}
+                  onChange={(e) => fieldDocumento("expedienteInicio", e.target.value)}
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs text-zinc-400">Expediente — fim</span>
+                <input
+                  type="time"
+                  className="fc-input w-full"
+                  value={form.documento.expedienteFim}
+                  onChange={(e) => fieldDocumento("expedienteFim", e.target.value)}
+                />
+              </label>
+            </div>
+            <p className="mt-2 text-xs text-zinc-500">
+              Nenhum documento é gerado nesta fase — estes dados só serão usados quando a geração for executada.
             </p>
           </AccordionSection>
 
