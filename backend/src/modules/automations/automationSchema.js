@@ -27,11 +27,12 @@ const {
   AUTOMATION_APPROVAL_DECISIONS,
   AUTOMATION_RECIPIENT_TYPES,
   TELEGRAM_MESSAGE_TYPES,
+  AUTOMATION_STORAGE_STATUSES,
 } = require("./constants/automationEnums");
 
 const sqlEnumList = (values) => values.map((v) => `'${v}'`).join(", ");
 
-const initAutomationsSchema = async (pool) => {
+const runSchemaStatements = async (pool) => {
   // 1) Tabelas, na ordem que respeita as foreign keys.
   await pool.query(`
     CREATE TABLE IF NOT EXISTS automacoes (
@@ -226,6 +227,36 @@ const initAutomationsSchema = async (pool) => {
     ALTER TABLE telegram_mensagens ADD COLUMN IF NOT EXISTS foto_tamanho_bytes BIGINT;
   `);
 
+  // Evolução aditiva do Bloco 4 (download de fotos + armazenamento no Drive).
+  //
+  //   - telegram_mensagens.storage_status/attempts/last_error/last_attempt_at/
+  //     completed_at: máquina de estados do armazenamento de UMA mensagem PHOTO
+  //     (NULL para TEXT/DOCUMENT/OUTRO — "não aplicável", nunca processado).
+  //     A gravação do webhook (Bloco 3, telegramWebhookService.js) passa a
+  //     inserir storage_status = 'PENDING' apenas quando tipo = 'PHOTO'; nenhum
+  //     outro campo/comportamento do Bloco 3 muda.
+  //   - automacao_arquivos.telegram_mensagem_id: liga o arquivo definitivo
+  //     (tipo PHOTO) à mensagem Telegram que o originou. Nullable porque
+  //     EXCEL/PDF (blocos futuros) não têm origem numa mensagem do Telegram.
+  //   - automacao_configs.google_drive_pasta_diarios_id: cache da pasta
+  //     "Diários de Obra" dentro da pasta raiz da config — é a mesma pasta
+  //     para TODAS as execuções (dias) de uma config, então fica no nível de
+  //     config em vez de ser recriada/revalidada a cada dia em
+  //     automacao_execucoes (que já guarda ano/mês/dia/fotos por ser
+  //     específico de cada execução, desde o Bloco 1).
+  await pool.query(`
+    ALTER TABLE telegram_mensagens ADD COLUMN IF NOT EXISTS storage_status VARCHAR(20);
+    ALTER TABLE telegram_mensagens ADD COLUMN IF NOT EXISTS storage_attempts INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE telegram_mensagens ADD COLUMN IF NOT EXISTS storage_last_error TEXT;
+    ALTER TABLE telegram_mensagens ADD COLUMN IF NOT EXISTS storage_last_attempt_at TIMESTAMPTZ;
+    ALTER TABLE telegram_mensagens ADD COLUMN IF NOT EXISTS storage_completed_at TIMESTAMPTZ;
+
+    ALTER TABLE automacao_arquivos ADD COLUMN IF NOT EXISTS telegram_mensagem_id INTEGER
+      REFERENCES telegram_mensagens(id) ON DELETE SET NULL;
+
+    ALTER TABLE automacao_configs ADD COLUMN IF NOT EXISTS google_drive_pasta_diarios_id VARCHAR(190);
+  `);
+
   // 2) Índices de apoio a consulta (todos por empresa_id e/ou chave de acesso mais comum).
   // Nota: mantidos SEM cláusula WHERE deleted_at IS NULL de propósito — como
   // `CREATE INDEX IF NOT EXISTS` não altera a definição de um índice já existente
@@ -294,6 +325,20 @@ const initAutomationsSchema = async (pool) => {
     CREATE INDEX IF NOT EXISTS idx_automacao_configs_telegram_chat_ativo
       ON automacao_configs (telegram_chat_id)
       WHERE ativo = true AND deleted_at IS NULL AND telegram_chat_id IS NOT NULL;
+
+    -- Bloco 4: fila de fotos pendentes/retentáveis de armazenamento — índice
+    -- parcial (só cobre as linhas que a claim query de fato varre).
+    CREATE INDEX IF NOT EXISTS idx_telegram_mensagens_storage_pendente
+      ON telegram_mensagens (automacao_config_id, created_at)
+      WHERE storage_status IN ('PENDING', 'PROCESSING');
+
+    -- No máximo 1 automacao_arquivos (PHOTO) por mensagem Telegram de origem —
+    -- é a proteção de idempotência que permite reconciliar upload+insert sem
+    -- duplicar arquivo se o processo morrer entre os dois passos (ver
+    -- photoStorageService.js).
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_automacao_arquivos_telegram_mensagem
+      ON automacao_arquivos (telegram_mensagem_id)
+      WHERE telegram_mensagem_id IS NOT NULL;
   `);
 
   // 3) CHECK constraints de domínio (padrão já usado em veiculos_status_operacional_chk /
@@ -324,6 +369,14 @@ const initAutomationsSchema = async (pool) => {
       table: "telegram_mensagens",
       expression: `tipo IN (${sqlEnumList(TELEGRAM_MESSAGE_TYPES)})`,
     },
+    {
+      // NULL (mensagens não-PHOTO) satisfaz `IN (...)` normalmente no Postgres
+      // — a CHECK só falha em FALSE, nunca em NULL — então nenhum valor
+      // "N/A" precisa entrar em AUTOMATION_STORAGE_STATUSES.
+      name: "telegram_mensagens_storage_status_chk",
+      table: "telegram_mensagens",
+      expression: `storage_status IN (${sqlEnumList(AUTOMATION_STORAGE_STATUSES)})`,
+    },
   ];
 
   for (const check of checks) {
@@ -352,5 +405,77 @@ const initAutomationsSchema = async (pool) => {
     ON CONFLICT (codigo) DO NOTHING;
   `);
 };
+
+const SCHEMA_INIT_LOCK_KEY = "automationsSchema_init_v1";
+
+/**
+ * Checagem barata (só catálogo do sistema, nunca toca as tabelas de dados)
+ * que serve de proxy para "o schema já está no estado-alvo do Bloco 4":
+ * a CHECK constraint de storage_status e o índice único de arquivo por
+ * mensagem só existem depois que `runSchemaStatements` já rodou por completo
+ * uma vez. Uma consulta a `pg_constraint`/`pg_indexes` só precisa de
+ * AccessShareLock no catálogo — nunca conflita com DML concorrente nas
+ * tabelas do módulo.
+ */
+async function isSchemaFullyMigrated(pool) {
+  const { rows } = await pool.query(
+    `SELECT
+       (SELECT COUNT(*) FROM pg_constraint WHERE conname = 'telegram_mensagens_storage_status_chk') AS c1,
+       (SELECT COUNT(*) FROM pg_indexes WHERE indexname = 'ux_automacao_arquivos_telegram_mensagem') AS c2`
+  );
+  return Number(rows[0].c1) > 0 && Number(rows[0].c2) > 0;
+}
+
+/**
+ * Serialização entre processos, introduzida no Bloco 4. Cada arquivo de
+ * teste chama `initAutomationsSchema(pool)` no próprio `test.before` (padrão
+ * já usado desde o Bloco 1), e `node --test` roda ~30 arquivos em paralelo
+ * contra o MESMO Postgres local.
+ *
+ * Descoberta ao investigar um deadlock (40P01) real: o problema não é (só)
+ * DDL-vs-DDL — é DDL-vs-DML entre PROCESSOS DIFERENTES. A FK nova do Bloco 4
+ * (`automacao_arquivos.telegram_mensagem_id REFERENCES telegram_mensagens`)
+ * é o primeiro ALTER deste schema que precisa de lock em DUAS tabelas ao
+ * mesmo tempo (Postgres precisa travar a tabela referenciada para validar a
+ * FK) — então um `ALTER TABLE` rodando num processo pode formar um ciclo de
+ * espera com uma query comum (INSERT/SELECT) de OUTRO processo que já
+ * terminou sua própria inicialização e está no meio de um teste mexendo
+ * nas duas mesmas tabelas (exatamente o que photoStorageService.test.js faz
+ * o tempo todo). Um advisory lock só ao redor do DDL não evita isso, porque
+ * nada obriga os testes (DML) de um processo já migrado a esperar por ele.
+ *
+ * A correção de verdade é fazer o caminho comum — schema já migrado, que é
+ * praticamente sempre o caso depois que o primeiro processo termina — nunca
+ * chegar perto de um `ALTER TABLE`: `isSchemaFullyMigrated` decide isso com
+ * uma leitura de catálogo (sem lock de tabela) ANTES de sequer pedir o
+ * advisory lock. Só o processo (quase sempre único, na prática) que
+ * encontra o schema ainda não migrado paga o custo do DDL com lock; todos os
+ * demais — inclusive os que chegam depois, esperando o advisory lock — se
+ * re-checam ao acordar e saem sem tocar em nenhum ALTER. O retry em 40P01
+ * continua como cinto-de-segurança adicional para a janela ainda mais rara
+ * em que dois processos genuinamente descobrem juntos que precisam migrar.
+ */
+async function initAutomationsSchema(pool, attempt = 0) {
+  if (await isSchemaFullyMigrated(pool).catch(() => false)) return;
+
+  const lockClient = await pool.connect();
+  try {
+    await lockClient.query("SELECT pg_advisory_lock(hashtext($1))", [SCHEMA_INIT_LOCK_KEY]);
+    try {
+      if (await isSchemaFullyMigrated(pool).catch(() => false)) return;
+      await runSchemaStatements(pool);
+    } finally {
+      await lockClient.query("SELECT pg_advisory_unlock(hashtext($1))", [SCHEMA_INIT_LOCK_KEY]).catch(() => {});
+    }
+  } catch (err) {
+    if (err?.code === "40P01" && attempt < 4) {
+      await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
+      return initAutomationsSchema(pool, attempt + 1);
+    }
+    throw err;
+  } finally {
+    lockClient.release();
+  }
+}
 
 module.exports = { initAutomationsSchema };

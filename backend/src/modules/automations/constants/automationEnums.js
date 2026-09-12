@@ -41,6 +41,13 @@ const AUTOMATION_RECIPIENT_TYPES = Object.freeze(["TO", "CC"]);
 
 const TELEGRAM_MESSAGE_TYPES = Object.freeze(["TEXT", "PHOTO", "DOCUMENT", "OUTRO"]);
 
+// Ciclo de vida do armazenamento de mídia no Drive (Bloco 4). Só se aplica a
+// mensagens tipo PHOTO — TEXT/DOCUMENT/OUTRO mantêm storage_status NULL
+// ("não aplicável"), nunca um valor deste enum. NULL satisfaz a CHECK
+// `IN (...)` do Postgres (constraint só falha em FALSE, não em NULL), então
+// nenhum valor "N/A" precisa existir nesta lista.
+const AUTOMATION_STORAGE_STATUSES = Object.freeze(["PENDING", "PROCESSING", "COMPLETED", "FAILED"]);
+
 module.exports = {
   AUTOMATION_EXECUTION_STATUSES,
   AUTOMATION_FILE_TYPES,
@@ -48,4 +55,5 @@ module.exports = {
   AUTOMATION_APPROVAL_DECISIONS,
   AUTOMATION_RECIPIENT_TYPES,
   TELEGRAM_MESSAGE_TYPES,
+  AUTOMATION_STORAGE_STATUSES,
 };

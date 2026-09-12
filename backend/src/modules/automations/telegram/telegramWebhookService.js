@@ -86,12 +86,14 @@ async function processForConfig(config, updateId, message) {
          empresa_id, automacao_config_id, automacao_execucao_id, chat_id, message_id,
          update_id, telegram_user_id, autor_nome, telegram_username, data_hora_original,
          data_referencia, tipo, texto, caption, telegram_file_id, telegram_file_unique_id,
-         media_group_id, foto_largura, foto_altura, foto_tamanho_bytes, dados_adicionais
+         media_group_id, foto_largura, foto_altura, foto_tamanho_bytes, dados_adicionais,
+         storage_status
        ) VALUES (
          $1, $2, $3, $4, $5,
          $6, $7, $8, $9, to_timestamp($10),
          $11, $12, $13, $14, $15, $16,
-         $17, $18, $19, $20, $21::jsonb
+         $17, $18, $19, $20, $21::jsonb,
+         $22
        )
        ON CONFLICT (automacao_config_id, chat_id, message_id) DO NOTHING
        RETURNING id`,
@@ -117,6 +119,9 @@ async function processForConfig(config, updateId, message) {
         bestPhoto?.height ?? null,
         bestPhoto?.fileSize ?? null,
         JSON.stringify(dadosAdicionais),
+        // Bloco 4: só fotos entram na fila de armazenamento no Drive —
+        // TEXT/DOCUMENT/OUTRO mantêm storage_status NULL (não aplicável).
+        tipo === "PHOTO" ? "PENDING" : null,
       ]
     );
 
