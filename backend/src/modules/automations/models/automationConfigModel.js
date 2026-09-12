@@ -22,9 +22,19 @@ const CONFIG_COLUMNS = `
   a.codigo AS automacao_codigo, a.nome AS automacao_nome
 `;
 
-/** configuracao.documento (Bloco 7B) — nunca sobrescreve outras chaves futuras de configuracao. */
-const documentoJsonOrNull = (configuracaoDocumento) =>
-  configuracaoDocumento ? JSON.stringify({ documento: configuracaoDocumento }) : null;
+/**
+ * Monta o patch de `configuracao` a partir das sub-chaves conhecidas
+ * (`documento` do Bloco 7B, `email` do Bloco 9) — cada uma é independente:
+ * informar uma nunca apaga/toca a outra, e nenhuma delas nunca sobrescreve
+ * uma chave futura ainda desconhecida (o merge raso feito em SQL, via `||`,
+ * só troca as chaves de nível 1 que este patch de fato contém).
+ */
+const configuracaoPatchJsonOrNull = (data) => {
+  const patch = {};
+  if (data.configuracao_documento) patch.documento = data.configuracao_documento;
+  if (data.configuracao_email) patch.email = data.configuracao_email;
+  return Object.keys(patch).length ? JSON.stringify(patch) : null;
+};
 
 const createConfig = async (data) => {
   const { rows } = await pool.query(
@@ -46,7 +56,7 @@ const createConfig = async (data) => {
       data.telegram_chat_id ?? null,
       data.google_drive_pasta_raiz_id ?? null,
       data.usa_ia ?? true,
-      documentoJsonOrNull(data.configuracao_documento),
+      configuracaoPatchJsonOrNull(data),
     ]
   );
   return getConfigById(rows[0].id, null);
@@ -91,8 +101,9 @@ const updateConfig = async (id, empresaId, data) => {
        telegram_chat_id = $11,
        google_drive_pasta_raiz_id = $12,
        usa_ia = COALESCE($13, usa_ia),
-       -- Merge raso: só a chave "documento" é substituída, qualquer outra
-       -- chave futura de configuracao permanece intacta (Bloco 7B).
+       -- Merge raso: só as chaves de nível 1 presentes no patch (Ex.:
+       -- "documento", "email") são substituídas; qualquer outra chave futura
+       -- de configuracao permanece intacta (Bloco 7B/9).
        configuracao = CASE WHEN $14::jsonb IS NOT NULL THEN configuracao || $14::jsonb ELSE configuracao END,
        updated_at = NOW()
      WHERE id = $1 AND deleted_at IS NULL AND ($2::int IS NULL OR empresa_id = $2)
@@ -111,7 +122,7 @@ const updateConfig = async (id, empresaId, data) => {
       data.telegram_chat_id ?? null,
       data.google_drive_pasta_raiz_id ?? null,
       data.usa_ia ?? null,
-      documentoJsonOrNull(data.configuracao_documento),
+      configuracaoPatchJsonOrNull(data),
     ]
   );
   if (!rows.length) return null;

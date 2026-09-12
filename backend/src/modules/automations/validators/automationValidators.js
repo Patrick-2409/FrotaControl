@@ -8,6 +8,7 @@
 
 const { z } = require("zod");
 const { DocumentConfigSchema } = require("../documents/documentConfigSchema");
+const { EmailConfigSchema } = require("../distribution/emailConfigSchema");
 
 // Mesma técnica usada para validar timezone sem adicionar dependência nova:
 // `Intl.supportedValuesOf` é nativo do Node (disponível desde a v18, o projeto
@@ -61,6 +62,10 @@ const automationConfigCreateSchema = z.object({
   // GERAÇÃO do documento exige que estejam completos (ver
   // documentPrerequisites.js).
   configuracao_documento: DocumentConfigSchema.optional(),
+  // Bloco 9 (Seção 30/31) — assunto/corpo do e-mail de distribuição, gravados
+  // em `configuracao.email` (mesmo JSONB, mesmo padrão aditivo). Nunca aceita
+  // credencial/remetente aqui (Seção 13) — isso é só variável de ambiente.
+  configuracao_email: EmailConfigSchema.optional(),
   // SUPER_ADMIN pode informar a empresa alvo; ADMIN_EMPRESA nunca precisa (e se
   // informar, tenantContext.resolveEmpresaScopeWrite já rejeita valor diferente
   // da própria empresa antes deste schema ser avaliado).

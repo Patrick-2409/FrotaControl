@@ -1,6 +1,7 @@
 const express = require("express");
 const { asyncHandler } = require("../../../utils/asyncHandler");
 const ctrl = require("../controllers/automationConfigController");
+const executionCtrl = require("../controllers/automationExecutionController");
 
 const router = express.Router();
 
@@ -27,5 +28,11 @@ router.get("/configs/:id/recipients", asyncHandler(ctrl.listRecipients));
 router.post("/configs/:id/recipients", asyncHandler(ctrl.createRecipient));
 router.patch("/configs/:id/recipients/:recipientId", asyncHandler(ctrl.updateRecipient));
 router.delete("/configs/:id/recipients/:recipientId", asyncHandler(ctrl.deleteRecipient));
+
+// Bloco 9 — distribuição por e-mail de um documento já aprovado (Seção 41).
+// Nunca dispara sozinho (nenhum scheduler chama isto ainda); só uso manual
+// administrativo/teste. Nunca é um "override" de aprovação (Seção 42).
+router.post("/executions/:id/distribute", asyncHandler(executionCtrl.distributeExecution));
+router.get("/executions/:id/distribution-status", asyncHandler(executionCtrl.getDistributionStatus));
 
 module.exports = router;

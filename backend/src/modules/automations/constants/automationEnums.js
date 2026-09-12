@@ -87,6 +87,52 @@ const AUTOMATION_APPROVAL_RECOVERABLE_ERROR_CODES = Object.freeze([
   "APPROVAL_REGENERATION_FAILED",
 ]);
 
+// Ciclo de vida de UMA distribuição por e-mail (Bloco 9) — ao contrário da
+// solicitação de aprovação do Bloco 8, aqui a própria execução acompanha a
+// distribuição em lockstep (`APPROVED -> SENDING -> SENT`, Seção 23), porque
+// a claim atômica na execução já é o mecanismo de proteção contra duas
+// instâncias enviarem a mesma versão (Seção 24) — não precisou de um estado
+// transitório separado como o `PENDING_SEND` do Bloco 8.
+const AUTOMATION_DISTRIBUTION_STATUSES = Object.freeze(["PENDING", "SENDING", "SENT", "ERROR"]);
+
+// Vocabulário completo de erro do módulo de distribuição (Seções 28/29) —
+// usado como `code` em outcomes/eventos. Nem todo código aqui é
+// persistível numa coluna com CHECK (ver AUTOMATION_DISTRIBUTION_PERSISTABLE_ERROR_CODES
+// abaixo): os seis primeiros são falhas de PRÉ-REQUISITO (aprovação
+// ausente/inconsistente, entrada obsoleta, sem destinatário TO, e-mail
+// inválido, configuração de remetente incompleta) que nunca chegam a criar
+// uma linha em `automacao_distribuicoes` nem a mudar o status da execução —
+// mesmo espírito de NO_SNAPSHOT/NO_APPROVER dos Blocos 7B/8. Só os três
+// últimos ocorrem DEPOIS do claim atômico, quando já existe uma linha de
+// distribuição em andamento.
+const AUTOMATION_DISTRIBUTION_ERROR_CODES = Object.freeze([
+  "DISTRIBUTION_DOCUMENT_NOT_APPROVED",
+  "DISTRIBUTION_APPROVAL_INCONSISTENT",
+  "DISTRIBUTION_INPUT_STALE",
+  "DISTRIBUTION_NO_PRIMARY_RECIPIENT",
+  "DISTRIBUTION_INVALID_RECIPIENT_EMAIL",
+  "DISTRIBUTION_CONFIG_INCOMPLETE",
+  "DISTRIBUTION_FILE_NOT_FOUND",
+  "DISTRIBUTION_ATTACHMENT_TOO_LARGE",
+  "DISTRIBUTION_EMAIL_SEND_FAILED",
+]);
+
+// Subconjunto de AUTOMATION_DISTRIBUTION_ERROR_CODES que de fato é escrito em
+// `automacao_distribuicoes.erro_codigo` e no erro_codigo compartilhado de
+// `automacao_execucoes` — só os que acontecem depois do claim (Seção 23).
+const AUTOMATION_DISTRIBUTION_PERSISTABLE_ERROR_CODES = Object.freeze([
+  "DISTRIBUTION_FILE_NOT_FOUND",
+  "DISTRIBUTION_ATTACHMENT_TOO_LARGE",
+  "DISTRIBUTION_EMAIL_SEND_FAILED",
+]);
+
+// DISTRIBUTION_FILE_NOT_FOUND fica de fora: indica inconsistência de dados
+// (o automacao_arquivos vinculado ao documento aprovado desapareceu), não
+// algo que se resolve só tentando de novo. ATTACHMENT_TOO_LARGE também exige
+// intervenção (reduzir o documento não é algo automático). Só a falha de
+// envio em si (rede/timeout/indisponibilidade do provedor SMTP) é transitória.
+const AUTOMATION_DISTRIBUTION_RECOVERABLE_ERROR_CODES = Object.freeze(["DISTRIBUTION_EMAIL_SEND_FAILED"]);
+
 const AUTOMATION_RECIPIENT_TYPES = Object.freeze(["TO", "CC"]);
 
 const TELEGRAM_MESSAGE_TYPES = Object.freeze(["TEXT", "PHOTO", "DOCUMENT", "OUTRO"]);
@@ -179,6 +225,7 @@ const AUTOMATION_EXECUTION_ERROR_CODES = Object.freeze([
   ...AUTOMATION_CLOSING_ERROR_CODES,
   ...AUTOMATION_AI_ERROR_CODES,
   ...AUTOMATION_DOCUMENT_ERROR_CODES,
+  ...AUTOMATION_DISTRIBUTION_PERSISTABLE_ERROR_CODES,
 ]);
 
 // Ciclo de vida de UMA linha de automacao_execucao_documentos (Bloco 7B) —
@@ -240,4 +287,8 @@ module.exports = {
   AUTOMATION_APPROVAL_REQUEST_STATUSES,
   AUTOMATION_APPROVAL_ERROR_CODES,
   AUTOMATION_APPROVAL_RECOVERABLE_ERROR_CODES,
+  AUTOMATION_DISTRIBUTION_STATUSES,
+  AUTOMATION_DISTRIBUTION_ERROR_CODES,
+  AUTOMATION_DISTRIBUTION_PERSISTABLE_ERROR_CODES,
+  AUTOMATION_DISTRIBUTION_RECOVERABLE_ERROR_CODES,
 };

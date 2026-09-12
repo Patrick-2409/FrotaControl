@@ -60,6 +60,10 @@ function emptyDocumentoFormState() {
   };
 }
 
+function emptyEmailFormState() {
+  return { assunto: "", corpo: "" };
+}
+
 function emptyFormState() {
   return {
     automacao_id: "",
@@ -72,13 +76,14 @@ function emptyFormState() {
     google_drive_pasta_raiz_id: "",
     usa_ia: true,
     documento: emptyDocumentoFormState(),
+    email: emptyEmailFormState(),
   };
 }
 
 /** Só inclui campos preenchidos (Zod exige min(1) quando presente — nunca envia string vazia). */
-function buildDocumentoPayload(documento) {
+function buildTrimmedPayload(values) {
   const result = {};
-  for (const [key, value] of Object.entries(documento || {})) {
+  for (const [key, value] of Object.entries(values || {})) {
     const trimmed = typeof value === "string" ? value.trim() : value;
     if (trimmed) result[key] = trimmed;
   }
@@ -250,6 +255,7 @@ function AutomationDrawer({ open, onClose, catalog, config, busy, onCreate, onUp
     setFormError("");
     if (config) {
       const documento = config.configuracao?.documento || {};
+      const email = config.configuracao?.email || {};
       setForm({
         automacao_id: String(config.automacao_id),
         nome: config.nome || "",
@@ -269,6 +275,10 @@ function AutomationDrawer({ open, onClose, catalog, config, busy, onCreate, onUp
           expedienteInicio: documento.expedienteInicio || "",
           expedienteFim: documento.expedienteFim || "",
         },
+        email: {
+          assunto: email.assunto || "",
+          corpo: email.corpo || "",
+        },
       });
     } else {
       setForm({ ...emptyFormState(), automacao_id: catalog[0]?.id ? String(catalog[0].id) : "" });
@@ -287,6 +297,10 @@ function AutomationDrawer({ open, onClose, catalog, config, busy, onCreate, onUp
     setForm((prev) => ({ ...prev, documento: { ...prev.documento, [key]: value } }));
   }
 
+  function fieldEmail(key, value) {
+    setForm((prev) => ({ ...prev, email: { ...prev.email, [key]: value } }));
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     setFormError("");
@@ -300,7 +314,8 @@ function AutomationDrawer({ open, onClose, catalog, config, busy, onCreate, onUp
       telegram_chat_id: form.telegram_chat_id.trim() || null,
       google_drive_pasta_raiz_id: form.google_drive_pasta_raiz_id.trim() || null,
       usa_ia: form.usa_ia,
-      configuracao_documento: buildDocumentoPayload(form.documento),
+      configuracao_documento: buildTrimmedPayload(form.documento),
+      configuracao_email: buildTrimmedPayload(form.email),
     };
     try {
       if (isEditing) {
@@ -552,6 +567,41 @@ function AutomationDrawer({ open, onClose, catalog, config, busy, onCreate, onUp
             </div>
             <p className="mt-2 text-xs text-zinc-500">
               Nenhum documento é gerado nesta fase — estes dados só serão usados quando a geração for executada.
+            </p>
+          </AccordionSection>
+
+          <AccordionSection
+            id="secao-distribuicao-email"
+            title="Distribuição por E-mail"
+            description="Assunto e corpo do e-mail enviado aos destinatários após a aprovação — opcional, usa um modelo padrão se vazio"
+          >
+            <div className="space-y-3">
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs text-zinc-400">Assunto</span>
+                <input
+                  className="fc-input w-full"
+                  value={form.email.assunto}
+                  onChange={(e) => fieldEmail("assunto", e.target.value)}
+                  placeholder="Ex.: Diário de Obra — {projeto} — {data}"
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs text-zinc-400">Corpo da mensagem</span>
+                <textarea
+                  className="fc-input w-full"
+                  rows={5}
+                  value={form.email.corpo}
+                  onChange={(e) => fieldEmail("corpo", e.target.value)}
+                  placeholder="Ex.: Prezados, boa tarde! Segue, anexo a este, o Diário de Obra referente ao projeto {projeto}, data {data}."
+                />
+              </label>
+              <p className="text-xs text-zinc-500">
+                Placeholders aceitos: <code>{"{projeto}"}</code>, <code>{"{data}"}</code>, <code>{"{versao}"}</code>,{" "}
+                <code>{"{cliente}"}</code>, <code>{"{referenciaContratual}"}</code>, <code>{"{identificacao}"}</code>.
+              </p>
+            </div>
+            <p className="mt-2 text-xs text-zinc-500">
+              Nenhum e-mail é enviado nesta fase — o envio só ocorre depois da aprovação via Telegram, de forma manual/administrativa.
             </p>
           </AccordionSection>
 

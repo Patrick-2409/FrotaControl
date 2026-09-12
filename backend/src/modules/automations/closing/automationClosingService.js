@@ -98,23 +98,39 @@ async function claimExecutionForClosing(pool, execucaoId) {
 /** Claim atômico READY_FOR_GENERATION -> PROCESSING, só para reprocessamento explícito (Seção 26). */
 /**
  * Aceita como ponto de partida READY_FOR_GENERATION, mas também qualquer
- * estágio POSTERIOR de um bloco futuro que ainda não seja "ponto sem volta"
- * (aprovação/envio): READY_FOR_DOCUMENT, ERROR recuperável (do fechamento OU
- * da IA — Bloco 6) e AI_PROCESSING abandonado. Achado ao implementar o
+ * estágio POSTERIOR: READY_FOR_DOCUMENT, ERROR recuperável (do fechamento OU
+ * da IA — Bloco 6), AI_PROCESSING abandonado e, desde o Bloco 9,
+ * AWAITING_APPROVAL/APPROVED/SENDING/SENT/REJECTED. Achado ao implementar o
  * Bloco 6 (Seção 42): um late input pode chegar depois que a execução já
  * avançou para a estruturação por IA, e um rebuild explícito precisa
  * conseguir suplantar QUALQUER um desses estágios — travar o claim em
  * READY_FOR_GENERATION (como este código fazia até o Bloco 5) tornaria o
  * rebuild impossível de chamar sempre que a IA já tivesse processado o
- * snapshot antigo. AWAITING_APPROVAL em diante ficam de fora de propósito —
- * um documento já gerado/aprovado nunca é suplantado silenciosamente
- * (Seção 25 do Bloco 5), então nem entram nesta lista.
+ * snapshot antigo.
+ *
+ * O Bloco 5 originalmente excluía AWAITING_APPROVAL em diante de propósito
+ * ("um documento já aprovado nunca é suplantado silenciosamente"). O Bloco 9
+ * precisa revisar essa decisão: Seção 4/37 da sua autorização exige
+ * EXPLICITAMENTE o cenário "v1 aprovada -> late input chega -> rebuild -> IA
+ * -> documento v2 -> aprovação v2" como forma de destravar uma execução cujo
+ * documento aprovado ficou obsoleto. Isto continua seguro porque (a) o
+ * rebuild aqui é sempre uma ação EXPLÍCITA de um humano/operador, nunca
+ * automática; (b) o histórico de v1 (snapshot, inteligência, documento,
+ * aprovação, e uma eventual distribuição) nunca é apagado nem alterado —
+ * apenas uma versão NOVA (v2) passa a existir; e (c)
+ * `documentDistributionService.js` já garante estruturalmente que a
+ * aprovação de v1 nunca autoriza o envio de v2 (verifica
+ * automacao_documento_id/versao_documento exatos). "Nunca silenciosamente"
+ * continua verdadeiro — o que mudou é que "silenciosamente" nunca incluiu
+ * uma chamada explícita e auditada a rebuildDailySnapshot.
  */
 const REBUILD_RECOVERABLE_ERROR_CODES = [...AUTOMATION_CLOSING_RECOVERABLE_ERROR_CODES, ...AUTOMATION_AI_RECOVERABLE_ERROR_CODES];
+const REBUILD_POST_APPROVAL_STATUSES = ["AWAITING_APPROVAL", "APPROVED", "SENDING", "SENT", "REJECTED"];
 
 /** Mesmo conjunto de elegibilidade da query em claimExecutionForRebuild — mantido em JS só para a checagem antecipada (evita gastar closing_attempts num claim já sabido inútil). */
 function isEligibleForRebuildClaim(execucao) {
   if (execucao.status === "READY_FOR_GENERATION" || execucao.status === "READY_FOR_DOCUMENT") return true;
+  if (REBUILD_POST_APPROVAL_STATUSES.includes(execucao.status)) return true;
   if (execucao.status === "ERROR" && REBUILD_RECOVERABLE_ERROR_CODES.includes(execucao.erro_codigo)) return true;
   if (execucao.status === "AI_PROCESSING" && new Date(execucao.updated_at).getTime() < Date.now() - 15 * 60 * 1000) return true;
   return false;
@@ -127,7 +143,7 @@ async function claimExecutionForRebuild(pool, execucaoId) {
        SET status = 'PROCESSING', closing_started_at = NOW(), closing_attempts = closing_attempts + 1, updated_at = NOW()
        WHERE id = $1
          AND (
-           status IN ('READY_FOR_GENERATION', 'READY_FOR_DOCUMENT')
+           status IN ('READY_FOR_GENERATION', 'READY_FOR_DOCUMENT', 'AWAITING_APPROVAL', 'APPROVED', 'SENDING', 'SENT', 'REJECTED')
            OR (status = 'ERROR' AND erro_codigo = ANY($2::text[]))
            OR (status = 'AI_PROCESSING' AND updated_at < NOW() - INTERVAL '15 minutes')
          )
