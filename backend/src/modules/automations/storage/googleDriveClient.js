@@ -196,7 +196,63 @@ function createGoogleDriveClient({
     return parseJsonOrThrow(response, "files.create (upload)");
   }
 
-  return { findFolder, createFolder, ensureFolder, uploadFile, findFileBySourceMetadata, getFileMetadata };
+  /**
+   * Baixa o CONTEÚDO de um arquivo (Bloco 6, Seção 22/48) — método novo,
+   * aditivo; nenhum método existente muda de comportamento. Usado para
+   * enviar fotos já armazenadas à IA para análise visual. Nunca loga o
+   * buffer; nunca persiste URL alguma (o download é feito e o buffer usado
+   * imediatamente, descartado ao final da chamada — mesma disciplina de
+   * memória do `telegramFileClient.downloadFile` do Bloco 4: uma foto por
+   * vez, sem cache global de bytes). Leitura, mas SEM retry automático por
+   * padrão do internalRetry — um download de mídia grande é caro o
+   * suficiente para não repetir cegamente; quem chama decide se tenta de novo.
+   */
+  async function downloadFileContent({ fileId, maxBytes = Infinity }) {
+    const response = await request(`/files/${encodeURIComponent(fileId)}`, {
+      query: { alt: "media", ...driveScopeParams },
+    });
+    if (!response.ok) {
+      let body = null;
+      try {
+        body = await response.json();
+      } catch {
+        /* corpo binário parcial ou vazio em erro — sem detalhe extra */
+      }
+      const message = body?.error?.message || `HTTP ${response.status}`;
+      const err = new StorageError(`Google Drive files.get (alt=media) falhou: ${message}`, {
+        code: response.status === 401 || response.status === 403 ? "PERMISSAO_NEGADA" : undefined,
+      });
+      err.status = response.status;
+      throw err;
+    }
+    const contentLengthHeader =
+      response.headers && typeof response.headers.get === "function" ? response.headers.get("content-length") : null;
+    if (contentLengthHeader && Number(contentLengthHeader) > maxBytes) {
+      throw new StorageError(`Download do Drive excede o limite configurado (Content-Length ${contentLengthHeader}).`, {
+        code: "ARQUIVO_MUITO_GRANDE",
+        storageErrorClass: "DEFINITIVE",
+      });
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    if (buffer.byteLength > maxBytes) {
+      throw new StorageError(`Download do Drive excede o limite configurado (${buffer.byteLength} bytes).`, {
+        code: "ARQUIVO_MUITO_GRANDE",
+        storageErrorClass: "DEFINITIVE",
+      });
+    }
+    return buffer;
+  }
+
+  return {
+    findFolder,
+    createFolder,
+    ensureFolder,
+    uploadFile,
+    findFileBySourceMetadata,
+    getFileMetadata,
+    downloadFileContent,
+  };
 }
 
 module.exports = { createGoogleDriveClient, FOLDER_MIME_TYPE };

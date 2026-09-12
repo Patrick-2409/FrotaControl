@@ -29,7 +29,9 @@ const {
   TELEGRAM_MESSAGE_TYPES,
   AUTOMATION_STORAGE_STATUSES,
   AUTOMATION_SNAPSHOT_REASONS,
-  AUTOMATION_CLOSING_ERROR_CODES,
+  AUTOMATION_EXECUTION_ERROR_CODES,
+  AUTOMATION_INTELLIGENCE_STATUSES,
+  AUTOMATION_AI_ERROR_CODES,
 } = require("./constants/automationEnums");
 
 const sqlEnumList = (values) => values.map((v) => `'${v}'`).join(", ");
@@ -306,6 +308,57 @@ const runSchemaStatements = async (pool) => {
       REFERENCES automacao_execucao_snapshots(id) ON DELETE SET NULL;
   `);
 
+  // Evolução aditiva do Bloco 6 (estruturação inteligente por IA).
+  //
+  //   - automacao_execucao_inteligencias: histórico de TENTATIVAS de
+  //     estruturação por (execução, snapshot) — nunca sobrescrito; um
+  //     "force rebuild" incrementa `versao`, um retry comum de uma tentativa
+  //     FAILED reaproveita a MESMA linha (UPDATE, não INSERT — ver
+  //     automationAiService.js). UNIQUE(execucao, snapshot, versao) é a
+  //     mesma proteção estrutural do Bloco 5 aplicada aqui.
+  //   - automacao_arquivo_analises: cache de análise visual POR FOTO — uma
+  //     foto imutável analisada com o mesmo (model, prompt_version) nunca
+  //     precisa ser reanalisada num rebuild futuro (Seção 26/27).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS automacao_execucao_inteligencias (
+      id SERIAL PRIMARY KEY,
+      empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+      automacao_execucao_id INTEGER NOT NULL REFERENCES automacao_execucoes(id) ON DELETE CASCADE,
+      snapshot_id INTEGER NOT NULL REFERENCES automacao_execucao_snapshots(id) ON DELETE CASCADE,
+      versao INTEGER NOT NULL DEFAULT 1,
+      prompt_version VARCHAR(20) NOT NULL,
+      model VARCHAR(80) NOT NULL,
+      status VARCHAR(20) NOT NULL DEFAULT 'PROCESSING',
+      structured_output JSONB,
+      input_hash VARCHAR(64),
+      output_hash VARCHAR(64),
+      input_tokens INTEGER,
+      output_tokens INTEGER,
+      total_tokens INTEGER,
+      erro_codigo VARCHAR(60),
+      erro_mensagem TEXT,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      started_at TIMESTAMPTZ,
+      completed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (automacao_execucao_id, snapshot_id, versao)
+    );
+
+    CREATE TABLE IF NOT EXISTS automacao_arquivo_analises (
+      id SERIAL PRIMARY KEY,
+      empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+      automacao_arquivo_id INTEGER NOT NULL REFERENCES automacao_arquivos(id) ON DELETE CASCADE,
+      model VARCHAR(80) NOT NULL,
+      prompt_version VARCHAR(20) NOT NULL,
+      analysis JSONB NOT NULL,
+      analysis_hash VARCHAR(64) NOT NULL,
+      input_tokens INTEGER,
+      output_tokens INTEGER,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (automacao_arquivo_id, model, prompt_version)
+    );
+  `);
+
   // 2) Índices de apoio a consulta (todos por empresa_id e/ou chave de acesso mais comum).
   // Nota: mantidos SEM cláusula WHERE deleted_at IS NULL de propósito — como
   // `CREATE INDEX IF NOT EXISTS` não altera a definição de um índice já existente
@@ -399,6 +452,21 @@ const runSchemaStatements = async (pool) => {
     CREATE INDEX IF NOT EXISTS idx_automacao_execucoes_needs_reprocessing
       ON automacao_execucoes (automacao_config_id)
       WHERE needs_reprocessing = true;
+
+    -- Bloco 6: histórico de inteligência por execução/empresa, mais recente primeiro.
+    CREATE INDEX IF NOT EXISTS idx_automacao_execucao_inteligencias_execucao
+      ON automacao_execucao_inteligencias (automacao_execucao_id, versao DESC);
+    CREATE INDEX IF NOT EXISTS idx_automacao_execucao_inteligencias_empresa
+      ON automacao_execucao_inteligencias (empresa_id);
+    CREATE INDEX IF NOT EXISTS idx_automacao_execucao_inteligencias_snapshot
+      ON automacao_execucao_inteligencias (snapshot_id);
+
+    -- Bloco 6: cache de análise visual por arquivo — lookup direto por
+    -- (arquivo, model, prompt_version) é exatamente a UNIQUE já criada acima
+    -- (Postgres cria automaticamente um índice para ela); só o índice por
+    -- empresa é adicional.
+    CREATE INDEX IF NOT EXISTS idx_automacao_arquivo_analises_empresa
+      ON automacao_arquivo_analises (empresa_id);
   `);
 
   // 3) CHECK constraints de domínio (padrão já usado em veiculos_status_operacional_chk /
@@ -444,10 +512,23 @@ const runSchemaStatements = async (pool) => {
     },
     {
       // NULL = sem erro, ou erro sem código específico (guardado só em
-      // erro_mensagem) — mesmo raciocínio de NULL-passa-CHECK do storage_status acima.
+      // erro_mensagem) — mesmo raciocínio de NULL-passa-CHECK do storage_status
+      // acima. União de fechamento (Bloco 5) + IA (Bloco 6): a coluna é
+      // compartilhada entre os dois subsistemas, nunca ambígua na prática
+      // porque os valores em si não se repetem entre as duas listas.
       name: "automacao_execucoes_erro_codigo_chk",
       table: "automacao_execucoes",
-      expression: `erro_codigo IN (${sqlEnumList(AUTOMATION_CLOSING_ERROR_CODES)})`,
+      expression: `erro_codigo IN (${sqlEnumList(AUTOMATION_EXECUTION_ERROR_CODES)})`,
+    },
+    {
+      name: "automacao_execucao_inteligencias_status_chk",
+      table: "automacao_execucao_inteligencias",
+      expression: `status IN (${sqlEnumList(AUTOMATION_INTELLIGENCE_STATUSES)})`,
+    },
+    {
+      name: "automacao_execucao_inteligencias_erro_codigo_chk",
+      table: "automacao_execucao_inteligencias",
+      expression: `erro_codigo IN (${sqlEnumList(AUTOMATION_AI_ERROR_CODES)})`,
     },
   ];
 
@@ -485,12 +566,14 @@ const SCHEMA_INIT_LOCK_KEY = "automationsSchema_init_v1";
  * Checagem barata (só catálogo do sistema, nunca toca as tabelas de dados)
  * que serve de proxy para "o schema já está no estado-alvo do bloco mais
  * recente": marcadores do Bloco 4 (CHECK de storage_status + índice único de
- * arquivo por mensagem) E do Bloco 5 (tabela de snapshots + CHECK de status
- * já contendo READY_FOR_GENERATION — este último é o que força uma reaplicação
- * em qualquer banco que já tinha o schema do Bloco 4, já que o NOME da
- * constraint de status não muda entre blocos, só a definição). Uma consulta a
- * `pg_constraint`/`pg_indexes`/`pg_tables` só precisa de AccessShareLock no
- * catálogo — nunca conflita com DML concorrente nas tabelas do módulo.
+ * arquivo por mensagem), do Bloco 5 (tabela de snapshots + CHECK de status já
+ * contendo READY_FOR_GENERATION) e do Bloco 6 (tabela de inteligências +
+ * CHECK de status já contendo AI_PROCESSING) — os marcadores de CHECK são o
+ * que força reaplicação em qualquer banco de um bloco anterior, já que o
+ * NOME da constraint de status não muda entre blocos, só a definição. Uma
+ * consulta a `pg_constraint`/`pg_indexes`/`pg_tables` só precisa de
+ * AccessShareLock no catálogo — nunca conflita com DML concorrente nas
+ * tabelas do módulo.
  */
 async function isSchemaFullyMigrated(pool) {
   const { rows } = await pool.query(
@@ -500,10 +583,21 @@ async function isSchemaFullyMigrated(pool) {
        (SELECT COUNT(*) FROM pg_tables WHERE tablename = 'automacao_execucao_snapshots') AS c3,
        (SELECT COUNT(*) FROM pg_constraint
           WHERE conname = 'automacao_execucoes_status_chk'
-            AND pg_get_constraintdef(oid) LIKE '%READY_FOR_GENERATION%') AS c4`
+            AND pg_get_constraintdef(oid) LIKE '%READY_FOR_GENERATION%') AS c4,
+       (SELECT COUNT(*) FROM pg_tables WHERE tablename = 'automacao_execucao_inteligencias') AS c5,
+       (SELECT COUNT(*) FROM pg_constraint
+          WHERE conname = 'automacao_execucoes_status_chk'
+            AND pg_get_constraintdef(oid) LIKE '%AI_PROCESSING%') AS c6`
   );
   const r = rows[0];
-  return Number(r.c1) > 0 && Number(r.c2) > 0 && Number(r.c3) > 0 && Number(r.c4) > 0;
+  return (
+    Number(r.c1) > 0 &&
+    Number(r.c2) > 0 &&
+    Number(r.c3) > 0 &&
+    Number(r.c4) > 0 &&
+    Number(r.c5) > 0 &&
+    Number(r.c6) > 0
+  );
 }
 
 /**

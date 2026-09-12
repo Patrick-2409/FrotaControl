@@ -13,7 +13,7 @@
  */
 
 const { logInfo, logWarn } = require("../../../services/loggerService");
-const { AUTOMATION_CLOSING_RECOVERABLE_ERROR_CODES } = require("../constants/automationEnums");
+const { AUTOMATION_CLOSING_RECOVERABLE_ERROR_CODES, AUTOMATION_AI_RECOVERABLE_ERROR_CODES } = require("../constants/automationEnums");
 const { isExecutionDueForClosing } = require("./closingTimeHelper");
 const { buildExecutionSnapshot, computeSnapshotHash } = require("./snapshotBuilder");
 const { claimSpecificPhotoMessage, processPhotoMessageStorage } = require("../storage/photoStorageService");
@@ -96,16 +96,45 @@ async function claimExecutionForClosing(pool, execucaoId) {
 }
 
 /** Claim atômico READY_FOR_GENERATION -> PROCESSING, só para reprocessamento explícito (Seção 26). */
+/**
+ * Aceita como ponto de partida READY_FOR_GENERATION, mas também qualquer
+ * estágio POSTERIOR de um bloco futuro que ainda não seja "ponto sem volta"
+ * (aprovação/envio): READY_FOR_DOCUMENT, ERROR recuperável (do fechamento OU
+ * da IA — Bloco 6) e AI_PROCESSING abandonado. Achado ao implementar o
+ * Bloco 6 (Seção 42): um late input pode chegar depois que a execução já
+ * avançou para a estruturação por IA, e um rebuild explícito precisa
+ * conseguir suplantar QUALQUER um desses estágios — travar o claim em
+ * READY_FOR_GENERATION (como este código fazia até o Bloco 5) tornaria o
+ * rebuild impossível de chamar sempre que a IA já tivesse processado o
+ * snapshot antigo. AWAITING_APPROVAL em diante ficam de fora de propósito —
+ * um documento já gerado/aprovado nunca é suplantado silenciosamente
+ * (Seção 25 do Bloco 5), então nem entram nesta lista.
+ */
+const REBUILD_RECOVERABLE_ERROR_CODES = [...AUTOMATION_CLOSING_RECOVERABLE_ERROR_CODES, ...AUTOMATION_AI_RECOVERABLE_ERROR_CODES];
+
+/** Mesmo conjunto de elegibilidade da query em claimExecutionForRebuild — mantido em JS só para a checagem antecipada (evita gastar closing_attempts num claim já sabido inútil). */
+function isEligibleForRebuildClaim(execucao) {
+  if (execucao.status === "READY_FOR_GENERATION" || execucao.status === "READY_FOR_DOCUMENT") return true;
+  if (execucao.status === "ERROR" && REBUILD_RECOVERABLE_ERROR_CODES.includes(execucao.erro_codigo)) return true;
+  if (execucao.status === "AI_PROCESSING" && new Date(execucao.updated_at).getTime() < Date.now() - 15 * 60 * 1000) return true;
+  return false;
+}
+
 async function claimExecutionForRebuild(pool, execucaoId) {
   const { rows } = await pool.query(
     `WITH claimed AS (
        UPDATE automacao_execucoes
        SET status = 'PROCESSING', closing_started_at = NOW(), closing_attempts = closing_attempts + 1, updated_at = NOW()
-       WHERE id = $1 AND status = 'READY_FOR_GENERATION'
+       WHERE id = $1
+         AND (
+           status IN ('READY_FOR_GENERATION', 'READY_FOR_DOCUMENT')
+           OR (status = 'ERROR' AND erro_codigo = ANY($2::text[]))
+           OR (status = 'AI_PROCESSING' AND updated_at < NOW() - INTERVAL '15 minutes')
+         )
        RETURNING *
      )
      SELECT claimed.*, to_char(claimed.data_referencia, 'YYYY-MM-DD') AS "dataReferencia" FROM claimed`,
-    [execucaoId]
+    [execucaoId, REBUILD_RECOVERABLE_ERROR_CODES]
   );
   return rows[0] || null;
 }
@@ -377,7 +406,10 @@ async function rebuildDailySnapshot({
     const execucao = await loadExecucaoById(pool, automacaoExecucaoId);
     if (!execucao) return { outcome: "NOT_FOUND" };
 
-    if (execucao.status !== "READY_FOR_GENERATION") {
+    // Mesmo conjunto aceito por claimExecutionForRebuild — checagem antecipada
+    // só para devolver NOT_ELIGIBLE_FOR_REBUILD sem gastar um claim_attempts
+    // quando o estado é obviamente fora de alcance (ex.: ainda COLLECTING).
+    if (!isEligibleForRebuildClaim(execucao)) {
       return { outcome: "NOT_ELIGIBLE_FOR_REBUILD", currentStatus: execucao.status, execucaoId: execucao.id };
     }
 
