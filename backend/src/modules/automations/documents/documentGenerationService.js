@@ -163,7 +163,11 @@ async function claimExecutionForDocumentProcessing(
      WHERE e.id = $1
        AND (
          e.status = 'READY_FOR_DOCUMENT'
-         OR ($9::boolean AND e.status = 'DOCUMENT_READY')
+         -- force também aceita DOCUMENT_READY (Bloco 7B, regenerar um
+         -- documento já pronto) e AWAITING_APPROVAL (Bloco 8, ação
+         -- REGENERAR clicada no Telegram enquanto uma versão anterior
+         -- ainda aguarda decisão humana — nunca aceito sem force).
+         OR ($9::boolean AND e.status IN ('DOCUMENT_READY', 'AWAITING_APPROVAL'))
          OR (
            (
              (e.status = 'ERROR' AND e.erro_codigo = ANY($2::text[]))

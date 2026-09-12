@@ -48,6 +48,45 @@ const AUTOMATION_APPROVAL_DECISIONS = Object.freeze([
   "REGENERAR_SOLICITADO",
 ]);
 
+// Ciclo de vida de UMA solicitação de aprovação (Bloco 8) — entidade PRÓPRIA,
+// distinta da execução (que só transiciona para AWAITING_APPROVAL depois do
+// envio ao Telegram ser CONFIRMADO, nunca antes — Seção 3). PENDING_SEND é o
+// estado de claim (permite reentrada em caso de crash entre o claim e o
+// envio real); SENT é o estado "aguardando decisão humana"; APPROVED/REJECTED
+// são terminais definidos pela primeira decisão válida (Seção 10);
+// SUPERSEDED marca uma solicitação cuja versão foi substituída por um
+// REGENERAR (nunca apaga o histórico); ERROR é recuperável via nova chamada
+// de envio (não reabre automaticamente).
+const AUTOMATION_APPROVAL_REQUEST_STATUSES = Object.freeze([
+  "PENDING_SEND",
+  "SENT",
+  "APPROVED",
+  "REJECTED",
+  "SUPERSEDED",
+  "ERROR",
+]);
+
+// Códigos de erro da SOLICITAÇÃO DE APROVAÇÃO (Bloco 8) — coluna PRÓPRIA
+// (automacao_solicitacoes_aprovacao.erro_codigo), nunca a coluna compartilhada
+// de automacao_execucoes (o envio ao Telegram nunca muda o status da
+// execução até ser confirmado, então uma falha de envio nunca precisa tocar
+// automacao_execucoes.erro_codigo — ver documentApprovalService.js).
+const AUTOMATION_APPROVAL_ERROR_CODES = Object.freeze([
+  "APPROVAL_FILE_NOT_FOUND",
+  "APPROVAL_TELEGRAM_SEND_FAILED",
+  "APPROVAL_REGENERATION_FAILED",
+]);
+
+// APPROVAL_FILE_NOT_FOUND fica de fora: um automacao_arquivos ausente para um
+// documento já COMPLETED indica inconsistência de dados, não algo que se
+// resolve só tentando de novo. Os outros dois são transitórios por natureza
+// (rede/timeout do Telegram, ou uma falha recuperável já classificada pelo
+// próprio documentGenerationService ao regenerar).
+const AUTOMATION_APPROVAL_RECOVERABLE_ERROR_CODES = Object.freeze([
+  "APPROVAL_TELEGRAM_SEND_FAILED",
+  "APPROVAL_REGENERATION_FAILED",
+]);
+
 const AUTOMATION_RECIPIENT_TYPES = Object.freeze(["TO", "CC"]);
 
 const TELEGRAM_MESSAGE_TYPES = Object.freeze(["TEXT", "PHOTO", "DOCUMENT", "OUTRO"]);
@@ -198,4 +237,7 @@ module.exports = {
   AUTOMATION_DOCUMENT_RECOVERABLE_ERROR_CODES,
   AUTOMATION_DOCUMENT_STATUSES,
   AUTOMATION_DOCUMENT_GENERATOR_TYPES,
+  AUTOMATION_APPROVAL_REQUEST_STATUSES,
+  AUTOMATION_APPROVAL_ERROR_CODES,
+  AUTOMATION_APPROVAL_RECOVERABLE_ERROR_CODES,
 };

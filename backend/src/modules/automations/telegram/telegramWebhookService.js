@@ -25,6 +25,9 @@ const {
   hasRelevantContent,
   selectBestPhoto,
 } = require("./telegramUpdateParser");
+const { parseApprovalCallbackData } = require("../approval/approvalCallbackParser");
+const { handleApprovalCallback } = require("../approval/documentApprovalService");
+const { createTelegramBotClient } = require("../approval/telegramBotClient");
 
 /** Data civil (YYYY-MM-DD) de um timestamp UNIX (segundos) num timezone IANA — nunca UTC hardcoded. */
 function computeDataReferencia(dateUnixSeconds, timezone) {
@@ -201,11 +204,26 @@ async function processForConfig(config, updateId, message) {
  * num status que permite retry.
  */
 async function processTelegramUpdate(rawUpdate) {
-  const { updateId, kind, message } = normalizeUpdate(rawUpdate);
+  const { updateId, kind, message, callbackQuery } = normalizeUpdate(rawUpdate);
 
   if (kind === "callback_query") {
-    // Reconhecido, não tratado — a aprovação real é de um bloco futuro.
-    return { handled: false, reason: "callback_query_not_implemented" };
+    // Namespace dedicado (Bloco 8, Seção 18): um callback de qualquer outro
+    // recurso futuro (fora de `appr:`) nunca é interceptado por engano aqui —
+    // cai no mesmo "reconhecido, não tratado" de antes, preservando o
+    // comportamento já testado para callbacks desconhecidos.
+    const parsed = parseApprovalCallbackData(callbackQuery?.data);
+    if (!parsed.valid) {
+      return { handled: false, reason: "callback_query_not_implemented" };
+    }
+    // Nunca importa nada do pipeline de Drive/armazenamento aqui (mesma
+    // regra estática do Bloco 4 para este arquivo) — só a mensageria do
+    // Telegram (responder o callback, editar a mensagem). A ação REGENERAR
+    // só registra o pedido; quem efetivamente gera e reenvia a nova versão
+    // é `regenerateAndResendForApproval`, chamada só por teste/API
+    // administrativa (Seção 40 da autorização do Bloco 8).
+    const telegramClient = createTelegramBotClient({ tokenProvider: () => process.env.TELEGRAM_BOT_TOKEN });
+    const result = await handleApprovalCallback({ pool, telegramClient, callbackQuery });
+    return { handled: true, results: [{ approval: result }] };
   }
   if (kind !== "message" || !message) {
     return { handled: false, reason: kind === "invalid" ? "invalid_update" : "unsupported_update_kind" };

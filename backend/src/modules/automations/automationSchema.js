@@ -35,6 +35,8 @@ const {
   AUTOMATION_DOCUMENT_STATUSES,
   AUTOMATION_DOCUMENT_GENERATOR_TYPES,
   AUTOMATION_DOCUMENT_ERROR_CODES,
+  AUTOMATION_APPROVAL_REQUEST_STATUSES,
+  AUTOMATION_APPROVAL_ERROR_CODES,
 } = require("./constants/automationEnums");
 
 const sqlEnumList = (values) => values.map((v) => `'${v}'`).join(", ");
@@ -415,6 +417,57 @@ const runSchemaStatements = async (pool) => {
       REFERENCES automacao_execucao_documentos(id) ON DELETE SET NULL;
   `);
 
+  // Evolução aditiva do Bloco 8 (envio ao aprovador + aprovação humana via
+  // Telegram).
+  //
+  //   - automacao_solicitacoes_aprovacao: entidade PRÓPRIA para o CICLO DE
+  //     VIDA DO ENVIO (nunca reaproveita automacao_aprovacoes para isso — ver
+  //     Seção 28 da autorização). UNIQUE(automacao_documento_id): no máximo
+  //     UMA solicitação por VERSÃO documental, para sempre (nunca reescrita
+  //     para uma versão nova — REGENERAR sempre cria uma linha nova para o
+  //     novo automacao_documento_id). É essa UNIQUE, combinada com
+  //     INSERT...ON CONFLICT DO UPDATE...WHERE (ver documentApprovalService.js),
+  //     que fornece o claim atômico contra dois processos enviarem a mesma
+  //     versão para aprovação (Seção 3) — nenhum estado transitório novo
+  //     precisou ser adicionado a automacao_execucoes.status para isso.
+  //   - automacao_aprovacoes ganha vínculo inequívoco com config/documento/
+  //     versão/solicitação (Seção 5) — nunca confia apenas em
+  //     automacao_execucao_id. Todas as colunas novas são NULLABLE (tabela
+  //     pré-existente do Bloco 1, nunca populada até agora) para nunca exigir
+  //     backfill; o código do Bloco 8 sempre as preenche a partir de agora.
+  //     Nenhuma linha antiga é reescrita.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS automacao_solicitacoes_aprovacao (
+      id SERIAL PRIMARY KEY,
+      empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+      automacao_config_id INTEGER NOT NULL REFERENCES automacao_configs(id) ON DELETE CASCADE,
+      automacao_execucao_id INTEGER NOT NULL REFERENCES automacao_execucoes(id) ON DELETE CASCADE,
+      automacao_documento_id INTEGER NOT NULL REFERENCES automacao_execucao_documentos(id) ON DELETE CASCADE,
+      versao_documento INTEGER NOT NULL,
+      status VARCHAR(20) NOT NULL DEFAULT 'PENDING_SEND',
+      telegram_chat_id BIGINT,
+      telegram_message_id BIGINT,
+      erro_codigo VARCHAR(60),
+      erro_mensagem TEXT,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      sent_at TIMESTAMPTZ,
+      decided_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (automacao_documento_id)
+    );
+  `);
+
+  await pool.query(`
+    ALTER TABLE automacao_aprovacoes ADD COLUMN IF NOT EXISTS automacao_config_id INTEGER
+      REFERENCES automacao_configs(id) ON DELETE CASCADE;
+    ALTER TABLE automacao_aprovacoes ADD COLUMN IF NOT EXISTS automacao_documento_id INTEGER
+      REFERENCES automacao_execucao_documentos(id) ON DELETE CASCADE;
+    ALTER TABLE automacao_aprovacoes ADD COLUMN IF NOT EXISTS automacao_solicitacao_id INTEGER
+      REFERENCES automacao_solicitacoes_aprovacao(id) ON DELETE SET NULL;
+    ALTER TABLE automacao_aprovacoes ADD COLUMN IF NOT EXISTS versao_documento INTEGER;
+  `);
+
   // 2) Índices de apoio a consulta (todos por empresa_id e/ou chave de acesso mais comum).
   // Nota: mantidos SEM cláusula WHERE deleted_at IS NULL de propósito — como
   // `CREATE INDEX IF NOT EXISTS` não altera a definição de um índice já existente
@@ -537,6 +590,25 @@ const runSchemaStatements = async (pool) => {
     CREATE INDEX IF NOT EXISTS idx_automacao_arquivos_documento
       ON automacao_arquivos (automacao_documento_id)
       WHERE automacao_documento_id IS NOT NULL;
+
+    -- Bloco 8: fila/histórico de solicitações de aprovação. A UNIQUE
+    -- (automacao_documento_id) já cria seu próprio índice — o índice de
+    -- execução cobre a leitura "qual é a solicitação corrente desta
+    -- execução" e o de empresa cobre listagens administrativas.
+    CREATE INDEX IF NOT EXISTS idx_automacao_solicitacoes_aprovacao_execucao
+      ON automacao_solicitacoes_aprovacao (automacao_execucao_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_automacao_solicitacoes_aprovacao_empresa
+      ON automacao_solicitacoes_aprovacao (empresa_id);
+    CREATE INDEX IF NOT EXISTS idx_automacao_solicitacoes_aprovacao_status
+      ON automacao_solicitacoes_aprovacao (status);
+
+    -- Bloco 8: histórico de decisões por documento (nunca sobrescrito) e por config.
+    CREATE INDEX IF NOT EXISTS idx_automacao_aprovacoes_documento
+      ON automacao_aprovacoes (automacao_documento_id)
+      WHERE automacao_documento_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_automacao_aprovacoes_config
+      ON automacao_aprovacoes (automacao_config_id)
+      WHERE automacao_config_id IS NOT NULL;
   `);
 
   // 3) CHECK constraints de domínio (padrão já usado em veiculos_status_operacional_chk /
@@ -615,6 +687,18 @@ const runSchemaStatements = async (pool) => {
       table: "automacao_templates",
       expression: `tipo IS NULL OR tipo IN (${sqlEnumList(AUTOMATION_DOCUMENT_GENERATOR_TYPES)})`,
     },
+    {
+      name: "automacao_solicitacoes_aprovacao_status_chk",
+      table: "automacao_solicitacoes_aprovacao",
+      expression: `status IN (${sqlEnumList(AUTOMATION_APPROVAL_REQUEST_STATUSES)})`,
+    },
+    {
+      // NULL = sem erro (linha ainda PENDING_SEND/SENT/decidida sem falha) —
+      // mesmo raciocínio de NULL-passa-CHECK já usado em todo o módulo.
+      name: "automacao_solicitacoes_aprovacao_erro_codigo_chk",
+      table: "automacao_solicitacoes_aprovacao",
+      expression: `erro_codigo IN (${sqlEnumList(AUTOMATION_APPROVAL_ERROR_CODES)})`,
+    },
   ];
 
   // DROP + ADD (nunca só "cria se não existir"): a DEFINIÇÃO de uma CHECK
@@ -692,7 +776,8 @@ async function isSchemaFullyMigrated(pool) {
        (SELECT COUNT(*) FROM pg_tables WHERE tablename = 'automacao_execucao_documentos') AS c7,
        (SELECT COUNT(*) FROM pg_constraint
           WHERE conname = 'automacao_execucoes_status_chk'
-            AND pg_get_constraintdef(oid) LIKE '%DOCUMENT_READY%') AS c8`
+            AND pg_get_constraintdef(oid) LIKE '%DOCUMENT_READY%') AS c8,
+       (SELECT COUNT(*) FROM pg_tables WHERE tablename = 'automacao_solicitacoes_aprovacao') AS c9`
   );
   const r = rows[0];
   return (
@@ -703,7 +788,8 @@ async function isSchemaFullyMigrated(pool) {
     Number(r.c5) > 0 &&
     Number(r.c6) > 0 &&
     Number(r.c7) > 0 &&
-    Number(r.c8) > 0
+    Number(r.c8) > 0 &&
+    Number(r.c9) > 0
   );
 }
 

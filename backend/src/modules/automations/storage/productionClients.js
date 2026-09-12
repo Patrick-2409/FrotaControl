@@ -15,6 +15,7 @@
 const { createTelegramFileClient } = require("./telegramFileClient");
 const { createGoogleAuthProvider } = require("./googleAuthProvider");
 const { createGoogleDriveClient } = require("./googleDriveClient");
+const { createTelegramBotClient } = require("../approval/telegramBotClient");
 
 function createDefaultTelegramFileClient(env = process.env) {
   return createTelegramFileClient({ tokenProvider: () => env.TELEGRAM_BOT_TOKEN });
@@ -25,4 +26,11 @@ function createDefaultGoogleDriveClient(env = process.env) {
   return createGoogleDriveClient({ authProvider, sharedDriveId: env.GOOGLE_DRIVE_SHARED_DRIVE_ID || null });
 }
 
-module.exports = { createDefaultTelegramFileClient, createDefaultGoogleDriveClient };
+// Bloco 8 — mesma disciplina das fábricas acima: nunca faz chamada de rede
+// nem lança por env vazia ao simplesmente ser criado; a validação do token só
+// acontece dentro de uma chamada de verdade (sendMessage/sendDocument/...).
+function createDefaultTelegramBotClient(env = process.env) {
+  return createTelegramBotClient({ tokenProvider: () => env.TELEGRAM_BOT_TOKEN });
+}
+
+module.exports = { createDefaultTelegramFileClient, createDefaultGoogleDriveClient, createDefaultTelegramBotClient };

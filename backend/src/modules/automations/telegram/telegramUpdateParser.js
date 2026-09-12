@@ -157,13 +157,32 @@ const messageSchema = z
   })
   .passthrough();
 
+// Bloco 8 — estrutura mínima de um callback_query (clique num botão inline).
+// `.passthrough()` em todo nível: nunca rejeita o update inteiro por causa de
+// campos desconhecidos que o Telegram venha a adicionar no futuro.
+const callbackMessageSchema = z
+  .object({
+    message_id: telegramId,
+    chat: chatSchema,
+  })
+  .passthrough();
+
+const callbackQuerySchema = z
+  .object({
+    id: z.string(),
+    from: fromSchema,
+    data: z.string().optional(),
+    message: callbackMessageSchema.optional(),
+  })
+  .passthrough();
+
 const updateSchema = z
   .object({
     update_id: telegramId,
     message: messageSchema.optional(),
     channel_post: messageSchema.optional(),
     edited_message: messageSchema.optional(),
-    callback_query: z.unknown().optional(),
+    callback_query: callbackQuerySchema.optional(),
   })
   .passthrough();
 
@@ -214,8 +233,20 @@ function normalizeMessage(rawMessage) {
   };
 }
 
+/** Estrutura mínima e normalizada de um callback_query (Bloco 8) — nunca inclui o objeto bruto do Telegram. */
+function normalizeCallbackQuery(rawCallbackQuery) {
+  return {
+    id: rawCallbackQuery.id,
+    data: rawCallbackQuery.data ?? null,
+    from: { id: rawCallbackQuery.from.id, username: rawCallbackQuery.from.username || null },
+    message: rawCallbackQuery.message
+      ? { messageId: rawCallbackQuery.message.message_id, chatId: rawCallbackQuery.message.chat.id }
+      : null,
+  };
+}
+
 /**
- * Normaliza um update já parseado (objeto JS) em `{ updateId, kind, message }`.
+ * Normaliza um update já parseado (objeto JS) em `{ updateId, kind, message, callbackQuery }`.
  * `kind`: "message" | "callback_query" | "unknown" | "invalid".
  * Nunca lança — updates fora do subconjunto suportado viram "unknown"/"invalid".
  */
@@ -223,22 +254,22 @@ function normalizeUpdate(rawUpdate) {
   const parsed = updateSchema.safeParse(rawUpdate);
   if (!parsed.success) {
     const fallbackId = rawUpdate && rawUpdate.update_id != null ? String(rawUpdate.update_id) : null;
-    return { updateId: fallbackId, kind: "invalid", message: null };
+    return { updateId: fallbackId, kind: "invalid", message: null, callbackQuery: null };
   }
 
   const data = parsed.data;
   const updateId = data.update_id;
 
   if (data.callback_query) {
-    return { updateId, kind: "callback_query", message: null };
+    return { updateId, kind: "callback_query", message: null, callbackQuery: normalizeCallbackQuery(data.callback_query) };
   }
 
   const rawMessage = data.message || data.channel_post || data.edited_message;
   if (!rawMessage) {
-    return { updateId, kind: "unknown", message: null };
+    return { updateId, kind: "unknown", message: null, callbackQuery: null };
   }
 
-  return { updateId, kind: "message", message: normalizeMessage(rawMessage) };
+  return { updateId, kind: "message", message: normalizeMessage(rawMessage), callbackQuery: null };
 }
 
 /** Tipo de conteúdo persistido — mesmo domínio de TELEGRAM_MESSAGE_TYPES (automationEnums.js). */
