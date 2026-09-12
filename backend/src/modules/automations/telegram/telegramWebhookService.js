@@ -155,8 +155,35 @@ async function processForConfig(config, updateId, message) {
       [execucao.id, tipo === "PHOTO" ? 1 : 0]
     );
 
+    // Bloco 5 (Seção 24/42) — entrada tardia: a execução já saiu de
+    // COLLECTING (fechamento já rodou, ou foi além) e mesmo assim uma
+    // mensagem NOVA e relevante chegou para o mesmo dia. A captura em si
+    // nunca é bloqueada nem adiada — a mensagem é sempre persistida
+    // normalmente (já aconteceu acima). O que muda é só a sinalização:
+    // marca a execução para reprocessamento explícito, nunca reabre
+    // silenciosamente para COLLECTING (um documento já pode ter sido gerado
+    // ou até aprovado a partir do snapshot atual — reabrir sem auditoria
+    // destruiria essa garantia). Só um `rebuildDailySnapshot` explícito,
+    // chamado de propósito, incorpora este late input.
+    if (execucao.status !== "COLLECTING") {
+      await client.query(
+        `UPDATE automacao_execucoes SET has_late_inputs = true, needs_reprocessing = true, updated_at = NOW() WHERE id = $1`,
+        [execucao.id]
+      );
+      await client.query(
+        `INSERT INTO automacao_eventos (empresa_id, automacao_config_id, automacao_execucao_id, tipo_evento, origem, dados)
+         VALUES ($1, $2, $3, 'LATE_INPUT_RECEIVED', 'SISTEMA', $4::jsonb)`,
+        [
+          config.empresa_id,
+          config.id,
+          execucao.id,
+          JSON.stringify({ message_id: message.messageId, chat_id: message.chatId, tipo, status_no_momento: execucao.status }),
+        ]
+      );
+    }
+
     await client.query("COMMIT");
-    return { status: "created", executionId: execucao.id, messageId: insertMensagem.rows[0].id };
+    return { status: "created", executionId: execucao.id, messageId: insertMensagem.rows[0].id, lateInput: execucao.status !== "COLLECTING" };
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
     throw err;

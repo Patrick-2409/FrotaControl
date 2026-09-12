@@ -11,11 +11,15 @@
  * valida essa sincronia.
  */
 
-// Máquina de estados da execução diária (persistência preparada; a transição de
-// estados/orquestração fica para um bloco futuro — aqui é só o domínio de valores).
+// Máquina de estados da execução diária. COLLECTING/PROCESSING existiam desde
+// o Bloco 1 sem uso real; o Bloco 5 é o primeiro a implementar a transição de
+// verdade (COLLECTING -> PROCESSING -> READY_FOR_GENERATION, com ERROR como
+// estado de retry recuperável). AWAITING_APPROVAL em diante ficam reservados
+// para blocos futuros (geração do D.O., aprovação, envio).
 const AUTOMATION_EXECUTION_STATUSES = Object.freeze([
   "COLLECTING",
   "PROCESSING",
+  "READY_FOR_GENERATION",
   "AWAITING_APPROVAL",
   "APPROVED",
   "SENDING",
@@ -48,6 +52,23 @@ const TELEGRAM_MESSAGE_TYPES = Object.freeze(["TEXT", "PHOTO", "DOCUMENT", "OUTR
 // nenhum valor "N/A" precisa existir nesta lista.
 const AUTOMATION_STORAGE_STATUSES = Object.freeze(["PENDING", "PROCESSING", "COMPLETED", "FAILED"]);
 
+// Motivo de cada linha em automacao_execucao_snapshots (Bloco 5): o primeiro
+// fechamento do dia, ou um reprocessamento explícito posterior (late input).
+const AUTOMATION_SNAPSHOT_REASONS = Object.freeze(["INITIAL_CLOSING", "REBUILD"]);
+
+// Códigos de erro do MOTOR DE FECHAMENTO (automacao_execucoes.erro_codigo,
+// Bloco 5) — NULL continua significando "sem erro" ou "erro sem código
+// específico" (ex.: exceção inesperada, guardada só em erro_mensagem).
+// Todo código aqui precisa aparecer também em AUTOMATION_CLOSING_RECOVERABLE_ERROR_CODES
+// OU numa lista de códigos definitivos de um bloco futuro — nunca fica ambíguo.
+const AUTOMATION_CLOSING_ERROR_CODES = Object.freeze(["PHOTO_STORAGE_PENDING"]);
+
+// Subconjunto de AUTOMATION_CLOSING_ERROR_CODES que autoriza uma nova
+// tentativa de fechamento (ERROR -> PROCESSING via claim atômico). Erros
+// definitivos de configuração (ex.: template inexistente, de um bloco
+// futuro) NUNCA entram aqui — teriam outra política, fora do escopo deste bloco.
+const AUTOMATION_CLOSING_RECOVERABLE_ERROR_CODES = Object.freeze(["PHOTO_STORAGE_PENDING"]);
+
 module.exports = {
   AUTOMATION_EXECUTION_STATUSES,
   AUTOMATION_FILE_TYPES,
@@ -56,4 +77,7 @@ module.exports = {
   AUTOMATION_RECIPIENT_TYPES,
   TELEGRAM_MESSAGE_TYPES,
   AUTOMATION_STORAGE_STATUSES,
+  AUTOMATION_SNAPSHOT_REASONS,
+  AUTOMATION_CLOSING_ERROR_CODES,
+  AUTOMATION_CLOSING_RECOVERABLE_ERROR_CODES,
 };

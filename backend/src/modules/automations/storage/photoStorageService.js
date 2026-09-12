@@ -34,17 +34,27 @@ const PHOTO_MIME_TYPE = "image/jpeg";
 const PHOTO_EXTENSION = "jpg";
 
 /**
- * `automacaoConfigId` é opcional — omitido, a claim é GLOBAL (a fila inteira
- * da plataforma, o modo esperado para um worker/scheduler real de produção,
- * que processa todas as configs de uma vez). Passado, restringe a claim a
- * uma config específica — útil tanto para um reprocessamento manual pontual
- * quanto para isolar testes entre si sem depender de limpeza de dados no
- * final de cada teste (mesmo espírito de nunca depender de filtro implícito
- * que já rege `tenantContext.js` no resto do projeto).
+ * `automacaoConfigId`/`automacaoExecucaoId` são opcionais — ambos omitidos, a
+ * claim é GLOBAL (a fila inteira da plataforma, o modo esperado para um
+ * worker/scheduler real de produção, que processa todas as configs de uma
+ * vez). `automacaoConfigId` restringe a uma config específica — útil tanto
+ * para um reprocessamento manual pontual quanto para isolar testes entre si
+ * sem depender de limpeza de dados no final de cada teste (mesmo espírito de
+ * nunca depender de filtro implícito que já rege `tenantContext.js` no resto
+ * do projeto). `automacaoExecucaoId` (adicionado no Bloco 5) restringe ainda
+ * mais, a UMA execução específica — o motor de fechamento diário precisa
+ * disso: uma config pode ter fotos pendentes de OUTROS dias além do que está
+ * sendo fechado agora, e retentar só as da execução atual é o que a Seção 13
+ * do Bloco 5 pede ("para cada foto ainda [pendente] tentar uma rodada").
  */
 async function claimNextPendingPhotoMessage(
   pool,
-  { maxAttempts = getMaxStorageAttempts(), staleMinutes = STALE_PROCESSING_MINUTES, automacaoConfigId = null } = {}
+  {
+    maxAttempts = getMaxStorageAttempts(),
+    staleMinutes = STALE_PROCESSING_MINUTES,
+    automacaoConfigId = null,
+    automacaoExecucaoId = null,
+  } = {}
 ) {
   const { rows } = await pool.query(
     `UPDATE telegram_mensagens
@@ -55,6 +65,7 @@ async function claimNextPendingPhotoMessage(
        SELECT id FROM telegram_mensagens
        WHERE tipo = 'PHOTO'
          AND ($3::int IS NULL OR automacao_config_id = $3)
+         AND ($4::int IS NULL OR automacao_execucao_id = $4)
          AND (
            storage_status = 'PENDING'
            OR (storage_status = 'PROCESSING' AND storage_last_attempt_at < NOW() - ($1 || ' minutes')::interval)
@@ -65,7 +76,38 @@ async function claimNextPendingPhotoMessage(
        LIMIT 1
      )
      RETURNING *`,
-    [staleMinutes, maxAttempts, automacaoConfigId]
+    [staleMinutes, maxAttempts, automacaoConfigId, automacaoExecucaoId]
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Claim de UMA mensagem específica (por id), não "a próxima da fila" —
+ * introduzida no Bloco 5 para o motor de fechamento diário, que precisa de
+ * "no máximo uma tentativa por foto, por chamada de fechamento" (nunca um
+ * loop que reclama a MESMA mensagem repetidas vezes até esgotar
+ * storage_attempts de uma só vez, o que aconteceria se o motor de fechamento
+ * usasse `processPendingPhotoStorage` num loop: uma foto que falha volta
+ * para PENDING e ficaria imediatamente elegível de novo dentro do MESMO
+ * loop). Mesma WHERE de elegibilidade de `claimNextPendingPhotoMessage`, só
+ * que mirada num id — se a mensagem não estiver mais elegível (já
+ * COMPLETED/FAILED, ou tentativas esgotadas), retorna null sem tocar nada.
+ */
+async function claimSpecificPhotoMessage(pool, mensagemId, { maxAttempts = getMaxStorageAttempts(), staleMinutes = STALE_PROCESSING_MINUTES } = {}) {
+  const { rows } = await pool.query(
+    `UPDATE telegram_mensagens
+     SET storage_status = 'PROCESSING',
+         storage_attempts = storage_attempts + 1,
+         storage_last_attempt_at = NOW()
+     WHERE id = $1
+       AND tipo = 'PHOTO'
+       AND (
+         storage_status = 'PENDING'
+         OR (storage_status = 'PROCESSING' AND storage_last_attempt_at < NOW() - ($2 || ' minutes')::interval)
+       )
+       AND storage_attempts < $3
+     RETURNING *`,
+    [mensagemId, staleMinutes, maxAttempts]
   );
   return rows[0] || null;
 }
@@ -242,10 +284,11 @@ async function processPendingPhotoStorage({
   limit = 20,
   maxAttempts = getMaxStorageAttempts(),
   automacaoConfigId = null,
+  automacaoExecucaoId = null,
 }) {
   const summary = { processed: 0, succeeded: 0, failed: 0 };
   for (let i = 0; i < limit; i += 1) {
-    const mensagem = await claimNextPendingPhotoMessage(pool, { maxAttempts, automacaoConfigId });
+    const mensagem = await claimNextPendingPhotoMessage(pool, { maxAttempts, automacaoConfigId, automacaoExecucaoId });
     if (!mensagem) break;
     summary.processed += 1;
     try {
@@ -262,6 +305,7 @@ module.exports = {
   PHOTO_MIME_TYPE,
   PHOTO_EXTENSION,
   claimNextPendingPhotoMessage,
+  claimSpecificPhotoMessage,
   loadMessageContext,
   processPhotoMessageStorage,
   processPendingPhotoStorage,

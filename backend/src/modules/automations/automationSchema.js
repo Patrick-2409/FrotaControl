@@ -28,6 +28,8 @@ const {
   AUTOMATION_RECIPIENT_TYPES,
   TELEGRAM_MESSAGE_TYPES,
   AUTOMATION_STORAGE_STATUSES,
+  AUTOMATION_SNAPSHOT_REASONS,
+  AUTOMATION_CLOSING_ERROR_CODES,
 } = require("./constants/automationEnums");
 
 const sqlEnumList = (values) => values.map((v) => `'${v}'`).join(", ");
@@ -257,6 +259,53 @@ const runSchemaStatements = async (pool) => {
     ALTER TABLE automacao_configs ADD COLUMN IF NOT EXISTS google_drive_pasta_diarios_id VARCHAR(190);
   `);
 
+  // Evolução aditiva do Bloco 5 (motor de fechamento diário). Duas colunas
+  // PRÉ-EXISTENTES do Bloco 1 ganham semântica concreta pela primeira vez
+  // (nunca foram lidas/escritas por nenhum código até agora — confirmado
+  // antes de reaproveitar):
+  //   - automacao_execucoes.versao: NÃO é reaproveitada (seu default
+  //     NOT NULL 1 colidiria com "1 = ainda sem snapshot"), por isso o
+  //     Bloco 5 usa uma coluna nova (`snapshot_version`, nullable) em vez
+  //     dela — mantém `versao` como está, sem lhe dar um significado
+  //     ambíguo.
+  //   - automacao_execucoes.processado_em: agora significa "quando o
+  //     fechamento diário concluiu" (closing_completed_at conceitual) —
+  //     nullable, sem valor-default, reaproveitamento seguro.
+  //   - automacao_execucoes.erro_mensagem: agora também usado pelo motor de
+  //     fechamento para o texto do erro recuperável/inesperado.
+  //
+  // automacao_execucao_snapshots é tabela NOVA (histórico completo, nunca
+  // sobrescrito) — cada fechamento ou reprocessamento (rebuild) grava uma
+  // linha nova, nunca UPDATE em cima da anterior. automacao_execucoes só
+  // aponta para a versão CORRENTE via current_snapshot_id.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS automacao_execucao_snapshots (
+      id SERIAL PRIMARY KEY,
+      empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+      automacao_execucao_id INTEGER NOT NULL REFERENCES automacao_execucoes(id) ON DELETE CASCADE,
+      versao INTEGER NOT NULL,
+      snapshot JSONB NOT NULL,
+      snapshot_hash VARCHAR(64) NOT NULL,
+      metrics JSONB NOT NULL DEFAULT '{}'::jsonb,
+      reason VARCHAR(30) NOT NULL DEFAULT 'INITIAL_CLOSING',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (automacao_execucao_id, versao)
+    );
+  `);
+
+  await pool.query(`
+    ALTER TABLE automacao_execucoes ADD COLUMN IF NOT EXISTS snapshot_version INTEGER;
+    ALTER TABLE automacao_execucoes ADD COLUMN IF NOT EXISTS needs_reprocessing BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE automacao_execucoes ADD COLUMN IF NOT EXISTS has_late_inputs BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE automacao_execucoes ADD COLUMN IF NOT EXISTS closing_started_at TIMESTAMPTZ;
+    ALTER TABLE automacao_execucoes ADD COLUMN IF NOT EXISTS closing_attempts INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE automacao_execucoes ADD COLUMN IF NOT EXISTS erro_codigo VARCHAR(60);
+    -- current_snapshot_id só pode ser adicionada DEPOIS que a tabela de
+    -- snapshots acima existe (referência para frente não é possível).
+    ALTER TABLE automacao_execucoes ADD COLUMN IF NOT EXISTS current_snapshot_id INTEGER
+      REFERENCES automacao_execucao_snapshots(id) ON DELETE SET NULL;
+  `);
+
   // 2) Índices de apoio a consulta (todos por empresa_id e/ou chave de acesso mais comum).
   // Nota: mantidos SEM cláusula WHERE deleted_at IS NULL de propósito — como
   // `CREATE INDEX IF NOT EXISTS` não altera a definição de um índice já existente
@@ -339,6 +388,17 @@ const runSchemaStatements = async (pool) => {
     CREATE UNIQUE INDEX IF NOT EXISTS ux_automacao_arquivos_telegram_mensagem
       ON automacao_arquivos (telegram_mensagem_id)
       WHERE telegram_mensagem_id IS NOT NULL;
+
+    -- Bloco 5: histórico de snapshots por execução, mais recente primeiro.
+    CREATE INDEX IF NOT EXISTS idx_automacao_execucao_snapshots_execucao
+      ON automacao_execucao_snapshots (automacao_execucao_id, versao DESC);
+    CREATE INDEX IF NOT EXISTS idx_automacao_execucao_snapshots_empresa
+      ON automacao_execucao_snapshots (empresa_id);
+
+    -- Bloco 5: candidatas a reprocessamento (fila pequena, filtro parcial).
+    CREATE INDEX IF NOT EXISTS idx_automacao_execucoes_needs_reprocessing
+      ON automacao_execucoes (automacao_config_id)
+      WHERE needs_reprocessing = true;
   `);
 
   // 3) CHECK constraints de domínio (padrão já usado em veiculos_status_operacional_chk /
@@ -377,20 +437,33 @@ const runSchemaStatements = async (pool) => {
       table: "telegram_mensagens",
       expression: `storage_status IN (${sqlEnumList(AUTOMATION_STORAGE_STATUSES)})`,
     },
+    {
+      name: "automacao_execucao_snapshots_reason_chk",
+      table: "automacao_execucao_snapshots",
+      expression: `reason IN (${sqlEnumList(AUTOMATION_SNAPSHOT_REASONS)})`,
+    },
+    {
+      // NULL = sem erro, ou erro sem código específico (guardado só em
+      // erro_mensagem) — mesmo raciocínio de NULL-passa-CHECK do storage_status acima.
+      name: "automacao_execucoes_erro_codigo_chk",
+      table: "automacao_execucoes",
+      expression: `erro_codigo IN (${sqlEnumList(AUTOMATION_CLOSING_ERROR_CODES)})`,
+    },
   ];
 
+  // DROP + ADD (nunca só "cria se não existir"): a DEFINIÇÃO de uma CHECK
+  // pode mudar entre blocos (aconteceu agora — READY_FOR_GENERATION entrou
+  // em AUTOMATION_EXECUTION_STATUSES) e o nome da constraint permanece o
+  // mesmo. Um "IF NOT EXISTS" por nome, como este código fazia até o Bloco
+  // 4, deixaria a definição ANTIGA presa para sempre depois da primeira
+  // vez — bug real encontrado e corrigido neste bloco. DROP+ADD de uma CHECK
+  // é barato (metadado de catálogo, sem reescrever a tabela) e sempre
+  // idempotente em relação ao RESULTADO final, então repetir em todo boot é
+  // seguro. Isto só roda quando `isSchemaFullyMigrated` já decidiu que o
+  // schema precisa de fato ser (re)aplicado — nunca no caminho comum.
   for (const check of checks) {
-    await pool.query(`
-      DO $$
-      BEGIN
-        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = '${check.name}') THEN
-          ALTER TABLE ${check.table}
-            ADD CONSTRAINT ${check.name}
-            CHECK (${check.expression});
-        END IF;
-      END
-      $$;
-    `);
+    await pool.query(`ALTER TABLE ${check.table} DROP CONSTRAINT IF EXISTS ${check.name};`);
+    await pool.query(`ALTER TABLE ${check.table} ADD CONSTRAINT ${check.name} CHECK (${check.expression});`);
   }
 
   // 4) Catálogo estrutural inicial (Bloco 2) — dado ESTRUTURAL da plataforma
@@ -410,20 +483,27 @@ const SCHEMA_INIT_LOCK_KEY = "automationsSchema_init_v1";
 
 /**
  * Checagem barata (só catálogo do sistema, nunca toca as tabelas de dados)
- * que serve de proxy para "o schema já está no estado-alvo do Bloco 4":
- * a CHECK constraint de storage_status e o índice único de arquivo por
- * mensagem só existem depois que `runSchemaStatements` já rodou por completo
- * uma vez. Uma consulta a `pg_constraint`/`pg_indexes` só precisa de
- * AccessShareLock no catálogo — nunca conflita com DML concorrente nas
- * tabelas do módulo.
+ * que serve de proxy para "o schema já está no estado-alvo do bloco mais
+ * recente": marcadores do Bloco 4 (CHECK de storage_status + índice único de
+ * arquivo por mensagem) E do Bloco 5 (tabela de snapshots + CHECK de status
+ * já contendo READY_FOR_GENERATION — este último é o que força uma reaplicação
+ * em qualquer banco que já tinha o schema do Bloco 4, já que o NOME da
+ * constraint de status não muda entre blocos, só a definição). Uma consulta a
+ * `pg_constraint`/`pg_indexes`/`pg_tables` só precisa de AccessShareLock no
+ * catálogo — nunca conflita com DML concorrente nas tabelas do módulo.
  */
 async function isSchemaFullyMigrated(pool) {
   const { rows } = await pool.query(
     `SELECT
        (SELECT COUNT(*) FROM pg_constraint WHERE conname = 'telegram_mensagens_storage_status_chk') AS c1,
-       (SELECT COUNT(*) FROM pg_indexes WHERE indexname = 'ux_automacao_arquivos_telegram_mensagem') AS c2`
+       (SELECT COUNT(*) FROM pg_indexes WHERE indexname = 'ux_automacao_arquivos_telegram_mensagem') AS c2,
+       (SELECT COUNT(*) FROM pg_tables WHERE tablename = 'automacao_execucao_snapshots') AS c3,
+       (SELECT COUNT(*) FROM pg_constraint
+          WHERE conname = 'automacao_execucoes_status_chk'
+            AND pg_get_constraintdef(oid) LIKE '%READY_FOR_GENERATION%') AS c4`
   );
-  return Number(rows[0].c1) > 0 && Number(rows[0].c2) > 0;
+  const r = rows[0];
+  return Number(r.c1) > 0 && Number(r.c2) > 0 && Number(r.c3) > 0 && Number(r.c4) > 0;
 }
 
 /**
