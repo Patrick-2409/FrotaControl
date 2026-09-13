@@ -31,6 +31,28 @@ const DRIVE_API_BASE = "https://www.googleapis.com/drive/v3";
 const DRIVE_UPLOAD_BASE = "https://www.googleapis.com/upload/drive/v3";
 const FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
 
+/**
+ * Bloco 11 (homologação real): `google-auth-library@11.0.2` retorna, em
+ * `OAuth2Client.getRequestHeaders()`/`JWT.getRequestHeaders()` (usado tanto
+ * por OAUTH_USER quanto por SERVICE_ACCOUNT), uma instância de `Headers`
+ * (WHATWG/undici) — não mais um objeto plano. `{ ...headers }` numa instância
+ * de `Headers` não copia nada (ela não expõe as entradas como propriedades
+ * próprias enumeráveis), então o Authorization era descartado silenciosamente
+ * antes de chegar ao `fetch`, causando "Method doesn't allow unregistered
+ * callers" na API real do Drive — nunca detectado pelos testes porque todos
+ * usam um authProvider fake que sempre retornou objeto plano. Normaliza para
+ * objeto plano ANTES do spread, cobrindo os dois formatos possíveis; um
+ * objeto plano (formato usado por todos os testes existentes) passa direto,
+ * sem custo extra.
+ */
+function normalizeHeaders(headers) {
+  if (!headers) return {};
+  if (typeof headers.entries === "function") {
+    return Object.fromEntries(headers.entries());
+  }
+  return { ...headers };
+}
+
 function escapeDriveQueryValue(value) {
   return String(value).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
@@ -62,7 +84,7 @@ function createGoogleDriveClient({
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      return await fetchImpl(url.toString(), { method, headers: { ...authHeaders, ...headersExtra }, body, signal: controller.signal });
+      return await fetchImpl(url.toString(), { method, headers: { ...normalizeHeaders(authHeaders), ...headersExtra }, body, signal: controller.signal });
     } catch (err) {
       if (err.name === "AbortError") {
         throw new StorageError("Timeout ao comunicar com o Google Drive.", {

@@ -232,3 +232,66 @@ test("sem Shared Drive configurado, não envia corpora/driveId", async () => {
   assert.equal(capturedUrl.searchParams.get("corpora"), null);
   assert.equal(capturedUrl.searchParams.get("driveId"), null);
 });
+
+// --------------------------------------------------- Authorization real (Bloco 11)
+
+/**
+ * Reproduz o bug real de produção (Bloco 11, homologação): TODOS os testes
+ * acima usam um `authProvider` fake que retorna um OBJETO PLANO — nunca o
+ * formato real que `google-auth-library@11.0.2` de fato retorna em
+ * `OAuth2Client.getRequestHeaders()`/`JWT.getRequestHeaders()` (usado tanto
+ * por OAUTH_USER quanto por SERVICE_ACCOUNT): uma instância de `Headers`
+ * (WHATWG/undici). `{ ...umaInstanciaDeHeaders }` não copia nada (Headers
+ * não expõe suas entradas como propriedades próprias enumeráveis) — o
+ * spread em `googleDriveClient.js` descartava o Authorization silenciosamente,
+ * gerando "Method doesn't allow unregistered callers" na API real do Drive.
+ */
+test("Authorization sobrevive quando o authProvider retorna um Headers real (não um objeto plano) — bug de produção do Bloco 11", async () => {
+  const headersAuthProvider = { getAuthHeaders: async () => new Headers({ authorization: "Bearer fake-real-token-do-teste" }) };
+  let capturedHeaders;
+  const client = createGoogleDriveClient({
+    authProvider: headersAuthProvider,
+    fetchImpl: async (url, options) => {
+      capturedHeaders = options.headers;
+      return fakeResponse({ json: { files: [] } });
+    },
+  });
+
+  await client.findFolder({ parentId: "p1", name: "x" });
+
+  assert.ok(capturedHeaders, "o fetch precisa ter recebido algum objeto de headers");
+  const authValue = new Headers(capturedHeaders).get("authorization");
+  assert.equal(authValue, "Bearer fake-real-token-do-teste", "o Authorization do authProvider precisa chegar intacto ao fetch");
+});
+
+test("Authorization continua funcionando quando o authProvider retorna objeto plano (comportamento pré-existente preservado)", async () => {
+  let capturedHeaders;
+  const client = createGoogleDriveClient({
+    authProvider: fakeAuthProvider,
+    fetchImpl: async (url, options) => {
+      capturedHeaders = options.headers;
+      return fakeResponse({ json: { files: [] } });
+    },
+  });
+
+  await client.findFolder({ parentId: "p1", name: "x" });
+
+  const authValue = new Headers(capturedHeaders).get("authorization");
+  assert.equal(authValue, "Bearer fake-token");
+});
+
+test("o valor do Authorization/token nunca aparece numa mensagem de erro (Seção 3 do Bloco 11)", async () => {
+  const headersAuthProvider = { getAuthHeaders: async () => new Headers({ authorization: "Bearer super-segredo-nao-pode-vazar" }) };
+  const client = createGoogleDriveClient({
+    authProvider: headersAuthProvider,
+    fetchImpl: async () => fakeResponse({ ok: false, status: 403, json: { error: { message: "Method doesn't allow unregistered callers (callers without established identity)." } } }),
+  });
+
+  await assert.rejects(
+    () => client.findFolder({ parentId: "p1", name: "x" }),
+    (err) => {
+      assert.ok(!String(err.message).includes("super-segredo-nao-pode-vazar"), "o token nunca deveria aparecer na mensagem de erro");
+      return true;
+    }
+  );
+});
