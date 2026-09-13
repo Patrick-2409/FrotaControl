@@ -16,7 +16,10 @@ const {
   buildPhotos,
   dedupeFacts,
   compareNumericIdStrings,
+  resolveTituloRdf,
+  resolveRodapeInstitucional,
 } = require("../src/modules/automations/documents/diarioObraDocumentModel");
+const { FIXED_TEXT: FIXED_TEXT_V2 } = require("../src/modules/automations/documents/diarioObraLayoutConstantsV2");
 const { DocumentError } = require("../src/modules/automations/documents/documentErrorClassification");
 const { MAX_ACTIVITY_TEXT_LENGTH, MAX_ACTIVITIES_TOTAL } = require("../src/modules/automations/documents/diarioObraLayoutConstants");
 
@@ -260,4 +263,88 @@ test("test-narrative-leak: o texto das atividades vem EXCLUSIVAMENTE de structur
   assert.equal(items.length, 1);
   assert.equal(items[0].texto, "Resumo estruturado pela IA.");
   assert.ok(!items.some((i) => i.texto.includes("texto bruto original")), "texto bruto do snapshot nunca deveria vazar para o documento");
+});
+
+// --------------------------------------------------------- Bloco 12: tituloRdf / rodapeInstitucional
+
+test("resolveTituloRdf: usa o valor configurado quando presente, nunca o fallback", () => {
+  const titulo = resolveTituloRdf({ documento: { tituloRdf: "Título Configurado" }, projetoNome: "Obra X", fixedText: FIXED_TEXT_V2 });
+  assert.equal(titulo, "Título Configurado");
+});
+
+test("resolveTituloRdf: sem configuração, cai no fallback baseado em local/projeto — NUNCA um nome de cliente fixo", () => {
+  const porLocal = resolveTituloRdf({ documento: { local: "Canteiro Central" }, projetoNome: "Obra X", fixedText: FIXED_TEXT_V2 });
+  assert.equal(porLocal, "ATIVIDADES — Canteiro Central");
+
+  const porProjeto = resolveTituloRdf({ documento: {}, projetoNome: "Obra X", fixedText: FIXED_TEXT_V2 });
+  assert.equal(porProjeto, "ATIVIDADES — Obra X");
+
+  const semNada = resolveTituloRdf({ documento: {}, projetoNome: "", fixedText: FIXED_TEXT_V2 });
+  assert.equal(semNada, FIXED_TEXT_V2.tituloRdfFallbackGenerico);
+  assert.doesNotMatch(semNada, /porto central|presidente kennedy|ppflora/i);
+});
+
+test("resolveRodapeInstitucional: cadeia de fallback EXATA — campo próprio -> clienteRazaoSocial/clienteEndereco -> rótulo neutro", () => {
+  const tudoConfigurado = resolveRodapeInstitucional(
+    {
+      rodapeInstitucional: { assinanteEsquerda: "Assinante Config", razaoSocialCompleta: "Razão Config", endereco: "Endereço Config" },
+      clienteRazaoSocial: "Cliente LTDA",
+      clienteEndereco: "Rua Cliente, 1",
+    },
+    FIXED_TEXT_V2
+  );
+  assert.deepEqual(tudoConfigurado, { assinanteEsquerda: "Assinante Config", razaoSocialCompleta: "Razão Config", endereco: "Endereço Config" });
+
+  const soClienteConfigurado = resolveRodapeInstitucional({ clienteRazaoSocial: "Cliente LTDA", clienteEndereco: "Rua Cliente, 1" }, FIXED_TEXT_V2);
+  assert.deepEqual(soClienteConfigurado, { assinanteEsquerda: "Cliente LTDA", razaoSocialCompleta: "Cliente LTDA", endereco: "Rua Cliente, 1" });
+
+  const semNadaConfigurado = resolveRodapeInstitucional({}, FIXED_TEXT_V2);
+  assert.equal(semNadaConfigurado.assinanteEsquerda, FIXED_TEXT_V2.rodapeAssinanteFallback);
+  assert.equal(semNadaConfigurado.razaoSocialCompleta, "");
+  assert.equal(semNadaConfigurado.endereco, "");
+  assert.doesNotMatch(JSON.stringify(semNadaConfigurado), /porto central|presidente kennedy|ppflora/i);
+});
+
+test("buildDiarioObraDocumentModel: tituloRdf/rodapeInstitucional chegam resolvidos em identification quando fixedText do template v2 é passado", () => {
+  const config = {
+    projeto_nome: "Obra Central",
+    configuracao: {
+      documento: {
+        local: "Canteiro A",
+        clienteRazaoSocial: "Cliente LTDA",
+        clienteEndereco: "Rua X, 1",
+        tituloRdf: "Título Real Configurado",
+      },
+    },
+  };
+  const model = buildDiarioObraDocumentModel({
+    config,
+    execucao: { id: 1 },
+    snapshot: { id: 1, snapshot_hash: "h", snapshot: { referenceDate: "2026-09-07", messages: [] } },
+    intelligence: { id: 1, output_hash: "h", structured_output: { facts: [] } },
+    arquivosByDriveFileId: new Map(),
+    template: { id: 1, codigo: "diario_obra_ppflora_v2", versao: 2 },
+    documentVersion: 1,
+    generatorId: "diario_obra_ppflora_v2",
+    fixedText: FIXED_TEXT_V2,
+  });
+  assert.equal(model.identification.tituloRdf, "Título Real Configurado");
+  assert.equal(model.identification.rodapeInstitucional.assinanteEsquerda, "Cliente LTDA");
+  assert.equal(model.identification.rodapeInstitucional.razaoSocialCompleta, "Cliente LTDA");
+  assert.equal(model.identification.rodapeInstitucional.endereco, "Rua X, 1");
+});
+
+test("buildDiarioObraDocumentModel: sem fixedText explícito (chamador antigo, ex. v1), usa fallback embutido sem quebrar", () => {
+  const model = buildDiarioObraDocumentModel({
+    config: { projeto_nome: "Obra X", configuracao: { documento: {} } },
+    execucao: { id: 1 },
+    snapshot: { id: 1, snapshot_hash: "h", snapshot: { referenceDate: "2026-09-07", messages: [] } },
+    intelligence: { id: 1, output_hash: "h", structured_output: { facts: [] } },
+    arquivosByDriveFileId: new Map(),
+    template: { id: 1, codigo: "diario_obra_ppflora", versao: 1 },
+    documentVersion: 1,
+    generatorId: "diario_obra_ppflora_v1",
+  });
+  assert.equal(model.identification.tituloRdf, "ATIVIDADES — Obra X");
+  assert.equal(model.identification.rodapeInstitucional.assinanteEsquerda, "CONTRATANTE");
 });

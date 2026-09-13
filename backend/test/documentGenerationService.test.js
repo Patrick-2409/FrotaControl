@@ -32,6 +32,11 @@ const {
   listDocumentVersionsForEmpresa,
   computeDocumentInputHash,
 } = require("../src/modules/automations/documents/documentGenerationService");
+// Bloco 12 — sempre o template ATIVO de verdade (nunca hardcoda o codigo/versao
+// aqui): `documentGenerationService.js` resolve por este mesmo par, então os
+// testes precisam ler o MESMO par para nunca dessincronizar quando o template
+// ativo mudar de versão no futuro.
+const { TEMPLATE_CODIGO } = require("../src/modules/automations/documents/diarioObraLayoutConstantsV2");
 
 const RUN_TAG = `docsvc-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 const createdEmpresaIds = [];
@@ -439,7 +444,7 @@ test("reconciliação Drive: appProperties com input_hash IDÊNTICO ao real (upl
     `SELECT * FROM automacao_execucao_inteligencias WHERE automacao_execucao_id = $1 AND status = 'COMPLETED' ORDER BY versao DESC LIMIT 1`,
     [execucao.id]
   );
-  const { rows: templateRows } = await pool.query(`SELECT * FROM automacao_templates WHERE codigo = 'diario_obra_ppflora' AND versao = 1`);
+  const { rows: templateRows } = await pool.query(`SELECT * FROM automacao_templates WHERE codigo = $1`, [TEMPLATE_CODIGO]);
 
   const predictedHash = computeDocumentInputHash({
     executionId: execucao.id,
@@ -512,38 +517,68 @@ test("multiempresa: getDocumentStatusForEmpresa/getCurrentDocumentForEmpresa/lis
 
 // ------------------------------------------------------------------- template
 
+test("Bloco 12: v1 e v2 coexistem no schema — v2 é o template ATIVO de verdade, v1 nunca é apagado/alterado", async () => {
+  const { rows } = await pool.query(
+    `SELECT codigo, versao, ativo, generator_id FROM automacao_templates WHERE codigo IN ('diario_obra_ppflora', 'diario_obra_ppflora_v2') ORDER BY versao`
+  );
+  assert.equal(rows.length, 2, "v1 e v2 precisam coexistir — nenhum foi apagado");
+  assert.deepEqual(
+    rows.map((r) => ({ codigo: r.codigo, versao: r.versao, generator_id: r.generator_id })),
+    [
+      { codigo: "diario_obra_ppflora", versao: 1, generator_id: "diario_obra_ppflora_v1" },
+      { codigo: "diario_obra_ppflora_v2", versao: 2, generator_id: "diario_obra_ppflora_v2" },
+    ]
+  );
+  assert.ok(rows.every((r) => r.ativo === true), "nenhum template precisa ser desativado — a resolução do ATIVO é por (codigo,versao) no código, não por flag");
+
+  const empresaId = await createEmpresa("templatev2ativo");
+  const config = await createConfig(empresaId);
+  const execucao = await runToReadyForDocument({ config });
+  const result = await generateExecutionDocument({ pool, automacaoExecucaoId: execucao.id, driveClient: createFakeGoogleDriveClient() });
+  assert.equal(result.outcome, "READY");
+
+  const { rows: docRows } = await pool.query(
+    `SELECT d.*, t.codigo AS template_codigo FROM automacao_execucao_documentos d JOIN automacao_templates t ON t.id = d.automacao_template_id WHERE d.id = $1`,
+    [result.documentoId]
+  );
+  assert.equal(docRows[0].template_codigo, "diario_obra_ppflora_v2", "generateExecutionDocument precisa resolver v2 como o template ativo");
+  assert.equal(docRows[0].generator_id, "diario_obra_ppflora_v2");
+});
+
 test("generateExecutionDocument: falta de template ativo retorna TEMPLATE_NOT_FOUND sem chamar o Drive", async () => {
   const empresaId = await createEmpresa("semtemplate");
   const config = await createConfig(empresaId);
   const execucao = await runToReadyForDocument({ config });
 
   // Bloco 11, Seção 2: `automacao_templates` é uma tabela ESTRUTURAL global
-  // (Bloco 2) — a linha seedada de 'diario_obra_ppflora' é compartilhada por
-  // TODOS os processos de teste rodando em paralelo contra o mesmo Postgres
-  // local (`node --test` roda cada arquivo `.test.js` em seu próprio
-  // processo). Um UPDATE ativo=false COMMITADO aqui ficaria visível para
-  // qualquer outro arquivo concorrente que dependa do template ativo — esta
-  // era a causa raiz da flakiness intermitente relatada no Bloco 10 entre
-  // este arquivo e documentDistributionService.test.js.
+  // (Bloco 2) — a linha do template ATIVO é compartilhada por TODOS os
+  // processos de teste rodando em paralelo contra o mesmo Postgres local
+  // (`node --test` roda cada arquivo `.test.js` em seu próprio processo). Um
+  // UPDATE ativo=false COMMITADO aqui ficaria visível para qualquer outro
+  // arquivo concorrente que dependa do template ativo — esta era a causa
+  // raiz da flakiness intermitente relatada no Bloco 10 entre este arquivo e
+  // documentDistributionService.test.js.
   //
   // Correção estrutural (não é timeout, não é serializar a suíte, não é
   // reexecutar até passar): manter o UPDATE dentro de uma transação Postgres
   // NUNCA COMMITADA (sempre ROLLBACK ao final, inclusive se o teste falhar).
   // Pelo isolamento MVCC padrão do Postgres (READ COMMITTED), nenhuma OUTRA
   // conexão enxerga um UPDATE não commitado — a mudança fica 100% invisível
-  // para os demais processos de teste durante toda a duração deste teste, e
-  // é desfeita sozinha ao final (inclusive se o processo morrer no meio,
-  // uma transação nunca commitada de uma conexão encerrada é descartada pelo
-  // próprio Postgres). O código sob teste precisa enxergar essa mudança
-  // "invisível para os outros", então recebe um `pool` PROXY cujo `.query`
-  // roda na MESMA conexão/transação deste teste — `.connect()` continua
-  // apontando para o pool real, porque o advisory lock por execução do
-  // `documentGenerationService.js` é uma preocupação ortogonal (sempre numa
-  // conexão própria) que nunca precisou de isolamento transacional.
+  // para os demais processos de teste durante toda a duração deste teste.
+  //
+  // Bloco 12 — IMPORTANTE: o UPDATE precisa mirar `TEMPLATE_CODIGO` (o
+  // template ATIVO de verdade, hoje v2) via o MESMO `pool` proxy usado pela
+  // chamada real — nunca um codigo hardcoded que pode não ser mais o ativo.
+  // Usar o codigo ERRADO aqui não faz o teste falhar rápido: o template
+  // ainda seria encontrado como ativo, e `generateExecutionDocument`
+  // seguiria adiante para geração REAL (ensureExecutionFolders abre sua
+  // PRÓPRIA conexão via `pool.connect()`, que tentaria travar a MESMA linha
+  // de `automacao_execucoes` já travada pelo claim feito nesta transação
+  // nunca commitada — autodeadlock real, já observado e corrigido aqui).
   const txClient = await pool.connect();
   try {
     await txClient.query("BEGIN");
-    await txClient.query(`UPDATE automacao_templates SET ativo = false WHERE codigo = 'diario_obra_ppflora'`);
+    await txClient.query(`UPDATE automacao_templates SET ativo = false WHERE codigo = $1`, [TEMPLATE_CODIGO]);
 
     const isolatedPool = { query: (...args) => txClient.query(...args), connect: (...args) => pool.connect(...args) };
     const driveClient = createFakeGoogleDriveClient();

@@ -29,10 +29,16 @@ const { AUTOMATION_DOCUMENT_RECOVERABLE_ERROR_CODES } = require("../constants/au
 const { DocumentError, classifyDocumentError } = require("./documentErrorClassification");
 const { validateDocumentGenerationPrerequisites } = require("./documentPrerequisites");
 const { buildDiarioObraDocumentModel } = require("./diarioObraDocumentModel");
-const { buildDiarioObraExcelWorkbook } = require("./diarioObraExcelBuilder");
-const { buildDiarioObraPdfBuffer } = require("./diarioObraPdfBuilder");
+const { buildDiarioObraExcelWorkbookV2 } = require("./diarioObraExcelBuilderV2");
+const { buildDiarioObraPdfBufferV2 } = require("./diarioObraPdfBuilderV2");
 const { getDocumentGenerationMaxAttempts, getDocumentPhotoMaxBytes } = require("./documentGenerationConfig");
-const { TEMPLATE_CODIGO, TEMPLATE_VERSAO } = require("./diarioObraLayoutConstants");
+// Bloco 12 — template ATIVO passa a ser o v2 (fidelidade visual auditada do
+// arquivo de referência oficial). v1 (`diarioObraLayoutConstants.js`,
+// `diarioObraExcelBuilder.js`, `diarioObraPdfBuilder.js`) permanece intacto
+// e testável — nunca mais selecionado por `loadActiveDocumentTemplate`
+// (resolve sempre por codigo+versao, nunca por id fixo), mas nenhuma linha
+// dele foi apagada ou alterada.
+const { FIXED_TEXT, TEMPLATE_CODIGO, TEMPLATE_VERSAO } = require("./diarioObraLayoutConstantsV2");
 
 // Uma linha travada em DOCUMENT_PROCESSING (processo morreu no meio do
 // trabalho) volta a ser elegível para claim depois deste tempo — mesmo
@@ -42,9 +48,10 @@ const STALE_DOCUMENT_PROCESSING_MINUTES = 15;
 const EXCEL_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const PDF_MIME_TYPE = "application/pdf";
 
-// Carregado uma única vez por processo — o logo é um asset estático do
-// template v1 (extraído no Bloco 7A com autorização explícita, Seção 30),
-// nunca gerado/alterado em runtime.
+// Carregado uma única vez por processo — o logo é um asset estático
+// extraído no Bloco 7A com autorização explícita, nunca gerado/alterado em
+// runtime. Bloco 12: reaproveitado tal qual para o template v2 (nenhuma
+// extração de asset nova foi autorizada neste bloco — só geometria/estilo).
 const LOGO_PATH = path.join(__dirname, "assets", "diario-obra-template-v1-logo.png");
 let cachedLogoBuffer = null;
 function loadLogoBuffer() {
@@ -407,6 +414,7 @@ async function runDocumentGenerationPipeline({ pool, execucao, snapshot, intelli
       template,
       documentVersion: documentRow.versao,
       generatorId,
+      fixedText: FIXED_TEXT,
     });
 
     const logoBuffer = loadLogoBuffer();
@@ -414,7 +422,7 @@ async function runDocumentGenerationPipeline({ pool, execucao, snapshot, intelli
 
     let excelBuffer;
     try {
-      const workbook = buildDiarioObraExcelWorkbook(model, { logoBuffer, photoBuffers });
+      const workbook = buildDiarioObraExcelWorkbookV2(model, { logoBuffer, photoBuffers });
       excelBuffer = await workbook.xlsx.writeBuffer();
     } catch (err) {
       throw new DocumentError(`Falha ao gerar o Excel do Diário de Obra: ${err.message}`, { code: "DOCUMENT_EXCEL_GENERATION_FAILED", cause: err });
@@ -424,7 +432,7 @@ async function runDocumentGenerationPipeline({ pool, execucao, snapshot, intelli
 
     let pdfBuffer;
     try {
-      pdfBuffer = await buildDiarioObraPdfBuffer(model, { logoBuffer, photoBuffers });
+      pdfBuffer = await buildDiarioObraPdfBufferV2(model, { logoBuffer, photoBuffers });
     } catch (err) {
       throw new DocumentError(`Falha ao gerar o PDF do Diário de Obra: ${err.message}`, { code: "DOCUMENT_PDF_GENERATION_FAILED", cause: err });
     }

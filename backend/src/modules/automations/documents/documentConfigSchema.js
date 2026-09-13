@@ -23,6 +23,17 @@ const horaSchema = z
   .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Horário deve estar no formato HH:MM (24h).")
   .optional();
 
+// Bloco 12 — campos do template v2, sempre opcionais (fallback genérico
+// resolvido em diarioObraDocumentModel.js quando ausentes). Nunca um nome
+// de cliente/projeto vive no código — só aqui, como dado de configuração.
+const RodapeInstitucionalSchema = z
+  .object({
+    assinanteEsquerda: optionalTrimmedString(190),
+    razaoSocialCompleta: optionalTrimmedString(255),
+    endereco: optionalTrimmedString(255),
+  })
+  .partial();
+
 const DocumentConfigSchema = z
   .object({
     referenciaContratual: optionalTrimmedString(190),
@@ -32,7 +43,9 @@ const DocumentConfigSchema = z
     responsavelTecnico: optionalTrimmedString(190),
     expedienteInicio: horaSchema,
     expedienteFim: horaSchema,
+    tituloRdf: optionalTrimmedString(190),
+    rodapeInstitucional: RodapeInstitucionalSchema.optional(),
   })
   .partial();
 
-module.exports = { DocumentConfigSchema };
+module.exports = { DocumentConfigSchema, RodapeInstitucionalSchema };
