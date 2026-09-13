@@ -12,7 +12,10 @@ const {
   createAutomationAiClient,
   buildPhotoBatchRequestBody,
   buildConsolidationRequestBody,
+  DAILY_INTELLIGENCE_JSON_SCHEMA,
+  PHOTO_BATCH_JSON_SCHEMA,
 } = require("../src/modules/automations/ai/automationAiClient");
+const { findStrictSchemaViolations } = require("../src/modules/automations/ai/jsonSchemaStrictCompliance");
 
 function fakeResponse({ ok = true, status = 200, json = {} } = {}) {
   return { ok, status, json: async () => json };
@@ -35,6 +38,27 @@ test("buildConsolidationRequestBody: usa response_format json_schema e as mensag
   ]);
   assert.equal(body.response_format.type, "json_schema");
   assert.equal(body.response_format.json_schema.name, "daily_intelligence_v1");
+});
+
+// ------------------------------------------ compatibilidade real com Structured Outputs (Bloco 11)
+
+/**
+ * Causa raiz real de produção: `DAILY_INTELLIGENCE_JSON_SCHEMA.schema` tinha
+ * `schemaVersion: { const: 1 }` (sem `type`) e `facts`/`conflicts`/
+ * `missingInformation` como `items: { type: "object" }` sem `properties` —
+ * a OpenAI rejeitou com HTTP 400 antes de gerar qualquer coisa. Este teste
+ * roda o MESMO checker usado no Bloco 11 direto contra os schemas REAIS
+ * exportados — falha se qualquer um voltar a ficar incompatível, sem
+ * precisar de rede nem de crédito.
+ */
+test("DAILY_INTELLIGENCE_JSON_SCHEMA.schema é 100% compatível com Structured Outputs (strict) — nunca mais o HTTP 400 real de produção", () => {
+  const violations = findStrictSchemaViolations(DAILY_INTELLIGENCE_JSON_SCHEMA.schema);
+  assert.deepEqual(violations, [], `schema incompatível:\n${violations.join("\n")}`);
+});
+
+test("PHOTO_BATCH_JSON_SCHEMA.schema é 100% compatível com Structured Outputs (strict)", () => {
+  const violations = findStrictSchemaViolations(PHOTO_BATCH_JSON_SCHEMA.schema);
+  assert.deepEqual(violations, [], `schema incompatível:\n${violations.join("\n")}`);
 });
 
 test("buildPhotoBatchRequestBody: intercala texto e image_url por imagem, na ordem do array", () => {

@@ -19,6 +19,7 @@
 
 const { AiError } = require("./aiErrorClassification");
 const { getAutomationOpenAiModel, getAutomationOpenAiTimeoutMs, getAutomationOpenAiMaxOutputTokens } = require("./automationAiConfig");
+const { AUTOMATION_AI_FACT_CATEGORIES, AUTOMATION_AI_EVIDENCE_TYPES } = require("../constants/automationEnums");
 
 const OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions";
 
@@ -45,6 +46,52 @@ const PHOTO_BATCH_JSON_SCHEMA = {
   },
 };
 
+// Bloco 11 — causa raiz real de produção: a OpenAI rejeitava esta requisição
+// inteira com HTTP 400 ("schema must have a 'type' key") antes de gerar
+// qualquer coisa, porque `schemaVersion: { const: 1 }` não tinha `type`, e
+// `facts`/`conflicts`/`missingInformation` eram só `{ type: "object" }` sem
+// nenhuma `properties` — Structured Outputs em modo `strict` exige `type`
+// em TODO nó, e todo `type: "object"` precisa de `properties` +
+// `additionalProperties: false` + `required` cobrindo exatamente essas
+// chaves. Os três schemas abaixo espelham exatamente `FactSchema`/
+// `ConflictSchema`/`MissingInformationSchema` de `dailyIntelligenceSchema.js`
+// (nunca inventam campo novo, nunca mudam o contrato de domínio — `strict:
+// true` só corrige a FORMA JSON Schema, não o schemaVersion, que continua
+// number, correspondendo a `z.literal(1)`). Ver automationAiClient.test.js
+// e jsonSchemaStrictCompliance.js para a checagem que impede regressão.
+const FACT_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    id: { type: "string" },
+    category: { type: "string", enum: AUTOMATION_AI_FACT_CATEGORIES },
+    statement: { type: "string" },
+    sourceRefs: { type: "array", items: { type: "string" } },
+    evidenceType: { type: "string", enum: AUTOMATION_AI_EVIDENCE_TYPES },
+  },
+  required: ["id", "category", "statement", "sourceRefs", "evidenceType"],
+};
+
+const CONFLICT_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    description: { type: "string" },
+    sourceRefs: { type: "array", items: { type: "string" } },
+  },
+  required: ["description", "sourceRefs"],
+};
+
+const MISSING_INFORMATION_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    description: { type: "string" },
+    relatedSourceRefs: { type: "array", items: { type: "string" } },
+  },
+  required: ["description", "relatedSourceRefs"],
+};
+
 const DAILY_INTELLIGENCE_JSON_SCHEMA = {
   name: "daily_intelligence_v1",
   strict: true,
@@ -52,17 +99,17 @@ const DAILY_INTELLIGENCE_JSON_SCHEMA = {
     type: "object",
     additionalProperties: false,
     properties: {
-      schemaVersion: { const: 1 },
+      schemaVersion: { type: "integer", const: 1 },
       summary: {
         type: "object",
         additionalProperties: false,
         properties: { text: { type: "string" }, sourceRefs: { type: "array", items: { type: "string" } } },
         required: ["text", "sourceRefs"],
       },
-      facts: { type: "array", items: { type: "object" } },
+      facts: { type: "array", items: FACT_JSON_SCHEMA },
       photoObservations: { type: "array", items: PHOTO_OBSERVATION_JSON_SCHEMA },
-      conflicts: { type: "array", items: { type: "object" } },
-      missingInformation: { type: "array", items: { type: "object" } },
+      conflicts: { type: "array", items: CONFLICT_JSON_SCHEMA },
+      missingInformation: { type: "array", items: MISSING_INFORMATION_JSON_SCHEMA },
       warnings: { type: "array", items: { type: "string" } },
     },
     required: ["schemaVersion", "summary", "facts", "photoObservations", "conflicts", "missingInformation", "warnings"],
@@ -201,4 +248,7 @@ module.exports = {
   PHOTO_OBSERVATION_JSON_SCHEMA,
   PHOTO_BATCH_JSON_SCHEMA,
   DAILY_INTELLIGENCE_JSON_SCHEMA,
+  FACT_JSON_SCHEMA,
+  CONFLICT_JSON_SCHEMA,
+  MISSING_INFORMATION_JSON_SCHEMA,
 };
