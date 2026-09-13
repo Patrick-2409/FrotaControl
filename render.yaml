@@ -52,3 +52,53 @@ services:
         value: "22"
       - key: NODE_ENV
         value: production
+
+  # Scheduler permanente do orquestrador de automações (Bloco 12). Roda
+  # EXATAMENTE um ciclo por invocação e termina — nunca fica residente,
+  # nunca é um processo de longa duração (ver
+  # backend/scripts/runAutomationCycle.js). AUTOMATION_ORCHESTRATOR_ENABLED
+  # é o kill switch: precisa ser "true" (definido manualmente no painel do
+  # Render, nunca neste arquivo) para o ciclo processar algo de verdade —
+  # ausente/qualquer outro valor sempre resulta em DISABLED, sem tocar banco
+  # nem construir nenhum cliente de produção.
+  - type: cron
+    name: frotacontrol-automations-cron
+    runtime: node
+    region: oregon
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node scripts/runAutomationCycle.js
+    schedule: "*/5 * * * *"
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: GOOGLE_DRIVE_AUTH_MODE
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REFRESH_TOKEN
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_SECURE
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: AUTOMATION_EMAIL_FROM
+        sync: false
+      - key: AUTOMATION_EMAIL_FROM_NAME
+        sync: false
+      - key: AUTOMATION_ORCHESTRATOR_ENABLED
+        sync: false
