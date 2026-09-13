@@ -109,6 +109,18 @@ export function EmpresaMenuIcon({ type }) {
       </svg>
     );
   }
+  if (type === "automation") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={iconClass} aria-hidden="true">
+        <path
+          d="M13 3 5 13h5l-1 8 8-10h-5l1-8Z"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
   if (type === "profile") {
     return (
       <svg viewBox="0 0 24 24" fill="none" className={iconClass} aria-hidden="true">
@@ -193,6 +205,11 @@ export const EMPRESA_SIDEBAR_SECTIONS = filterEmpresaSidebarSections([
     id: "relatorios",
     title: null,
     items: [{ to: "/empresa/relatorios", label: "Relatórios", icon: "reports", exact: false }],
+  },
+  {
+    id: "automacoes",
+    title: null,
+    items: [{ to: "/empresa/automacoes", label: "Automações", icon: "automation", exact: false }],
   },
   {
     id: "admin",

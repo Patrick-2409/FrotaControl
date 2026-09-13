@@ -1,5 +1,6 @@
 const { Pool } = require("pg");
 const { logWarn } = require("./services/loggerService");
+const { initAutomationsSchema } = require("./modules/automations/automationSchema");
 
 const connectionString = process.env.DATABASE_URL;
 const databaseSslExplicit = String(process.env.DATABASE_SSL || "").toLowerCase();
@@ -626,6 +627,10 @@ const initDb = async () => {
     END
     $$;
   `);
+
+  // Módulo de Automações (Bloco 1 — fundação de dados): schema isolado, aditivo,
+  // sem qualquer relação com as tabelas acima além de FKs para empresas/usuarios.
+  await initAutomationsSchema(pool);
 };
 
 module.exports = {
