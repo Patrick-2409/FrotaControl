@@ -57,7 +57,24 @@ function emptyDocumentoFormState() {
     responsavelTecnico: "",
     expedienteInicio: "",
     expedienteFim: "",
+    // Bloco 12 — template v2: sempre opcionais, sempre da configuração da
+    // empresa (nunca um nome fixo no código). rodapeXxx viram um objeto
+    // aninhado (rodapeInstitucional) só na hora de montar o payload.
+    tituloRdf: "",
+    rodapeAssinanteEsquerda: "",
+    rodapeRazaoSocialCompleta: "",
+    rodapeEndereco: "",
   };
+}
+
+/** Monta o objeto aninhado `rodapeInstitucional` a partir dos 3 campos PLANOS do formulário — omitido inteiro se nada foi preenchido (Zod trata como ausente, nunca como objeto vazio). */
+function buildRodapeInstitucionalPayload(documentoForm) {
+  const rodape = buildTrimmedPayload({
+    assinanteEsquerda: documentoForm.rodapeAssinanteEsquerda,
+    razaoSocialCompleta: documentoForm.rodapeRazaoSocialCompleta,
+    endereco: documentoForm.rodapeEndereco,
+  });
+  return Object.keys(rodape).length ? rodape : undefined;
 }
 
 function emptyEmailFormState() {
@@ -274,6 +291,10 @@ function AutomationDrawer({ open, onClose, catalog, config, busy, onCreate, onUp
           responsavelTecnico: documento.responsavelTecnico || "",
           expedienteInicio: documento.expedienteInicio || "",
           expedienteFim: documento.expedienteFim || "",
+          tituloRdf: documento.tituloRdf || "",
+          rodapeAssinanteEsquerda: documento.rodapeInstitucional?.assinanteEsquerda || "",
+          rodapeRazaoSocialCompleta: documento.rodapeInstitucional?.razaoSocialCompleta || "",
+          rodapeEndereco: documento.rodapeInstitucional?.endereco || "",
         },
         email: {
           assunto: email.assunto || "",
@@ -314,7 +335,19 @@ function AutomationDrawer({ open, onClose, catalog, config, busy, onCreate, onUp
       telegram_chat_id: form.telegram_chat_id.trim() || null,
       google_drive_pasta_raiz_id: form.google_drive_pasta_raiz_id.trim() || null,
       usa_ia: form.usa_ia,
-      configuracao_documento: buildTrimmedPayload(form.documento),
+      configuracao_documento: {
+        ...buildTrimmedPayload({
+          referenciaContratual: form.documento.referenciaContratual,
+          local: form.documento.local,
+          clienteRazaoSocial: form.documento.clienteRazaoSocial,
+          clienteEndereco: form.documento.clienteEndereco,
+          responsavelTecnico: form.documento.responsavelTecnico,
+          expedienteInicio: form.documento.expedienteInicio,
+          expedienteFim: form.documento.expedienteFim,
+          tituloRdf: form.documento.tituloRdf,
+        }),
+        ...(buildRodapeInstitucionalPayload(form.documento) ? { rodapeInstitucional: buildRodapeInstitucionalPayload(form.documento) } : {}),
+      },
       configuracao_email: buildTrimmedPayload(form.email),
     };
     try {
@@ -564,6 +597,53 @@ function AutomationDrawer({ open, onClose, catalog, config, busy, onCreate, onUp
                   onChange={(e) => fieldDocumento("expedienteFim", e.target.value)}
                 />
               </label>
+              <label className="block text-sm sm:col-span-2">
+                <span className="mb-1 block text-xs text-zinc-400">Título do registro fotográfico (opcional)</span>
+                <input
+                  className="fc-input w-full"
+                  value={form.documento.tituloRdf}
+                  onChange={(e) => fieldDocumento("tituloRdf", e.target.value)}
+                  placeholder="Ex.: ATIVIDADES — Canteiro Central"
+                />
+                <span className="mt-1 block text-xs text-zinc-500">
+                  Cabeçalho da página de fotos do documento. Sem preencher, um título genérico baseado no local/projeto é usado.
+                </span>
+              </label>
+              <div className="sm:col-span-2">
+                <p className="mb-2 text-xs font-medium text-zinc-400">Rodapé institucional do documento (opcional)</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block text-sm">
+                    <span className="mb-1 block text-xs text-zinc-400">Assinatura (lado esquerdo)</span>
+                    <input
+                      className="fc-input w-full"
+                      value={form.documento.rodapeAssinanteEsquerda}
+                      onChange={(e) => fieldDocumento("rodapeAssinanteEsquerda", e.target.value)}
+                      placeholder="Ex.: Contratante"
+                    />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="mb-1 block text-xs text-zinc-400">Razão social completa</span>
+                    <input
+                      className="fc-input w-full"
+                      value={form.documento.rodapeRazaoSocialCompleta}
+                      onChange={(e) => fieldDocumento("rodapeRazaoSocialCompleta", e.target.value)}
+                      placeholder="Ex.: Empresa Contratante LTDA"
+                    />
+                  </label>
+                  <label className="block text-sm sm:col-span-2">
+                    <span className="mb-1 block text-xs text-zinc-400">Endereço</span>
+                    <input
+                      className="fc-input w-full"
+                      value={form.documento.rodapeEndereco}
+                      onChange={(e) => fieldDocumento("rodapeEndereco", e.target.value)}
+                      placeholder="Ex.: Rua Exemplo, 100"
+                    />
+                  </label>
+                </div>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Sem preencher, usa a razão social/endereço do cliente já informados acima, ou um rótulo genérico.
+                </p>
+              </div>
             </div>
             <p className="mt-2 text-xs text-zinc-500">
               Nenhum documento é gerado nesta fase — estes dados só serão usados quando a geração for executada.

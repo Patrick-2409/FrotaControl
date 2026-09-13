@@ -16,6 +16,17 @@
 const { DocumentError } = require("./documentErrorClassification");
 const { DEFAULT_EXPEDIENTE_INICIO, DEFAULT_EXPEDIENTE_FIM, MAX_ACTIVITY_TEXT_LENGTH, MAX_ACTIVITIES_TOTAL, MAX_PHOTOS_TOTAL } = require("./diarioObraLayoutConstants");
 
+// Bloco 12 — usado só quando o chamador não informa `fixedText` explicitamente
+// (compatibilidade com chamadores/testes que não conhecem os rótulos de
+// fallback de um template específico). O v1 nunca lê `tituloRdf`/
+// `rodapeInstitucional` do modelo, então nunca precisa passar `fixedText`;
+// documentGenerationService.js sempre passa o FIXED_TEXT do template ativo.
+const DEFAULT_FALLBACK_LABELS = Object.freeze({
+  tituloRdfFallbackPrefixo: "ATIVIDADES",
+  tituloRdfFallbackGenerico: "REGISTRO DE ATIVIDADES",
+  rodapeAssinanteFallback: "CONTRATANTE",
+});
+
 function compareNumericIdStrings(a, b) {
   const bigA = BigInt(a ?? "0");
   const bigB = BigInt(b ?? "0");
@@ -174,11 +185,43 @@ function buildPhotoObservationsByRef(structuredOutput) {
 }
 
 /**
+ * Bloco 12 — título do cabeçalho do RDF: SEMPRE de `documento.tituloRdf`
+ * quando configurado; nunca um nome de cliente/projeto fixo no código
+ * quando ausente — o fallback usa só dado já presente na própria config
+ * (local ou nome do projeto), nunca uma string idêntica entre clientes
+ * diferentes por acidente, mas também nunca um nome hardcoded.
+ */
+function resolveTituloRdf({ documento, projetoNome, fixedText }) {
+  const configurado = String(documento.tituloRdf || "").trim();
+  if (configurado) return configurado;
+  const base = String(documento.local || "").trim() || String(projetoNome || "").trim();
+  return base ? `${fixedText.tituloRdfFallbackPrefixo} — ${base}` : fixedText.tituloRdfFallbackGenerico;
+}
+
+/**
+ * Bloco 12 — rodapé institucional do RDO (assinatura esquerda + razão
+ * social completa + endereço). Cadeia de fallback EXATA definida na
+ * autorização: campo próprio -> `clienteRazaoSocial`/`clienteEndereco`
+ * (já genéricos, vêm da config) -> rótulo neutro. Nunca uma constante de
+ * cliente específico.
+ */
+function resolveRodapeInstitucional(documento, fixedText) {
+  const r = documento.rodapeInstitucional || {};
+  const clienteRazaoSocial = String(documento.clienteRazaoSocial || "").trim();
+  const clienteEndereco = String(documento.clienteEndereco || "").trim();
+  return {
+    assinanteEsquerda: String(r.assinanteEsquerda || "").trim() || clienteRazaoSocial || fixedText.rodapeAssinanteFallback,
+    razaoSocialCompleta: String(r.razaoSocialCompleta || "").trim() || clienteRazaoSocial || "",
+    endereco: String(r.endereco || "").trim() || clienteEndereco || "",
+  };
+}
+
+/**
  * `arquivosByDriveFileId`: Map<driveFileId, { id }> — já resolvido pelo
  * chamador (documentGenerationService.js) via `automacao_arquivos`, nunca
  * uma consulta feita aqui dentro (função pura, Seção 32).
  */
-function buildDiarioObraDocumentModel({ config, execucao, snapshot, intelligence, arquivosByDriveFileId, template, documentVersion, generatorId }) {
+function buildDiarioObraDocumentModel({ config, execucao, snapshot, intelligence, arquivosByDriveFileId, template, documentVersion, generatorId, fixedText = DEFAULT_FALLBACK_LABELS }) {
   const documento = config?.configuracao?.documento || {};
   const structuredOutput = intelligence.structured_output;
   const photoObservationsByRef = buildPhotoObservationsByRef(structuredOutput);
@@ -193,6 +236,10 @@ function buildDiarioObraDocumentModel({ config, execucao, snapshot, intelligence
     expedienteInicio: documento.expedienteInicio || DEFAULT_EXPEDIENTE_INICIO,
     expedienteFim: documento.expedienteFim || DEFAULT_EXPEDIENTE_FIM,
     expedienteEhDefaultDoTemplate: !documento.expedienteInicio && !documento.expedienteFim,
+    // Bloco 12 — SEMPRE resolvidos a partir da config (nunca constante de
+    // cliente no código); ver resolveTituloRdf/resolveRodapeInstitucional.
+    tituloRdf: resolveTituloRdf({ documento, projetoNome: config.projeto_nome, fixedText }),
+    rodapeInstitucional: resolveRodapeInstitucional(documento, fixedText),
   };
 
   const activities = buildActivities(structuredOutput, snapshot.snapshot);
@@ -224,4 +271,6 @@ module.exports = {
   buildPhotos,
   dedupeFacts,
   compareNumericIdStrings,
+  resolveTituloRdf,
+  resolveRodapeInstitucional,
 };

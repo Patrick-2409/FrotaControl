@@ -934,6 +934,26 @@ const runSchemaStatements = async (pool) => {
     FROM automacoes WHERE codigo = 'diario_obra'
     ON CONFLICT (codigo) DO NOTHING;
   `);
+
+  // Seed do template v2 (Bloco 12) — v1 permanece intocado acima (nunca
+  // atualizado nem desativado); `codigo` é NOT NULL UNIQUE nesta tabela
+  // (Bloco 1), então v2 precisa de um `codigo` PRÓPRIO (não pode reaproveitar
+  // 'diario_obra_ppflora') — `versao=2` respeita a UNIQUE(automacao_id, versao)
+  // já existente. Layout AUDITADO (só geometria/estilo, nunca dado de
+  // cliente) a partir do arquivo de referência oficial fornecido pelo
+  // usuário (hash abaixo, verificado byte-a-byte antes de qualquer código
+  // ser escrito — ver diarioObraLayoutConstantsV2.js). A partir deste bloco,
+  // `documentGenerationService.js` resolve v2 como o template ATIVO
+  // (`loadActiveDocumentTemplate`) — v1 nunca mais é selecionado por código
+  // novo, mas continua existindo/testável para qualquer documento histórico.
+  await pool.query(`
+    INSERT INTO automacao_templates (automacao_id, codigo, versao, nome, schema_campos, template_hash, generator_id, tipo, source_filename)
+    SELECT id, 'diario_obra_ppflora_v2', 2, 'Diário de Obra — modelo v2 (auditoria Bloco 12)', '{}'::jsonb,
+           '2fd040be0e50b11b2271ad2d4b63d70ff70e5b9ff6d48701bcc52664483821c8', 'diario_obra_ppflora_v2', 'EXCEL_PDF_HIBRIDO',
+           'DIÁRIO DE OBRA_09-09-2026.xlsx'
+    FROM automacoes WHERE codigo = 'diario_obra'
+    ON CONFLICT (codigo) DO NOTHING;
+  `);
 };
 
 const SCHEMA_INIT_LOCK_KEY = "automationsSchema_init_v1";
@@ -976,7 +996,9 @@ async function isSchemaFullyMigrated(pool) {
        -- Bloco 10: marcador do versionamento documental GLOBAL por execução.
        (SELECT COUNT(*) FROM pg_indexes WHERE indexname = 'ux_automacao_execucao_documentos_execucao_versao') AS c12,
        -- Bloco 10: marcador do orquestrador (tabela de auditoria de runs).
-       (SELECT COUNT(*) FROM pg_tables WHERE tablename = 'automacao_orquestracao_runs') AS c13`
+       (SELECT COUNT(*) FROM pg_tables WHERE tablename = 'automacao_orquestracao_runs') AS c13,
+       -- Bloco 12: marcador do seed do template v2 (fidelidade visual).
+       (SELECT COUNT(*) FROM automacao_templates WHERE codigo = 'diario_obra_ppflora_v2') AS c14`
   );
   const r = rows[0];
   return (
@@ -992,7 +1014,8 @@ async function isSchemaFullyMigrated(pool) {
     Number(r.c10) > 0 &&
     Number(r.c11) > 0 &&
     Number(r.c12) > 0 &&
-    Number(r.c13) > 0
+    Number(r.c13) > 0 &&
+    Number(r.c14) > 0
   );
 }
 
