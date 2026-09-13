@@ -145,6 +145,58 @@ async function loadLatestDocument(pool, { automacaoExecucaoId, snapshotId, intel
 }
 
 /**
+ * Bloco 10, Seção 32: a versão CORRENTE anterior a `excludeDocumentoId`
+ * (nunca já superseded) — usada só para decidir se/por que ela precisa ser
+ * marcada obsoleta quando uma versão nova termina com sucesso. Deliberadamente
+ * recalculado a partir do estado real no momento da CONCLUSÃO (nunca
+ * carregado da decisão de versionamento do início da chamada) — assim
+ * continua correto mesmo depois de N retries de uma mesma tentativa falha
+ * (Seção 1-3: retries reaproveitam a mesma versão, nunca disparam uma decisão
+ * de supersede nova).
+ */
+async function loadPreviousCurrentDocument(pool, automacaoExecucaoId, excludeDocumentoId) {
+  const { rows } = await pool.query(
+    `SELECT * FROM automacao_execucao_documentos
+     WHERE automacao_execucao_id = $1 AND id <> $2 AND is_superseded = false
+     ORDER BY versao DESC LIMIT 1`,
+    [automacaoExecucaoId, excludeDocumentoId]
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Marca obsolescência EXPLÍCITA (Seção 32 — nunca inferida só pelo número da
+ * versão): só toca linhas ainda não superseded, então o motivo de cada versão
+ * antiga reflete exatamente o evento que a tornou obsoleta (nunca é
+ * sobrescrito por um supersede posterior de uma versão ainda mais nova).
+ */
+async function supersedePreviousDocuments(pool, automacaoExecucaoId, { currentDocumentoId, reason }) {
+  await pool.query(
+    `UPDATE automacao_execucao_documentos
+     SET is_superseded = true, superseded_reason = $3, superseded_at = NOW()
+     WHERE automacao_execucao_id = $1 AND id <> $2 AND is_superseded = false`,
+    [automacaoExecucaoId, currentDocumentoId, reason]
+  );
+}
+
+/**
+ * Bloco 10, Seção 1-3: maior `versao` já usada pela EXECUÇÃO inteira,
+ * independente de snapshot/inteligência/template/gerador — é isto que torna
+ * a numeração monotônica global (nunca reinicia em 1 quando um late input
+ * cria um snapshot novo). Chamada só para decidir o PRÓXIMO número de uma
+ * versão genuinamente nova (ver `generateExecutionDocument` abaixo); a
+ * decisão de idempotência continua usando `loadLatestDocument` (escopo
+ * estreito) sem nenhuma mudança.
+ */
+async function loadLatestDocumentVersaoGlobalForExecucao(pool, automacaoExecucaoId) {
+  const { rows } = await pool.query(
+    `SELECT versao FROM automacao_execucao_documentos WHERE automacao_execucao_id = $1 ORDER BY versao DESC LIMIT 1`,
+    [automacaoExecucaoId]
+  );
+  return rows[0] ? rows[0].versao : 0;
+}
+
+/**
  * Claim atômico READY_FOR_DOCUMENT|DOCUMENT_READY(force)|ERROR(recuperável documento)|DOCUMENT_PROCESSING(abandonado) -> DOCUMENT_PROCESSING.
  * Mesmo espírito de `claimExecutionForAiProcessing` (Bloco 6): o guard de
  * tentativas máximas é um NOT EXISTS contra a tentativa mais recente desta
@@ -461,6 +513,19 @@ async function runDocumentGenerationPipeline({ pool, execucao, snapshot, intelli
 
     await finalizeDocumentCompleted(pool, documentRow.id, { excelHash, pdfHash, excelArquivoId, pdfArquivoId });
     await finalizeExecutionDocumentReady(pool, execucao.id);
+
+    // Bloco 10, Seção 32: obsolescência explícita da versão anterior, só
+    // aplicada quando esta versão nova de fato SUBSTITUI outra já existente
+    // (nunca no primeiro documento da execução). O motivo é derivado do
+    // snapshot usado: mesma snapshot da versão anterior => regeneração comum
+    // (config mudou ou force explícito); snapshot diferente => só um rebuild
+    // (late input incorporado) muda a snapshot corrente de uma execução.
+    const previousCurrent = await loadPreviousCurrentDocument(pool, execucao.id, documentRow.id);
+    if (previousCurrent) {
+      const supersedeReason = previousCurrent.snapshot_id === snapshot.id && previousCurrent.intelligence_id === intelligence.id ? "REGENERATION" : "LATE_INPUT";
+      await supersedePreviousDocuments(pool, execucao.id, { currentDocumentoId: documentRow.id, reason: supersedeReason });
+    }
+
     await logDocumentEvent(pool, { ...eventBase, tipoEvento: "DOCUMENT_GENERATION_COMPLETED", dados: { versao: documentRow.versao, excelHash, pdfHash } });
 
     logInfo("automation_document_generation_completed", { execucaoId: execucao.id, versao: documentRow.versao });
@@ -624,17 +689,27 @@ async function generateExecutionDocument({
       return { outcome: "NOT_ELIGIBLE", currentStatus: fresh.status, execucaoId: fresh.id };
     }
 
-    // Nova versão quando o input_hash mudou (config mudou desde a última
-    // tentativa, só alcançável aqui com force=true — ver STALE_RESULT_NEEDS_FORCE
-    // acima) OU quando force pediu explicitamente reprocessar algo já
-    // COMPLETED com a MESMA entrada. Um retry comum de uma tentativa FAILED
-    // (mesmo input_hash) reaproveita a MESMA versão.
-    let versao = 1;
-    if (latestBeforeClaim) {
-      versao =
-        latestBeforeClaim.input_hash !== inputHash || (force && latestBeforeClaim.status === "COMPLETED")
-          ? latestBeforeClaim.versao + 1
-          : latestBeforeClaim.versao;
+    // Nova versão quando o input_hash mudou (config/snapshot/inteligência
+    // mudou desde a última tentativa DESTA combinação — só alcançável aqui
+    // com force=true, ver STALE_RESULT_NEEDS_FORCE acima) OU quando force
+    // pediu explicitamente reprocessar algo já COMPLETED com a MESMA entrada.
+    // Um retry comum de uma tentativa FAILED (mesmo input_hash, mesma
+    // combinação) reaproveita a MESMA versão — nunca consome um número novo.
+    //
+    // Bloco 10, Seção 1-3: quando uma versão NOVA é de fato necessária, o
+    // número não é mais `latestBeforeClaim.versao + 1` (escopo estreito por
+    // snapshot/inteligência/template/gerador — reiniciava em 1 a cada
+    // snapshot novo, ver Bloco 9). Agora é sempre o maior `versao` já usado
+    // por TODA a execução (`loadLatestDocumentVersaoGlobalForExecucao`) + 1 —
+    // monotônico por execução, nunca reinicia por late input/rebuild.
+    const isNewContentVersion =
+      !latestBeforeClaim || latestBeforeClaim.input_hash !== inputHash || (force && latestBeforeClaim.status === "COMPLETED");
+    let versao;
+    if (!isNewContentVersion) {
+      versao = latestBeforeClaim.versao;
+    } else {
+      const globalLatestVersao = await loadLatestDocumentVersaoGlobalForExecucao(pool, execucao.id);
+      versao = globalLatestVersao + 1;
     }
 
     const documentRow = await upsertDocumentAttempt(pool, {
@@ -680,7 +755,7 @@ async function listDocumentVersionsForEmpresa(pool, { empresaId, automacaoExecuc
      FROM automacao_execucao_documentos d
      JOIN automacao_execucoes e ON e.id = d.automacao_execucao_id
      WHERE e.id = $1 AND e.empresa_id = $2
-     ORDER BY d.snapshot_id DESC, d.versao DESC`,
+     ORDER BY d.versao DESC`,
     [automacaoExecucaoId, empresaId]
   );
   return rows;

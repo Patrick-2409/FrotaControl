@@ -335,13 +335,41 @@ async function insertAprovacaoRow(pool, data) {
   return rows[0];
 }
 
-/** Claim atômico da DECISÃO — a primeira decisão válida vence (Seção 10/26/27); qualquer callback posterior encontra status != 'SENT' e não altera nada. */
-async function claimSolicitacaoDecision(pool, solicitacaoId, newStatus) {
+/**
+ * Claim atômico da DECISÃO — a primeira decisão válida vence (Seção 10/26/27);
+ * qualquer callback posterior encontra status != 'SENT' e não altera nada.
+ * `supersededReason` (Bloco 10, Seção 24-32) só é gravado quando `newStatus`
+ * é SUPERSEDED (ação REGENERATE) — é o marcador que o orquestrador usa para
+ * descobrir uma regeneração pendente (`superseded_reason = 'REGENERATION'`),
+ * distinguindo-a de uma versão superseded por LATE_INPUT (que nunca passa
+ * por este callback — é decidido em `documentGenerationService.js`).
+ */
+async function claimSolicitacaoDecision(pool, solicitacaoId, newStatus, { supersededReason = null } = {}) {
+  // `supersededReason` só é não-nulo quando `newStatus` é SUPERSEDED (ver
+  // chamadores) — COALESCE evita qualquer ambiguidade de tipo do Postgres em
+  // cima de $2 (nunca precisa comparar o próprio parâmetro dentro do SQL).
   const { rows } = await pool.query(
-    `UPDATE automacao_solicitacoes_aprovacao SET status = $2, decided_at = NOW(), updated_at = NOW() WHERE id = $1 AND status = 'SENT' RETURNING *`,
-    [solicitacaoId, newStatus]
+    `UPDATE automacao_solicitacoes_aprovacao
+     SET status = $2, superseded_reason = COALESCE($3::VARCHAR(30), superseded_reason),
+         decided_at = NOW(), updated_at = NOW()
+     WHERE id = $1 AND status = 'SENT' RETURNING *`,
+    [solicitacaoId, newStatus, supersededReason]
   );
   return rows[0] || null;
+}
+
+/**
+ * Checagem FRESCA (nunca a partir do `solicitacao` carregado antes do lock,
+ * ver comentário em `handleApprovalCallback`) de obsolescência EXPLÍCITA do
+ * documento (Bloco 10, Seção 30/32) — protege contra um callback em uma
+ * solicitação ainda `status='SENT'` no banco, mas cujo documento já foi
+ * marcado `is_superseded` por uma versão mais nova (late input incorporado
+ * via rebuild enquanto esta solicitação ainda aguardava decisão). Nunca
+ * infere obsolescência só pelo número da versão — lê o campo explícito.
+ */
+async function loadDocumentoSupersededFlag(pool, automacaoDocumentoId) {
+  const { rows } = await pool.query(`SELECT is_superseded FROM automacao_execucao_documentos WHERE id = $1`, [automacaoDocumentoId]);
+  return Boolean(rows[0]?.is_superseded);
 }
 
 const ACTION_TO_REQUEST_STATUS = Object.freeze({ APPROVE: "APPROVED", REJECT: "REJECTED", REGENERATE: "SUPERSEDED" });
@@ -394,7 +422,26 @@ async function handleApprovalCallback({ pool, telegramClient, callbackQuery }) {
       return { outcome: "ALREADY_DECIDED", currentStatus: solicitacao.status };
     }
 
-    const claimed = await claimSolicitacaoDecision(pool, solicitacao.id, ACTION_TO_REQUEST_STATUS[parsed.action]);
+    // Bloco 10, Seção 30: mesmo com status ainda 'SENT' no banco, um late
+    // input pode ter chegado e disparado (via orquestrador ou teste/API) uma
+    // reconstrução que já gerou uma versão NOVA — o documento desta
+    // solicitação já está `is_superseded`. Verificado FRESCO aqui dentro do
+    // lock (nunca a partir do `solicitacao` carregado antes do lock, acima)
+    // porque é exatamente a janela que o orquestrador pode preencher entre o
+    // carregamento e a decisão. Nunca aprova/rejeita/regenera uma versão
+    // suplantada — e a própria solicitação é marcada SUPERSEDED aqui mesmo
+    // (auto-cura: o orquestrador não precisa ter chegado antes para isto
+    // ficar seguro).
+    if (await loadDocumentoSupersededFlag(pool, solicitacao.automacao_documento_id)) {
+      await claimSolicitacaoDecision(pool, solicitacao.id, "SUPERSEDED", { supersededReason: "LATE_INPUT" });
+      await logApprovalEvent(pool, { ...eventBase, tipoEvento: "APPROVAL_CALLBACK_ON_SUPERSEDED_VERSION", dados: { solicitacaoId: solicitacao.id, action: parsed.action } });
+      await safeAnswerCallbackQuery(telegramClient, callbackQuery.id, "Esta versão foi substituída por uma versão mais recente.", true);
+      return { outcome: "SUPERSEDED_BY_NEWER_VERSION", solicitacaoId: solicitacao.id };
+    }
+
+    const claimed = await claimSolicitacaoDecision(pool, solicitacao.id, ACTION_TO_REQUEST_STATUS[parsed.action], {
+      supersededReason: parsed.action === "REGENERATE" ? "REGENERATION" : null,
+    });
     if (!claimed) {
       // Perdeu a corrida para outro callback concorrente (Seção 27) — não é
       // um estado inconsistente, apenas "chegou depois".

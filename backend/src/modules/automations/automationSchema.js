@@ -39,6 +39,10 @@ const {
   AUTOMATION_APPROVAL_ERROR_CODES,
   AUTOMATION_DISTRIBUTION_STATUSES,
   AUTOMATION_DISTRIBUTION_PERSISTABLE_ERROR_CODES,
+  AUTOMATION_APPROVAL_SUPERSEDED_REASONS,
+  AUTOMATION_DOCUMENT_SUPERSEDED_REASONS,
+  AUTOMATION_ORCHESTRATION_RUN_STATUSES,
+  AUTOMATION_ORCHESTRATION_TRIGGERS,
 } = require("./constants/automationEnums");
 
 const sqlEnumList = (values) => values.map((v) => `'${v}'`).join(", ");
@@ -408,6 +412,26 @@ const runSchemaStatements = async (pool) => {
     );
   `);
 
+  // Bloco 10, Seção 1-3: correção de VERSIONAMENTO DOCUMENTAL GLOBAL POR
+  // EXECUÇÃO. Até o Bloco 9, `versao` era escopada por (execução, snapshot,
+  // inteligência, template, gerador) dentro de `documentGenerationService.js`
+  // — um late input que disparasse um novo snapshot fazia o documento
+  // seguinte "reiniciar" em versao=1, mesmo já existindo uma v1/v2 anteriores
+  // para OUTRO snapshot da MESMA execução. Tecnicamente seguro (o
+  // `automacao_documento_id` interno nunca se repete — ver UNIQUE acima), mas
+  // operacionalmente ambíguo: um operador vendo "D.O. 12/09 v1" duas vezes é
+  // inaceitável. Esta UNIQUE adicional torna a numeração monotônica e única
+  // por EXECUÇÃO inteira (nunca reiniciada por snapshot/inteligência/template
+  // novos) — a UNIQUE original acima permanece (implicada por esta, nunca
+  // conflita) só como histórico de compatibilidade. `documentGenerationService.js`
+  // é o único responsável por calcular o próximo número (MAX(versao) global
+  // da execução + 1) antes do INSERT; esta constraint é a rede de segurança
+  // final contra qualquer bug futuro que tente reutilizar/duplicar um número.
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_automacao_execucao_documentos_execucao_versao
+      ON automacao_execucao_documentos (automacao_execucao_id, versao);
+  `);
+
   await pool.query(`
     ALTER TABLE automacao_templates ADD COLUMN IF NOT EXISTS template_hash VARCHAR(64);
     ALTER TABLE automacao_templates ADD COLUMN IF NOT EXISTS generator_id VARCHAR(60);
@@ -510,6 +534,62 @@ const runSchemaStatements = async (pool) => {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE (automacao_documento_id)
+    );
+  `);
+
+  // Evolução aditiva do Bloco 10 (orquestrador automático do pipeline).
+  //
+  //   - automacao_execucoes.post_send_late_input: sinaliza que um late input
+  //     chegou depois da execução já estar SENT (Seção 29) — REGRA
+  //     CONSERVADORA: o orquestrador NUNCA reenvia/regenera automaticamente
+  //     depois de SENT, só marca esta pendência UMA vez (nunca todo ciclo) e
+  //     registra o evento LATE_INPUT_AFTER_DISTRIBUTION. Corrigir um D.O. já
+  //     enviado exige ação humana explícita de um bloco futuro. Distinto de
+  //     `needs_reprocessing` (nunca é limpo aqui, permanece true para
+  //     sempre como já documentado em documentDistributionService.js) e de
+  //     `has_late_inputs` (histórico permanente desde o Bloco 5) — esta
+  //     coluna nova é o único sinal "já vi esta pendência pós-envio, não
+  //     preciso detectar de novo todo ciclo".
+  //   - automacao_execucao_documentos ganha obsolescência EXPLÍCITA
+  //     (is_superseded/superseded_reason/superseded_at, Seção 32) — nunca
+  //     inferida só pelo número da versão. `documentGenerationService.js`
+  //     marca a(s) versão(ões) anterior(es) como superseded no exato momento
+  //     em que uma versão GLOBAL nova é criada (Seção 1-3).
+  //   - automacao_solicitacoes_aprovacao ganha superseded_reason (REGENERATE
+  //     clicado vs late input) e o par regeneration_processed_at/
+  //     successor_documento_id (Seção 24-25) — claim atômico e idempotente
+  //     de "esta solicitação SUPERSEDED por REGENERATE já foi processada pelo
+  //     orquestrador", nunca duplica a geração da versão sucessora mesmo com
+  //     duas instâncias descobrindo a mesma pendência ao mesmo tempo.
+  //   - automacao_orquestracao_runs: auditoria de CADA execução do ciclo do
+  //     orquestrador (Seção 33-36) — nunca associada a uma única empresa (um
+  //     ciclo processa várias), nunca guarda dado sensível (só métricas
+  //     agregadas e mensagem de erro sanitizada).
+  await pool.query(`
+    ALTER TABLE automacao_execucoes ADD COLUMN IF NOT EXISTS post_send_late_input BOOLEAN NOT NULL DEFAULT false;
+
+    ALTER TABLE automacao_execucao_documentos ADD COLUMN IF NOT EXISTS is_superseded BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE automacao_execucao_documentos ADD COLUMN IF NOT EXISTS superseded_reason VARCHAR(30);
+    ALTER TABLE automacao_execucao_documentos ADD COLUMN IF NOT EXISTS superseded_at TIMESTAMPTZ;
+
+    ALTER TABLE automacao_solicitacoes_aprovacao ADD COLUMN IF NOT EXISTS superseded_reason VARCHAR(30);
+    ALTER TABLE automacao_solicitacoes_aprovacao ADD COLUMN IF NOT EXISTS regeneration_processed_at TIMESTAMPTZ;
+    ALTER TABLE automacao_solicitacoes_aprovacao ADD COLUMN IF NOT EXISTS successor_documento_id INTEGER
+      REFERENCES automacao_execucao_documentos(id) ON DELETE SET NULL;
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS automacao_orquestracao_runs (
+      id SERIAL PRIMARY KEY,
+      started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      completed_at TIMESTAMPTZ,
+      status VARCHAR(20) NOT NULL DEFAULT 'RUNNING',
+      trigger VARCHAR(20) NOT NULL,
+      dry_run BOOLEAN NOT NULL DEFAULT false,
+      metrics JSONB NOT NULL DEFAULT '{}'::jsonb,
+      erro_mensagem TEXT,
+      host_instance VARCHAR(120),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
 
@@ -663,6 +743,27 @@ const runSchemaStatements = async (pool) => {
       ON automacao_distribuicoes (empresa_id);
     CREATE INDEX IF NOT EXISTS idx_automacao_distribuicoes_status
       ON automacao_distribuicoes (status);
+
+    -- Bloco 10: descoberta do orquestrador. Todos parciais — cobrem só a
+    -- fila pequena de itens de fato acionáveis, nunca o histórico inteiro.
+    CREATE INDEX IF NOT EXISTS idx_automacao_execucoes_needs_reprocessing_status
+      ON automacao_execucoes (status)
+      WHERE needs_reprocessing = true;
+    CREATE INDEX IF NOT EXISTS idx_automacao_execucoes_post_send_late_input_pendente
+      ON automacao_execucoes (id)
+      WHERE status = 'SENT' AND needs_reprocessing = true AND post_send_late_input = false;
+    CREATE INDEX IF NOT EXISTS idx_automacao_solicitacoes_aprovacao_regeneracao_pendente
+      ON automacao_solicitacoes_aprovacao (automacao_execucao_id)
+      WHERE status = 'SUPERSEDED' AND superseded_reason = 'REGENERATION' AND regeneration_processed_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_automacao_execucoes_orquestrador_aprovado
+      ON automacao_execucoes (updated_at)
+      WHERE status = 'APPROVED' AND needs_reprocessing = false;
+    CREATE INDEX IF NOT EXISTS idx_automacao_execucoes_orquestrador_erro_recuperavel
+      ON automacao_execucoes (updated_at)
+      WHERE status = 'ERROR' AND needs_reprocessing = false;
+
+    CREATE INDEX IF NOT EXISTS idx_automacao_orquestracao_runs_started
+      ON automacao_orquestracao_runs (started_at DESC);
   `);
 
   // 3) CHECK constraints de domínio (padrão já usado em veiculos_status_operacional_chk /
@@ -767,6 +868,28 @@ const runSchemaStatements = async (pool) => {
       table: "automacao_distribuicoes",
       expression: `erro_codigo IN (${sqlEnumList(AUTOMATION_DISTRIBUTION_PERSISTABLE_ERROR_CODES)})`,
     },
+    {
+      // NULL = nunca foi superseded (imensa maioria das linhas) — mesmo
+      // raciocínio de NULL-passa-CHECK do resto do módulo.
+      name: "automacao_solicitacoes_aprovacao_superseded_reason_chk",
+      table: "automacao_solicitacoes_aprovacao",
+      expression: `superseded_reason IS NULL OR superseded_reason IN (${sqlEnumList(AUTOMATION_APPROVAL_SUPERSEDED_REASONS)})`,
+    },
+    {
+      name: "automacao_execucao_documentos_superseded_reason_chk",
+      table: "automacao_execucao_documentos",
+      expression: `superseded_reason IS NULL OR superseded_reason IN (${sqlEnumList(AUTOMATION_DOCUMENT_SUPERSEDED_REASONS)})`,
+    },
+    {
+      name: "automacao_orquestracao_runs_status_chk",
+      table: "automacao_orquestracao_runs",
+      expression: `status IN (${sqlEnumList(AUTOMATION_ORCHESTRATION_RUN_STATUSES)})`,
+    },
+    {
+      name: "automacao_orquestracao_runs_trigger_chk",
+      table: "automacao_orquestracao_runs",
+      expression: `trigger IN (${sqlEnumList(AUTOMATION_ORCHESTRATION_TRIGGERS)})`,
+    },
   ];
 
   // DROP + ADD (nunca só "cria se não existir"): a DEFINIÇÃO de uma CHECK
@@ -849,7 +972,11 @@ async function isSchemaFullyMigrated(pool) {
        (SELECT COUNT(*) FROM pg_tables WHERE tablename = 'automacao_distribuicoes') AS c10,
        (SELECT COUNT(*) FROM pg_constraint
           WHERE conname = 'automacao_execucoes_erro_codigo_chk'
-            AND pg_get_constraintdef(oid) LIKE '%DISTRIBUTION_EMAIL_SEND_FAILED%') AS c11`
+            AND pg_get_constraintdef(oid) LIKE '%DISTRIBUTION_EMAIL_SEND_FAILED%') AS c11,
+       -- Bloco 10: marcador do versionamento documental GLOBAL por execução.
+       (SELECT COUNT(*) FROM pg_indexes WHERE indexname = 'ux_automacao_execucao_documentos_execucao_versao') AS c12,
+       -- Bloco 10: marcador do orquestrador (tabela de auditoria de runs).
+       (SELECT COUNT(*) FROM pg_tables WHERE tablename = 'automacao_orquestracao_runs') AS c13`
   );
   const r = rows[0];
   return (
@@ -863,7 +990,9 @@ async function isSchemaFullyMigrated(pool) {
     Number(r.c8) > 0 &&
     Number(r.c9) > 0 &&
     Number(r.c10) > 0 &&
-    Number(r.c11) > 0
+    Number(r.c11) > 0 &&
+    Number(r.c12) > 0 &&
+    Number(r.c13) > 0
   );
 }
 

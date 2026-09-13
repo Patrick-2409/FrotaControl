@@ -783,12 +783,14 @@ test("depois de rebuild -> IA -> novo documento -> nova aprovação, a distribui
   assert.equal(aiResult.outcome, "READY");
   const docResult = await generateExecutionDocument({ pool, automacaoExecucaoId: execucao.id, driveClient: createFakeGoogleDriveClient() });
   assert.equal(docResult.outcome, "READY");
-  // Um snapshot NOVO (do rebuild) é uma chave de versionamento nova em
-  // documentGenerationService.js — o documento gerado para ele começa em
-  // versao=1 dentro dessa chave, nunca reaproveita/continua a numeração do
-  // snapshot anterior. A segurança da versão certa nunca depende do NÚMERO
-  // — depende do automacao_documento_id exato, verificado abaixo.
-  assert.equal(docResult.versao, 1);
+  // Bloco 10, Seção 1-3: versionamento documental GLOBAL POR EXECUÇÃO — um
+  // snapshot novo (do rebuild) NUNCA reinicia a numeração em 1; o documento
+  // gerado para ele continua a contagem monotônica da execução inteira
+  // (v1 já existia e estava aprovada/pendente de distribuição, então este é
+  // v2). A segurança da versão certa nunca dependeu só do NÚMERO — depende do
+  // automacao_documento_id exato, verificado abaixo —, mas o número em si
+  // agora também precisa ser inequívoco para um operador humano.
+  assert.equal(docResult.versao, 2);
   assert.notEqual(docResult.documentoId, documentoV1Id, "precisa ser um automacao_execucao_documentos DISTINTO do da v1 antiga");
 
   const telegramClient = createFakeTelegramBotClient();

@@ -24,7 +24,7 @@ const { pool } = require("../src/db");
 const { initAutomationsSchema } = require("../src/modules/automations/automationSchema");
 const { processTelegramUpdate } = require("../src/modules/automations/telegram/telegramWebhookService");
 const fixtures = require("./fixtures/telegramUpdates");
-const { closeDailyExecution } = require("../src/modules/automations/closing/automationClosingService");
+const { closeDailyExecution, rebuildDailySnapshot } = require("../src/modules/automations/closing/automationClosingService");
 const { processExecutionIntelligence } = require("../src/modules/automations/ai/automationAiService");
 const { generateExecutionDocument } = require("../src/modules/automations/documents/documentGenerationService");
 const {
@@ -622,7 +622,7 @@ test("callback REGENERATE: marca a versão atual como superada, registra a decis
   const result = await handleApprovalCallback({ pool, telegramClient, callbackQuery: buildCallbackQuery({ fromId: "700", data: buildApprovalCallbackData(solicitacaoId, "REGENERATE") }) });
   assert.equal(result.outcome, "REGENERATION_REQUESTED");
 
-  const { rows: solRows } = await pool.query(`SELECT status FROM automacao_solicitacoes_aprovacao WHERE id = $1`, [solicitacaoId]);
+  const { rows: solRows } = await pool.query(`SELECT status, superseded_reason FROM automacao_solicitacoes_aprovacao WHERE id = $1`, [solicitacaoId]);
   assert.equal(solRows[0].status, "SUPERSEDED");
 
   const { rows: aprovacoes } = await pool.query(`SELECT decisao FROM automacao_aprovacoes WHERE automacao_solicitacao_id = $1`, [solicitacaoId]);
@@ -631,6 +631,54 @@ test("callback REGENERATE: marca a versão atual como superada, registra a decis
   // Ainda não existe v2 — a geração de fato é um passo SEPARADO (Seção 40).
   const { rows: docCount } = await pool.query(`SELECT COUNT(*)::int AS c FROM automacao_execucao_documentos WHERE automacao_execucao_id = $1`, [execucao.id]);
   assert.equal(docCount[0].c, 1, "REGENERAR pelo callback não deveria, sozinho, criar a v2 (isso é feito por regenerateAndResendForApproval)");
+
+  // Bloco 10, Seção 24-25: a solicitação SUPERSEDED por REGENERATE precisa
+  // carregar o motivo explícito, para o orquestrador descobrir a pendência.
+  assert.equal(solRows[0].superseded_reason, "REGENERATION");
+});
+
+test("Bloco 10 (Seção 30): callback numa solicitação ainda SENT no banco, mas cujo documento já foi superseded por late input, é rejeitado com segurança e nunca decide", async () => {
+  const empresaId = await createEmpresa("callbacksuperseded");
+  const config = await createConfig(empresaId);
+  const approver = await createApprover(config, { telegramUserId: "702" });
+  const execucao = await runToDocumentReady({ config });
+  const telegramClient = createFakeTelegramBotClient();
+  const sendV1 = await sendDocumentForApproval({ pool, automacaoExecucaoId: execucao.id, telegramClient, driveClient: createFakeGoogleDriveClient() });
+  assert.equal(sendV1.outcome, "SENT");
+  const { rows: solV1 } = await pool.query(`SELECT id FROM automacao_solicitacoes_aprovacao WHERE automacao_execucao_id = $1`, [execucao.id]);
+
+  // Um late input chega e é incorporado via rebuild ENQUANTO a solicitação
+  // v1 continua status='SENT' no banco (nenhum clique aconteceu ainda) —
+  // simula exatamente a janela que o orquestrador precisa cobrir: o botão
+  // antigo do Telegram continua tecnicamente "vivo" do ponto de vista do
+  // Telegram, mas o documento por trás dele já não é mais o corrente.
+  await captureText({ config, messageId: Math.floor(Math.random() * 1e9), text: "Late input chegou antes de qualquer decisão." });
+  const rebuildResult = await rebuildDailySnapshot({ pool, automacaoExecucaoId: execucao.id });
+  assert.equal(rebuildResult.outcome, "READY");
+  const { rows: msgRows } = await pool.query(`SELECT message_id FROM telegram_mensagens WHERE automacao_execucao_id = $1 ORDER BY message_id DESC LIMIT 1`, [execucao.id]);
+  const aiResult = await processExecutionIntelligence({ pool, automacaoExecucaoId: execucao.id, aiClient: createFakeAiClient({ sourceRef: String(msgRows[0].message_id) }), driveClient: createFakeGoogleDriveClient() });
+  assert.equal(aiResult.outcome, "READY");
+  const docV2 = await generateExecutionDocument({ pool, automacaoExecucaoId: execucao.id, driveClient: createFakeGoogleDriveClient() });
+  assert.equal(docV2.outcome, "READY");
+  assert.equal(docV2.versao, 2);
+
+  // A v1 nunca foi tocada por este rebuild — continua status='SENT' no banco.
+  const { rows: solV1Fresh } = await pool.query(`SELECT status FROM automacao_solicitacoes_aprovacao WHERE id = $1`, [solV1[0].id]);
+  assert.equal(solV1Fresh[0].status, "SENT", "pré-condição do teste: a solicitação v1 continua SENT — só o DOCUMENTO por trás dela é que ficou superseded");
+
+  // Um clique em APROVAR no botão antigo (v1) precisa ser rejeitado — nunca aprova a v1 obsoleta.
+  const approveOld = await handleApprovalCallback({ pool, telegramClient, callbackQuery: buildCallbackQuery({ fromId: "702", data: buildApprovalCallbackData(solV1[0].id, "APPROVE") }) });
+  assert.equal(approveOld.outcome, "SUPERSEDED_BY_NEWER_VERSION");
+
+  const { rows: solV1After } = await pool.query(`SELECT status, superseded_reason FROM automacao_solicitacoes_aprovacao WHERE id = $1`, [solV1[0].id]);
+  assert.equal(solV1After[0].status, "SUPERSEDED", "o callback tardio precisa auto-curar o status da solicitação antiga");
+  assert.equal(solV1After[0].superseded_reason, "LATE_INPUT");
+
+  const { rows: aprovacoesV1 } = await pool.query(`SELECT COUNT(*)::int AS c FROM automacao_aprovacoes WHERE automacao_solicitacao_id = $1`, [solV1[0].id]);
+  assert.equal(aprovacoesV1[0].c, 0, "nenhuma decisão real foi registrada para a v1 — o callback nunca chegou a decidir nada");
+
+  const execucaoFresh = await getExecucao(config.id);
+  assert.equal(execucaoFresh.status, "DOCUMENT_READY", "a execução nunca deveria ter avançado para APPROVED a partir de um callback numa versão obsoleta");
 });
 
 test("regenerateAndResendForApproval: gera v2 (mesmos snapshot/inteligência/config) e reenvia — v1 continua superseded/rejeitada, nunca aprovada", async () => {

@@ -263,6 +263,29 @@ const AUTOMATION_AI_FACT_CATEGORIES = Object.freeze([
 // número como fato oficial, só TEXT_EXPLICIT/CAPTION_EXPLICIT podem.
 const AUTOMATION_AI_EVIDENCE_TYPES = Object.freeze(["TEXT_EXPLICIT", "CAPTION_EXPLICIT", "IMAGE_VISIBLE"]);
 
+// Bloco 10 (Seção 24-32) — motivo pelo qual uma SOLICITAÇÃO DE APROVAÇÃO
+// (Telegram) foi marcada SUPERSEDED: REGENERATE clicado pelo aprovador, ou um
+// late input que obrigou reconstrução do snapshot/inteligência/documento
+// enquanto esta solicitação ainda aguardava decisão.
+const AUTOMATION_APPROVAL_SUPERSEDED_REASONS = Object.freeze(["REGENERATION", "LATE_INPUT"]);
+
+// Bloco 10 (Seção 32) — motivo pelo qual uma GERAÇÃO de documento
+// (automacao_execucao_documentos) deixou de ser a corrente da execução.
+// MANUAL_REGENERATION fica reservado para uma ação administrativa futura
+// (fora do escopo deste bloco — nenhum código atual emite este valor ainda).
+const AUTOMATION_DOCUMENT_SUPERSEDED_REASONS = Object.freeze(["REGENERATION", "LATE_INPUT", "MANUAL_REGENERATION"]);
+
+// Bloco 10 (Seção 33-36) — ciclo de vida de UMA execução do orquestrador
+// (automacao_orquestracao_runs). DISABLED/ALREADY_RUNNING nunca chegam a
+// escanear nada (kill switch desligado, ou lock global já em uso por outra
+// instância) — ainda assim são registrados para auditoria/observabilidade.
+const AUTOMATION_ORCHESTRATION_RUN_STATUSES = Object.freeze(["RUNNING", "COMPLETED", "PARTIAL_FAILURE", "FAILED", "ALREADY_RUNNING", "DISABLED"]);
+
+// Origem que disparou um ciclo do orquestrador — RENDER_CRON é reservado para
+// um bloco futuro (nenhum cron real é criado neste bloco); nunca inventar que
+// já existe um agendamento externo configurado.
+const AUTOMATION_ORCHESTRATION_TRIGGERS = Object.freeze(["CLI", "TEST", "MANUAL", "RENDER_CRON"]);
+
 module.exports = {
   AUTOMATION_EXECUTION_STATUSES,
   AUTOMATION_FILE_TYPES,
@@ -291,4 +314,8 @@ module.exports = {
   AUTOMATION_DISTRIBUTION_ERROR_CODES,
   AUTOMATION_DISTRIBUTION_PERSISTABLE_ERROR_CODES,
   AUTOMATION_DISTRIBUTION_RECOVERABLE_ERROR_CODES,
+  AUTOMATION_APPROVAL_SUPERSEDED_REASONS,
+  AUTOMATION_DOCUMENT_SUPERSEDED_REASONS,
+  AUTOMATION_ORCHESTRATION_RUN_STATUSES,
+  AUTOMATION_ORCHESTRATION_TRIGGERS,
 };

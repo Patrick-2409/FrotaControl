@@ -123,13 +123,24 @@ async function claimExecutionForClosing(pool, execucaoId) {
  * automacao_documento_id/versao_documento exatos). "Nunca silenciosamente"
  * continua verdadeiro — o que mudou é que "silenciosamente" nunca incluiu
  * uma chamada explícita e auditada a rebuildDailySnapshot.
+ *
+ * Bloco 10 (Seção 26): adiciona DOCUMENT_READY ao conjunto — um late input
+ * pode chegar depois do documento já ter sido gerado mas ANTES de ter sido
+ * enviado ao Telegram para aprovação. Este era um buraco real na cobertura
+ * (READY_FOR_DOCUMENT e AWAITING_APPROVAL em diante já eram elegíveis;
+ * DOCUMENT_READY, o estado exatamente entre os dois, nunca tinha sido
+ * coberto) — o orquestrador automático torna este estado muito mais comum de
+ * se observar de fato (a janela entre gerar o documento e enviá-lo pode
+ * durar um ciclo inteiro), então corrigir agora é necessário para a Seção 26
+ * funcionar. Continua sendo apenas uma AMPLIAÇÃO aditiva do conjunto já
+ * existente — nenhum estado antes elegível deixa de ser.
  */
 const REBUILD_RECOVERABLE_ERROR_CODES = [...AUTOMATION_CLOSING_RECOVERABLE_ERROR_CODES, ...AUTOMATION_AI_RECOVERABLE_ERROR_CODES];
 const REBUILD_POST_APPROVAL_STATUSES = ["AWAITING_APPROVAL", "APPROVED", "SENDING", "SENT", "REJECTED"];
 
 /** Mesmo conjunto de elegibilidade da query em claimExecutionForRebuild — mantido em JS só para a checagem antecipada (evita gastar closing_attempts num claim já sabido inútil). */
 function isEligibleForRebuildClaim(execucao) {
-  if (execucao.status === "READY_FOR_GENERATION" || execucao.status === "READY_FOR_DOCUMENT") return true;
+  if (execucao.status === "READY_FOR_GENERATION" || execucao.status === "READY_FOR_DOCUMENT" || execucao.status === "DOCUMENT_READY") return true;
   if (REBUILD_POST_APPROVAL_STATUSES.includes(execucao.status)) return true;
   if (execucao.status === "ERROR" && REBUILD_RECOVERABLE_ERROR_CODES.includes(execucao.erro_codigo)) return true;
   if (execucao.status === "AI_PROCESSING" && new Date(execucao.updated_at).getTime() < Date.now() - 15 * 60 * 1000) return true;
@@ -143,7 +154,7 @@ async function claimExecutionForRebuild(pool, execucaoId) {
        SET status = 'PROCESSING', closing_started_at = NOW(), closing_attempts = closing_attempts + 1, updated_at = NOW()
        WHERE id = $1
          AND (
-           status IN ('READY_FOR_GENERATION', 'READY_FOR_DOCUMENT', 'AWAITING_APPROVAL', 'APPROVED', 'SENDING', 'SENT', 'REJECTED')
+           status IN ('READY_FOR_GENERATION', 'READY_FOR_DOCUMENT', 'DOCUMENT_READY', 'AWAITING_APPROVAL', 'APPROVED', 'SENDING', 'SENT', 'REJECTED')
            OR (status = 'ERROR' AND erro_codigo = ANY($2::text[]))
            OR (status = 'AI_PROCESSING' AND updated_at < NOW() - INTERVAL '15 minutes')
          )
