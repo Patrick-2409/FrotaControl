@@ -517,16 +517,44 @@ test("generateExecutionDocument: falta de template ativo retorna TEMPLATE_NOT_FO
   const config = await createConfig(empresaId);
   const execucao = await runToReadyForDocument({ config });
 
-  await pool.query(`UPDATE automacao_templates SET ativo = false WHERE codigo = 'diario_obra_ppflora'`);
+  // Bloco 11, Seção 2: `automacao_templates` é uma tabela ESTRUTURAL global
+  // (Bloco 2) — a linha seedada de 'diario_obra_ppflora' é compartilhada por
+  // TODOS os processos de teste rodando em paralelo contra o mesmo Postgres
+  // local (`node --test` roda cada arquivo `.test.js` em seu próprio
+  // processo). Um UPDATE ativo=false COMMITADO aqui ficaria visível para
+  // qualquer outro arquivo concorrente que dependa do template ativo — esta
+  // era a causa raiz da flakiness intermitente relatada no Bloco 10 entre
+  // este arquivo e documentDistributionService.test.js.
+  //
+  // Correção estrutural (não é timeout, não é serializar a suíte, não é
+  // reexecutar até passar): manter o UPDATE dentro de uma transação Postgres
+  // NUNCA COMMITADA (sempre ROLLBACK ao final, inclusive se o teste falhar).
+  // Pelo isolamento MVCC padrão do Postgres (READ COMMITTED), nenhuma OUTRA
+  // conexão enxerga um UPDATE não commitado — a mudança fica 100% invisível
+  // para os demais processos de teste durante toda a duração deste teste, e
+  // é desfeita sozinha ao final (inclusive se o processo morrer no meio,
+  // uma transação nunca commitada de uma conexão encerrada é descartada pelo
+  // próprio Postgres). O código sob teste precisa enxergar essa mudança
+  // "invisível para os outros", então recebe um `pool` PROXY cujo `.query`
+  // roda na MESMA conexão/transação deste teste — `.connect()` continua
+  // apontando para o pool real, porque o advisory lock por execução do
+  // `documentGenerationService.js` é uma preocupação ortogonal (sempre numa
+  // conexão própria) que nunca precisou de isolamento transacional.
+  const txClient = await pool.connect();
   try {
+    await txClient.query("BEGIN");
+    await txClient.query(`UPDATE automacao_templates SET ativo = false WHERE codigo = 'diario_obra_ppflora'`);
+
+    const isolatedPool = { query: (...args) => txClient.query(...args), connect: (...args) => pool.connect(...args) };
     const driveClient = createFakeGoogleDriveClient();
-    const result = await generateExecutionDocument({ pool, automacaoExecucaoId: execucao.id, driveClient });
+    const result = await generateExecutionDocument({ pool: isolatedPool, automacaoExecucaoId: execucao.id, driveClient });
     assert.equal(result.outcome, "TEMPLATE_NOT_FOUND");
     assert.equal(driveClient.calls.uploadFile.length, 0);
 
-    const fresh = await getExecucao(config.id);
-    assert.equal(fresh.erro_codigo, "DOCUMENT_TEMPLATE_NOT_FOUND");
+    const { rows: freshRows } = await txClient.query(`SELECT erro_codigo FROM automacao_execucoes WHERE id = $1`, [execucao.id]);
+    assert.equal(freshRows[0].erro_codigo, "DOCUMENT_TEMPLATE_NOT_FOUND");
   } finally {
-    await pool.query(`UPDATE automacao_templates SET ativo = true WHERE codigo = 'diario_obra_ppflora'`);
+    await txClient.query("ROLLBACK").catch(() => {});
+    txClient.release();
   }
 });
