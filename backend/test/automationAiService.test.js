@@ -32,6 +32,7 @@ const {
   getCurrentIntelligenceForEmpresa,
   listIntelligenceVersionsForEmpresa,
 } = require("../src/modules/automations/ai/automationAiService");
+const { DAILY_INTELLIGENCE_PROMPT_VERSION } = require("../src/modules/automations/ai/prompts/dailyIntelligencePromptV1");
 
 const RUN_TAG = `aisvc-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 const createdEmpresaIds = [];
@@ -219,7 +220,7 @@ test("processExecutionIntelligence: snapshot v1 gera inteligência v1, execuçã
   const { rows } = await pool.query(`SELECT * FROM automacao_execucao_inteligencias WHERE id = $1`, [result.intelligenceId]);
   assert.equal(rows[0].status, "COMPLETED");
   assert.equal(rows[0].model, "fake-model-v1");
-  assert.equal(rows[0].prompt_version, "1");
+  assert.equal(rows[0].prompt_version, DAILY_INTELLIGENCE_PROMPT_VERSION);
   assert.ok(rows[0].input_hash);
   assert.equal(rows[0].output_hash, result.outputHash);
   assert.equal(rows[0].input_tokens, 20);

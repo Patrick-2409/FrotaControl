@@ -61,6 +61,21 @@ function loadLogoBuffer() {
   return cachedLogoBuffer;
 }
 
+// Assinatura gráfica extraída do arquivo de referência oficial (Seção
+// "assinatura digital") — mesmo tratamento do logo acima: asset estático,
+// carregado uma vez, nunca gerado/alterado em runtime (nunca via IA, nunca
+// desenhado artificialmente). Renderizada pelos builders SOMENTE quando a
+// config também tem `responsavelTecnico` preenchido (nunca uma assinatura
+// órfã sem o nome correspondente).
+const SIGNATURE_PATH = path.join(__dirname, "assets", "diario-obra-assinatura-patrick-vargas.png");
+let cachedSignatureBuffer = null;
+function loadSignatureBuffer() {
+  if (!cachedSignatureBuffer) {
+    cachedSignatureBuffer = fs.readFileSync(SIGNATURE_PATH);
+  }
+  return cachedSignatureBuffer;
+}
+
 function sha256Hex(bufferOrString) {
   return crypto.createHash("sha256").update(bufferOrString).digest("hex");
 }
@@ -418,11 +433,12 @@ async function runDocumentGenerationPipeline({ pool, execucao, snapshot, intelli
     });
 
     const logoBuffer = loadLogoBuffer();
+    const signatureBuffer = loadSignatureBuffer();
     const photoBuffers = await downloadPhotoBuffers({ model, driveClient, maxBytes: getDocumentPhotoMaxBytes() });
 
     let excelBuffer;
     try {
-      const workbook = buildDiarioObraExcelWorkbookV2(model, { logoBuffer, photoBuffers });
+      const workbook = buildDiarioObraExcelWorkbookV2(model, { logoBuffer, photoBuffers, signatureBuffer });
       excelBuffer = await workbook.xlsx.writeBuffer();
     } catch (err) {
       throw new DocumentError(`Falha ao gerar o Excel do Diário de Obra: ${err.message}`, { code: "DOCUMENT_EXCEL_GENERATION_FAILED", cause: err });
@@ -432,7 +448,7 @@ async function runDocumentGenerationPipeline({ pool, execucao, snapshot, intelli
 
     let pdfBuffer;
     try {
-      pdfBuffer = await buildDiarioObraPdfBufferV2(model, { logoBuffer, photoBuffers });
+      pdfBuffer = await buildDiarioObraPdfBufferV2(model, { logoBuffer, photoBuffers, signatureBuffer });
     } catch (err) {
       throw new DocumentError(`Falha ao gerar o PDF do Diário de Obra: ${err.message}`, { code: "DOCUMENT_PDF_GENERATION_FAILED", cause: err });
     }

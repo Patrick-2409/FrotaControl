@@ -22,13 +22,23 @@ const {
   FIXED_TEXT,
   RDO_COLUMN_WIDTHS,
   RDF_COLUMN_WIDTHS,
-  PAGE_SETUP,
+  RDO_PAGE_SETUP,
+  RDF_PAGE_SETUP,
   PHOTOS_PER_PAGE,
+  ACTIVITIES_PER_PAGE,
+  RDF_FIRST_BLOCK_HEADER_ROWS,
+  RDF_BLOCK_PHOTO_ROWS,
+  RDF_BLOCK_CAPTION_ROWS,
   ACTIVITY_CHARS_PER_LINE,
   ACTIVITY_LINE_HEIGHT_POINTS,
   ACTIVITY_ROW_VERTICAL_PADDING_POINTS,
   ACTIVITY_MIN_ROW_HEIGHT_POINTS,
-  ACTIVITIES_AREA_BUDGET_POINTS,
+  RDO_FOOTER_SPACER_HEIGHTS_POINTS,
+  RDO_SIGNATURE_BLOCK_ROW_HEIGHTS_POINTS,
+  RDO_LOGO_ANCHOR,
+  RDF_LOGO_ANCHOR,
+  RDO_SIGNATURE_MAX_HEIGHT_POINTS,
+  RDO_SIGNATURE_ASPECT_RATIO,
 } = require("./diarioObraLayoutConstantsV2");
 
 const TITLE_FONT = { name: "Arial", size: 10, bold: true };
@@ -78,31 +88,9 @@ function computeActivityRowHeight(text) {
   return Math.max(ACTIVITY_MIN_ROW_HEIGHT_POINTS, lines * ACTIVITY_LINE_HEIGHT_POINTS + ACTIVITY_ROW_VERTICAL_PADDING_POINTS);
 }
 
-/**
- * Paginação da grade de atividades por ORÇAMENTO DE ALTURA, não por
- * contagem fixa de itens (Seção "quando faltar espaço até a linha 47, use
- * continuação") — o oficial prova que a altura por item varia, então 32
- * itens curtos cabem numa página, mas 10 itens muito longos podem não
- * caber; a decisão de abrir página nova é sempre pela altura acumulada,
- * nunca por um contador de itens.
- */
-function paginateActivitiesByHeight(activities, budgetPoints) {
-  if (!activities.length) return [[]];
-  const pages = [];
-  let currentPage = [];
-  let currentHeight = 0;
-  for (const item of activities) {
-    const height = computeActivityRowHeight(item.texto);
-    if (currentPage.length && currentHeight + height > budgetPoints) {
-      pages.push(currentPage);
-      currentPage = [];
-      currentHeight = 0;
-    }
-    currentPage.push(item);
-    currentHeight += height;
-  }
-  if (currentPage.length) pages.push(currentPage);
-  return pages;
+/** Marca ("X") da condição de clima de um período, ou vazio quando não é essa condição — nunca inferida, só reflete `model.clima` (Seção "clima"). */
+function climaMark(condicaoDoPeriodo, condicaoDaLinha) {
+  return condicaoDoPeriodo === condicaoDaLinha ? "X" : "";
 }
 
 function dataReferenciaToExcelDate(dataReferencia) {
@@ -110,14 +98,17 @@ function dataReferenciaToExcelDate(dataReferencia) {
   return new Date(Date.UTC(ano, mes - 1, dia));
 }
 
-function applyPageSetup(worksheet) {
+/** RDO e RDF têm page setups PRÓPRIOS re-auditados (nunca a mesma constante — Seção "page setup"). */
+function applyPageSetup(worksheet, setup) {
   worksheet.pageSetup = {
-    paperSize: PAGE_SETUP.paperSize,
-    orientation: PAGE_SETUP.orientation,
-    fitToPage: PAGE_SETUP.fitToPage,
-    fitToWidth: PAGE_SETUP.fitToWidth,
-    fitToHeight: PAGE_SETUP.fitToHeight,
-    margins: PAGE_SETUP.margins,
+    paperSize: setup.paperSize,
+    orientation: setup.orientation,
+    fitToPage: setup.fitToPage,
+    ...(setup.fitToPage
+      ? { fitToWidth: setup.fitToWidth, fitToHeight: setup.fitToHeight }
+      : { scale: setup.scale }),
+    ...(setup.horizontalCentered ? { horizontalCentered: setup.horizontalCentered } : {}),
+    margins: setup.margins,
   };
 }
 
@@ -148,7 +139,12 @@ function buildRdoHeader(workbook, worksheet, model, { logoBuffer, pageIndex, tot
 
   worksheet.mergeCells("A1:B3");
   boxedCell(worksheet, "A1", { font: TITLE_FONT, alignment: { horizontal: "center" }, fill: HEADER_FILL });
-  addLogo(workbook, worksheet, logoBuffer, { col: 0.1, row: 0.1 });
+  addLogo(workbook, worksheet, logoBuffer, {
+    col: RDO_LOGO_ANCHOR.col,
+    row: RDO_LOGO_ANCHOR.row,
+    widthPx: RDO_LOGO_ANCHOR.widthPx,
+    heightPx: RDO_LOGO_ANCHOR.heightPx,
+  });
 
   worksheet.mergeCells("C1:H1");
   boxedCell(worksheet, "C1", {
@@ -166,7 +162,11 @@ function buildRdoHeader(workbook, worksheet, model, { logoBuffer, pageIndex, tot
     fill: HEADER_FILL,
   });
 
-  if (isContinuation) return 14;
+  if (isContinuation) {
+    worksheet.mergeCells("A14:H14");
+    boxedCell(worksheet, "A14", { font: VALUE_FONT, alignment: { horizontal: "center" } });
+    return 15;
+  }
 
   boxedCell(worksheet, "A4", { value: FIXED_TEXT.rotuloObra, font: LABEL_FONT, alignment: { horizontal: "center", vertical: "middle" } });
   worksheet.mergeCells("B4:D4");
@@ -203,16 +203,19 @@ function buildRdoHeader(workbook, worksheet, model, { logoBuffer, pageIndex, tot
     alignment: { horizontal: "left", vertical: "top", wrapText: true },
   });
 
-  // Marcações de clima (Seção "nunca inferidas") — SEMPRE vazias; só a
-  // geometria/rótulos são desenhados, nunca um valor de BOM/CHUVAS.
+  // Marcações de clima (Seção "clima") — refletem exatamente
+  // `model.clima.manha/tarde/noite`, nunca inferidas aqui: um "X" na célula
+  // cujo período+condição bate com o valor resolvido pelo model, e nada nas
+  // demais. NAO_INFORMADO nunca marca nenhuma das duas linhas.
+  const clima = model.clima || {};
   boxedCell(worksheet, "A9", { value: FIXED_TEXT.climaLabelBom, font: LABEL_FONT, alignment: { horizontal: "center" } });
-  boxedCell(worksheet, "B9", { font: LABEL_FONT, alignment: { horizontal: "center" } });
-  boxedCell(worksheet, "C9", { font: LABEL_FONT, alignment: { horizontal: "center" } });
-  boxedCell(worksheet, "D9", { font: LABEL_FONT, alignment: { horizontal: "center" } });
+  boxedCell(worksheet, "B9", { value: climaMark(clima.manha, "BOM"), font: LABEL_FONT, alignment: { horizontal: "center" } });
+  boxedCell(worksheet, "C9", { value: climaMark(clima.tarde, "BOM"), font: LABEL_FONT, alignment: { horizontal: "center" } });
+  boxedCell(worksheet, "D9", { value: climaMark(clima.noite, "BOM"), font: LABEL_FONT, alignment: { horizontal: "center" } });
   boxedCell(worksheet, "A10", { value: FIXED_TEXT.climaLabelChuvas, font: LABEL_FONT, alignment: { horizontal: "center" } });
-  boxedCell(worksheet, "B10", { font: LABEL_FONT, alignment: { horizontal: "center" } });
-  boxedCell(worksheet, "C10", { font: LABEL_FONT, alignment: { horizontal: "center" } });
-  boxedCell(worksheet, "D10", { font: LABEL_FONT, alignment: { horizontal: "center" } });
+  boxedCell(worksheet, "B10", { value: climaMark(clima.manha, "CHUVAS"), font: LABEL_FONT, alignment: { horizontal: "center" } });
+  boxedCell(worksheet, "C10", { value: climaMark(clima.tarde, "CHUVAS"), font: LABEL_FONT, alignment: { horizontal: "center" } });
+  boxedCell(worksheet, "D10", { value: climaMark(clima.noite, "CHUVAS"), font: LABEL_FONT, alignment: { horizontal: "center" } });
 
   worksheet.mergeCells("A11:H12");
   boxedCell(worksheet, "A11", { value: FIXED_TEXT.diarioDivisor, font: DIVISOR_FONT, alignment: { horizontal: "center", vertical: "middle" } });
@@ -220,10 +223,26 @@ function buildRdoHeader(workbook, worksheet, model, { logoBuffer, pageIndex, tot
   worksheet.mergeCells("A13:H13");
   boxedCell(worksheet, "A13", { value: FIXED_TEXT.atividadesTitulo, font: DIVISOR_FONT, alignment: { horizontal: "center" }, border: TOP_LEFT_RIGHT_BORDERS });
 
-  return 14;
+  // Linha espaçadora em branco (auditada: linha 14, mesmo padrão da linha 6)
+  // entre o título de atividades e a grade — nunca omitida, mesmo sem
+  // atividades (Seção "preservar geometria mesmo com poucas atividades").
+  worksheet.mergeCells("A14:H14");
+  boxedCell(worksheet, "A14", { font: VALUE_FONT, alignment: { horizontal: "center" } });
+
+  return 15;
 }
 
-function buildRdoActivities(worksheet, activitiesPage, startRow) {
+/**
+ * Grade de atividades de TAMANHO FIXO (Seção "preservar o formulário
+ * oficial") — desenha sempre `totalSlots` linhas (ACTIVITIES_PER_PAGE),
+ * preenchidas ou em branco: poucas atividades NUNCA encolhem o formulário
+ * nem sobem o rodapé, porque o retorno desta função é sempre
+ * `startRow + totalSlots`, independente de `activitiesPage.length`. Linhas
+ * em branco recebem a MESMA borda/moldura das preenchidas (mantém a grade
+ * visualmente intacta) com a altura "de uma linha" (computeActivityRowHeight
+ * de texto vazio), igual ao comportamento auditado do arquivo oficial.
+ */
+function buildRdoActivities(worksheet, activitiesPage, startRow, totalSlots) {
   let row = startRow;
   for (const item of activitiesPage) {
     worksheet.mergeCells(`A${row}:H${row}`);
@@ -235,30 +254,70 @@ function buildRdoActivities(worksheet, activitiesPage, startRow) {
     worksheet.getRow(row).height = computeActivityRowHeight(item.texto);
     row += 1;
   }
+  const lastRow = startRow + totalSlots - 1;
+  for (; row <= lastRow; row += 1) {
+    worksheet.mergeCells(`A${row}:H${row}`);
+    boxedCell(worksheet, `A${row}`, { font: ACTIVITY_FONT, alignment: { horizontal: "left", vertical: "top", wrapText: true } });
+    worksheet.getRow(row).height = computeActivityRowHeight("");
+  }
   return row;
 }
 
-/** Rodapé institucional (linhas 47-51 do oficial) — SEMPRE dados já resolvidos pelo model (nunca constante de cliente aqui). */
-function buildRdoFooter(worksheet, model, startRow) {
+/**
+ * Rodapé institucional (linhas 46-51 do oficial, re-auditado byte-a-byte —
+ * validação visual) — SEMPRE dados já resolvidos pelo model (nunca constante
+ * de cliente aqui). Geometria EXATA da referência: dois espaçadores em
+ * branco (46 e 47, com a MESMA moldura das linhas de atividade — nunca só
+ * um), bloco de assinatura mesclado por DUAS linhas (48-49, alturas 25.2 e
+ * 12 respectivamente), razão social (50) e endereço (51) — termina SEMPRE em
+ * 51, nunca 50 (Seção "RDO deve terminar na mesma geometria").
+ *
+ * A assinatura gráfica (Seção "assinatura digital") fica CONFINADA à
+ * primeira linha do bloco (48) — nunca se estende para a segunda (49), onde
+ * o nome do responsável técnico fica alinhado embaixo (`vertical: "bottom"`,
+ * igual ao arquivo oficial): garante ZERO sobreposição entre imagem e texto,
+ * independente de quantas atividades o dia teve (Seção "assinatura sobre o
+ * nome" — nunca reproduz a posição literal do arquivo de amostra, que foi
+ * arrastada manualmente pelo usuário para aquele dia específico). Só
+ * desenhada quando ambos (buffer do asset + nome configurado) existem —
+ * nunca uma assinatura "órfã" sem o nome correspondente.
+ */
+function buildRdoFooter(workbook, worksheet, model, startRow, { signatureBuffer } = {}) {
   let row = startRow;
-  worksheet.mergeCells(`A${row}:H${row}`);
-  boxedCell(worksheet, `A${row}`, { font: VALUE_FONT });
-  row += 1;
+  for (const spacerHeight of RDO_FOOTER_SPACER_HEIGHTS_POINTS) {
+    worksheet.mergeCells(`A${row}:H${row}`);
+    boxedCell(worksheet, `A${row}`, { font: VALUE_FONT });
+    worksheet.getRow(row).height = spacerHeight;
+    row += 1;
+  }
 
   const footerStart = row;
+  const [signatureRowHeight, nameRowHeight] = RDO_SIGNATURE_BLOCK_ROW_HEIGHTS_POINTS;
+  worksheet.getRow(footerStart).height = signatureRowHeight;
+  worksheet.getRow(footerStart + 1).height = nameRowHeight;
+
   worksheet.mergeCells(`A${footerStart}:D${footerStart + 1}`);
   boxedCell(worksheet, `A${footerStart}`, {
     value: model.identification.rodapeInstitucional.assinanteEsquerda,
     font: FOOTER_FONT,
-    alignment: { horizontal: "center" },
+    alignment: { horizontal: "center", vertical: "middle" },
   });
   worksheet.mergeCells(`E${footerStart}:H${footerStart + 1}`);
   const assinaturaDireita = [model.signature.responsavelTecnico].filter(Boolean).join("\n");
   boxedCell(worksheet, `E${footerStart}`, {
     value: assinaturaDireita,
     font: FOOTER_FONT,
-    alignment: { horizontal: "center", vertical: "middle", wrapText: true },
+    alignment: { horizontal: "center", vertical: "bottom", wrapText: true },
   });
+  if (signatureBuffer && model.signature.responsavelTecnico) {
+    const signatureHeightPx = RDO_SIGNATURE_MAX_HEIGHT_POINTS * (96 / 72);
+    const signatureWidthPx = signatureHeightPx * RDO_SIGNATURE_ASPECT_RATIO;
+    const imageId = workbook.addImage({ buffer: signatureBuffer, extension: "png" });
+    worksheet.addImage(imageId, {
+      tl: { col: 4.6, row: footerStart - 1 },
+      ext: { width: signatureWidthPx, height: signatureHeightPx },
+    });
+  }
   row = footerStart + 2;
 
   worksheet.mergeCells(`A${row}:H${row}`);
@@ -269,67 +328,86 @@ function buildRdoFooter(worksheet, model, startRow) {
   boxedCell(worksheet, `A${row}`, { value: model.identification.rodapeInstitucional.endereco, font: FOOTER_FONT, alignment: { horizontal: "center" } });
 }
 
-function buildRdoSheet(workbook, model, activitiesPage, { pageIndex, totalPages, logoBuffer }) {
+function buildRdoSheet(workbook, model, activitiesPage, { pageIndex, totalPages, logoBuffer, signatureBuffer }) {
   const sheetName = pageIndex === 0 ? "RDO" : `RDO_CONT_${pageIndex + 1}`;
   const worksheet = workbook.addWorksheet(sheetName);
   RDO_COLUMN_WIDTHS.forEach((width, i) => {
     worksheet.getColumn(i + 1).width = width;
   });
-  applyPageSetup(worksheet);
+  applyPageSetup(worksheet, RDO_PAGE_SETUP);
 
   const afterHeaderRow = buildRdoHeader(workbook, worksheet, model, { logoBuffer, pageIndex, totalPages });
-  const afterActivitiesRow = buildRdoActivities(worksheet, activitiesPage, afterHeaderRow);
+  const afterActivitiesRow = buildRdoActivities(worksheet, activitiesPage, afterHeaderRow, ACTIVITIES_PER_PAGE);
   if (pageIndex === totalPages - 1) {
-    buildRdoFooter(worksheet, model, afterActivitiesRow);
+    buildRdoFooter(workbook, worksheet, model, afterActivitiesRow, { signatureBuffer });
   }
   return worksheet;
 }
 
-/** RDF v2 — 2 fotos GRANDES lado a lado por página (Seção "novo oficial"), nunca a grade pequena do v1. */
-function buildRdfSheet(workbook, model, photosPage, { pageIndex, totalPages, logoBuffer, photoBuffers }) {
-  const sheetName = pageIndex === 0 ? "RDF" : `RDF_${pageIndex + 1}`;
-  const worksheet = workbook.addWorksheet(sheetName);
-  RDF_COLUMN_WIDTHS.forEach((width, i) => {
-    worksheet.getColumn(i + 1).width = width;
-  });
-  applyPageSetup(worksheet);
+/**
+ * Linhas do bloco N (0-indexado) da aba RDF (Seção "proibido criar RDF_2,
+ * RDF_3") — re-auditado diretamente contra dois arquivos de referência
+ * independentes: o bloco 0 inclui o cabeçalho (3 linhas) + moldura (14) +
+ * legenda (3) = 20 linhas; cada bloco seguinte NUNCA repete o cabeçalho, só
+ * moldura+legenda = 17 linhas, empilhado logo abaixo do bloco anterior.
+ */
+function computeRdfBlockRows(pageIndex) {
+  if (pageIndex === 0) {
+    const photoTop = 1 + RDF_FIRST_BLOCK_HEADER_ROWS;
+    const photoBottom = photoTop + RDF_BLOCK_PHOTO_ROWS - 1;
+    const captionBottom = photoBottom + RDF_BLOCK_CAPTION_ROWS;
+    return { top: 1, photoTop, photoBottom, captionTop: photoBottom + 1, captionBottom, bottom: captionBottom };
+  }
+  const blockHeight = RDF_BLOCK_PHOTO_ROWS + RDF_BLOCK_CAPTION_ROWS;
+  const firstBlockBottom = RDF_FIRST_BLOCK_HEADER_ROWS + blockHeight;
+  const top = firstBlockBottom + 1 + (pageIndex - 1) * blockHeight;
+  const photoBottom = top + RDF_BLOCK_PHOTO_ROWS - 1;
+  const captionBottom = photoBottom + RDF_BLOCK_CAPTION_ROWS;
+  return { top, photoTop: top, photoBottom, captionTop: photoBottom + 1, captionBottom, bottom: captionBottom };
+}
 
-  worksheet.mergeCells("A1:A20");
-  boxedCell(worksheet, "A1", { border: ALL_BORDERS });
-  worksheet.mergeCells("E1:E20");
-  boxedCell(worksheet, "E1", { border: ALL_BORDERS });
+/** Desenha UM bloco de 2 fotos grandes lado a lado dentro da aba RDF já existente, na faixa de linhas calculada por `computeRdfBlockRows`. */
+function buildRdfBlock(workbook, worksheet, model, photosPage, { pageIndex, logoBuffer, photoBuffers }) {
+  const rows = computeRdfBlockRows(pageIndex);
 
-  worksheet.mergeCells("B1:D1");
-  boxedCell(worksheet, "B1", {
-    value: totalPages > 1 ? `${model.identification.tituloRdf} — página ${pageIndex + 1} de ${totalPages}` : model.identification.tituloRdf,
-    font: RDF_TITLE_FONT,
-    alignment: { horizontal: "center", vertical: "middle" },
-  });
-  addLogo(workbook, worksheet, logoBuffer, { col: 1.2, row: 0.1, widthPx: 70, heightPx: 30 });
+  worksheet.mergeCells(`A${rows.top}:A${rows.bottom}`);
+  boxedCell(worksheet, `A${rows.top}`, { border: ALL_BORDERS });
+  worksheet.mergeCells(`E${rows.top}:E${rows.bottom}`);
+  boxedCell(worksheet, `E${rows.top}`, { border: ALL_BORDERS });
+  worksheet.mergeCells(`C${rows.photoTop}:C${rows.bottom}`);
+  boxedCell(worksheet, `C${rows.photoTop}`, { border: ALL_BORDERS });
 
-  worksheet.mergeCells("B2:D2");
-  boxedCell(worksheet, "B2", { value: FIXED_TEXT.registroFotograficoTitulo, font: RDF_SUBTITLE_FONT, alignment: { horizontal: "center" }, fill: HEADER_FILL });
+  if (pageIndex === 0) {
+    worksheet.mergeCells("B1:D1");
+    boxedCell(worksheet, "B1", { value: model.identification.tituloRdf, font: RDF_TITLE_FONT, alignment: { horizontal: "center", vertical: "middle" } });
+    addLogo(workbook, worksheet, logoBuffer, {
+      col: RDF_LOGO_ANCHOR.col,
+      row: RDF_LOGO_ANCHOR.row,
+      widthPx: RDF_LOGO_ANCHOR.widthPx,
+      heightPx: RDF_LOGO_ANCHOR.heightPx,
+    });
 
-  worksheet.mergeCells("B3:D3");
-  boxedCell(worksheet, "B3", { font: VALUE_FONT });
+    worksheet.mergeCells("B2:D2");
+    boxedCell(worksheet, "B2", { value: FIXED_TEXT.registroFotograficoTitulo, font: RDF_SUBTITLE_FONT, alignment: { horizontal: "center" }, fill: HEADER_FILL });
 
-  worksheet.mergeCells("C4:C20");
-  boxedCell(worksheet, "C4", { border: ALL_BORDERS });
+    worksheet.mergeCells("B3:D3");
+    boxedCell(worksheet, "B3", { font: VALUE_FONT });
+  }
 
   const [fotoEsquerda, fotoDireita] = photosPage;
   [
     { col: "B", photo: fotoEsquerda },
     { col: "D", photo: fotoDireita },
   ].forEach(({ col, photo }) => {
-    worksheet.mergeCells(`${col}4:${col}17`);
-    const frameCell = boxedCell(worksheet, `${col}4`, { border: ALL_BORDERS });
+    worksheet.mergeCells(`${col}${rows.photoTop}:${col}${rows.photoBottom}`);
+    const frameCell = boxedCell(worksheet, `${col}${rows.photoTop}`, { border: ALL_BORDERS });
 
     if (photo && photo.disponivel) {
       const buffer = photoBuffers.get(photo.driveFileId);
       if (buffer) {
         const imageId = workbook.addImage({ buffer, extension: "jpeg" });
         worksheet.addImage(imageId, {
-          tl: { col: col === "B" ? 1.1 : 3.1, row: 3.1 },
+          tl: { col: col === "B" ? 1.1 : 3.1, row: rows.photoTop - 1 + 0.1 },
           ext: { width: 300, height: 260 },
         });
       }
@@ -339,12 +417,33 @@ function buildRdfSheet(workbook, model, photosPage, { pageIndex, totalPages, log
       frameCell.font = { name: "Arial", size: 9, italic: true, color: { argb: "FF888888" } };
     }
 
-    worksheet.mergeCells(`${col}18:${col}20`);
-    boxedCell(worksheet, `${col}18`, {
+    worksheet.mergeCells(`${col}${rows.captionTop}:${col}${rows.captionBottom}`);
+    boxedCell(worksheet, `${col}${rows.captionTop}`, {
       value: photo ? `${photo.numero}. ${photo.legenda}` : "",
       font: CAPTION_FONT,
       alignment: { horizontal: "center", vertical: "top", wrapText: true },
     });
+  });
+}
+
+/**
+ * RDF v2 — UMA ÚNICA aba "RDF" (nunca RDF_2/RDF_3/etc., Seção "proibido
+ * criar RDF_2, RDF_3"): todos os blocos de 2 fotos grandes lado a lado ficam
+ * empilhados verticalmente na MESMA planilha, exatamente como o arquivo
+ * oficial (auditado: 8 fotos = 4 blocos, todos dentro de uma aba "RDF").
+ * `fitToHeight: 0` (PAGE_SETUP) já faz o Excel/PDF abrirem quantas páginas
+ * de IMPRESSÃO forem necessárias sozinho — nunca precisa de quebra de página
+ * manual (o arquivo oficial também não tem nenhuma).
+ */
+function buildRdfWorksheet(workbook, model, photoPages, { logoBuffer, photoBuffers }) {
+  const worksheet = workbook.addWorksheet("RDF");
+  RDF_COLUMN_WIDTHS.forEach((width, i) => {
+    worksheet.getColumn(i + 1).width = width;
+  });
+  applyPageSetup(worksheet, RDF_PAGE_SETUP);
+
+  photoPages.forEach((page, pageIndex) => {
+    buildRdfBlock(workbook, worksheet, model, page, { pageIndex, logoBuffer, photoBuffers });
   });
 
   return worksheet;
@@ -352,23 +451,23 @@ function buildRdfSheet(workbook, model, photosPage, { pageIndex, totalPages, log
 
 /**
  * `photoBuffers`: Map<driveFileId, Buffer> — só precisa conter entradas para
- * fotos `disponivel: true`. Retorna o workbook (ExcelJS) — quem chama decide
+ * fotos `disponivel: true`. `signatureBuffer` é opcional (Seção "assinatura
+ * digital") — quando ausente, o rodapé segue só com o nome em texto, como
+ * antes. Retorna o workbook (ExcelJS) — quem chama decide
  * `.xlsx.writeBuffer()` (nunca grava em disco aqui).
  */
-function buildDiarioObraExcelWorkbookV2(model, { logoBuffer, photoBuffers = new Map() } = {}) {
+function buildDiarioObraExcelWorkbookV2(model, { logoBuffer, photoBuffers = new Map(), signatureBuffer } = {}) {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "FrotaMax — Automações";
   workbook.created = new Date();
 
-  const activityPages = paginateActivitiesByHeight(model.activities, ACTIVITIES_AREA_BUDGET_POINTS);
+  const activityPages = paginateByCount(model.activities, ACTIVITIES_PER_PAGE);
   activityPages.forEach((page, pageIndex) => {
-    buildRdoSheet(workbook, model, page, { pageIndex, totalPages: activityPages.length, logoBuffer });
+    buildRdoSheet(workbook, model, page, { pageIndex, totalPages: activityPages.length, logoBuffer, signatureBuffer });
   });
 
   const photoPages = paginateByCount(model.photos, PHOTOS_PER_PAGE);
-  photoPages.forEach((page, pageIndex) => {
-    buildRdfSheet(workbook, model, page, { pageIndex, totalPages: photoPages.length, logoBuffer, photoBuffers });
-  });
+  buildRdfWorksheet(workbook, model, photoPages, { logoBuffer, photoBuffers });
 
   return workbook;
 }
@@ -376,7 +475,7 @@ function buildDiarioObraExcelWorkbookV2(model, { logoBuffer, photoBuffers = new 
 module.exports = {
   buildDiarioObraExcelWorkbookV2,
   paginateByCount,
-  paginateActivitiesByHeight,
+  computeRdfBlockRows,
   estimateWrappedLineCount,
   computeActivityRowHeight,
   dataReferenciaToExcelDate,

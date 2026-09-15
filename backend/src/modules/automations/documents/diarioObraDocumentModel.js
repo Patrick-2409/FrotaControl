@@ -35,35 +35,28 @@ function compareNumericIdStrings(a, b) {
   return 0;
 }
 
-/** Mapa telegramMessageId -> {timestamp, messageId} — usado só para ordenar facts pela evidência mais antiga (Seção 15). */
-function buildMessageOrderMap(snapshot) {
-  const map = new Map();
-  for (const message of snapshot.messages) {
-    map.set(message.telegramMessageId, { timestamp: message.timestamp, messageId: message.telegramMessageId });
-  }
-  return map;
+/**
+ * Chave de normalização usada para decidir se dois textos representam a
+ * MESMA atividade (Bloco 12, Seção "deduplicação determinística"): trim,
+ * espaços internos colapsados, caixa baixa, e pontuação final removida —
+ * nunca depende exclusivamente do julgamento da IA sobre se duas legendas
+ * idênticas (a menos de diferenças triviais de formatação) são "a mesma"
+ * atividade.
+ */
+function normalizeActivityKey(text) {
+  return String(text || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[.,;:!?]+$/u, "")
+    .toLowerCase();
 }
 
-/** Chave de ordenação de um fato: (timestamp, messageId) da PRIMEIRA evidência cronológica citada — nunca alfabética (Seção 15). */
-function factSortKey(fact, orderMap) {
-  let best = null;
-  for (const ref of fact.sourceRefs || []) {
-    const info = orderMap.get(ref);
-    if (!info || !info.timestamp) continue;
-    if (!best || info.timestamp < best.timestamp || (info.timestamp === best.timestamp && compareNumericIdStrings(info.messageId, best.messageId) < 0)) {
-      best = info;
-    }
-  }
-  // Fato sem nenhuma referência resolvível (não deveria acontecer — Bloco 6 já
-  // exige sourceRefs válidos — mas defensivo): vai para o final, nunca quebra.
-  return best || { timestamp: "9999-12-31T23:59:59.999Z", messageId: "0" };
-}
-
+/** Remove duplicatas por texto normalizado, preservando a ORDEM em que os itens chegam (Seção "ordem da primeira ocorrência"). */
 function dedupeFacts(facts) {
   const seen = new Set();
   const result = [];
   for (const fact of facts) {
-    const key = String(fact.statement || "").trim().toLowerCase();
+    const key = normalizeActivityKey(fact.statement);
     if (key && seen.has(key)) continue;
     if (key) seen.add(key);
     result.push(fact);
@@ -72,24 +65,71 @@ function dedupeFacts(facts) {
 }
 
 /**
- * Sequência final da lista de atividades (Seção 14): 1) facts operacionais
- * (ordem cronológica da evidência), 2) conflicts + warnings (nunca como fato
- * executado), 3) missing information (agrupada, nunca dezenas de linhas
- * artificiais — Seção 17). Nunca mistura semanticamente as três categorias.
+ * Remove um prefixo de numeração de LISTA MANUAL do início do texto — nunca
+ * um número que faça parte do conteúdo operacional (Seção 7: "não remover
+ * números que realmente façam parte do texto sem critério"). Critério
+ * OBJETIVO e único: dígito(s) + separador (- . ou )) + ESPAÇO obrigatório
+ * logo em seguida, só no INÍCIO da string. "1.5 hectares" nunca é afetado
+ * (falta o espaço logo após o "."); "1- Irrigação..." é afetado (o builder é
+ * quem numera, uma vez só — nunca "1. 1- Irrigação...").
+ */
+function stripLeadingListNumber(text) {
+  return String(text || "")
+    .replace(/^\s*\d{1,3}\s*[-.)]\s+/, "")
+    .trim();
+}
+
+/**
+ * Fonte PRIMÁRIA e ÚNICA das atividades do RDO (correção de linhagem —
+ * "o template nunca é fonte para atividades do dia; a IA nunca escreve o
+ * fato operacional"): a LEGENDA ORIGINAL de cada foto do snapshot, EXATAMENTE
+ * como chegou do Telegram — nunca `fact.statement` da IA, que pode
+ * parafrasear/resumir/reescrever mesmo respeitando o sentido. O snapshot já
+ * chega ordenado cronologicamente (Bloco 5: timestamp ASC, message_id ASC),
+ * então a ordem de iteração já é a ordem real de chegada — nenhum sort
+ * adicional é necessário aqui.
+ *
+ * Deduplicação por `normalizeActivityKey` (chave normalizada: trim, espaços
+ * colapsados, case-insensitive, pontuação final removida) preserva o TEXTO
+ * DA PRIMEIRA OCORRÊNCIA cronológica, nunca uma versão reescrita — 3 fotos
+ * com a legenda "Irrigação do canteiro" (ou variações triviais de formatação
+ * dela) geram UMA linha no RDO com o texto exato da primeira foto que a
+ * usou, mas continuam sendo 3 registros distintos no RDF (`buildPhotos`
+ * nunca deduplica).
+ *
+ * Foto SEM legenda nunca vira atividade (não há texto operacional para
+ * descrever) — ainda aparece no RDF com o fallback de `resolvePhotoCaption`.
+ * Mensagem de TEXTO avulsa (sem foto) também nunca vira atividade aqui —
+ * só clima/observação/administrativo/não classificado, nunca por inferência
+ * (Seção 6); se um dia isso mudar, será uma regra separada e explícita.
+ */
+function buildActivityTextsFromPhotos(snapshot) {
+  const seen = new Set();
+  const textos = [];
+  for (const message of snapshot.messages || []) {
+    if (message.type !== "PHOTO") continue;
+    const captionOriginal = String(message.caption || "").trim();
+    if (!captionOriginal) continue;
+    const key = normalizeActivityKey(captionOriginal);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    textos.push(stripLeadingListNumber(captionOriginal));
+  }
+  return textos;
+}
+
+/**
+ * Sequência final da lista de atividades: 1) legendas originais de foto,
+ * deduplicadas e na ordem cronológica de chegada (nunca a IA — ver
+ * `buildActivityTextsFromPhotos`), 2) conflicts + warnings da IA (nunca como
+ * fato executado — só alertas/observações sobre o dia), 3) missing
+ * information (agrupada, nunca dezenas de linhas artificiais). Nunca mistura
+ * semanticamente as três categorias.
  */
 function buildActivities(structuredOutput, snapshot) {
-  const orderMap = buildMessageOrderMap(snapshot);
-  const facts = dedupeFacts(structuredOutput.facts || []);
-  const orderedFacts = [...facts].sort((a, b) => {
-    const keyA = factSortKey(a, orderMap);
-    const keyB = factSortKey(b, orderMap);
-    if (keyA.timestamp !== keyB.timestamp) return keyA.timestamp < keyB.timestamp ? -1 : 1;
-    return compareNumericIdStrings(keyA.messageId, keyB.messageId);
-  });
-
   const items = [];
-  for (const fact of orderedFacts) {
-    items.push({ tipo: "FACT", texto: fact.statement });
+  for (const texto of buildActivityTextsFromPhotos(snapshot)) {
+    items.push({ tipo: "FACT", texto });
   }
   for (const conflict of structuredOutput.conflicts || []) {
     items.push({ tipo: "WARNING", texto: `Observação: ${conflict.description}` });
@@ -184,6 +224,25 @@ function buildPhotoObservationsByRef(structuredOutput) {
   return map;
 }
 
+const WEATHER_CONDITIONS = ["BOM", "CHUVAS", "NAO_INFORMADO"];
+const DEFAULT_CLIMA = Object.freeze({ manha: "NAO_INFORMADO", tarde: "NAO_INFORMADO", noite: "NAO_INFORMADO" });
+
+/**
+ * Bloco 12 — clima por período (manhã/tarde/noite), campo estruturado
+ * PRÓPRIO da IA (nunca inferido aqui). Defensivo contra `structured_output`
+ * de uma inteligência ANTERIOR a este campo existir (Seção "não quebrar
+ * compatibilidade com inteligências anteriores") — ausência ou valor fora do
+ * enum conhecido sempre cai em NAO_INFORMADO, nunca lança.
+ */
+function resolveClima(structuredOutput) {
+  const clima = structuredOutput.clima || {};
+  const resolved = {};
+  for (const periodo of ["manha", "tarde", "noite"]) {
+    resolved[periodo] = WEATHER_CONDITIONS.includes(clima[periodo]) ? clima[periodo] : DEFAULT_CLIMA[periodo];
+  }
+  return resolved;
+}
+
 /**
  * Bloco 12 — título do cabeçalho do RDF: SEMPRE de `documento.tituloRdf`
  * quando configurado; nunca um nome de cliente/projeto fixo no código
@@ -244,6 +303,7 @@ function buildDiarioObraDocumentModel({ config, execucao, snapshot, intelligence
 
   const activities = buildActivities(structuredOutput, snapshot.snapshot);
   const photos = buildPhotos(snapshot.snapshot, { arquivosByDriveFileId, photoObservationsByRef });
+  const clima = resolveClima(structuredOutput);
 
   const signature = {
     responsavelTecnico: documento.responsavelTecnico?.trim() || null,
@@ -262,14 +322,18 @@ function buildDiarioObraDocumentModel({ config, execucao, snapshot, intelligence
     documentVersion,
   };
 
-  return { identification, activities, photos, signature, metadata };
+  return { identification, activities, photos, clima, signature, metadata };
 }
 
 module.exports = {
   buildDiarioObraDocumentModel,
   buildActivities,
+  buildActivityTextsFromPhotos,
+  stripLeadingListNumber,
   buildPhotos,
   dedupeFacts,
+  normalizeActivityKey,
+  resolveClima,
   compareNumericIdStrings,
   resolveTituloRdf,
   resolveRodapeInstitucional,

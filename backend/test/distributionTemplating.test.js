@@ -50,3 +50,41 @@ test("renderTemplate: nunca lança para entrada vazia/undefined", () => {
   assert.equal(renderTemplate(undefined, { projeto: "X" }), "");
   assert.equal(renderTemplate("", {}), "");
 });
+
+// ------------------------------------------------ chave dupla {{...}} (sem quebrar a sintaxe histórica {...})
+
+test("extractPlaceholders: reconhece chave dupla {{x}} igual à chave única {x}, sem duplicar", () => {
+  assert.deepEqual(extractPlaceholders("{{projeto}} - {data}"), ["projeto", "data"]);
+});
+
+test("renderTemplate: {{placeholder}} (chave dupla) substitui por inteiro, NUNCA deixa chave residual de nenhum dos lados", () => {
+  assert.equal(renderTemplate("{{projeto}}", { projeto: "Obra Central" }), "Obra Central");
+  assert.equal(renderTemplate("Projeto: {{projeto}}!", { projeto: "Obra Central" }), "Projeto: Obra Central!");
+});
+
+test("renderTemplate: mistura de chave única e dupla no MESMO texto funciona para ambas, sem resíduo", () => {
+  const result = renderTemplate("{projeto} / {{data}} / {{cliente}}", {
+    projeto: "Obra X",
+    data: "14/09/2026",
+    cliente: "Cliente LTDA",
+  });
+  assert.equal(result, "Obra X / 14/09/2026 / Cliente LTDA");
+});
+
+test("renderTemplate: {{placeholder}} desconhecido permanece INTEIRO e literal (nunca vira {placeholder} com uma chave a menos)", () => {
+  const result = renderTemplate("Olá {{nome_pessoal}}, projeto {{projeto}}", { projeto: "X" });
+  assert.equal(result, "Olá {{nome_pessoal}}, projeto X");
+});
+
+test("renderTemplate: {{placeholder}} conhecido sem valor definido permanece INTEIRO e literal (nunca resíduo de uma chave só)", () => {
+  const result = renderTemplate("Cliente: {{cliente}}", {});
+  assert.equal(result, "Cliente: {{cliente}}");
+});
+
+test("todos os ALLOWED_PLACEHOLDERS funcionam também na forma de chave dupla {{x}}", () => {
+  for (const name of ALLOWED_PLACEHOLDERS) {
+    const result = renderTemplate(`{{${name}}}`, { [name]: `valor-${name}` });
+    assert.equal(result, `valor-${name}`, `chave dupla falhou para {{${name}}}`);
+    assert.ok(!result.includes("{"), `resíduo de chave encontrado para {{${name}}}: "${result}"`);
+  }
+});

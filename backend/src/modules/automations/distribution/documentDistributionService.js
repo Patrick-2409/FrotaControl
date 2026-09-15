@@ -357,6 +357,8 @@ async function distributeApprovedDocument({ pool, empresaId = null, automacaoExe
     const placeholderValues = buildPlaceholderValues({
       projetoNome: config.projeto_nome,
       dataReferencia: formatCivilDate(snapshotRow.snapshot.referenceDate),
+      dataReferenciaRaw: snapshotRow.snapshot.referenceDate,
+      timezone: config.timezone,
       versao: documento.versao,
       clienteRazaoSocial: documentoConfig.clienteRazaoSocial,
       referenciaContratual: documentoConfig.referenciaContratual,

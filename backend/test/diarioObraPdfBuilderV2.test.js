@@ -13,12 +13,14 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { buildDiarioObraPdfBufferV2 } = require("../src/modules/automations/documents/diarioObraPdfBuilderV2");
-const { MAX_ACTIVITY_TEXT_LENGTH } = require("../src/modules/automations/documents/diarioObraLayoutConstantsV2");
+const { MAX_ACTIVITY_TEXT_LENGTH, ACTIVITIES_PER_PAGE } = require("../src/modules/automations/documents/diarioObraLayoutConstantsV2");
 
 const LOGO_PATH = path.join(__dirname, "../src/modules/automations/documents/assets/diario-obra-template-v1-logo.png");
 const logoBuffer = fs.readFileSync(LOGO_PATH);
+const SIGNATURE_PATH = path.join(__dirname, "../src/modules/automations/documents/assets/diario-obra-assinatura-patrick-vargas.png");
+const signatureBuffer = fs.readFileSync(SIGNATURE_PATH);
 
-function makeModel({ numActivities = 0, numPhotos = 0, longText = false } = {}) {
+function makeModel({ numActivities = 0, numPhotos = 0, longText = false, clima } = {}) {
   const activities = Array.from({ length: numActivities }, (_, i) => ({
     numero: i + 1,
     tipo: "FACT",
@@ -49,6 +51,7 @@ function makeModel({ numActivities = 0, numPhotos = 0, longText = false } = {}) 
     },
     activities,
     photos,
+    clima: clima ?? { manha: "NAO_INFORMADO", tarde: "NAO_INFORMADO", noite: "NAO_INFORMADO" },
     signature: { responsavelTecnico: "Eng. Teste" },
     metadata: { executionId: 1, snapshotId: 1, snapshotHash: "h", intelligenceId: 1, intelligenceOutputHash: "h2", templateId: 1, templateCodigo: "diario_obra_ppflora_v2", templateVersao: 2, generatorId: "diario_obra_ppflora_v2", documentVersion: 1 },
   };
@@ -65,13 +68,31 @@ test("PDF vazio (sem atividades/fotos) ainda é um documento válido", async () 
   assertValidPdf(buffer);
 });
 
-test("32 atividades curtas (mesmo teto do v1) produz um PDF válido", async () => {
-  const model = makeModel({ numActivities: 32 });
+test("31 atividades curtas (teto re-auditado da grade) produz um PDF válido", async () => {
+  const model = makeModel({ numActivities: ACTIVITIES_PER_PAGE });
   const buffer = await buildDiarioObraPdfBufferV2(model, { logoBuffer, photoBuffers: new Map() });
   assertValidPdf(buffer);
 });
 
-test("atividades muito longas (continuação por altura, não por contagem) produz um PDF válido e maior que o de itens curtos", async () => {
+test("32ª atividade (além do teto de 31) produz um PDF válido com continuação", async () => {
+  const model = makeModel({ numActivities: ACTIVITIES_PER_PAGE + 1 });
+  const buffer = await buildDiarioObraPdfBufferV2(model, { logoBuffer, photoBuffers: new Map() });
+  assertValidPdf(buffer);
+});
+
+test("clima informado (BOM/CHUVAS por período) produz um PDF válido refletindo o mesmo model do Excel", async () => {
+  const model = makeModel({ numActivities: 1, clima: { manha: "CHUVAS", tarde: "BOM", noite: "BOM" } });
+  const buffer = await buildDiarioObraPdfBufferV2(model, { logoBuffer, photoBuffers: new Map() });
+  assertValidPdf(buffer);
+});
+
+test("CASO E: com responsavelTecnico configurado e asset de assinatura fornecido, o PDF é gerado sem erro", async () => {
+  const model = makeModel({ numActivities: 1 });
+  const buffer = await buildDiarioObraPdfBufferV2(model, { logoBuffer, photoBuffers: new Map(), signatureBuffer });
+  assertValidPdf(buffer);
+});
+
+test("atividades muito longas (mesma linha lógica, altura maior) produz um PDF válido e maior que o de itens curtos", async () => {
   const modelCurto = makeModel({ numActivities: 10 });
   const modelLongo = makeModel({ numActivities: 10, longText: true });
   const bufferCurto = await buildDiarioObraPdfBufferV2(modelCurto, { logoBuffer, photoBuffers: new Map() });
@@ -88,7 +109,7 @@ test("3 fotos (múltiplas páginas RDF, novo limite de 2 por página) produz um 
 });
 
 test("caso patológico: várias atividades no teto de MAX_ACTIVITY_TEXT_LENGTH ainda produz PDF válido (rede de segurança de paginação automática)", async () => {
-  const model = makeModel({ numActivities: 32, longText: true });
+  const model = makeModel({ numActivities: ACTIVITIES_PER_PAGE, longText: true });
   const buffer = await buildDiarioObraPdfBufferV2(model, { logoBuffer, photoBuffers: new Map() });
   assertValidPdf(buffer);
 });

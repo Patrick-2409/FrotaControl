@@ -17,9 +17,24 @@
  */
 
 const { z } = require("zod");
-const { AUTOMATION_AI_FACT_CATEGORIES, AUTOMATION_AI_EVIDENCE_TYPES } = require("../constants/automationEnums");
+const { AUTOMATION_AI_FACT_CATEGORIES, AUTOMATION_AI_EVIDENCE_TYPES, AUTOMATION_AI_WEATHER_CONDITIONS } = require("../constants/automationEnums");
 
 const SourceRefSchema = z.string().min(1);
+
+// Bloco 12 — clima é um campo estruturado PRÓPRIO, separado de `facts`
+// (nunca uma atividade "Tempo bom durante o dia"). `.default(...)` cobre
+// tanto uma saída da IA que omita o campo (nunca deveria acontecer com
+// `strict: true`, mas o schema Zod não depende disso) quanto a releitura de
+// um `structured_output` já persistido ANTES deste campo existir — nunca
+// quebra compatibilidade com inteligências anteriores (Seção 7).
+const WeatherConditionSchema = z.enum(AUTOMATION_AI_WEATHER_CONDITIONS);
+const ClimaSchema = z
+  .object({
+    manha: WeatherConditionSchema.default("NAO_INFORMADO"),
+    tarde: WeatherConditionSchema.default("NAO_INFORMADO"),
+    noite: WeatherConditionSchema.default("NAO_INFORMADO"),
+  })
+  .default({ manha: "NAO_INFORMADO", tarde: "NAO_INFORMADO", noite: "NAO_INFORMADO" });
 
 const FactSchema = z.object({
   id: z.string().min(1),
@@ -53,6 +68,7 @@ const DailyIntelligenceSchemaV1 = z.object({
     sourceRefs: z.array(SourceRefSchema).default([]),
   }),
   facts: z.array(FactSchema).default([]),
+  clima: ClimaSchema,
   photoObservations: z.array(PhotoObservationSchema).default([]),
   conflicts: z.array(ConflictSchema).default([]),
   missingInformation: z.array(MissingInformationSchema).default([]),
@@ -65,4 +81,5 @@ module.exports = {
   PhotoObservationSchema,
   ConflictSchema,
   MissingInformationSchema,
+  ClimaSchema,
 };

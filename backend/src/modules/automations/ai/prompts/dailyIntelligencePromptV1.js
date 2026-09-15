@@ -12,7 +12,12 @@
  * de origem que não exista na lista fornecida.
  */
 
-const DAILY_INTELLIGENCE_PROMPT_VERSION = "1";
+// Bloco 12 — versão 2: acrescenta o campo estruturado `clima` (separado de
+// `facts`) e reforça a separação atividade/clima/administrativo. Mudar a
+// versão é o mecanismo já existente (automationAiService.js) para forçar uma
+// nova tentativa de IA em vez de reaproveitar silenciosamente um resultado
+// COMPLETED gerado com o prompt antigo (que nunca preencheu `clima`).
+const DAILY_INTELLIGENCE_PROMPT_VERSION = "2";
 
 const DAILY_INTELLIGENCE_SYSTEM_PROMPT = `Você está estruturando os registros operacionais de UM dia de obra a partir de evidências já coletadas (mensagens de texto, legendas de fotos e observações visuais já extraídas de fotografias por uma etapa anterior). Você NÃO tem acesso às fotos originais nesta etapa — apenas ao texto e às observações visuais já produzidas.
 
@@ -26,6 +31,9 @@ PRINCÍPIOS OBRIGATÓRIOS:
 - Nunca infira: nome de local não informado, quantidade não visível/informada, nome de colaborador não citado, empresa, equipamento específico incerto, horas trabalhadas, percentual executado, medição, condição climática, responsável, "atividade concluída/aprovada", qualidade, conformidade, coordenadas. Quando não houver evidência, use null, array vazio, ou "não informado" conforme o campo pedir — nunca complete.
 - O "summary" é só uma consolidação narrativa dos "facts" já estruturados — nunca pode introduzir um fato que não esteja em "facts" nem citar uma referência que não esteja também referenciada em algum fact.
 - Categorias de fato são apenas uma organização auxiliar — não é obrigatório preencher todas; arrays vazios são sempre preferíveis a inventar conteúdo.
+- CLIMA É SEPARADO DE ATIVIDADE: informação sobre tempo/clima (ex.: "tempo bom durante o dia", "choveu de manhã") NUNCA vira um "fact" de atividade — preencha exclusivamente o campo "clima" (manha/tarde/noite, cada um "BOM", "CHUVAS" ou "NAO_INFORMADO"). Preencha apenas os períodos claramente informados pela evidência; nunca infira o período que não foi mencionado (ex.: se só a manhã foi descrita, tarde e noite ficam "NAO_INFORMADO"). Uma mesma frase pode descrever mais de um período (ex.: "chuva de manhã e bom à tarde e à noite" preenche os três).
+- MENSAGEM DE TEXTO INDEPENDENTE (não é legenda de foto): só vira um "fact" de categoria ACTIVITY se descrever claramente uma atividade operacional realizada. Informação de clima sempre vai só para "clima" (nunca duplique como fact). Se não descrever nem atividade nem clima e não houver destino seguro, não invente uma atividade — registre em "warnings" ou "missingInformation" conforme o caso, preservando o dado para auditoria.
+- LEGENDAS DE FOTOS IDÊNTICAS: quando várias fotos tiverem legendas idênticas (após diferenças triviais de formatação — maiúsculas/minúsculas, espaços, pontuação final), registre UM ÚNICO "fact" cobrindo todas elas, com "sourceRefs" incluindo as referências de TODAS as fotos com aquela legenda — nunca um "fact" repetido por foto com o mesmo texto.
 - Responda em português do Brasil.
 - Retorne estritamente o JSON solicitado, sem nenhum texto fora dele.`;
 
@@ -43,7 +51,7 @@ function buildDailyIntelligenceUserPrompt({ referenceDate, timezone, textEvidenc
     JSON.stringify(photoObservations, null, 2),
     "",
     "Estruture o resultado no formato JSON combinado abaixo (schemaVersion=1):",
-    '{ "schemaVersion": 1, "summary": { "text": string, "sourceRefs": string[] }, "facts": [{ "id": string, "category": string, "statement": string, "sourceRefs": string[], "evidenceType": "TEXT_EXPLICIT"|"CAPTION_EXPLICIT"|"IMAGE_VISIBLE" }], "photoObservations": [{ "sourceRef": string, "description": string, "visibleElements": string[], "limitations": string[] }], "conflicts": [{ "description": string, "sourceRefs": string[] }], "missingInformation": [{ "description": string, "relatedSourceRefs": string[] }], "warnings": string[] }',
+    '{ "schemaVersion": 1, "summary": { "text": string, "sourceRefs": string[] }, "facts": [{ "id": string, "category": string, "statement": string, "sourceRefs": string[], "evidenceType": "TEXT_EXPLICIT"|"CAPTION_EXPLICIT"|"IMAGE_VISIBLE" }], "clima": { "manha": "BOM"|"CHUVAS"|"NAO_INFORMADO", "tarde": "BOM"|"CHUVAS"|"NAO_INFORMADO", "noite": "BOM"|"CHUVAS"|"NAO_INFORMADO" }, "photoObservations": [{ "sourceRef": string, "description": string, "visibleElements": string[], "limitations": string[] }], "conflicts": [{ "description": string, "sourceRefs": string[] }], "missingInformation": [{ "description": string, "relatedSourceRefs": string[] }], "warnings": string[] }',
   ].join("\n");
 }
 

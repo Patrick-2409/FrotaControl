@@ -19,7 +19,7 @@
 
 const { AiError } = require("./aiErrorClassification");
 const { getAutomationOpenAiModel, getAutomationOpenAiTimeoutMs, getAutomationOpenAiMaxOutputTokens } = require("./automationAiConfig");
-const { AUTOMATION_AI_FACT_CATEGORIES, AUTOMATION_AI_EVIDENCE_TYPES } = require("../constants/automationEnums");
+const { AUTOMATION_AI_FACT_CATEGORIES, AUTOMATION_AI_EVIDENCE_TYPES, AUTOMATION_AI_WEATHER_CONDITIONS } = require("../constants/automationEnums");
 
 const OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions";
 
@@ -92,6 +92,20 @@ const MISSING_INFORMATION_JSON_SCHEMA = {
   required: ["description", "relatedSourceRefs"],
 };
 
+// Bloco 12 — clima é um campo estruturado PRÓPRIO (nunca uma atividade
+// "Tempo bom durante o dia" dentro de `facts`). Espelha `ClimaSchema` de
+// dailyIntelligenceSchema.js — mesmas 3 chaves, mesmo enum.
+const CLIMA_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    manha: { type: "string", enum: AUTOMATION_AI_WEATHER_CONDITIONS },
+    tarde: { type: "string", enum: AUTOMATION_AI_WEATHER_CONDITIONS },
+    noite: { type: "string", enum: AUTOMATION_AI_WEATHER_CONDITIONS },
+  },
+  required: ["manha", "tarde", "noite"],
+};
+
 const DAILY_INTELLIGENCE_JSON_SCHEMA = {
   name: "daily_intelligence_v1",
   strict: true,
@@ -107,12 +121,13 @@ const DAILY_INTELLIGENCE_JSON_SCHEMA = {
         required: ["text", "sourceRefs"],
       },
       facts: { type: "array", items: FACT_JSON_SCHEMA },
+      clima: CLIMA_JSON_SCHEMA,
       photoObservations: { type: "array", items: PHOTO_OBSERVATION_JSON_SCHEMA },
       conflicts: { type: "array", items: CONFLICT_JSON_SCHEMA },
       missingInformation: { type: "array", items: MISSING_INFORMATION_JSON_SCHEMA },
       warnings: { type: "array", items: { type: "string" } },
     },
-    required: ["schemaVersion", "summary", "facts", "photoObservations", "conflicts", "missingInformation", "warnings"],
+    required: ["schemaVersion", "summary", "facts", "clima", "photoObservations", "conflicts", "missingInformation", "warnings"],
   },
 };
 
@@ -251,4 +266,5 @@ module.exports = {
   FACT_JSON_SCHEMA,
   CONFLICT_JSON_SCHEMA,
   MISSING_INFORMATION_JSON_SCHEMA,
+  CLIMA_JSON_SCHEMA,
 };

@@ -263,6 +263,13 @@ const AUTOMATION_AI_FACT_CATEGORIES = Object.freeze([
 // número como fato oficial, só TEXT_EXPLICIT/CAPTION_EXPLICIT podem.
 const AUTOMATION_AI_EVIDENCE_TYPES = Object.freeze(["TEXT_EXPLICIT", "CAPTION_EXPLICIT", "IMAGE_VISIBLE"]);
 
+// Condição de clima por período do dia (Bloco 12, correção de qualidade do
+// D.O.) — campo estruturado PRÓPRIO (`clima.manha/tarde/noite`), separado dos
+// `facts` livres, para que o Diário de Obra possa marcar o quadro
+// MANHÃ/TARDE/NOITE x BOM/CHUVAS de forma determinística, sem depender de
+// interpretar texto livre. NAO_INFORMADO é o default seguro — nunca inferido.
+const AUTOMATION_AI_WEATHER_CONDITIONS = Object.freeze(["BOM", "CHUVAS", "NAO_INFORMADO"]);
+
 // Bloco 10 (Seção 24-32) — motivo pelo qual uma SOLICITAÇÃO DE APROVAÇÃO
 // (Telegram) foi marcada SUPERSEDED: REGENERATE clicado pelo aprovador, ou um
 // late input que obrigou reconstrução do snapshot/inteligência/documento
@@ -303,6 +310,7 @@ module.exports = {
   AUTOMATION_INTELLIGENCE_STATUSES,
   AUTOMATION_AI_FACT_CATEGORIES,
   AUTOMATION_AI_EVIDENCE_TYPES,
+  AUTOMATION_AI_WEATHER_CONDITIONS,
   AUTOMATION_DOCUMENT_ERROR_CODES,
   AUTOMATION_DOCUMENT_RECOVERABLE_ERROR_CODES,
   AUTOMATION_DOCUMENT_STATUSES,

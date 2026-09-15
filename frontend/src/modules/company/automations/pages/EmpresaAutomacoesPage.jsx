@@ -677,7 +677,8 @@ function AutomationDrawer({ open, onClose, catalog, config, busy, onCreate, onUp
               </label>
               <p className="text-xs text-zinc-500">
                 Placeholders aceitos: <code>{"{projeto}"}</code>, <code>{"{data}"}</code>, <code>{"{versao}"}</code>,{" "}
-                <code>{"{cliente}"}</code>, <code>{"{referenciaContratual}"}</code>, <code>{"{identificacao}"}</code>.
+                <code>{"{cliente}"}</code>, <code>{"{referenciaContratual}"}</code>, <code>{"{identificacao}"}</code>,{" "}
+                <code>{"{dia_semana}"}</code>, <code>{"{data_com_dia_semana}"}</code>.
               </p>
             </div>
             <p className="mt-2 text-xs text-zinc-500">

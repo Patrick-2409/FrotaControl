@@ -28,10 +28,16 @@ test("template v2: codigo é DISTINTO do v1 (Bloco 1: codigo é UNIQUE — v1 e 
   assert.notEqual(constants.TEMPLATE_CODIGO, v1Constants.TEMPLATE_CODIGO);
 });
 
-test("template v2: paginação auditada — 32 atividades por página (igual ao v1), mas RDF muda para 2 fotos GRANDES por página", () => {
-  assert.equal(constants.ACTIVITIES_PER_PAGE, 32);
+test("template v2: paginação re-auditada — grade FIXA de 31 atividades por página (linhas 15-45, nunca comprime), RDF muda para 2 fotos GRANDES por bloco", () => {
+  assert.equal(constants.ACTIVITIES_PER_PAGE, 31);
   assert.equal(constants.PHOTOS_PER_PAGE, 2);
   assert.notEqual(constants.PHOTOS_PER_PAGE, v1Constants.PHOTOS_PER_PAGE);
+});
+
+test("template v2: geometria dos blocos do RDF (cabeçalho só no primeiro bloco, 14 linhas de foto + 3 de legenda por bloco)", () => {
+  assert.equal(constants.RDF_FIRST_BLOCK_HEADER_ROWS, 3);
+  assert.equal(constants.RDF_BLOCK_PHOTO_ROWS, 14);
+  assert.equal(constants.RDF_BLOCK_CAPTION_ROWS, 3);
 });
 
 test("template v2: tetos de segurança nunca são removidos silenciosamente", () => {
@@ -63,9 +69,13 @@ test("template v2: larguras de coluna idênticas ao v1 (a auditoria confirmou qu
   assert.deepEqual(constants.RDF_COLUMN_WIDTHS, v1Constants.RDF_COLUMN_WIDTHS);
 });
 
-test("template v2: page setup declara A4 retrato com fitToWidth=1 (igual ao v1)", () => {
-  assert.equal(constants.PAGE_SETUP.paperSize, 9);
-  assert.equal(constants.PAGE_SETUP.orientation, "portrait");
+test("template v2: RDO e RDF têm page setups PRÓPRIOS (re-auditados byte-a-byte, nunca a mesma constante)", () => {
+  assert.equal(constants.RDO_PAGE_SETUP.paperSize, 9);
+  assert.equal(constants.RDO_PAGE_SETUP.orientation, "portrait");
+  assert.equal(constants.RDO_PAGE_SETUP.fitToPage, false, "RDO oficial imprime em escala 100%, sem fit to page");
+  assert.equal(constants.RDF_PAGE_SETUP.paperSize, 9);
+  assert.equal(constants.RDF_PAGE_SETUP.fitToPage, true);
+  assert.equal(constants.RDF_PAGE_SETUP.fitToHeight, 0, "RDF nunca limita a altura — quantas páginas verticais precisar");
   assert.equal(constants.PDF_PAGE_SIZE, "A4");
 });
 
@@ -73,8 +83,4 @@ test("template v2: geometria de altura dinâmica das atividades está presente e
   assert.ok(constants.ACTIVITY_CHARS_PER_LINE > 0);
   assert.ok(constants.ACTIVITY_LINE_HEIGHT_POINTS > 0);
   assert.ok(constants.ACTIVITY_MIN_ROW_HEIGHT_POINTS > 0);
-  assert.ok(constants.ACTIVITIES_AREA_BUDGET_POINTS > 0);
-  // O orçamento de área precisa ser compatível com múltiplas linhas mínimas —
-  // nunca menor que uma única linha de atividade (senão nenhum item caberia).
-  assert.ok(constants.ACTIVITIES_AREA_BUDGET_POINTS >= constants.ACTIVITY_MIN_ROW_HEIGHT_POINTS);
 });

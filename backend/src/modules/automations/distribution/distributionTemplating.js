@@ -19,9 +19,31 @@
  * `emailConfigSchema.js` (Zod, Seção 31).
  */
 
-const ALLOWED_PLACEHOLDERS = Object.freeze(["projeto", "data", "versao", "cliente", "referenciaContratual", "identificacao"]);
+const ALLOWED_PLACEHOLDERS = Object.freeze([
+  "projeto",
+  "data",
+  "versao",
+  "cliente",
+  "referenciaContratual",
+  "identificacao",
+  // Bloco 12 — dia da semana da dataReferencia da execução, calculado a
+  // partir da data civil (nunca de `new Date()`/relógio do servidor, Seção
+  // "placeholders do e-mail").
+  "dia_semana",
+  "data_com_dia_semana",
+]);
 
-const PLACEHOLDER_PATTERN = /\{([a-zA-Z0-9_]+)\}/g;
+// Sintaxe histórica do FrotaMax é chave ÚNICA ({data}, {projeto}, etc. — ver
+// EmpresaAutomacoesPage.jsx e DEFAULT_SUBJECT_TEMPLATE/DEFAULT_BODY_TEMPLATE
+// em distributionMessageBuilder.js). O pedido de {{dia_semana}}/
+// {{data_com_dia_semana}} (chave DUPLA) precisa funcionar SEM quebrar essa
+// sintaxe já em produção — a solução é um único padrão que aceita as duas
+// chaves de abertura/fechamento como OPCIONAIS independentemente
+// (`\{\{?...\}\}?`), nunca as duas obrigatórias: "{data}" continua batendo
+// (chave única de cada lado), "{{dia_semana}}" bate inteiro numa side
+// só (nunca deixa uma chave sobrando de nenhum dos dois lados — a mesma
+// lógica vale para QUALQUER placeholder da lista, não só os dois novos).
+const PLACEHOLDER_PATTERN = /\{\{?([a-zA-Z0-9_]+)\}\}?/g;
 
 /** Lista (sem duplicatas) de nomes de placeholder presentes no texto — nunca lança. */
 function extractPlaceholders(text) {

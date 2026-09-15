@@ -1,14 +1,22 @@
 "use strict";
 
 /**
- * Construção do PDF do Diário de Obra — template v2 (Bloco 12). Arquivo
- * IRMÃO de `diarioObraPdfBuilder.js` (v1) — v1 permanece intacto. Reproduz
- * o MESMO formulário do Excel v2 (Seção "O PDF deve reproduzir o mesmo
- * formulário do Excel"): cabeçalho, identificação, bloco de clima, divisor
- * "Diário", grade de atividades e rodapé institucional no RDO; título
- * configurável + 2 fotos grandes lado a lado no RDF. Consome o MESMO
- * `document model` que o builder de Excel v2 — nenhuma regra de negócio
- * nova aqui, só layout/formatação.
+ * Construção do PDF do Diário de Obra — template v2 (Bloco 12), corrigido na
+ * validação visual: o PDF precisa REPRODUZIR o formulário tabular do Excel
+ * (logo, quadros com borda, grade "REGISTRO DE TEMPO/EXPEDIENTE" com X nas
+ * células corretas, grade de atividades, bloco de assinatura), nunca um
+ * relatório textual corrido. Arquivo IRMÃO de `diarioObraPdfBuilder.js` (v1)
+ * — v1 permanece intacto. Consome o MESMO `document model` que o builder de
+ * Excel v2 — nenhuma regra de negócio nova aqui, só layout/formatação.
+ *
+ * Estratégia: um "grid renderer" simples desenha células com borda (retângulo
+ * + texto) nas MESMAS proporções de coluna do Excel (RDO_COLUMN_WIDTHS,
+ * convertidas para frações da largura útil da página — a largura absoluta
+ * em pontos é diferente da unidade "caractere" do Excel, mas a PROPORÇÃO
+ * entre colunas fica idêntica, que é o que reproduz o formulário
+ * visualmente) e alturas em pontos auditadas linha a linha do arquivo
+ * oficial (as mesmas usadas pelo Excel builder — nunca uma segunda fonte de
+ * verdade para altura).
  */
 
 const PDFDocument = require("pdfkit");
@@ -17,9 +25,30 @@ const {
   PDF_PAGE_SIZE,
   PDF_MARGIN_POINTS,
   PHOTOS_PER_PAGE,
+  ACTIVITIES_PER_PAGE,
+  RDO_COLUMN_WIDTHS,
+  RDO_FOOTER_SPACER_HEIGHTS_POINTS,
+  RDO_SIGNATURE_BLOCK_ROW_HEIGHTS_POINTS,
+  RDO_SIGNATURE_MAX_HEIGHT_POINTS,
+  RDO_SIGNATURE_ASPECT_RATIO,
 } = require("./diarioObraLayoutConstantsV2");
-const { paginateActivitiesByHeight, computeActivityRowHeight, paginateByCount } = require("./diarioObraExcelBuilderV2");
-const { ACTIVITIES_AREA_BUDGET_POINTS } = require("./diarioObraLayoutConstantsV2");
+const { computeActivityRowHeight, paginateByCount } = require("./diarioObraExcelBuilderV2");
+
+const BORDER_COLOR = "#000000";
+const BORDER_WIDTH = 0.75;
+const HEADER_FILL = "#D9E2F3";
+
+/** Rótulo textual da condição de clima de um período (Seção "clima") — mesma semântica do "X" desenhado no Excel, nunca inferida aqui. */
+function climaConditionLabel(condicao, fixedText) {
+  if (condicao === "BOM") return fixedText.climaLabelBom;
+  if (condicao === "CHUVAS") return fixedText.climaLabelChuvas;
+  return "—";
+}
+
+/** Marca ("X") da condição de clima de um período, ou vazio — idêntico ao climaMark do Excel builder (nunca inferida, só reflete `model.clima`). */
+function climaMark(condicaoDoPeriodo, condicaoDaLinha) {
+  return condicaoDoPeriodo === condicaoDaLinha ? "X" : "";
+}
 
 function formatDataReferencia(dataReferencia) {
   const [ano, mes, dia] = dataReferencia.split("-");
@@ -30,137 +59,303 @@ function contentWidth(doc) {
   return doc.page.width - doc.page.margins.left - doc.page.margins.right;
 }
 
-function drawLabelValueRow(doc, { label, value, x, width }) {
-  const y = doc.y;
-  doc.font("Helvetica-Bold").fontSize(9).text(`${label}: `, x, y, { continued: true, width });
-  doc.font("Helvetica-Oblique").text(value || "");
+/**
+ * Garante espaço vertical para a PRÓXIMA linha do formulário (Seção "nunca
+ * cortar conteúdo") — o Excel oficial imprime o RDO em escala 100% sem
+ * "fit to page" (cabe numa única folha A4 quando as atividades são curtas,
+ * como o dia auditado), mas o pdfkit não quebra página sozinho para
+ * desenhos manuais: quando um texto real e longo faz a grade ultrapassar a
+ * altura física da página, abre uma NOVA página (sem repetir cabeçalho —
+ * mesmo comportamento de uma quebra de impressão dentro da mesma planilha,
+ * nunca uma "RDO_CONT" nova, que só existe para o teto de 31 atividades).
+ */
+function ensureRoomFor(doc, height) {
+  const bottom = doc.page.height - doc.page.margins.bottom;
+  if (doc.y + height > bottom) {
+    doc.addPage();
+    doc.y = doc.page.margins.top;
+  }
 }
 
+/**
+ * Limites X de cada uma das 8 colunas do RDO, proporcionais a
+ * RDO_COLUMN_WIDTHS (Seção "reproduzir a geometria oficial" — a PROPORÇÃO
+ * entre colunas é o que importa para o formulário parecer igual, não o
+ * valor absoluto em "caracteres Excel", que nem se aplica a um PDF).
+ */
+function computeRdoColumnBounds(startX, totalWidth) {
+  const totalUnits = RDO_COLUMN_WIDTHS.reduce((sum, w) => sum + w, 0);
+  const bounds = [];
+  let x = startX;
+  for (const unit of RDO_COLUMN_WIDTHS) {
+    const width = (unit / totalUnits) * totalWidth;
+    bounds.push({ x, width });
+    x += width;
+  }
+  return bounds;
+}
+
+/** Soma das larguras das colunas de `colStart` a `colEnd` (0-indexed, inclusive) — para células mescladas horizontalmente. */
+function mergedBounds(bounds, colStart, colEnd) {
+  const x = bounds[colStart].x;
+  const width = bounds.slice(colStart, colEnd + 1).reduce((sum, c) => sum + c.width, 0);
+  return { x, width };
+}
+
+/**
+ * Desenha UMA célula do formulário: retângulo com borda (Seção "grade
+ * tabular") + texto opcional alinhado dentro. `fill` pinta o fundo antes da
+ * borda (cabeçalho do RDO usa preenchimento, igual ao Excel `HEADER_FILL`).
+ */
+function drawFormCell(doc, { x, y, width, height, text, bold = false, italic = false, size = 9, align = "center", valign = "middle", fill = null, border = true }) {
+  if (fill) {
+    doc.rect(x, y, width, height).fill(fill);
+  }
+  if (border) {
+    doc.rect(x, y, width, height).lineWidth(BORDER_WIDTH).strokeColor(BORDER_COLOR).stroke();
+  }
+  if (text) {
+    const font = bold && italic ? "Helvetica-BoldOblique" : bold ? "Helvetica-Bold" : italic ? "Helvetica-Oblique" : "Helvetica";
+    doc.font(font).fontSize(size).fillColor("#000000");
+    const padding = 3;
+    const textWidth = width - padding * 2;
+    const textHeight = doc.heightOfString(text, { width: textWidth, align });
+    let textY = y + padding;
+    if (valign === "middle") textY = y + Math.max(padding, (height - textHeight) / 2);
+    else if (valign === "bottom") textY = y + Math.max(padding, height - textHeight - padding);
+    doc.text(text, x + padding, textY, { width: textWidth, align });
+  }
+}
+
+/**
+ * Cabeçalho + identificação + bloco de clima TABULAR + divisor "Diário"
+ * (linhas 1-14 do oficial, Seção "PDF deve reproduzir o formulário") — só
+ * desenhado na PRIMEIRA página; páginas de continuação repetem só
+ * título+"(continuação)", igual ao Excel. Retorna o Y logo após o cabeçalho
+ * (onde a grade de atividades começa).
+ */
 function drawRdoHeader(doc, model, { logoBuffer, isContinuation, pageIndex, totalPages }) {
   const startX = doc.page.margins.left;
   const width = contentWidth(doc);
-  doc.y = doc.page.margins.top;
+  const bounds = computeRdoColumnBounds(startX, width);
+  let y = doc.page.margins.top;
 
+  // Linhas 1-3: logo (A1:B3) + título (C1:H1) + subtítulo (C2:H3).
+  const headerRowHeight = 18;
+  const logoBounds = mergedBounds(bounds, 0, 1);
+  const titleBounds = mergedBounds(bounds, 2, 7);
+  drawFormCell(doc, { x: logoBounds.x, y, width: logoBounds.width, height: headerRowHeight * 3, fill: HEADER_FILL });
   if (logoBuffer) {
     try {
-      doc.image(logoBuffer, startX, doc.y, { fit: [90, 40] });
+      doc.image(logoBuffer, logoBounds.x + 4, y + 4, { fit: [logoBounds.width - 8, headerRowHeight * 3 - 8] });
     } catch {
       // Logo corrompido/ilegível nunca derruba a geração do documento inteiro.
     }
   }
+  drawFormCell(doc, {
+    x: titleBounds.x,
+    y,
+    width: titleBounds.width,
+    height: headerRowHeight,
+    text: isContinuation ? `${FIXED_TEXT.titulo} ${FIXED_TEXT.continuacaoSufixo}` : FIXED_TEXT.titulo,
+    bold: true,
+    size: 11,
+    fill: HEADER_FILL,
+  });
+  drawFormCell(doc, {
+    x: titleBounds.x,
+    y: y + headerRowHeight,
+    width: titleBounds.width,
+    height: headerRowHeight * 2,
+    text: totalPages > 1 ? `${FIXED_TEXT.subtitulo} — página ${pageIndex + 1} de ${totalPages}` : FIXED_TEXT.subtitulo,
+    size: 10,
+    fill: HEADER_FILL,
+  });
+  y += headerRowHeight * 3;
 
-  doc
-    .font("Helvetica-Bold")
-    .fontSize(11)
-    .text(isContinuation ? `${FIXED_TEXT.titulo} ${FIXED_TEXT.continuacaoSufixo}` : FIXED_TEXT.titulo, startX + 100, doc.y, {
-      width: width - 100,
-      align: "center",
-    });
-  doc
-    .font("Helvetica")
-    .fontSize(10)
-    .text(totalPages > 1 ? `${FIXED_TEXT.subtitulo} — página ${pageIndex + 1} de ${totalPages}` : FIXED_TEXT.subtitulo, startX + 100, doc.y, {
-      width: width - 100,
-      align: "center",
-    });
+  if (isContinuation) {
+    // Linha 14 do oficial (espaçadora) — página de continuação nunca repete identificação/clima/Diário.
+    drawFormCell(doc, { x: startX, y, width, height: 13.2, text: "" });
+    doc.y = y + 13.2;
+    return;
+  }
 
-  doc.y = Math.max(doc.y, doc.page.margins.top + 45);
-  doc.moveDown(0.5);
+  // Linhas 4-5: OBRA/REF.T e LOCAL/DATA.
+  const rowH45 = 13.2;
+  const colA = bounds[0];
+  const bdBounds = mergedBounds(bounds, 1, 3);
+  const colE = bounds[4];
+  const fhBounds = mergedBounds(bounds, 5, 7);
 
-  if (isContinuation) return;
+  drawFormCell(doc, { x: colA.x, y, width: colA.width, height: rowH45, text: FIXED_TEXT.rotuloObra });
+  drawFormCell(doc, { x: bdBounds.x, y, width: bdBounds.width, height: rowH45, text: model.identification.projetoNome || "", italic: true });
+  drawFormCell(doc, { x: colE.x, y, width: colE.width, height: rowH45, text: FIXED_TEXT.rotuloRefContratual });
+  drawFormCell(doc, { x: fhBounds.x, y, width: fhBounds.width, height: rowH45, text: model.identification.referenciaContratual || "" });
+  y += rowH45;
 
-  const half = width / 2;
-  drawLabelValueRow(doc, { label: FIXED_TEXT.rotuloObra, value: model.identification.projetoNome, x: startX, width: half });
-  doc.font("Helvetica-Bold").fontSize(9).text(`${FIXED_TEXT.rotuloRefContratual}: `, startX + half, doc.y - doc.currentLineHeight(), { continued: true, width: half });
-  doc.font("Helvetica").text(model.identification.referenciaContratual || "");
+  drawFormCell(doc, { x: colA.x, y, width: colA.width, height: rowH45, text: FIXED_TEXT.rotuloLocal });
+  drawFormCell(doc, { x: bdBounds.x, y, width: bdBounds.width, height: rowH45, text: model.identification.local || "", italic: true });
+  drawFormCell(doc, { x: colE.x, y, width: colE.width, height: rowH45, text: FIXED_TEXT.rotuloData });
+  drawFormCell(doc, { x: fhBounds.x, y, width: fhBounds.width, height: rowH45, text: formatDataReferencia(model.identification.dataReferencia) });
+  y += rowH45;
 
-  drawLabelValueRow(doc, { label: FIXED_TEXT.rotuloLocal, value: model.identification.local, x: startX, width: half });
-  doc.font("Helvetica-Bold").fontSize(9).text(`${FIXED_TEXT.rotuloData}: `, startX + half, doc.y - doc.currentLineHeight(), { continued: true, width: half });
-  doc.font("Helvetica").text(formatDataReferencia(model.identification.dataReferencia));
+  // Linha 6: espaçadora.
+  drawFormCell(doc, { x: startX, y, width, height: rowH45, text: "" });
+  y += rowH45;
 
-  doc.moveDown(0.3);
-  doc.font("Helvetica-Bold").fontSize(9).text(`${FIXED_TEXT.rotuloRegistroTempo} / ${FIXED_TEXT.rotuloExpediente}: `, startX, doc.y, { continued: true, width });
-  doc
-    .font("Helvetica")
-    .text(`Início às ${model.identification.expedienteInicio}; final às ${model.identification.expedienteFim}`);
+  // Linha 7: REGISTRO DE TEMPO (A:D) / EXPEDIENTE (E:H).
+  const adBounds = mergedBounds(bounds, 0, 3);
+  const ehBounds = mergedBounds(bounds, 4, 7);
+  drawFormCell(doc, { x: adBounds.x, y, width: adBounds.width, height: rowH45, text: FIXED_TEXT.rotuloRegistroTempo });
+  drawFormCell(doc, { x: ehBounds.x, y, width: ehBounds.width, height: rowH45, text: FIXED_TEXT.rotuloExpediente });
+  y += rowH45;
 
-  // Bloco de clima (Seção "manter geometria... bloco de clima") — só os
-  // rótulos, marcações SEMPRE vazias (nunca inferidas).
-  doc.moveDown(0.3);
-  doc
-    .font("Helvetica")
-    .fontSize(9)
-    .text(
-      `${FIXED_TEXT.rotuloPeriodo}: ${FIXED_TEXT.periodoManha} / ${FIXED_TEXT.periodoTarde} / ${FIXED_TEXT.periodoNoite}    ${FIXED_TEXT.climaLabelBom}: ___    ${FIXED_TEXT.climaLabelChuvas}: ___`,
-      startX,
-      doc.y,
-      { width }
-    );
+  // Linhas 8-10: grade PERÍODO x MANHÃ/TARDE/NOITE com X nas células (Seção "quadro de clima tabular") + texto do expediente (E8:H10).
+  const climaRowHeight = 13.2;
+  const clima = model.clima || {};
+  const expedienteBounds = mergedBounds(bounds, 4, 7);
+  drawFormCell(doc, { x: expedienteBounds.x, y, width: expedienteBounds.width, height: climaRowHeight * 3, text: `Início às ${model.identification.expedienteInicio}; final às ${model.identification.expedienteFim}`, align: "left", valign: "top" });
 
-  doc.moveDown(0.5);
-  doc.font("Helvetica-BoldOblique").fontSize(10).text(FIXED_TEXT.diarioDivisor, startX, doc.y, { width, align: "center" });
+  drawFormCell(doc, { x: bounds[0].x, y, width: bounds[0].width, height: climaRowHeight, text: FIXED_TEXT.rotuloPeriodo });
+  drawFormCell(doc, { x: bounds[1].x, y, width: bounds[1].width, height: climaRowHeight, text: FIXED_TEXT.periodoManha });
+  drawFormCell(doc, { x: bounds[2].x, y, width: bounds[2].width, height: climaRowHeight, text: FIXED_TEXT.periodoTarde });
+  drawFormCell(doc, { x: bounds[3].x, y, width: bounds[3].width, height: climaRowHeight, text: FIXED_TEXT.periodoNoite });
+  y += climaRowHeight;
 
-  doc.moveDown(0.4);
-  doc
-    .moveTo(startX, doc.y)
-    .lineTo(startX + width, doc.y)
-    .strokeColor("#999999")
-    .stroke();
-  doc.moveDown(0.4);
+  drawFormCell(doc, { x: bounds[0].x, y, width: bounds[0].width, height: climaRowHeight, text: FIXED_TEXT.climaLabelBom });
+  drawFormCell(doc, { x: bounds[1].x, y, width: bounds[1].width, height: climaRowHeight, text: climaMark(clima.manha, "BOM") });
+  drawFormCell(doc, { x: bounds[2].x, y, width: bounds[2].width, height: climaRowHeight, text: climaMark(clima.tarde, "BOM") });
+  drawFormCell(doc, { x: bounds[3].x, y, width: bounds[3].width, height: climaRowHeight, text: climaMark(clima.noite, "BOM") });
+  y += climaRowHeight;
+
+  drawFormCell(doc, { x: bounds[0].x, y, width: bounds[0].width, height: climaRowHeight, text: FIXED_TEXT.climaLabelChuvas });
+  drawFormCell(doc, { x: bounds[1].x, y, width: bounds[1].width, height: climaRowHeight, text: climaMark(clima.manha, "CHUVAS") });
+  drawFormCell(doc, { x: bounds[2].x, y, width: bounds[2].width, height: climaRowHeight, text: climaMark(clima.tarde, "CHUVAS") });
+  drawFormCell(doc, { x: bounds[3].x, y, width: bounds[3].width, height: climaRowHeight, text: climaMark(clima.noite, "CHUVAS") });
+  y += climaRowHeight;
+
+  // Linhas 11-12: divisor "Diário" (mesclado A:H, 2 linhas).
+  drawFormCell(doc, { x: startX, y, width, height: rowH45 * 2, text: FIXED_TEXT.diarioDivisor, bold: true, italic: true, size: 10 });
+  y += rowH45 * 2;
+
+  // Linha 13: título de atividades.
+  drawFormCell(doc, { x: startX, y, width, height: rowH45, text: FIXED_TEXT.atividadesTitulo, bold: true, italic: true, size: 10 });
+  y += rowH45;
+
+  // Linha 14: espaçadora.
+  drawFormCell(doc, { x: startX, y, width, height: rowH45, text: "" });
+  y += rowH45;
+
+  doc.y = y;
 }
 
-function drawRdoFooter(doc, model) {
-  doc.moveDown(1);
+/** Rodapé institucional TABULAR (linhas 46-51, re-auditadas) — mesma geometria do Excel builder v2, nunca uma segunda fonte de verdade para as alturas. */
+function drawRdoFooter(doc, model, { signatureBuffer } = {}) {
   const startX = doc.page.margins.left;
   const width = contentWidth(doc);
-  const half = width / 2;
-  const rowY = doc.y;
+  const bounds = computeRdoColumnBounds(startX, width);
+  const [signatureRowHeightCheck, nameRowHeightCheck] = RDO_SIGNATURE_BLOCK_ROW_HEIGHTS_POINTS;
+  const totalFooterHeight =
+    RDO_FOOTER_SPACER_HEIGHTS_POINTS.reduce((sum, h) => sum + h, 0) + signatureRowHeightCheck + nameRowHeightCheck + 13.2 + 13.2;
+  ensureRoomFor(doc, totalFooterHeight);
+  let y = doc.y;
 
-  doc.font("Helvetica").fontSize(9).text(model.identification.rodapeInstitucional.assinanteEsquerda, startX, rowY, { width: half, align: "center" });
-  const signatureLines = [model.signature.responsavelTecnico].filter(Boolean).join("\n");
-  doc.font("Helvetica").fontSize(9).text(signatureLines, startX + half, rowY, { width: half, align: "center" });
+  for (const spacerHeight of RDO_FOOTER_SPACER_HEIGHTS_POINTS) {
+    drawFormCell(doc, { x: startX, y, width, height: spacerHeight, text: "" });
+    y += spacerHeight;
+  }
 
-  doc.moveDown(0.8);
-  doc.font("Helvetica-Bold").fontSize(9).text(model.identification.rodapeInstitucional.razaoSocialCompleta, startX, doc.y, { width, align: "center" });
-  doc.font("Helvetica").fontSize(9).text(model.identification.rodapeInstitucional.endereco, startX, doc.y, { width, align: "center" });
+  const [signatureRowHeight, nameRowHeight] = RDO_SIGNATURE_BLOCK_ROW_HEIGHTS_POINTS;
+  const blockHeight = signatureRowHeight + nameRowHeight;
+  const leftBounds = mergedBounds(bounds, 0, 3);
+  const rightBounds = mergedBounds(bounds, 4, 7);
+
+  drawFormCell(doc, {
+    x: leftBounds.x,
+    y,
+    width: leftBounds.width,
+    height: blockHeight,
+    text: model.identification.rodapeInstitucional.assinanteEsquerda,
+  });
+  drawFormCell(doc, { x: rightBounds.x, y, width: rightBounds.width, height: blockHeight, text: "" });
+
+  // Assinatura CONFINADA à primeira linha do bloco (Seção "assinatura sobre
+  // o nome") — nunca invade a linha do nome, que fica alinhado embaixo.
+  if (signatureBuffer && model.signature.responsavelTecnico) {
+    const signatureHeight = Math.min(RDO_SIGNATURE_MAX_HEIGHT_POINTS, signatureRowHeight - 4);
+    const signatureWidth = signatureHeight * RDO_SIGNATURE_ASPECT_RATIO;
+    try {
+      doc.image(signatureBuffer, rightBounds.x + (rightBounds.width - signatureWidth) / 2, y + 2, {
+        width: signatureWidth,
+        height: signatureHeight,
+      });
+    } catch {
+      // Asset de assinatura corrompido/ilegível nunca derruba a geração do documento inteiro.
+    }
+  }
+  drawFormCell(doc, {
+    x: rightBounds.x,
+    y: y + signatureRowHeight,
+    width: rightBounds.width,
+    height: nameRowHeight,
+    text: model.signature.responsavelTecnico || "",
+    valign: "bottom",
+    border: false,
+  });
+  y += blockHeight;
+
+  drawFormCell(doc, { x: startX, y, width, height: 13.2, text: model.identification.rodapeInstitucional.razaoSocialCompleta, bold: true, border: false });
+  y += 13.2;
+  drawFormCell(doc, { x: startX, y, width, height: 13.2, text: model.identification.rodapeInstitucional.endereco, border: false });
+  doc.y = y + 13.2;
 }
 
-function drawRdoSection(doc, model, { logoBuffer }) {
-  const activityPages = paginateActivitiesByHeight(model.activities, ACTIVITIES_AREA_BUDGET_POINTS);
-  const totalPages = activityPages.length;
+/**
+ * Grade de atividades TABULAR de TAMANHO FIXO (linhas 15-45, Seção
+ * "preservar o formulário oficial") — desenha sempre `totalSlots` células
+ * (ACTIVITIES_PER_PAGE), preenchidas ou em branco: poucas atividades NUNCA
+ * encolhem o formulário nem sobem o rodapé (mesmo princípio do Excel
+ * builder — `buildRdoActivities`). Altura dinâmica idêntica ao Excel
+ * (`computeActivityRowHeight`), nunca uma segunda fonte de verdade.
+ */
+function drawRdoActivities(doc, activitiesPage, totalSlots) {
+  const startX = doc.page.margins.left;
+  const width = contentWidth(doc);
+  let y = doc.y;
 
-  const headerDrawState = { current: null };
-  const onPageAdded = () => {
-    if (headerDrawState.current) drawRdoHeader(doc, model, headerDrawState.current);
-  };
-  doc.on("pageAdded", onPageAdded);
+  for (const item of activitiesPage) {
+    const text = `${item.numero}. ${item.texto}`;
+    const height = computeActivityRowHeight(item.texto);
+    doc.y = y;
+    ensureRoomFor(doc, height);
+    y = doc.y;
+    drawFormCell(doc, { x: startX, y, width, height, text, bold: true, align: "left", valign: "top" });
+    y += height;
+  }
+  const blankHeight = computeActivityRowHeight("");
+  for (let i = activitiesPage.length; i < totalSlots; i += 1) {
+    doc.y = y;
+    ensureRoomFor(doc, blankHeight);
+    y = doc.y;
+    drawFormCell(doc, { x: startX, y, width, height: blankHeight, text: "" });
+    y += blankHeight;
+  }
+  doc.y = y;
+}
+
+function drawRdoSection(doc, model, { logoBuffer, signatureBuffer }) {
+  const activityPages = paginateByCount(model.activities, ACTIVITIES_PER_PAGE);
+  const totalPages = activityPages.length;
 
   activityPages.forEach((page, pageIndex) => {
     const isContinuation = pageIndex > 0;
-    headerDrawState.current = { logoBuffer, isContinuation, pageIndex, totalPages };
-    if (isContinuation) {
-      doc.addPage();
-    } else {
-      drawRdoHeader(doc, model, headerDrawState.current);
-    }
-
-    doc.font("Helvetica-BoldOblique").fontSize(10).text(FIXED_TEXT.atividadesTitulo, { align: "center" });
-    doc.moveDown(0.3);
-    doc.font("Helvetica-Bold").fontSize(9);
-    for (const item of page) {
-      // Altura dinâmica no PDF é natural (pdfkit flui o texto conforme o
-      // conteúdo) — a mesma estimativa do Excel só garante espaçamento
-      // mínimo consistente entre itens, nunca corta/sobrepõe texto.
-      doc.text(`${item.numero}. ${item.texto}`, { width: contentWidth(doc), align: "left" });
-      doc.moveDown(Math.max(0.2, computeActivityRowHeight(item.texto) / 72));
-    }
-
+    if (isContinuation) doc.addPage();
+    drawRdoHeader(doc, model, { logoBuffer, isContinuation, pageIndex, totalPages });
+    drawRdoActivities(doc, page, ACTIVITIES_PER_PAGE);
     if (pageIndex === totalPages - 1) {
-      drawRdoFooter(doc, model);
+      drawRdoFooter(doc, model, { signatureBuffer });
     }
   });
-
-  doc.removeListener("pageAdded", onPageAdded);
 }
 
 function drawPhotoSlot(doc, photo, { x, y, width, height, photoBuffers }) {
@@ -229,9 +424,10 @@ function drawRdfSection(doc, model, { logoBuffer, photoBuffers }) {
 
 /**
  * `photoBuffers`: Map<driveFileId, Buffer> — mesmo contrato do builder de
- * Excel v2. Retorna um `Buffer` já finalizado (nunca grava em disco).
+ * Excel v2. `signatureBuffer` é opcional (Seção "assinatura digital").
+ * Retorna um `Buffer` já finalizado (nunca grava em disco).
  */
-function buildDiarioObraPdfBufferV2(model, { logoBuffer, photoBuffers = new Map() } = {}) {
+function buildDiarioObraPdfBufferV2(model, { logoBuffer, photoBuffers = new Map(), signatureBuffer } = {}) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: PDF_PAGE_SIZE,
@@ -247,7 +443,7 @@ function buildDiarioObraPdfBufferV2(model, { logoBuffer, photoBuffers = new Map(
 
     try {
       doc.addPage();
-      drawRdoSection(doc, model, { logoBuffer });
+      drawRdoSection(doc, model, { logoBuffer, signatureBuffer });
       drawRdfSection(doc, model, { logoBuffer, photoBuffers });
       doc.end();
     } catch (err) {

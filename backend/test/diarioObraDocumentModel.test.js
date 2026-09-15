@@ -13,8 +13,12 @@ const assert = require("node:assert/strict");
 const {
   buildDiarioObraDocumentModel,
   buildActivities,
+  buildActivityTextsFromPhotos,
+  stripLeadingListNumber,
   buildPhotos,
   dedupeFacts,
+  normalizeActivityKey,
+  resolveClima,
   compareNumericIdStrings,
   resolveTituloRdf,
   resolveRodapeInstitucional,
@@ -45,22 +49,78 @@ test("dedupeFacts: remove duplicatas por texto normalizado (case/trim-insensitiv
   assert.equal(result[1].statement, "Outra atividade.");
 });
 
-test("buildActivities: fatos são ordenados pela evidência cronológica MAIS ANTIGA, nunca pela ordem de input nem alfabeticamente", () => {
+// CASO A (Bloco 12) — deduplicação determinística mais robusta: espaços
+// duplicados e pontuação final também são normalizados, nunca só case/trim.
+test("normalizeActivityKey: colapsa espaços duplicados e remove pontuação final, além de case/trim", () => {
+  assert.equal(normalizeActivityKey("Irrigação do canteiro"), normalizeActivityKey("  Irrigação   do    canteiro.  "));
+  assert.equal(normalizeActivityKey("Irrigação do canteiro!"), normalizeActivityKey("irrigação do canteiro"));
+  assert.equal(normalizeActivityKey("Coleta de material; "), normalizeActivityKey("Coleta de material"));
+});
+
+test("dedupeFacts: também deduplica diferenças de espaçamento e pontuação final (não só case/trim)", () => {
+  const facts = [
+    { statement: "Irrigação do canteiro." },
+    { statement: "Irrigação   do canteiro" },
+    { statement: "Irrigação do canteiro!" },
+    { statement: "Manutenção do viveiro." },
+  ];
+  const result = dedupeFacts(facts);
+  assert.equal(result.length, 2);
+  assert.equal(result[0].statement, "Irrigação do canteiro.");
+  assert.equal(result[1].statement, "Manutenção do viveiro.");
+});
+
+// CASO A completo — 3 fotos com a mesma legenda + 1 diferente, exatamente o
+// cenário do enunciado da correção de linhagem: a fonte é a LEGENDA ORIGINAL
+// da foto no snapshot, NUNCA `structuredOutput.facts` (que pode parafrasear).
+test("buildActivities CASO A: 3 legendas de foto idênticas viram 1 atividade só, com o TEXTO ORIGINAL da primeira foto (nunca reescrito)", () => {
   const snapshot = {
     messages: [
-      msg({ id: "300", timestamp: "2026-09-07T14:00:00.000Z" }),
-      msg({ id: "100", timestamp: "2026-09-07T08:00:00.000Z" }),
-      msg({ id: "200", timestamp: "2026-09-07T10:00:00.000Z" }),
+      msg({ id: "1", timestamp: "2026-09-14T08:00:00.000Z", type: "PHOTO", caption: "Irrigação do canteiro.", photo: { stored: true, driveFileId: "d1" } }),
+      msg({ id: "2", timestamp: "2026-09-14T08:05:00.000Z", type: "PHOTO", caption: "Irrigação do canteiro", photo: { stored: true, driveFileId: "d2" } }),
+      msg({ id: "3", timestamp: "2026-09-14T08:10:00.000Z", type: "PHOTO", caption: "IRRIGAÇÃO DO CANTEIRO!", photo: { stored: true, driveFileId: "d3" } }),
+      msg({ id: "4", timestamp: "2026-09-14T09:00:00.000Z", type: "PHOTO", caption: "Manutenção do viveiro.", photo: { stored: true, driveFileId: "d4" } }),
+    ],
+  };
+  // structuredOutput.facts propositalmente com um texto DIFERENTE do caption
+  // (simula a IA parafraseando) — nunca deveria influenciar o resultado.
+  const structuredOutput = {
+    facts: [{ id: "f1", category: "ACTIVITY", statement: "Realização de irrigação no canteiro de obras", sourceRefs: ["1"] }],
+  };
+  const items = buildActivities(structuredOutput, snapshot);
+  assert.equal(items.length, 2, "RDO = lista consolidada e sem repetição");
+  assert.equal(items[0].texto, "Irrigação do canteiro.", "texto EXATO da primeira foto — nunca a paráfrase de structuredOutput.facts");
+  assert.equal(items[1].texto, "Manutenção do viveiro.");
+  assert.deepEqual(items.map((i) => i.numero), [1, 2]);
+});
+
+// Seção 6 — mensagem de TEXTO avulsa (sem foto) nunca vira atividade, mesmo
+// que a IA a categorize como ACTIVITY em structuredOutput.facts.
+test("buildActivities: mensagem de TEXTO avulsa (sem foto) NUNCA vira atividade, mesmo categorizada ACTIVITY pela IA", () => {
+  const snapshot = {
+    messages: [
+      msg({ id: "1", timestamp: "2026-09-14T08:00:00.000Z", type: "TEXT" }),
+      msg({ id: "2", timestamp: "2026-09-14T08:05:00.000Z", type: "PHOTO", caption: "Irrigação do canteiro.", photo: { stored: true, driveFileId: "d2" } }),
     ],
   };
   const structuredOutput = {
-    facts: [
-      { statement: "Zebra: atividade da tarde.", sourceRefs: ["300"] },
-      { statement: "Alfa: atividade da manhã.", sourceRefs: ["100"] },
-      { statement: "Meio-dia: atividade intermediária.", sourceRefs: ["200"] },
-    ],
+    facts: [{ id: "f1", category: "ACTIVITY", statement: "Tempo bom durante o dia", sourceRefs: ["1"] }],
   };
   const items = buildActivities(structuredOutput, snapshot);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].texto, "Irrigação do canteiro.");
+  assert.ok(!items.some((i) => i.texto.toLowerCase().includes("tempo bom")), "mensagem avulsa nunca vira atividade por inferência da IA");
+});
+
+test("buildActivities: atividades seguem a ordem de CHEGADA no snapshot (já cronológica — Bloco 5), nunca reordenadas aqui", () => {
+  const snapshot = {
+    messages: [
+      msg({ id: "100", timestamp: "2026-09-07T08:00:00.000Z", type: "PHOTO", caption: "Alfa: atividade da manhã.", photo: { stored: true, driveFileId: "d1" } }),
+      msg({ id: "200", timestamp: "2026-09-07T10:00:00.000Z", type: "PHOTO", caption: "Meio-dia: atividade intermediária.", photo: { stored: true, driveFileId: "d2" } }),
+      msg({ id: "300", timestamp: "2026-09-07T14:00:00.000Z", type: "PHOTO", caption: "Zebra: atividade da tarde.", photo: { stored: true, driveFileId: "d3" } }),
+    ],
+  };
+  const items = buildActivities({}, snapshot);
   assert.deepEqual(items.map((i) => i.texto), [
     "Alfa: atividade da manhã.",
     "Meio-dia: atividade intermediária.",
@@ -69,10 +129,11 @@ test("buildActivities: fatos são ordenados pela evidência cronológica MAIS AN
   assert.deepEqual(items.map((i) => i.numero), [1, 2, 3]);
 });
 
-test("buildActivities: conflicts e warnings nunca aparecem como fato — sempre com prefixo dedicado, sempre depois dos fatos", () => {
-  const snapshot = { messages: [msg({ id: "1", timestamp: "2026-09-07T08:00:00.000Z" })] };
+test("buildActivities: conflicts e warnings da IA continuam depois das atividades — nunca como fato executado", () => {
+  const snapshot = {
+    messages: [msg({ id: "1", timestamp: "2026-09-07T08:00:00.000Z", type: "PHOTO", caption: "Atividade normal.", photo: { stored: true, driveFileId: "d1" } })],
+  };
   const structuredOutput = {
-    facts: [{ statement: "Atividade normal.", sourceRefs: ["1"] }],
     conflicts: [{ description: "Duas mensagens divergem sobre o horário." }],
     warnings: ["Chuva forte relatada à tarde."],
     missingInformation: [],
@@ -85,6 +146,29 @@ test("buildActivities: conflicts e warnings nunca aparecem como fato — sempre 
   assert.equal(items[0].tipo, "FACT");
   assert.equal(items[1].tipo, "WARNING");
   assert.equal(items[2].tipo, "WARNING");
+});
+
+// Seção 7 — o builder numera uma única vez; um caption que já chega com
+// numeração manual do operador ("1- ...") nunca vira "1. 1- ...".
+test("buildActivities: legenda que já começa com numeração manual não duplica a numeração do builder", () => {
+  const snapshot = {
+    messages: [
+      msg({ id: "1", timestamp: "2026-09-14T08:00:00.000Z", type: "PHOTO", caption: "1- Atividades diárias de irrigação das mudas;", photo: { stored: true, driveFileId: "d1" } }),
+      msg({ id: "2", timestamp: "2026-09-14T08:05:00.000Z", type: "PHOTO", caption: "2- Assinatura diária da APR;", photo: { stored: true, driveFileId: "d2" } }),
+    ],
+  };
+  const items = buildActivities({}, snapshot);
+  assert.equal(items[0].texto, "Atividades diárias de irrigação das mudas;");
+  assert.equal(items[1].texto, "Assinatura diária da APR;");
+  assert.deepEqual(items.map((i) => i.numero), [1, 2]);
+});
+
+test("stripLeadingListNumber: só remove número+separador+ESPAÇO no início — nunca números que fazem parte do conteúdo", () => {
+  assert.equal(stripLeadingListNumber("1- Atividade X"), "Atividade X");
+  assert.equal(stripLeadingListNumber("2. Atividade Y"), "Atividade Y");
+  assert.equal(stripLeadingListNumber("10) Atividade Z"), "Atividade Z");
+  assert.equal(stripLeadingListNumber("1.5 hectares plantados"), "1.5 hectares plantados", "sem espaço após o separador, nunca é numeração de lista");
+  assert.equal(stripLeadingListNumber("Coleta de 3-4 amostras"), "Coleta de 3-4 amostras", "número no MEIO do texto nunca é afetado");
 });
 
 test("buildActivities: informação ausente única usa singular, múltipla é agrupada numa única linha (nunca dezenas de linhas artificiais)", () => {
@@ -100,32 +184,40 @@ test("buildActivities: informação ausente única usa singular, múltipla é ag
   assert.equal(multiple[0].texto, "Não informados: Condição climática; Quantitativo de equipe");
 });
 
-test("buildActivities: fato sem sourceRef resolvível nunca quebra — vai para o final, não para o início", () => {
-  const snapshot = { messages: [msg({ id: "1", timestamp: "2026-09-07T08:00:00.000Z" })] };
-  const structuredOutput = {
-    facts: [
-      { statement: "Sem referência.", sourceRefs: ["ref-inexistente"] },
-      { statement: "Com referência real.", sourceRefs: ["1"] },
+test("buildActivities: excede MAX_ACTIVITIES_TOTAL lança DocumentError DOCUMENT_LAYOUT_OVERFLOW", () => {
+  const messages = Array.from({ length: MAX_ACTIVITIES_TOTAL + 1 }, (_, i) =>
+    msg({ id: String(i), timestamp: `2026-09-07T08:${String(i % 60).padStart(2, "0")}:00.000Z`, type: "PHOTO", caption: `Atividade distinta ${i}`, photo: { stored: true, driveFileId: `d${i}` } })
+  );
+  assert.throws(
+    () => buildActivities({}, { messages }),
+    (err) => err instanceof DocumentError && err.code === "DOCUMENT_LAYOUT_OVERFLOW"
+  );
+});
+
+test("buildActivities: uma única legenda além de MAX_ACTIVITY_TEXT_LENGTH lança DocumentError DOCUMENT_LAYOUT_OVERFLOW", () => {
+  const longText = "x".repeat(MAX_ACTIVITY_TEXT_LENGTH + 1);
+  const snapshot = { messages: [msg({ id: "1", timestamp: "2026-09-07T08:00:00.000Z", type: "PHOTO", caption: longText, photo: { stored: true, driveFileId: "d1" } })] };
+  assert.throws(
+    () => buildActivities({}, snapshot),
+    (err) => err instanceof DocumentError && err.code === "DOCUMENT_LAYOUT_OVERFLOW"
+  );
+});
+
+// CASO A/B combinado — mesmo cenário do enunciado (Seção 2/3): 3 fotos com a
+// MESMA legenda geram 1 atividade no RDO, mas as 3 fotos e as 3 legendas
+// continuam aparecendo no RDF (buildPhotos nunca deduplica — regra DIFERENTE do RDO).
+test("CASO B: buildPhotos NUNCA deduplica — 3 fotos com legenda idêntica continuam 3 fotos distintas (uma foto = um registro)", () => {
+  const snapshot = {
+    messages: [
+      msg({ id: "1", timestamp: "t1", type: "PHOTO", caption: "Irrigação do canteiro", photo: { stored: true, driveFileId: "drive-1" } }),
+      msg({ id: "2", timestamp: "t2", type: "PHOTO", caption: "Irrigação do canteiro", photo: { stored: true, driveFileId: "drive-2" } }),
+      msg({ id: "3", timestamp: "t3", type: "PHOTO", caption: "Irrigação do canteiro", photo: { stored: true, driveFileId: "drive-3" } }),
     ],
   };
-  const items = buildActivities(structuredOutput, snapshot);
-  assert.deepEqual(items.map((i) => i.texto), ["Com referência real.", "Sem referência."]);
-});
-
-test("buildActivities: excede MAX_ACTIVITIES_TOTAL lança DocumentError DOCUMENT_LAYOUT_OVERFLOW", () => {
-  const facts = Array.from({ length: MAX_ACTIVITIES_TOTAL + 1 }, (_, i) => ({ statement: `Atividade distinta ${i}`, sourceRefs: [] }));
-  assert.throws(
-    () => buildActivities({ facts }, { messages: [] }),
-    (err) => err instanceof DocumentError && err.code === "DOCUMENT_LAYOUT_OVERFLOW"
-  );
-});
-
-test("buildActivities: um único item além de MAX_ACTIVITY_TEXT_LENGTH lança DocumentError DOCUMENT_LAYOUT_OVERFLOW", () => {
-  const longText = "x".repeat(MAX_ACTIVITY_TEXT_LENGTH + 1);
-  assert.throws(
-    () => buildActivities({ facts: [{ statement: longText, sourceRefs: [] }] }, { messages: [] }),
-    (err) => err instanceof DocumentError && err.code === "DOCUMENT_LAYOUT_OVERFLOW"
-  );
+  const photos = buildPhotos(snapshot, { arquivosByDriveFileId: new Map(), photoObservationsByRef: new Map() });
+  assert.equal(photos.length, 3, "RDF nunca deduplica — cada foto é seu próprio registro");
+  assert.deepEqual(photos.map((p) => p.legenda), ["Irrigação do canteiro", "Irrigação do canteiro", "Irrigação do canteiro"]);
+  assert.deepEqual(photos.map((p) => p.numero), [1, 2, 3]);
 });
 
 test("buildPhotos: preserva a ordem cronológica já correta do snapshot (nunca reordena)", () => {
@@ -199,13 +291,13 @@ test("buildDiarioObraDocumentModel: monta o objeto final com identification/acti
     snapshot_hash: "hash-snap",
     snapshot: {
       referenceDate: "2026-09-07",
-      messages: [msg({ id: "1", timestamp: "2026-09-07T08:00:00.000Z" })],
+      messages: [msg({ id: "1", timestamp: "2026-09-07T08:00:00.000Z", type: "PHOTO", caption: "Atividade única.", photo: { stored: true, driveFileId: "d1" } })],
     },
   };
   const intelligence = {
     id: 30,
     output_hash: "hash-intel",
-    structured_output: { facts: [{ statement: "Atividade única.", sourceRefs: ["1"] }] },
+    structured_output: { facts: [] },
   };
   const template = { id: 40, codigo: "diario_obra_ppflora", versao: 1 };
 
@@ -253,16 +345,18 @@ test("buildDiarioObraDocumentModel: expediente explícito na config nunca é mar
   assert.equal(model.identification.expedienteEhDefaultDoTemplate, false);
 });
 
-test("test-narrative-leak: o texto das atividades vem EXCLUSIVAMENTE de structured_output — texto bruto do snapshot nunca aparece sozinho", () => {
+// Correção de linhagem (revisão desta regra): o texto ORIGINAL do Telegram é
+// exatamente o que DEVE aparecer — é a paráfrase da IA que nunca pode vazar
+// para o documento sozinha, substituindo o caption real.
+test("test-narrative-leak (invertido): o texto da atividade vem EXCLUSIVAMENTE do caption ORIGINAL da foto — a paráfrase de structured_output.facts nunca aparece", () => {
   const snapshot = {
-    messages: [msg({ id: "1", timestamp: "2026-09-07T08:00:00.000Z" })],
+    messages: [msg({ id: "1", timestamp: "2026-09-07T08:00:00.000Z", type: "PHOTO", caption: "Coleta de material para análise de solo", photo: { stored: true, driveFileId: "d1" } })],
   };
-  snapshot.messages[0].text = "texto bruto original da mensagem do Telegram, nunca deveria aparecer no documento";
-  const structuredOutput = { facts: [{ statement: "Resumo estruturado pela IA.", sourceRefs: ["1"] }] };
+  const structuredOutput = { facts: [{ statement: "Realização de coleta de material para análise de solo em andamento", sourceRefs: ["1"] }] };
   const items = buildActivities(structuredOutput, snapshot);
   assert.equal(items.length, 1);
-  assert.equal(items[0].texto, "Resumo estruturado pela IA.");
-  assert.ok(!items.some((i) => i.texto.includes("texto bruto original")), "texto bruto do snapshot nunca deveria vazar para o documento");
+  assert.equal(items[0].texto, "Coleta de material para análise de solo", "texto EXATO do caption original do Telegram");
+  assert.ok(!items.some((i) => i.texto.includes("Realização de")), "paráfrase da IA nunca deveria vazar para o documento");
 });
 
 // --------------------------------------------------------- Bloco 12: tituloRdf / rodapeInstitucional
@@ -332,6 +426,44 @@ test("buildDiarioObraDocumentModel: tituloRdf/rodapeInstitucional chegam resolvi
   assert.equal(model.identification.rodapeInstitucional.assinanteEsquerda, "Cliente LTDA");
   assert.equal(model.identification.rodapeInstitucional.razaoSocialCompleta, "Cliente LTDA");
   assert.equal(model.identification.rodapeInstitucional.endereco, "Rua X, 1");
+});
+
+// CASO C/D (Bloco 12) — clima estruturado, separado de atividades.
+test("resolveClima: reflete exatamente structuredOutput.clima quando presente", () => {
+  const clima = resolveClima({ clima: { manha: "BOM", tarde: "BOM", noite: "BOM" } });
+  assert.deepEqual(clima, { manha: "BOM", tarde: "BOM", noite: "BOM" });
+});
+
+test("CASO D: 'chuva pela manhã e tempo bom à tarde e à noite' — cada período reflete a condição informada", () => {
+  const clima = resolveClima({ clima: { manha: "CHUVAS", tarde: "BOM", noite: "BOM" } });
+  assert.equal(clima.manha, "CHUVAS");
+  assert.equal(clima.tarde, "BOM");
+  assert.equal(clima.noite, "BOM");
+});
+
+test("resolveClima: ausência do campo (inteligência ANTERIOR ao Bloco 12) nunca quebra — cai em NAO_INFORMADO, nunca inferido", () => {
+  assert.deepEqual(resolveClima({}), { manha: "NAO_INFORMADO", tarde: "NAO_INFORMADO", noite: "NAO_INFORMADO" });
+});
+
+test("resolveClima: valor fora do enum conhecido nunca lança — cai em NAO_INFORMADO (defensivo)", () => {
+  const clima = resolveClima({ clima: { manha: "ENSOLARADO", tarde: "BOM", noite: undefined } });
+  assert.equal(clima.manha, "NAO_INFORMADO");
+  assert.equal(clima.tarde, "BOM");
+  assert.equal(clima.noite, "NAO_INFORMADO");
+});
+
+test("buildDiarioObraDocumentModel: clima chega resolvido no model a partir de structured_output.clima", () => {
+  const model = buildDiarioObraDocumentModel({
+    config: { projeto_nome: "Obra X", configuracao: { documento: {} } },
+    execucao: { id: 1 },
+    snapshot: { id: 1, snapshot_hash: "h", snapshot: { referenceDate: "2026-09-14", messages: [] } },
+    intelligence: { id: 1, output_hash: "h", structured_output: { facts: [], clima: { manha: "BOM", tarde: "BOM", noite: "BOM" } } },
+    arquivosByDriveFileId: new Map(),
+    template: { id: 1, codigo: "diario_obra_ppflora_v2", versao: 2 },
+    documentVersion: 1,
+    generatorId: "diario_obra_ppflora_v2",
+  });
+  assert.deepEqual(model.clima, { manha: "BOM", tarde: "BOM", noite: "BOM" });
 });
 
 test("buildDiarioObraDocumentModel: sem fixedText explícito (chamador antigo, ex. v1), usa fallback embutido sem quebrar", () => {
