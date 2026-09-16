@@ -15,6 +15,8 @@ const { readFileSync } = require("fs");
 const ENGINE_FILES = [
   "../src/modules/automations/distribution/documentDistributionService.js",
   "../src/modules/automations/distribution/automationEmailClient.js",
+  "../src/modules/automations/distribution/gmailApiEmailClient.js",
+  "../src/modules/automations/distribution/gmailAuthProvider.js",
   "../src/modules/automations/distribution/distributionTemplating.js",
   "../src/modules/automations/distribution/distributionMessageBuilder.js",
   "../src/modules/automations/distribution/distributionErrorClassification.js",
@@ -47,7 +49,11 @@ test("motor de distribuição nunca contém credencial SMTP/e-mail real hardcode
 test("nenhum arquivo do motor referencia Nodemailer diretamente fora de productionClients.js (domínio depende só da interface)", () => {
   for (const relativePath of ENGINE_FILES) {
     if (relativePath.includes("distribution/automationEmailClient")) continue; // a fábrica de produção real fica em storage/productionClients.js
+    if (relativePath.includes("distribution/gmailApiEmailClient")) continue; // usa só nodemailer/lib/mail-composer (MIME), nunca o transporter SMTP
     const content = readFileSync(path.join(__dirname, relativePath), "utf8");
-    assert.ok(!content.includes("require(\"nodemailer\")") && !content.includes("require('nodemailer')"), `${relativePath} não deveria importar nodemailer diretamente`);
+    assert.ok(
+      !content.includes("require(\"nodemailer\")") && !content.includes("require('nodemailer')") && !content.includes('require("nodemailer/') && !content.includes("require('nodemailer/"),
+      `${relativePath} não deveria importar nodemailer diretamente`
+    );
   }
 });

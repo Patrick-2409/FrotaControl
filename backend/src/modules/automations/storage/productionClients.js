@@ -18,6 +18,14 @@ const { createGoogleAuthProvider } = require("./googleAuthProvider");
 const { createGoogleDriveClient } = require("./googleDriveClient");
 const { createTelegramBotClient } = require("../approval/telegramBotClient");
 const { createAutomationEmailClient } = require("../distribution/automationEmailClient");
+const { createGmailApiEmailClient } = require("../distribution/gmailApiEmailClient");
+const { createGmailAuthProvider } = require("../distribution/gmailAuthProvider");
+const {
+  getAutomationEmailProvider,
+  getGmailClientId,
+  getGmailClientSecret,
+  getGmailRefreshToken,
+} = require("../distribution/distributionConfig");
 
 function createDefaultTelegramFileClient(env = process.env) {
   return createTelegramFileClient({ tokenProvider: () => env.TELEGRAM_BOT_TOKEN });
@@ -38,7 +46,7 @@ function createDefaultTelegramBotClient(env = process.env) {
 // Bloco 9 — mesma disciplina: `nodemailer.createTransport` nunca conecta nem
 // valida credenciais ao ser chamado (só na hora de `sendMail`/`verify` de
 // verdade), então construir isto com env vazia nunca lança nem faz rede.
-function createDefaultAutomationEmailClient(env = process.env) {
+function createDefaultSmtpAutomationEmailClient(env = process.env) {
   const transporter = nodemailer.createTransport({
     host: env.SMTP_HOST,
     port: env.SMTP_PORT ? Number(env.SMTP_PORT) : undefined,
@@ -46,6 +54,38 @@ function createDefaultAutomationEmailClient(env = process.env) {
     auth: env.SMTP_USER ? { user: env.SMTP_USER, pass: env.SMTP_PASSWORD } : undefined,
   });
   return createAutomationEmailClient({ transporter });
+}
+
+// Envio institucional via Gmail API (aditivo — "provider selecionável").
+// Credenciais SEMPRE independentes do Drive (nunca GOOGLE_REFRESH_TOKEN) —
+// ver distributionConfig.js para a cadeia de fallback exata de client
+// id/secret. Mesma disciplina das demais fábricas: nem `createGmailAuthProvider`
+// nem `createGmailApiEmailClient` fazem chamada de rede ou lançam por env
+// vazia ao serem CRIADOS — a validação de credenciais só acontece dentro de
+// um `sendMail()` de verdade.
+function createDefaultGmailApiEmailClient(env = process.env) {
+  const authProvider = createGmailAuthProvider({
+    clientId: getGmailClientId(env),
+    clientSecret: getGmailClientSecret(env),
+    refreshToken: getGmailRefreshToken(env),
+  });
+  return createGmailApiEmailClient({ authProvider });
+}
+
+/**
+ * Fábrica ÚNICA consumida por todo o resto do módulo (orquestrador,
+ * distribuição) — escolhe o provedor via `AUTOMATION_EMAIL_PROVIDER`
+ * (Seção "provider selecionável"). SMTP é o default EXPLÍCITO quando a
+ * variável está ausente/vazia — preserva 100% o comportamento já em
+ * produção sem NENHUMA mudança de configuração adicional. Nunca troca de
+ * provedor sozinho: só ativa Gmail com `AUTOMATION_EMAIL_PROVIDER=GMAIL_API`
+ * configurado explicitamente.
+ */
+function createDefaultAutomationEmailClient(env = process.env) {
+  if (getAutomationEmailProvider(env) === "GMAIL_API") {
+    return createDefaultGmailApiEmailClient(env);
+  }
+  return createDefaultSmtpAutomationEmailClient(env);
 }
 
 module.exports = {
