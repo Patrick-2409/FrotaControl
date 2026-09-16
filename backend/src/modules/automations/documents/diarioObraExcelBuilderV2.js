@@ -37,9 +37,61 @@ const {
   RDO_SIGNATURE_BLOCK_ROW_HEIGHTS_POINTS,
   RDO_LOGO_ANCHOR,
   RDF_LOGO_ANCHOR,
+  RDF_HEADER_ROW_HEIGHTS_POINTS,
   RDO_SIGNATURE_MAX_HEIGHT_POINTS,
   RDO_SIGNATURE_ASPECT_RATIO,
+  EXCEL_DEFAULT_FONT_MAX_DIGIT_WIDTH_PX,
+  RDO_SIGNATURE_COLUMN_SPAN,
 } = require("./diarioObraLayoutConstantsV2");
+
+const EMU_PER_PIXEL = 9525;
+const EMU_PER_POINT = 12700;
+
+/**
+ * Largura (px) de UMA coluna de `widthChars` "caracteres" — fórmula OFICIAL
+ * do Excel/OOXML (Truncate(((256*chars + Truncate(128/MDW))/256)*MDW)),
+ * nunca uma medição de tela (Seção "assinatura centralizada" — ver
+ * diarioObraLayoutConstantsV2.js para a justificativa completa de por que
+ * isso é necessário em vez do `col` fracionário do ExcelJS).
+ */
+function excelColumnWidthToPixels(widthChars, mdw = EXCEL_DEFAULT_FONT_MAX_DIGIT_WIDTH_PX) {
+  return Math.trunc(((256 * widthChars + Math.trunc(128 / mdw)) / 256) * mdw);
+}
+
+/**
+ * Âncora {nativeCol, nativeColOff, nativeRow, nativeRowOff} — SEMPRE em EMU
+ * cru (nunca via `{col, row}` fracionário do ExcelJS, que é calibrado
+ * errado para colunas com largura customizada — ver constante irmã). Centraliza
+ * a assinatura HORIZONTALMENTE dentro do bloco de `columnSpan` colunas (todas
+ * de `columnWidthChars`) a partir de `startColIndex`, e VERTICALMENTE dentro
+ * de uma única linha de `rowHeightPoints` a partir de `startRowIndex` (ambos
+ * 0-indexados).
+ */
+function computeCenteredImageAnchor({
+  startColIndex,
+  columnSpan,
+  columnWidthChars,
+  startRowIndex,
+  rowHeightPoints,
+  imageWidthPx,
+  imageHeightPx,
+}) {
+  const columnWidthEmu = excelColumnWidthToPixels(columnWidthChars) * EMU_PER_PIXEL;
+  const spanWidthEmu = columnSpan * columnWidthEmu;
+  const imageWidthEmu = Math.round(imageWidthPx * EMU_PER_PIXEL);
+  const horizontalMarginEmu = Math.max(0, (spanWidthEmu - imageWidthEmu) / 2);
+  const colsToSkip = Math.min(columnSpan - 1, Math.floor(horizontalMarginEmu / columnWidthEmu));
+  const nativeCol = startColIndex + colsToSkip;
+  const nativeColOff = Math.round(horizontalMarginEmu - colsToSkip * columnWidthEmu);
+
+  const rowHeightEmu = rowHeightPoints * EMU_PER_POINT;
+  const imageHeightEmu = Math.round(imageHeightPx * EMU_PER_PIXEL);
+  const verticalMarginEmu = Math.max(0, (rowHeightEmu - imageHeightEmu) / 2);
+  const nativeRow = startRowIndex;
+  const nativeRowOff = Math.round(verticalMarginEmu);
+
+  return { nativeCol, nativeColOff, nativeRow, nativeRowOff };
+}
 
 const TITLE_FONT = { name: "Arial", size: 10, bold: true };
 const SUBTITLE_FONT = { name: "Arial", size: 10 };
@@ -312,9 +364,28 @@ function buildRdoFooter(workbook, worksheet, model, startRow, { signatureBuffer 
   if (signatureBuffer && model.signature.responsavelTecnico) {
     const signatureHeightPx = RDO_SIGNATURE_MAX_HEIGHT_POINTS * (96 / 72);
     const signatureWidthPx = signatureHeightPx * RDO_SIGNATURE_ASPECT_RATIO;
+
+    // Âncora em EMU CRU (Seção "assinatura centralizada") — NUNCA via
+    // `{col, row}` fracionário do ExcelJS: para colunas com largura CUSTOM
+    // (as nossas, E:H = 8.43 cada), o setter fracionário calcula o offset
+    // numa escala interna que não é EMU, mas o XML grava esse valor como se
+    // fosse EMU sem conversão — resultado: a imagem renderiza fora do lugar
+    // pedido (confirmado empiricamente abrindo o arquivo gerado no Excel).
+    // `computeCenteredImageAnchor` contorna isso calculando tudo em EMU
+    // desde o início. E = coluna índice 4 (0-based).
+    const anchor = computeCenteredImageAnchor({
+      startColIndex: 4,
+      columnSpan: RDO_SIGNATURE_COLUMN_SPAN,
+      columnWidthChars: RDO_COLUMN_WIDTHS[4],
+      startRowIndex: footerStart - 1,
+      rowHeightPoints: signatureRowHeight,
+      imageWidthPx: signatureWidthPx,
+      imageHeightPx: signatureHeightPx,
+    });
+
     const imageId = workbook.addImage({ buffer: signatureBuffer, extension: "png" });
     worksheet.addImage(imageId, {
-      tl: { col: 4.6, row: footerStart - 1 },
+      tl: anchor,
       ext: { width: signatureWidthPx, height: signatureHeightPx },
     });
   }
@@ -378,6 +449,13 @@ function buildRdfBlock(workbook, worksheet, model, photosPage, { pageIndex, logo
   boxedCell(worksheet, `C${rows.photoTop}`, { border: ALL_BORDERS });
 
   if (pageIndex === 0) {
+    // Alturas auditadas (Seção "logo dentro da linha do cabeçalho") — sem
+    // isso, as 3 linhas ficam com a altura PADRÃO do Excel (~15pt), menor
+    // que o logo ancorado sobre a linha 1, que extrapola a borda da célula.
+    RDF_HEADER_ROW_HEIGHTS_POINTS.forEach((height, i) => {
+      worksheet.getRow(i + 1).height = height;
+    });
+
     worksheet.mergeCells("B1:D1");
     boxedCell(worksheet, "B1", { value: model.identification.tituloRdf, font: RDF_TITLE_FONT, alignment: { horizontal: "center", vertical: "middle" } });
     addLogo(workbook, worksheet, logoBuffer, {
@@ -479,4 +557,6 @@ module.exports = {
   estimateWrappedLineCount,
   computeActivityRowHeight,
   dataReferenciaToExcelDate,
+  excelColumnWidthToPixels,
+  computeCenteredImageAnchor,
 };

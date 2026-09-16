@@ -132,6 +132,15 @@ const RDF_PAGE_SETUP = Object.freeze({
 const PDF_PAGE_SIZE = "A4";
 const PDF_MARGIN_POINTS = { top: 54, bottom: 54, left: 50.4, right: 50.4 };
 
+// Proporção do quadro de foto no RDF do PDF (Seção "ajuste de proporção") —
+// MESMA proporção do frame do Excel (300x260px, ~1.1538:1), nunca esticado
+// para preencher toda a altura restante da página (o slot do PDF sobra
+// muito mais alto que largo — A4 menos cabeçalho — e uma foto "fit" dentro
+// de um retângulo desproporcional deixa margens enormes e feias ao redor).
+// O quadro é dimensionado por "contain" dentro do espaço disponível
+// preservando esta proporção, depois centralizado nesse espaço.
+const RDF_PDF_PHOTO_FRAME_ASPECT_RATIO = 300 / 260;
+
 // Geometria do rodapé institucional (Seção "RDO deve terminar na mesma
 // geometria") — re-auditada linha a linha: a grade de 31 linhas de
 // atividades (15-45) é seguida por DOIS espaçadores em branco (46 e 47,
@@ -148,6 +157,15 @@ const RDO_SIGNATURE_BLOCK_ROW_HEIGHTS_POINTS = [25.2, 12];
 const RDO_LOGO_ANCHOR = Object.freeze({ col: 0.155, row: 0.074, widthPx: 114, heightPx: 51 });
 const RDF_LOGO_ANCHOR = Object.freeze({ col: 1.367, row: 0.11, widthPx: 89, heightPx: 37 });
 
+// Alturas das 3 linhas de cabeçalho do RDF (título/subtítulo/espaçadora, só
+// no PRIMEIRO bloco) — auditadas byte-a-byte contra o arquivo de referência
+// oficial. Ajuste visual: sem isso, as linhas ficam com a altura PADRÃO do
+// Excel (~15pt), menor que o logo (37px ≈ 27.75pt) ancorado sobre a linha 1
+// — o logo extrapola a borda da linha e fica com aparência "solta", fora da
+// célula. Com a altura auditada (34.5pt ≈ 46px), o logo cabe inteiro dentro
+// da linha do cabeçalho, alinhado ao título ao lado.
+const RDF_HEADER_ROW_HEIGHTS_POINTS = [34.5, 15.6, 13.2];
+
 // Assinatura (Seção "assinatura sobre o nome") — auditado: a imagem original
 // foi arrastada manualmente pelo usuário para ocupar o espaço em branco
 // deixado por poucas atividades naquele dia específico (chegando a cobrir
@@ -156,9 +174,33 @@ const RDF_LOGO_ANCHOR = Object.freeze({ col: 1.367, row: 0.11, widthPx: 89, heig
 // primeira linha do bloco (48, 25.2pt de altura), nunca invadindo a segunda
 // linha (49, 12pt) onde o nome fica alinhado embaixo — nunca sobrepõe,
 // independente de quantas atividades o dia teve. Proporção mantida idêntica
-// ao arquivo PNG original (189x106, ~1.783:1).
-const RDO_SIGNATURE_MAX_HEIGHT_POINTS = 18;
+// ao arquivo PNG original (189x106, ~1.783:1). Altura aumentada de 18->21pt
+// (ajuste visual: "um pouco maior, sem exagero") — ainda com margem segura
+// dentro dos 25.2pt da linha (21 < 25.2, nunca toca a borda/o nome abaixo).
+const RDO_SIGNATURE_MAX_HEIGHT_POINTS = 21;
 const RDO_SIGNATURE_ASPECT_RATIO = 189 / 106;
+
+// Maximum Digit Width (Seção "assinatura centralizada") — a fórmula OFICIAL
+// do Excel/OOXML para converter largura de coluna ("caracteres") em pixels é
+// Truncate(((256*chars + Truncate(128/MDW))/256)*MDW), onde MDW é a largura
+// do dígito mais largo da fonte PADRÃO do workbook. 7px é o valor
+// documentado para Calibri 11 (o default do Excel/ExcelJS quando nenhuma
+// fonte padrão diferente é declarada — nosso workbook nunca declara uma).
+// Verificado por engenharia reversa contra `node_modules/exceljs`: o ANCHOR
+// de uma imagem (`nativeColOff`/`nativeRowOff`) é escrito CRU no XML como
+// EMU (sem nenhuma conversão — ver `cell-position-xform.js`), mas o setter
+// de conveniência `col`/`row` do ExcelJS calcula esse offset usando
+// `largura*10000` como base (um número de precisão interno, nunca EMU) —
+// ou seja, usar a API fracionária `{col: 5.6}` para colunas com largura
+// CUSTOM (como as nossas, todas com `.width` setado explicitamente) produz
+// um `nativeColOff` ERRADO, fora de escala (confirmado empiricamente:
+// pedir fração 0.61 rendeu offset real de ~0.09 da coluna — a assinatura
+// ficava visivelmente à esquerda do centro real). A correção é NUNCA usar
+// `col`/`row` fracionário para estas colunas — sempre calcular
+// `nativeCol`/`nativeColOff` diretamente em EMU (ver `computeSignatureAnchor`
+// no builder), usando esta largura em pixels como base.
+const EXCEL_DEFAULT_FONT_MAX_DIGIT_WIDTH_PX = 7;
+const RDO_SIGNATURE_COLUMN_SPAN = 4; // colunas E, F, G, H (mescladas no rodapé)
 
 // --------------------------------------------------- geometria dinâmica (Seção "wrapText")
 
@@ -200,10 +242,14 @@ module.exports = {
   RDO_SIGNATURE_BLOCK_ROW_HEIGHTS_POINTS,
   RDO_LOGO_ANCHOR,
   RDF_LOGO_ANCHOR,
+  RDF_HEADER_ROW_HEIGHTS_POINTS,
+  EXCEL_DEFAULT_FONT_MAX_DIGIT_WIDTH_PX,
+  RDO_SIGNATURE_COLUMN_SPAN,
   RDO_SIGNATURE_MAX_HEIGHT_POINTS,
   RDO_SIGNATURE_ASPECT_RATIO,
   PDF_PAGE_SIZE,
   PDF_MARGIN_POINTS,
+  RDF_PDF_PHOTO_FRAME_ASPECT_RATIO,
   ACTIVITY_CHARS_PER_LINE,
   ACTIVITY_LINE_HEIGHT_POINTS,
   ACTIVITY_ROW_VERTICAL_PADDING_POINTS,

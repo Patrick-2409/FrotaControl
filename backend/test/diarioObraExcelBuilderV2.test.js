@@ -20,8 +20,19 @@ const {
   computeRdfBlockRows,
   estimateWrappedLineCount,
   computeActivityRowHeight,
+  excelColumnWidthToPixels,
+  computeCenteredImageAnchor,
 } = require("../src/modules/automations/documents/diarioObraExcelBuilderV2");
-const { ACTIVITIES_PER_PAGE, ACTIVITY_MIN_ROW_HEIGHT_POINTS } = require("../src/modules/automations/documents/diarioObraLayoutConstantsV2");
+const {
+  ACTIVITIES_PER_PAGE,
+  ACTIVITY_MIN_ROW_HEIGHT_POINTS,
+  RDF_HEADER_ROW_HEIGHTS_POINTS,
+  RDF_LOGO_ANCHOR,
+  RDO_SIGNATURE_MAX_HEIGHT_POINTS,
+  RDO_SIGNATURE_ASPECT_RATIO,
+  RDO_SIGNATURE_COLUMN_SPAN,
+  RDO_SIGNATURE_BLOCK_ROW_HEIGHTS_POINTS,
+} = require("../src/modules/automations/documents/diarioObraLayoutConstantsV2");
 
 const LOGO_PATH = path.join(__dirname, "../src/modules/automations/documents/assets/diario-obra-template-v1-logo.png");
 const logoBuffer = fs.readFileSync(LOGO_PATH);
@@ -264,6 +275,81 @@ test("sem asset de assinatura (signatureBuffer ausente), o rodapé segue só com
   assert.ok(allText.includes("Eng. Teste"));
 });
 
+// Ajuste visual solicitado: a assinatura precisa ficar CENTRALIZADA (não
+// colada à esquerda do bloco E:H) e um pouco maior, sem sobrepor o nome.
+// IMPORTANTE (Seção "assinatura centralizada" — bug real encontrado na
+// validação visual): o getter fracionário `image.range.tl.col` do ExcelJS
+// NÃO é confiável para colunas de largura customizada (nosso caso) — ele
+// usa uma escala interna (`largura*10000`) que não é EMU, então comparar
+// `.col` aqui mascararia justamente o bug que causou o desalinhamento real
+// (a assinatura aparecia visivelmente à esquerda do centro quando aberta no
+// Excel de verdade). Os testes abaixo verificam os campos CRUS
+// (`nativeCol`/`nativeColOff`/`nativeRow`/`nativeRowOff`, que SÃO EMU direto
+// — ver `cell-position-xform.js` do ExcelJS) contra `computeCenteredImageAnchor`,
+// a mesma função que o builder usa — nunca reintroduz o `col` fracionário.
+const EMU_PER_PIXEL = 9525;
+const EMU_PER_POINT = 12700;
+
+test("ajuste visual: assinatura fica CENTRALIZADA horizontalmente dentro do bloco mesclado E:H — âncora em EMU cru, nunca via col fracionário (bug real corrigido)", async () => {
+  const { reloaded } = await buildAndReload(makeModel({ activities: makeActivities(1) }), { signatureBuffer });
+  const rdo = reloaded.worksheets.find((w) => w.name === "RDO");
+  const image = rdo.getImages().find((img) => img.range.tl.nativeCol >= 4);
+  assert.ok(image, "esperava encontrar a imagem da assinatura (ancorada a partir da coluna E)");
+
+  const signatureHeightPx = RDO_SIGNATURE_MAX_HEIGHT_POINTS * (96 / 72);
+  const signatureWidthPx = signatureHeightPx * RDO_SIGNATURE_ASPECT_RATIO;
+  const expected = computeCenteredImageAnchor({
+    startColIndex: 4,
+    columnSpan: RDO_SIGNATURE_COLUMN_SPAN,
+    columnWidthChars: 8.43,
+    startRowIndex: 0,
+    rowHeightPoints: RDO_SIGNATURE_BLOCK_ROW_HEIGHTS_POINTS[0],
+    imageWidthPx: signatureWidthPx,
+    imageHeightPx: signatureHeightPx,
+  });
+
+  assert.equal(image.range.tl.nativeCol, expected.nativeCol);
+  assert.equal(image.range.tl.nativeColOff, expected.nativeColOff);
+
+  // Regressão: nativeColOff precisa estar na ESCALA REAL de EMU (uma coluna
+  // inteira de 8.43 chars ≈ 561975 EMU) — um valor pequeno demais (escala
+  // "largura*10000" do bug antigo, ex.: <90000) indicaria a régua errada de volta.
+  const columnWidthEmu = excelColumnWidthToPixels(8.43) * EMU_PER_PIXEL;
+  assert.ok(image.range.tl.nativeColOff < columnWidthEmu, "offset nunca pode exceder a largura de uma coluna inteira");
+  assert.ok(image.range.tl.nativeColOff > columnWidthEmu * 0.3, "offset precisa estar na escala real de EMU, nunca a escala interna antiga do bug");
+
+  // Verificação independente: o CENTRO da imagem (em EMU, a partir do início
+  // da coluna E) precisa cair muito perto do centro real do bloco de 4 colunas.
+  const imageCenterEmu = expected.nativeCol * columnWidthEmu - 4 * columnWidthEmu + expected.nativeColOff + (signatureWidthPx * EMU_PER_PIXEL) / 2;
+  const spanCenterEmu = (RDO_SIGNATURE_COLUMN_SPAN * columnWidthEmu) / 2;
+  const toleranceEmu = 0.02 * RDO_SIGNATURE_COLUMN_SPAN * columnWidthEmu; // 2% do bloco
+  assert.ok(Math.abs(imageCenterEmu - spanCenterEmu) < toleranceEmu, `assinatura não está centralizada: centro=${imageCenterEmu}, esperado≈${spanCenterEmu}`);
+});
+
+test("ajuste visual: assinatura fica CENTRALIZADA verticalmente dentro da própria linha (nunca encostada no topo/embaixo)", async () => {
+  const { reloaded } = await buildAndReload(makeModel({ activities: makeActivities(1) }), { signatureBuffer });
+  const rdo = reloaded.worksheets.find((w) => w.name === "RDO");
+  const image = rdo.getImages().find((img) => img.range.tl.nativeCol >= 4);
+  assert.ok(image, "esperava encontrar a imagem da assinatura (ancorada a partir da coluna E)");
+
+  const [signatureRowHeight] = RDO_SIGNATURE_BLOCK_ROW_HEIGHTS_POINTS;
+  const rowHeightEmu = signatureRowHeight * EMU_PER_POINT;
+  const signatureHeightPx = RDO_SIGNATURE_MAX_HEIGHT_POINTS * (96 / 72);
+  const signatureHeightEmu = signatureHeightPx * EMU_PER_PIXEL;
+  assert.ok(image.range.tl.nativeRowOff > 0, "esperava deslocamento vertical positivo (não colado no topo)");
+  assert.ok(image.range.tl.nativeRowOff + signatureHeightEmu < rowHeightEmu, "assinatura nunca pode ultrapassar a própria linha (nunca sobrepõe o nome abaixo)");
+  // Aproximadamente centralizada verticalmente (margem de cima ≈ margem de baixo).
+  const marginTop = image.range.tl.nativeRowOff;
+  const marginBottom = rowHeightEmu - signatureHeightEmu - marginTop;
+  assert.ok(Math.abs(marginTop - marginBottom) < rowHeightEmu * 0.1, "margens de cima/baixo deveriam ser aproximadamente iguais (centralizado)");
+});
+
+test("ajuste visual: assinatura foi discretamente aumentada (mais que os 18pt anteriores), mas sem exagero (continua menor que a linha de 25.2pt)", () => {
+  assert.ok(RDO_SIGNATURE_MAX_HEIGHT_POINTS > 18, "deveria ter aumentado em relação ao valor anterior");
+  const [signatureRowHeight] = RDO_SIGNATURE_BLOCK_ROW_HEIGHTS_POINTS;
+  assert.ok(RDO_SIGNATURE_MAX_HEIGHT_POINTS < signatureRowHeight, "nunca pode igualar/exceder a altura da própria linha (sem exagero, sem sobrepor)");
+});
+
 // --------------------------------------------------------------- RDF v2: 2 fotos grandes por bloco, UMA ÚNICA aba (CASO B/H)
 
 test("CASO B: exatamente 2 fotos ficam na única aba RDF (novo limite oficial, nunca mais 13)", async () => {
@@ -304,6 +390,25 @@ test("apenas o PRIMEIRO bloco do RDF desenha o cabeçalho (título/subtítulo) �
   // mestra da moldura esquerda nunca carrega texto de título/subtítulo.
   const block2Rows = computeRdfBlockRows(1);
   assert.ok(!rdf.getCell(`B${block2Rows.photoTop}`).value, "moldura do bloco 2 nunca tem texto de título repetido");
+});
+
+// Ajuste visual solicitado: o logo do RDF ficava "solto" fora da célula
+// porque as linhas 1-3 nunca tinham altura explícita (caía no padrão do
+// Excel, ~15pt — menor que os 37px do logo ancorado sobre a linha 1).
+test("ajuste visual: linhas 1-3 do RDF têm as alturas auditadas (o logo cabe DENTRO da linha do cabeçalho, nunca 'solto')", async () => {
+  const { reloaded } = await buildAndReload(makeModel({ activities: makeActivities(1), numPhotos: 1 }));
+  const rdf = reloaded.worksheets.find((w) => w.name === "RDF");
+  assert.equal(rdf.getRow(1).height, RDF_HEADER_ROW_HEIGHTS_POINTS[0]);
+  assert.equal(rdf.getRow(2).height, RDF_HEADER_ROW_HEIGHTS_POINTS[1]);
+  assert.equal(rdf.getRow(3).height, RDF_HEADER_ROW_HEIGHTS_POINTS[2]);
+
+  // A altura da linha 1 (em px) precisa ser >= a altura do logo — senão o
+  // logo extrapola a borda da célula, ficando visualmente fora dela.
+  const row1HeightPx = RDF_HEADER_ROW_HEIGHTS_POINTS[0] * (96 / 72);
+  assert.ok(row1HeightPx >= RDF_LOGO_ANCHOR.heightPx, `linha 1 (${row1HeightPx}px) precisa comportar o logo (${RDF_LOGO_ANCHOR.heightPx}px)`);
+
+  const [image] = rdf.getImages();
+  assert.equal(image.range.tl.nativeRow, 0, "logo ancorado na linha 1 (índice 0)");
 });
 
 test("título do RDF vem do model (tituloRdf), nunca uma constante de cliente", async () => {

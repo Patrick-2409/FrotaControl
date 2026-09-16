@@ -12,8 +12,9 @@ const path = require("path");
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { buildDiarioObraPdfBufferV2 } = require("../src/modules/automations/documents/diarioObraPdfBuilderV2");
-const { MAX_ACTIVITY_TEXT_LENGTH, ACTIVITIES_PER_PAGE } = require("../src/modules/automations/documents/diarioObraLayoutConstantsV2");
+const { buildDiarioObraPdfBufferV2, computeContainedFrame } = require("../src/modules/automations/documents/diarioObraPdfBuilderV2");
+const { MAX_ACTIVITY_TEXT_LENGTH, ACTIVITIES_PER_PAGE, RDF_PDF_PHOTO_FRAME_ASPECT_RATIO } = require("../src/modules/automations/documents/diarioObraLayoutConstantsV2");
+const { extractPdfPageTexts } = require("./helpers/pdfTextExtractor");
 
 const LOGO_PATH = path.join(__dirname, "../src/modules/automations/documents/assets/diario-obra-template-v1-logo.png");
 const logoBuffer = fs.readFileSync(LOGO_PATH);
@@ -121,6 +122,66 @@ test("foto indisponível não lança exceção — segue sem imagem, com legenda
   model.photos[0].legenda = "Imagem indisponível.";
   const buffer = await buildDiarioObraPdfBufferV2(model, { logoBuffer, photoBuffers: new Map() });
   assertValidPdf(buffer);
+});
+
+// ------------------------------------------------------- RDO deve caber em uma única página
+
+test("REGRESSÃO (RDO em 2 páginas): 5 atividades + clima BOM + assinatura + rodapé + 8 fotos no RDF produz EXATAMENTE 5 páginas — RDO completo na página 1, RDF a partir da página 2", async () => {
+  const model = makeModel({ numActivities: 5, numPhotos: 8, clima: { manha: "BOM", tarde: "BOM", noite: "BOM" } });
+  model.signature.responsavelTecnico = "Patrick Vargas Amaral";
+  const photoBuffers = new Map(model.photos.map((p) => [p.driveFileId, logoBuffer]));
+
+  const buffer = await buildDiarioObraPdfBufferV2(model, { logoBuffer, photoBuffers, signatureBuffer });
+  assertValidPdf(buffer);
+
+  const pageTexts = extractPdfPageTexts(buffer);
+  assert.equal(pageTexts.length, 5, `esperava exatamente 5 páginas (1 RDO + 4 RDF), obteve ${pageTexts.length}`);
+
+  const [page1, page2, page3, page4, page5] = pageTexts;
+
+  // Página 1 = RDO COMPLETO (cabeçalho + grade + clima + assinatura + rodapé), tudo junto.
+  assert.ok(page1.includes("DIÁRIO DE OBRA"), "página 1 precisa conter o título do RDO");
+  assert.ok(page1.includes("FORAM REALIZADAS AS SEGUINTES ATIVIDADES"), "página 1 precisa conter a grade de atividades");
+  assert.ok(page1.includes("Patrick Vargas Amaral"), "página 1 precisa conter o nome do responsável técnico (assinatura)");
+  assert.ok(page1.includes("Cliente LTDA"), "página 1 precisa conter a razão social do rodapé institucional");
+  assert.ok(page1.includes("Rua 1"), "página 1 precisa conter o endereço do rodapé institucional");
+
+  // Nenhuma página intermediária só com assinatura/rodapé (o bug original: RDO virava 2 páginas).
+  for (const text of [page2, page3, page4, page5]) {
+    assert.ok(!text.includes("Patrick Vargas Amaral"), "assinatura NUNCA pode aparecer numa página separada do RDO");
+    assert.ok(!text.includes("DIÁRIO DE OBRA"), "título do RDO nunca deveria repetir numa página de RDF");
+  }
+
+  // RDF começa IMEDIATAMENTE na página 2.
+  assert.ok(page2.includes("REGISTRO FOTOGRÁFICO"), "página 2 precisa ser a primeira página do RDF");
+  assert.ok(page3.includes("REGISTRO FOTOGRÁFICO"));
+  assert.ok(page4.includes("REGISTRO FOTOGRÁFICO"));
+  assert.ok(page5.includes("REGISTRO FOTOGRÁFICO"));
+});
+
+// ------------------------------------------------------- ajuste de proporção do RDF
+
+test("computeContainedFrame: espaço bem mais alto que largo (caso real do RDF) nunca estica a foto — o quadro fica proporcional, nunca ocupa a altura toda", () => {
+  // Página A4 menos cabeçalho: espaço tipicamente ~240pt largura x ~630pt altura.
+  const frame = computeContainedFrame({ availableWidth: 240, availableHeight: 630, aspectRatio: RDF_PDF_PHOTO_FRAME_ASPECT_RATIO });
+  assert.equal(frame.width, 240, "largura limitante — usa toda a largura disponível");
+  assert.ok(Math.abs(frame.height - 240 / RDF_PDF_PHOTO_FRAME_ASPECT_RATIO) < 0.01, "altura precisa respeitar a MESMA proporção do frame do Excel");
+  assert.ok(frame.height < 630 * 0.5, "nunca deveria esticar o quadro para ocupar a altura quase inteira disponível (bug corrigido)");
+});
+
+test("computeContainedFrame: espaço mais largo que alto é limitado pela ALTURA, nunca estoura para fora", () => {
+  const frame = computeContainedFrame({ availableWidth: 1000, availableHeight: 100, aspectRatio: RDF_PDF_PHOTO_FRAME_ASPECT_RATIO });
+  assert.equal(frame.height, 100);
+  assert.ok(Math.abs(frame.width - 100 * RDF_PDF_PHOTO_FRAME_ASPECT_RATIO) < 0.01);
+  assert.ok(frame.width <= 1000);
+});
+
+test("computeContainedFrame: quadro fica CENTRALIZADO no espaço disponível (offsets simétricos)", () => {
+  const frame = computeContainedFrame({ availableWidth: 240, availableHeight: 630, aspectRatio: RDF_PDF_PHOTO_FRAME_ASPECT_RATIO });
+  assert.ok(frame.offsetX >= 0);
+  assert.ok(frame.offsetY >= 0);
+  // Espaço sobrando (não ocupado pelo quadro) dividido igualmente entre os dois lados.
+  assert.ok(Math.abs((630 - frame.height) / 2 - frame.offsetY) < 0.01);
 });
 
 test("buffer retornado nunca é gravado em disco pelo builder (filesystem efêmero do Render)", async () => {

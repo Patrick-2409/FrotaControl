@@ -27,16 +27,43 @@ const {
   PHOTOS_PER_PAGE,
   ACTIVITIES_PER_PAGE,
   RDO_COLUMN_WIDTHS,
-  RDO_FOOTER_SPACER_HEIGHTS_POINTS,
   RDO_SIGNATURE_BLOCK_ROW_HEIGHTS_POINTS,
   RDO_SIGNATURE_MAX_HEIGHT_POINTS,
   RDO_SIGNATURE_ASPECT_RATIO,
+  RDF_PDF_PHOTO_FRAME_ASPECT_RATIO,
 } = require("./diarioObraLayoutConstantsV2");
 const { computeActivityRowHeight, paginateByCount } = require("./diarioObraExcelBuilderV2");
 
 const BORDER_COLOR = "#000000";
 const BORDER_WIDTH = 0.75;
 const HEADER_FILL = "#D9E2F3";
+
+/**
+ * Correção de paginação do RDO no PDF (ajuste isolado ao PDF — Seção "RDO
+ * deve caber em uma única página"): o formulário completo, com as alturas
+ * auditadas 1:1 do Excel (linhas de atividade vazias inclusas), soma
+ * 859.1pt de altura de conteúdo contra 733.89pt disponíveis numa página A4
+ * com as margens atuais (PDF_MARGIN_POINTS) — 125.2pt de estouro, medido
+ * diretamente somando as alturas usadas por `drawRdoHeader`/
+ * `drawRdoActivities`/`drawRdoFooter` para um dia com poucas atividades
+ * (o caso normal). O estouro empurrava só a assinatura/rodapé para uma
+ * SEGUNDA página, já que eles são desenhados por último.
+ *
+ * Nunca toca `RDO_FOOTER_SPACER_HEIGHTS_POINTS`/`computeActivityRowHeight`
+ * (compartilhados com o Excel — mudar isso mudaria o .xlsx já aprovado).
+ * Em vez disso, o PDF usa constantes PRÓPRIAS, só para os elementos
+ * puramente de ESPAÇAMENTO (linhas em branco da grade e linhas
+ * espaçadoras sem texto) — nunca a fonte, a assinatura, o cabeçalho ou uma
+ * atividade PREENCHIDA, que continuam com a altura dinâmica de sempre
+ * (`computeActivityRowHeight`, sem alteração). Com estes valores, até ~14
+ * atividades preenchidas (de uma linha cada) ainda cabem numa única
+ * página — bem acima do uso real observado (4-8/dia); além disso, a
+ * lógica de continuação (`ensureRoomFor`) permanece intacta para o caso
+ * excepcional.
+ */
+const PDF_RDO_SPACER_ROW_HEIGHT_POINTS = 8; // linhas 6 e 14 do cabeçalho (espaçadoras, sem texto)
+const PDF_RDO_FOOTER_SPACER_HEIGHTS_POINTS = [8, 10]; // override só do PDF — nunca RDO_FOOTER_SPACER_HEIGHTS_POINTS (Excel)
+const PDF_RDO_BLANK_ACTIVITY_ROW_HEIGHT_POINTS = 12; // só linhas SEM atividade — uma preenchida nunca usa este valor
 
 /** Rótulo textual da condição de clima de um período (Seção "clima") — mesma semântica do "X" desenhado no Excel, nunca inferida aqui. */
 function climaConditionLabel(condicao, fixedText) {
@@ -199,9 +226,10 @@ function drawRdoHeader(doc, model, { logoBuffer, isContinuation, pageIndex, tota
   drawFormCell(doc, { x: fhBounds.x, y, width: fhBounds.width, height: rowH45, text: formatDataReferencia(model.identification.dataReferencia) });
   y += rowH45;
 
-  // Linha 6: espaçadora.
-  drawFormCell(doc, { x: startX, y, width, height: rowH45, text: "" });
-  y += rowH45;
+  // Linha 6: espaçadora (Seção "RDO deve caber em uma única página" —
+  // linha sem texto, altura reduzida só no PDF, nunca no Excel).
+  drawFormCell(doc, { x: startX, y, width, height: PDF_RDO_SPACER_ROW_HEIGHT_POINTS, text: "" });
+  y += PDF_RDO_SPACER_ROW_HEIGHT_POINTS;
 
   // Linha 7: REGISTRO DE TEMPO (A:D) / EXPEDIENTE (E:H).
   const adBounds = mergedBounds(bounds, 0, 3);
@@ -242,9 +270,9 @@ function drawRdoHeader(doc, model, { logoBuffer, isContinuation, pageIndex, tota
   drawFormCell(doc, { x: startX, y, width, height: rowH45, text: FIXED_TEXT.atividadesTitulo, bold: true, italic: true, size: 10 });
   y += rowH45;
 
-  // Linha 14: espaçadora.
-  drawFormCell(doc, { x: startX, y, width, height: rowH45, text: "" });
-  y += rowH45;
+  // Linha 14: espaçadora (mesma redução da linha 6, só no PDF).
+  drawFormCell(doc, { x: startX, y, width, height: PDF_RDO_SPACER_ROW_HEIGHT_POINTS, text: "" });
+  y += PDF_RDO_SPACER_ROW_HEIGHT_POINTS;
 
   doc.y = y;
 }
@@ -256,11 +284,13 @@ function drawRdoFooter(doc, model, { signatureBuffer } = {}) {
   const bounds = computeRdoColumnBounds(startX, width);
   const [signatureRowHeightCheck, nameRowHeightCheck] = RDO_SIGNATURE_BLOCK_ROW_HEIGHTS_POINTS;
   const totalFooterHeight =
-    RDO_FOOTER_SPACER_HEIGHTS_POINTS.reduce((sum, h) => sum + h, 0) + signatureRowHeightCheck + nameRowHeightCheck + 13.2 + 13.2;
+    PDF_RDO_FOOTER_SPACER_HEIGHTS_POINTS.reduce((sum, h) => sum + h, 0) + signatureRowHeightCheck + nameRowHeightCheck + 13.2 + 13.2;
   ensureRoomFor(doc, totalFooterHeight);
   let y = doc.y;
 
-  for (const spacerHeight of RDO_FOOTER_SPACER_HEIGHTS_POINTS) {
+  // Espaçadoras SEM texto — override só do PDF (Seção "RDO deve caber em
+  // uma única página"). Nunca `RDO_FOOTER_SPACER_HEIGHTS_POINTS` (Excel).
+  for (const spacerHeight of PDF_RDO_FOOTER_SPACER_HEIGHTS_POINTS) {
     drawFormCell(doc, { x: startX, y, width, height: spacerHeight, text: "" });
     y += spacerHeight;
   }
@@ -315,8 +345,11 @@ function drawRdoFooter(doc, model, { signatureBuffer } = {}) {
  * "preservar o formulário oficial") — desenha sempre `totalSlots` células
  * (ACTIVITIES_PER_PAGE), preenchidas ou em branco: poucas atividades NUNCA
  * encolhem o formulário nem sobem o rodapé (mesmo princípio do Excel
- * builder — `buildRdoActivities`). Altura dinâmica idêntica ao Excel
- * (`computeActivityRowHeight`), nunca uma segunda fonte de verdade.
+ * builder — `buildRdoActivities`). Atividade PREENCHIDA usa a MESMA altura
+ * dinâmica do Excel (`computeActivityRowHeight`, nunca reduzida — Seção
+ * "atividades preenchidas devem continuar legíveis"); só a linha EM BRANCO
+ * usa `PDF_RDO_BLANK_ACTIVITY_ROW_HEIGHT_POINTS` (menor, só no PDF — Seção
+ * "RDO deve caber em uma única página") em vez de `computeActivityRowHeight("")`.
  */
 function drawRdoActivities(doc, activitiesPage, totalSlots) {
   const startX = doc.page.margins.left;
@@ -332,7 +365,7 @@ function drawRdoActivities(doc, activitiesPage, totalSlots) {
     drawFormCell(doc, { x: startX, y, width, height, text, bold: true, align: "left", valign: "top" });
     y += height;
   }
-  const blankHeight = computeActivityRowHeight("");
+  const blankHeight = PDF_RDO_BLANK_ACTIVITY_ROW_HEIGHT_POINTS;
   for (let i = activitiesPage.length; i < totalSlots; i += 1) {
     doc.y = y;
     ensureRoomFor(doc, blankHeight);
@@ -358,16 +391,58 @@ function drawRdoSection(doc, model, { logoBuffer, signatureBuffer }) {
   });
 }
 
+const RDF_PDF_CAPTION_HEIGHT_POINTS = 32;
+const RDF_PDF_CAPTION_GAP_POINTS = 8;
+const RDF_PDF_FRAME_PADDING_POINTS = 6;
+
+/**
+ * "Contain": a maior caixa de proporção `aspectRatio` (largura/altura) que
+ * cabe dentro de `availableWidth`x`availableHeight`, centralizada nele —
+ * função pura, testável isoladamente (Seção "ajuste de proporção").
+ */
+function computeContainedFrame({ availableWidth, availableHeight, aspectRatio }) {
+  let frameWidth = availableWidth;
+  let frameHeight = frameWidth / aspectRatio;
+  if (frameHeight > availableHeight) {
+    frameHeight = availableHeight;
+    frameWidth = frameHeight * aspectRatio;
+  }
+  const offsetX = (availableWidth - frameWidth) / 2;
+  const offsetY = Math.max(0, (availableHeight - frameHeight) / 2);
+  return { width: frameWidth, height: frameHeight, offsetX, offsetY };
+}
+
+/**
+ * Quadro de UMA foto (Seção "ajuste de proporção") — o espaço DISPONÍVEL no
+ * slot (metade da largura útil x quase a altura inteira da página) é bem
+ * mais alto que largo; ajustar a foto por "fit" DENTRO desse retângulo
+ * inteiro deixava margens enormes e desproporcionais. Em vez disso, o
+ * QUADRO em si é dimensionado por "contain" (largura x altura preservando
+ * RDF_PDF_PHOTO_FRAME_ASPECT_RATIO — a MESMA proporção do frame do Excel,
+ * 300x260px) dentro do espaço disponível, e centralizado nele — a legenda
+ * fica logo abaixo do quadro, nunca no rodapé do slot inteiro. O quadro é
+ * sempre desenhado (mesmo sem foto, Seção "preserva o frame vazio").
+ */
 function drawPhotoSlot(doc, photo, { x, y, width, height, photoBuffers }) {
-  doc.rect(x, y, width, height).strokeColor("#999999").stroke();
+  const availableHeightForFrame = Math.max(0, height - RDF_PDF_CAPTION_HEIGHT_POINTS - RDF_PDF_CAPTION_GAP_POINTS);
+  const frame = computeContainedFrame({ availableWidth: width, availableHeight: availableHeightForFrame, aspectRatio: RDF_PDF_PHOTO_FRAME_ASPECT_RATIO });
+  const frameWidth = frame.width;
+  const frameHeight = frame.height;
+  const frameX = x + frame.offsetX;
+  const frameY = y + frame.offsetY;
+
+  doc.rect(frameX, frameY, frameWidth, frameHeight).strokeColor("#999999").stroke();
   if (!photo) return;
 
-  const imageHeight = height - 40;
   if (photo.disponivel) {
     const buffer = photoBuffers.get(photo.driveFileId);
     if (buffer) {
       try {
-        doc.image(buffer, x + 6, y + 6, { fit: [width - 12, imageHeight - 12], align: "center", valign: "center" });
+        doc.image(buffer, frameX + RDF_PDF_FRAME_PADDING_POINTS, frameY + RDF_PDF_FRAME_PADDING_POINTS, {
+          fit: [frameWidth - RDF_PDF_FRAME_PADDING_POINTS * 2, frameHeight - RDF_PDF_FRAME_PADDING_POINTS * 2],
+          align: "center",
+          valign: "center",
+        });
       } catch {
         // Buffer de imagem corrompido/ilegível não derruba o documento inteiro.
       }
@@ -377,14 +452,15 @@ function drawPhotoSlot(doc, photo, { x, y, width, height, photoBuffers }) {
       .font("Helvetica-Oblique")
       .fontSize(9)
       .fillColor("#888888")
-      .text("Imagem indisponível", x, y + imageHeight / 2 - 6, { width, align: "center" })
+      .text("Imagem indisponível", frameX, frameY + frameHeight / 2 - 6, { width: frameWidth, align: "center" })
       .fillColor("#000000");
   }
 
+  const captionY = frameY + frameHeight + RDF_PDF_CAPTION_GAP_POINTS;
   doc
     .font("Helvetica-Bold")
     .fontSize(9)
-    .text(`${photo.numero}. ${photo.legenda}`, x + 4, y + imageHeight + 6, { width: width - 8, height: 32, align: "center", ellipsis: true });
+    .text(`${photo.numero}. ${photo.legenda}`, x + 4, captionY, { width: width - 8, height: RDF_PDF_CAPTION_HEIGHT_POINTS, align: "center", ellipsis: true });
 }
 
 /** RDF v2 — 2 fotos GRANDES lado a lado por página, mesma regra do Excel v2. */
@@ -452,4 +528,4 @@ function buildDiarioObraPdfBufferV2(model, { logoBuffer, photoBuffers = new Map(
   });
 }
 
-module.exports = { buildDiarioObraPdfBufferV2 };
+module.exports = { buildDiarioObraPdfBufferV2, computeContainedFrame };

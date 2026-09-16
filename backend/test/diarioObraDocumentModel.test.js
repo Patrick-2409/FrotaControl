@@ -441,15 +441,31 @@ test("CASO D: 'chuva pela manhã e tempo bom à tarde e à noite' — cada perí
   assert.equal(clima.noite, "BOM");
 });
 
-test("resolveClima: ausência do campo (inteligência ANTERIOR ao Bloco 12) nunca quebra — cai em NAO_INFORMADO, nunca inferido", () => {
-  assert.deepEqual(resolveClima({}), { manha: "NAO_INFORMADO", tarde: "NAO_INFORMADO", noite: "NAO_INFORMADO" });
+// Ajuste solicitado pelo usuário (Seção "clima"): quando não há NENHUMA
+// evidência de clima (campo ausente — inteligência ANTERIOR ao Bloco 12, ou
+// a IA não encontrou nada para relatar), o padrão passa a ser BOM nos 3
+// períodos — nunca deixa a célula do formulário em branco.
+test("resolveClima: ausência do campo (inteligência ANTERIOR ao Bloco 12, ou nada relatado) nunca quebra — cai em BOM por padrão nos 3 períodos", () => {
+  assert.deepEqual(resolveClima({}), { manha: "BOM", tarde: "BOM", noite: "BOM" });
 });
 
-test("resolveClima: valor fora do enum conhecido nunca lança — cai em NAO_INFORMADO (defensivo)", () => {
+test("resolveClima: valor fora do enum conhecido nunca lança — cai no padrão BOM (defensivo)", () => {
   const clima = resolveClima({ clima: { manha: "ENSOLARADO", tarde: "BOM", noite: undefined } });
-  assert.equal(clima.manha, "NAO_INFORMADO");
+  assert.equal(clima.manha, "BOM");
   assert.equal(clima.tarde, "BOM");
-  assert.equal(clima.noite, "NAO_INFORMADO");
+  assert.equal(clima.noite, "BOM");
+});
+
+test("resolveClima: CHUVAS informado só para um período nunca é sobrescrito pelo padrão — os outros dois caem em BOM", () => {
+  // Cenário do enunciado: "chuva à tarde" — a IA preenche só tarde=CHUVAS,
+  // manhã/noite ficam NAO_INFORMADO (nunca inferidos pela IA) e assumem BOM aqui.
+  const clima = resolveClima({ clima: { manha: "NAO_INFORMADO", tarde: "CHUVAS", noite: "NAO_INFORMADO" } });
+  assert.deepEqual(clima, { manha: "BOM", tarde: "CHUVAS", noite: "BOM" });
+});
+
+test("resolveClima: CHUVAS genérico (sem período específico) preenchido pela IA nos 3 períodos permanece CHUVAS nos 3 (padrão nunca sobrescreve valor real)", () => {
+  const clima = resolveClima({ clima: { manha: "CHUVAS", tarde: "CHUVAS", noite: "CHUVAS" } });
+  assert.deepEqual(clima, { manha: "CHUVAS", tarde: "CHUVAS", noite: "CHUVAS" });
 });
 
 test("buildDiarioObraDocumentModel: clima chega resolvido no model a partir de structured_output.clima", () => {

@@ -225,20 +225,27 @@ function buildPhotoObservationsByRef(structuredOutput) {
 }
 
 const WEATHER_CONDITIONS = ["BOM", "CHUVAS", "NAO_INFORMADO"];
-const DEFAULT_CLIMA = Object.freeze({ manha: "NAO_INFORMADO", tarde: "NAO_INFORMADO", noite: "NAO_INFORMADO" });
 
 /**
  * Bloco 12 — clima por período (manhã/tarde/noite), campo estruturado
- * PRÓPRIO da IA (nunca inferido aqui). Defensivo contra `structured_output`
- * de uma inteligência ANTERIOR a este campo existir (Seção "não quebrar
- * compatibilidade com inteligências anteriores") — ausência ou valor fora do
- * enum conhecido sempre cai em NAO_INFORMADO, nunca lança.
+ * PRÓPRIO da IA (a interpretação de EVIDÊNCIA — o que foi dito sobre qual
+ * período — nunca é feita aqui, é responsabilidade do prompt). Esta função
+ * só aplica a regra de PADRÃO (ajuste solicitado pelo usuário, Seção
+ * "clima"): quando a IA não teve nenhuma evidência para um período
+ * (`NAO_INFORMADO` — inclusive quando o campo inteiro está ausente, caso de
+ * `structured_output` de uma inteligência ANTERIOR a este campo existir),
+ * o período é marcado BOM por padrão — "se nada foi dito sobre o tempo,
+ * assume-se dia normal" — nunca deixa a célula do formulário em branco.
+ * Um valor fora do enum conhecido também cai neste padrão (defensivo, nunca
+ * lança). Isso NUNCA sobrescreve um período que a IA já determinou como
+ * CHUVAS a partir de evidência real.
  */
 function resolveClima(structuredOutput) {
   const clima = structuredOutput.clima || {};
   const resolved = {};
   for (const periodo of ["manha", "tarde", "noite"]) {
-    resolved[periodo] = WEATHER_CONDITIONS.includes(clima[periodo]) ? clima[periodo] : DEFAULT_CLIMA[periodo];
+    const valor = WEATHER_CONDITIONS.includes(clima[periodo]) ? clima[periodo] : "NAO_INFORMADO";
+    resolved[periodo] = valor === "NAO_INFORMADO" ? "BOM" : valor;
   }
   return resolved;
 }
