@@ -25,6 +25,7 @@ const {
   getGmailClientId,
   getGmailClientSecret,
   getGmailRefreshToken,
+  getEmailFrom,
 } = require("../distribution/distributionConfig");
 
 function createDefaultTelegramFileClient(env = process.env) {
@@ -79,10 +80,31 @@ function createDefaultGmailApiEmailClient(env = process.env) {
  * variável está ausente/vazia — preserva 100% o comportamento já em
  * produção sem NENHUMA mudança de configuração adicional. Nunca troca de
  * provedor sozinho: só ativa Gmail com `AUTOMATION_EMAIL_PROVIDER=GMAIL_API`
- * configurado explicitamente.
+ * configurado explicitamente. NENHUM fallback automático Gmail->SMTP existe
+ * aqui nem em nenhum outro ponto do módulo: esta função decide o provedor
+ * UMA ÚNICA VEZ, de forma determinística, a partir do `env` recebido — uma
+ * falha de envio do cliente Gmail (`gmailApiEmailClient.js`) nunca chega a
+ * reconstruir/trocar para o cliente SMTP, ela só sobe como exceção para
+ * `documentDistributionService.js` (que já trata isso como falha
+ * recuperável de distribuição, sujeita a retry — nunca um envio silencioso
+ * por outro canal).
+ *
+ * Log de diagnóstico SEGURO (Seção "confirmar em runtime qual provider está
+ * ativo") — cada processo que constrói este cliente (o Cron Job do
+ * orquestrador e a API administrativa, cada um com SEU PRÓPRIO conjunto de
+ * variáveis de ambiente no Render) imprime qual provedor e remetente
+ * resolveu, uma linha por construção. NUNCA imprime client secret, refresh
+ * token ou senha SMTP — só o nome do provedor (enum fixo) e o endereço de
+ * remetente (já seria visível no cabeçalho "From" de qualquer e-mail
+ * enviado, nunca um segredo).
  */
 function createDefaultAutomationEmailClient(env = process.env) {
-  if (getAutomationEmailProvider(env) === "GMAIL_API") {
+  const provider = getAutomationEmailProvider(env);
+  const from = getEmailFrom(env);
+  console.log(`[automation-email] provider=${provider}`);
+  console.log(`[automation-email] from=${from || "(ausente — DISTRIBUTION_CONFIG_INCOMPLETE ao tentar enviar)"}`);
+
+  if (provider === "GMAIL_API") {
     return createDefaultGmailApiEmailClient(env);
   }
   return createDefaultSmtpAutomationEmailClient(env);

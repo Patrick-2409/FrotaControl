@@ -13,7 +13,8 @@ const assert = require("node:assert/strict");
 const {
   buildDiarioObraDocumentModel,
   buildActivities,
-  buildActivityTextsFromPhotos,
+  buildActivityTextsFromMessages,
+  collectActivityClassifiedMessageIds,
   stripLeadingListNumber,
   buildPhotos,
   dedupeFacts,
@@ -27,8 +28,8 @@ const { FIXED_TEXT: FIXED_TEXT_V2 } = require("../src/modules/automations/docume
 const { DocumentError } = require("../src/modules/automations/documents/documentErrorClassification");
 const { MAX_ACTIVITY_TEXT_LENGTH, MAX_ACTIVITIES_TOTAL } = require("../src/modules/automations/documents/diarioObraLayoutConstants");
 
-function msg({ id, timestamp, type = "TEXT", caption = null, photo = null }) {
-  return { telegramMessageId: id, timestamp, type, caption, photo };
+function msg({ id, timestamp, type = "TEXT", text = null, caption = null, photo = null }) {
+  return { telegramMessageId: id, timestamp, type, text, caption, photo };
 }
 
 test("compareNumericIdStrings: compara como BigInt, nunca como string/number", () => {
@@ -94,22 +95,121 @@ test("buildActivities CASO A: 3 legendas de foto idênticas viram 1 atividade s�
   assert.deepEqual(items.map((i) => i.numero), [1, 2]);
 });
 
-// Seção 6 — mensagem de TEXTO avulsa (sem foto) nunca vira atividade, mesmo
-// que a IA a categorize como ACTIVITY em structuredOutput.facts.
-test("buildActivities: mensagem de TEXTO avulsa (sem foto) NUNCA vira atividade, mesmo categorizada ACTIVITY pela IA", () => {
+// ------------------------------------------------------------------
+// Correção "atividades enviadas só como texto" — antes, buildActivities só
+// considerava captions de mensagens PHOTO; uma atividade relatada como
+// mensagem de TEXTO avulsa (sem foto) nunca aparecia no RDO. A IA agora é
+// usada SOMENTE para CLASSIFICAR a mensagem de texto (fact.category ===
+// "ACTIVITY", citando o telegramMessageId em sourceRefs) — o texto exibido
+// continua sendo sempre message.text, o original do Telegram, nunca
+// fact.statement. Testes A-F do enunciado da correção.
+// ------------------------------------------------------------------
+
+test("collectActivityClassifiedMessageIds: coleta sourceRefs só de facts category=ACTIVITY, ignora as demais categorias", () => {
+  const ids = collectActivityClassifiedMessageIds({
+    facts: [
+      { category: "ACTIVITY", sourceRefs: ["1", "2"] },
+      { category: "OTHER", sourceRefs: ["3"] },
+      { category: "WEATHER", sourceRefs: ["4"] },
+    ],
+  });
+  assert.deepEqual([...ids].sort(), ["1", "2"]);
+});
+
+// A) atividade PHOTO: caption entra no RDO (comportamento já existente, sem
+// depender de classificação da IA — uma foto de obra sempre documenta algo).
+test("(A) mensagem PHOTO com caption vira atividade no RDO, com o texto original da legenda", () => {
+  const snapshot = {
+    messages: [msg({ id: "1", timestamp: "2026-09-14T08:00:00.000Z", type: "PHOTO", caption: "Plantio de mudas no canteiro 3.", photo: { stored: true, driveFileId: "d1" } })],
+  };
+  const items = buildActivities({ facts: [] }, snapshot);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].texto, "Plantio de mudas no canteiro 3.");
+});
+
+// B) atividade TEXT sem foto: só entra quando a IA classifica category=ACTIVITY
+// citando o telegramMessageId da própria mensagem; o texto é message.text literal.
+test("(B) mensagem TEXT classificada ACTIVITY pela IA vira atividade no RDO, com o texto original da mensagem — nunca aparece no RDF (não é foto)", () => {
+  const snapshot = {
+    messages: [msg({ id: "10", timestamp: "2026-09-14T08:00:00.000Z", type: "TEXT", text: "Beneficiamento de sementes." })],
+  };
+  const structuredOutput = { facts: [{ id: "f1", category: "ACTIVITY", statement: "Realização de beneficiamento de sementes", sourceRefs: ["10"] }] };
+
+  const items = buildActivities(structuredOutput, snapshot);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].texto, "Beneficiamento de sementes.", "texto EXATO da mensagem — nunca a paráfrase de fact.statement");
+
+  const photos = buildPhotos(snapshot, { arquivosByDriveFileId: new Map(), photoObservationsByRef: new Map() });
+  assert.equal(photos.length, 0, "mensagem TEXT nunca entra no RDF, mesmo classificada como atividade");
+});
+
+// C) mesma atividade relatada em TEXT e depois em PHOTO (ou vice-versa) =>
+// uma única linha no RDO (texto da PRIMEIRA ocorrência cronológica); o RDF
+// continua mostrando a foto com sua legenda normalmente (buildPhotos nunca deduplica).
+test("(C) mesma atividade em TEXT + PHOTO produz UMA única linha no RDO (dedup entre tipos), RDF continua mostrando a foto normalmente", () => {
   const snapshot = {
     messages: [
-      msg({ id: "1", timestamp: "2026-09-14T08:00:00.000Z", type: "TEXT" }),
-      msg({ id: "2", timestamp: "2026-09-14T08:05:00.000Z", type: "PHOTO", caption: "Irrigação do canteiro.", photo: { stored: true, driveFileId: "d2" } }),
+      msg({ id: "1", timestamp: "2026-09-14T08:00:00.000Z", type: "TEXT", text: "Beneficiamento de sementes" }),
+      msg({ id: "2", timestamp: "2026-09-14T08:05:00.000Z", type: "PHOTO", caption: "Beneficiamento de sementes", photo: { stored: true, driveFileId: "d2" } }),
+    ],
+  };
+  const structuredOutput = { facts: [{ id: "f1", category: "ACTIVITY", statement: "Beneficiamento de sementes realizado pela equipe", sourceRefs: ["1"] }] };
+
+  const items = buildActivities(structuredOutput, snapshot);
+  assert.equal(items.length, 1, "RDO deduplicado entre TEXT e PHOTO");
+  assert.equal(items[0].texto, "Beneficiamento de sementes", "texto da PRIMEIRA ocorrência cronológica (a mensagem TEXT)");
+
+  const photos = buildPhotos(snapshot, { arquivosByDriveFileId: new Map(), photoObservationsByRef: new Map() });
+  assert.equal(photos.length, 1, "RDF continua mostrando a foto normalmente, independente do dedup do RDO");
+  assert.equal(photos[0].legenda, "Beneficiamento de sementes");
+});
+
+// D) mensagem de clima em TEXT nunca vira atividade — a IA nunca produz um
+// fact ACTIVITY para ela (só preenche structuredOutput.clima).
+test("(D) mensagem TEXT de clima nunca vira atividade — sem fact ACTIVITY referenciando-a, mesmo com structuredOutput.clima preenchido", () => {
+  const snapshot = {
+    messages: [msg({ id: "1", timestamp: "2026-09-14T08:00:00.000Z", type: "TEXT", text: "Choveu a tarde toda hoje." })],
+  };
+  const structuredOutput = { facts: [], clima: { manha: "NAO_INFORMADO", tarde: "CHUVAS", noite: "NAO_INFORMADO" } };
+
+  const items = buildActivities(structuredOutput, snapshot);
+  assert.equal(items.length, 0, "mensagem de clima nunca entra como atividade — alimenta só o campo clima");
+});
+
+// E) mensagem administrativa/observação genérica/comando em TEXT nunca vira
+// atividade — mesmo referenciada por um fact de OUTRA categoria (nunca ACTIVITY).
+test("(E) mensagem TEXT administrativa/genérica nunca vira atividade, mesmo referenciada por um fact de categoria diferente de ACTIVITY", () => {
+  const snapshot = {
+    messages: [msg({ id: "1", timestamp: "2026-09-14T08:00:00.000Z", type: "TEXT", text: "Bom dia, equipe!" })],
+  };
+  const structuredOutput = { facts: [{ id: "f1", category: "OTHER", statement: "Saudação inicial da equipe", sourceRefs: ["1"] }] };
+
+  const items = buildActivities(structuredOutput, snapshot);
+  assert.equal(items.length, 0, "só fact.category === ACTIVITY conta — qualquer outra categoria nunca vira atividade");
+});
+
+// F) o texto exibido no RDO é sempre o ORIGINAL do Telegram (message.text
+// para TEXT, message.caption para PHOTO) — nunca a paráfrase da IA em
+// structuredOutput.facts[].statement, para NENHUM dos dois tipos.
+test("(F) texto da atividade é sempre o ORIGINAL do Telegram — TEXT usa message.text, PHOTO usa message.caption, nunca fact.statement", () => {
+  const snapshot = {
+    messages: [
+      msg({ id: "1", timestamp: "2026-09-14T08:00:00.000Z", type: "TEXT", text: "Roçada na área 2" }),
+      msg({ id: "2", timestamp: "2026-09-14T08:05:00.000Z", type: "PHOTO", caption: "Adubação do canteiro 5", photo: { stored: true, driveFileId: "d2" } }),
     ],
   };
   const structuredOutput = {
-    facts: [{ id: "f1", category: "ACTIVITY", statement: "Tempo bom durante o dia", sourceRefs: ["1"] }],
+    facts: [
+      { id: "f1", category: "ACTIVITY", statement: "Realização de roçada completa na área 2 do canteiro", sourceRefs: ["1"] },
+      { id: "f2", category: "ACTIVITY", statement: "Aplicação de adubo orgânico no canteiro 5", sourceRefs: ["2"] },
+    ],
   };
+
   const items = buildActivities(structuredOutput, snapshot);
-  assert.equal(items.length, 1);
-  assert.equal(items[0].texto, "Irrigação do canteiro.");
-  assert.ok(!items.some((i) => i.texto.toLowerCase().includes("tempo bom")), "mensagem avulsa nunca vira atividade por inferência da IA");
+  assert.deepEqual(items.map((i) => i.texto), ["Roçada na área 2", "Adubação do canteiro 5"]);
+  for (const item of items) {
+    assert.ok(!item.texto.toLowerCase().includes("realização") && !item.texto.toLowerCase().includes("aplicação de adubo"), "nunca a paráfrase de fact.statement");
+  }
 });
 
 test("buildActivities: atividades seguem a ordem de CHEGADA no snapshot (já cronológica — Bloco 5), nunca reordenadas aqui", () => {

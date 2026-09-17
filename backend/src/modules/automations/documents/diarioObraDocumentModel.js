@@ -80,55 +80,91 @@ function stripLeadingListNumber(text) {
 }
 
 /**
+ * Mensagens de TEXTO avulsas (sem foto) CLASSIFICADAS pela IA como uma
+ * atividade operacional real — a IA é usada SOMENTE para CLASSIFICAR
+ * (`fact.category === "ACTIVITY"`, citando o próprio `telegramMessageId` da
+ * mensagem em `sourceRefs`), NUNCA para redigir o texto exibido (Seção
+ * "correção — atividades enviadas só como texto"). Clima, mensagem
+ * administrativa, observação genérica ou comando nunca produzem um fact
+ * ACTIVITY para aquela mensagem (o prompt já separa isso — Seção "CLIMA É
+ * SEPARADO DE ATIVIDADE" / "só vira fact de categoria ACTIVITY se descrever
+ * claramente uma atividade operacional realizada"), então nunca aparecem
+ * aqui por construção, sem precisar de uma lista negativa própria.
+ */
+function collectActivityClassifiedMessageIds(structuredOutput) {
+  const ids = new Set();
+  for (const fact of structuredOutput.facts || []) {
+    if (fact.category !== "ACTIVITY") continue;
+    for (const ref of fact.sourceRefs || []) ids.add(ref);
+  }
+  return ids;
+}
+
+/**
  * Fonte PRIMÁRIA e ÚNICA das atividades do RDO (correção de linhagem —
  * "o template nunca é fonte para atividades do dia; a IA nunca escreve o
- * fato operacional"): a LEGENDA ORIGINAL de cada foto do snapshot, EXATAMENTE
- * como chegou do Telegram — nunca `fact.statement` da IA, que pode
- * parafrasear/resumir/reescrever mesmo respeitando o sentido. O snapshot já
- * chega ordenado cronologicamente (Bloco 5: timestamp ASC, message_id ASC),
- * então a ordem de iteração já é a ordem real de chegada — nenhum sort
- * adicional é necessário aqui.
+ * fato operacional"): o TEXTO ORIGINAL de cada mensagem do snapshot,
+ * EXATAMENTE como chegou do Telegram — nunca `fact.statement` da IA, que
+ * pode parafrasear/resumir/reescrever mesmo respeitando o sentido. Duas
+ * fontes, ambas com o texto literal do Telegram:
+ *   - PHOTO: a LEGENDA (`message.caption`) — sempre uma atividade quando
+ *     presente (uma foto de obra sempre documenta algo feito, nunca precisa
+ *     de classificação extra da IA para isso).
+ *   - TEXT: o TEXTO (`message.text`) — só quando a IA classificou aquela
+ *     mensagem especificamente como ACTIVITY (ver `collectActivityClassifiedMessageIds`),
+ *     já que uma mensagem de texto avulsa pode ser clima/administrativo/
+ *     comando/observação, sem nenhum sinal estrutural próprio como o de uma
+ *     foto para decidir sozinha.
+ *
+ * O snapshot já chega ordenado cronologicamente (Bloco 5: timestamp ASC,
+ * message_id ASC) e a iteração é uma ÚNICA passada sobre `snapshot.messages`
+ * (nunca duas listas concatenadas), então a deduplicação abaixo já opera
+ * cronologicamente e JÁ cobre duplicidade ENTRE TIPOS (a mesma atividade
+ * relatada por TEXT e depois repetida como legenda de uma FOTO, ou
+ * vice-versa, vira uma única linha no RDO com o texto da primeira
+ * ocorrência — nunca duas).
  *
  * Deduplicação por `normalizeActivityKey` (chave normalizada: trim, espaços
  * colapsados, case-insensitive, pontuação final removida) preserva o TEXTO
- * DA PRIMEIRA OCORRÊNCIA cronológica, nunca uma versão reescrita — 3 fotos
- * com a legenda "Irrigação do canteiro" (ou variações triviais de formatação
- * dela) geram UMA linha no RDO com o texto exato da primeira foto que a
- * usou, mas continuam sendo 3 registros distintos no RDF (`buildPhotos`
- * nunca deduplica).
+ * DA PRIMEIRA OCORRÊNCIA cronológica, nunca uma versão reescrita.
  *
  * Foto SEM legenda nunca vira atividade (não há texto operacional para
  * descrever) — ainda aparece no RDF com o fallback de `resolvePhotoCaption`.
- * Mensagem de TEXTO avulsa (sem foto) também nunca vira atividade aqui —
- * só clima/observação/administrativo/não classificado, nunca por inferência
- * (Seção 6); se um dia isso mudar, será uma regra separada e explícita.
+ * RDF (`buildPhotos`) nunca é afetado por nada disto — continua mostrando
+ * TODAS as fotos e legendas originais, sem deduplicar e sem depender de
+ * classificação (Seção "RDF continua mostrando a foto e caption normalmente").
  */
-function buildActivityTextsFromPhotos(snapshot) {
+function buildActivityTextsFromMessages(structuredOutput, snapshot) {
+  const activityClassifiedMessageIds = collectActivityClassifiedMessageIds(structuredOutput);
   const seen = new Set();
   const textos = [];
   for (const message of snapshot.messages || []) {
-    if (message.type !== "PHOTO") continue;
-    const captionOriginal = String(message.caption || "").trim();
-    if (!captionOriginal) continue;
-    const key = normalizeActivityKey(captionOriginal);
+    let textoOriginal = null;
+    if (message.type === "PHOTO") {
+      textoOriginal = String(message.caption || "").trim() || null;
+    } else if (message.type === "TEXT" && activityClassifiedMessageIds.has(message.telegramMessageId)) {
+      textoOriginal = String(message.text || "").trim() || null;
+    }
+    if (!textoOriginal) continue;
+    const key = normalizeActivityKey(textoOriginal);
     if (!key || seen.has(key)) continue;
     seen.add(key);
-    textos.push(stripLeadingListNumber(captionOriginal));
+    textos.push(stripLeadingListNumber(textoOriginal));
   }
   return textos;
 }
 
 /**
- * Sequência final da lista de atividades: 1) legendas originais de foto,
- * deduplicadas e na ordem cronológica de chegada (nunca a IA — ver
- * `buildActivityTextsFromPhotos`), 2) conflicts + warnings da IA (nunca como
- * fato executado — só alertas/observações sobre o dia), 3) missing
+ * Sequência final da lista de atividades: 1) textos originais de foto/texto,
+ * deduplicados entre si e na ordem cronológica de chegada (nunca a IA — ver
+ * `buildActivityTextsFromMessages`), 2) conflicts + warnings da IA (nunca
+ * como fato executado — só alertas/observações sobre o dia), 3) missing
  * information (agrupada, nunca dezenas de linhas artificiais). Nunca mistura
  * semanticamente as três categorias.
  */
 function buildActivities(structuredOutput, snapshot) {
   const items = [];
-  for (const texto of buildActivityTextsFromPhotos(snapshot)) {
+  for (const texto of buildActivityTextsFromMessages(structuredOutput, snapshot)) {
     items.push({ tipo: "FACT", texto });
   }
   for (const conflict of structuredOutput.conflicts || []) {
@@ -335,7 +371,8 @@ function buildDiarioObraDocumentModel({ config, execucao, snapshot, intelligence
 module.exports = {
   buildDiarioObraDocumentModel,
   buildActivities,
-  buildActivityTextsFromPhotos,
+  buildActivityTextsFromMessages,
+  collectActivityClassifiedMessageIds,
   stripLeadingListNumber,
   buildPhotos,
   dedupeFacts,
