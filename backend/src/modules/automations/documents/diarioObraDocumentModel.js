@@ -15,6 +15,7 @@
 
 const { DocumentError } = require("./documentErrorClassification");
 const { DEFAULT_EXPEDIENTE_INICIO, DEFAULT_EXPEDIENTE_FIM, MAX_ACTIVITY_TEXT_LENGTH, MAX_ACTIVITIES_TOTAL, MAX_PHOTOS_TOTAL } = require("./diarioObraLayoutConstants");
+const { parseExplicitActivityCommand } = require("./activityCommandParser");
 
 // Bloco 12 — usado só quando o chamador não informa `fixedText` explicitamente
 // (compatibilidade com chamadores/testes que não conhecem os rótulos de
@@ -105,28 +106,45 @@ function collectActivityClassifiedMessageIds(structuredOutput) {
  * "o template nunca é fonte para atividades do dia; a IA nunca escreve o
  * fato operacional"): o TEXTO ORIGINAL de cada mensagem do snapshot,
  * EXATAMENTE como chegou do Telegram — nunca `fact.statement` da IA, que
- * pode parafrasear/resumir/reescrever mesmo respeitando o sentido. Duas
- * fontes, ambas com o texto literal do Telegram:
+ * pode parafrasear/resumir/reescrever mesmo respeitando o sentido. Três
+ * fontes, todas com o texto literal do Telegram:
  *   - PHOTO: a LEGENDA (`message.caption`) — sempre uma atividade quando
  *     presente (uma foto de obra sempre documenta algo feito, nunca precisa
  *     de classificação extra da IA para isso).
- *   - TEXT: o TEXTO (`message.text`) — só quando a IA classificou aquela
- *     mensagem especificamente como ACTIVITY (ver `collectActivityClassifiedMessageIds`),
- *     já que uma mensagem de texto avulsa pode ser clima/administrativo/
- *     comando/observação, sem nenhum sinal estrutural próprio como o de uma
- *     foto para decidir sozinha.
+ *   - TEXT com comando explícito "ATIVIDADE SEM FOTO:" (Seção "comandos
+ *     explícitos de atividade") — reconhecido DETERMINISTICAMENTE por
+ *     `parseExplicitActivityCommand`, ANTES e independente de qualquer
+ *     classificação da IA; cada bloco separado por linha em branco vira uma
+ *     atividade própria, nunca entra no RDF (não é foto).
+ *   - TEXT comum: o TEXTO (`message.text`) — só quando a IA classificou
+ *     aquela mensagem especificamente como ACTIVITY (ver
+ *     `collectActivityClassifiedMessageIds`), já que uma mensagem de texto
+ *     avulsa pode ser clima/administrativo/observação, sem nenhum sinal
+ *     estrutural próprio como o de uma foto ou de um comando explícito para
+ *     decidir sozinha.
+ *
+ * Uma mensagem TEXT que combine com "INSERIR NA ATIVIDADE N:"/"ADICIONAR À
+ * ATIVIDADE N:" nunca vira uma atividade própria — é um COMPLEMENTO,
+ * coletado à parte e aplicado (Seção "3. ORDEM": nunca altera numeração nem
+ * ordem) só depois que a lista final abaixo já está completa e deduplicada,
+ * anexando o texto como linha(s) adicionais na MESMA célula da atividade N
+ * (1-indexada, contra a lista JÁ deduplicada — a numeração que o operador
+ * realmente vê no RDO). Um N inexistente é ignorado silenciosamente (Seção
+ * "comando inválido... não corrompe documento") — nunca lança, nunca cria
+ * uma atividade fantasma.
  *
  * O snapshot já chega ordenado cronologicamente (Bloco 5: timestamp ASC,
  * message_id ASC) e a iteração é uma ÚNICA passada sobre `snapshot.messages`
- * (nunca duas listas concatenadas), então a deduplicação abaixo já opera
- * cronologicamente e JÁ cobre duplicidade ENTRE TIPOS (a mesma atividade
- * relatada por TEXT e depois repetida como legenda de uma FOTO, ou
+ * (nunca listas concatenadas), então a deduplicação abaixo já opera
+ * cronologicamente e JÁ cobre duplicidade ENTRE TIPOS/FONTES (a mesma
+ * atividade relatada por TEXT e depois repetida como legenda de uma FOTO, ou
  * vice-versa, vira uma única linha no RDO com o texto da primeira
  * ocorrência — nunca duas).
  *
  * Deduplicação por `normalizeActivityKey` (chave normalizada: trim, espaços
- * colapsados, case-insensitive, pontuação final removida) preserva o TEXTO
- * DA PRIMEIRA OCORRÊNCIA cronológica, nunca uma versão reescrita.
+ * colapsados — inclusive quebras de linha, case-insensitive, pontuação final
+ * removida) preserva o TEXTO DA PRIMEIRA OCORRÊNCIA cronológica, nunca uma
+ * versão reescrita.
  *
  * Foto SEM legenda nunca vira atividade (não há texto operacional para
  * descrever) — ainda aparece no RDF com o fallback de `resolvePhotoCaption`.
@@ -138,7 +156,28 @@ function buildActivityTextsFromMessages(structuredOutput, snapshot) {
   const activityClassifiedMessageIds = collectActivityClassifiedMessageIds(structuredOutput);
   const seen = new Set();
   const textos = [];
+  const complementos = [];
+
+  function pushIfNew(textoOriginal) {
+    const key = normalizeActivityKey(textoOriginal);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    textos.push(stripLeadingListNumber(textoOriginal));
+  }
+
   for (const message of snapshot.messages || []) {
+    if (message.type === "TEXT") {
+      const command = parseExplicitActivityCommand(message.text);
+      if (command?.type === "SEM_FOTO") {
+        for (const block of command.blocks) pushIfNew(block);
+        continue;
+      }
+      if (command?.type === "COMPLEMENTO") {
+        if (command.texto) complementos.push(command);
+        continue;
+      }
+    }
+
     let textoOriginal = null;
     if (message.type === "PHOTO") {
       textoOriginal = String(message.caption || "").trim() || null;
@@ -146,11 +185,18 @@ function buildActivityTextsFromMessages(structuredOutput, snapshot) {
       textoOriginal = String(message.text || "").trim() || null;
     }
     if (!textoOriginal) continue;
-    const key = normalizeActivityKey(textoOriginal);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    textos.push(stripLeadingListNumber(textoOriginal));
+    pushIfNew(textoOriginal);
   }
+
+  // Complementos aplicados por ÚLTIMO, na ordem cronológica em que os
+  // comandos chegaram — nunca mudam `textos.length` nem a posição de nenhum
+  // item, só concatenam texto (com quebra de linha) na célula já existente.
+  for (const complemento of complementos) {
+    const index = complemento.targetNumero - 1;
+    if (index < 0 || index >= textos.length) continue;
+    textos[index] = `${textos[index]}\n${stripLeadingListNumber(complemento.texto)}`;
+  }
+
   return textos;
 }
 
